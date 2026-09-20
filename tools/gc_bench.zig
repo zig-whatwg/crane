@@ -184,6 +184,9 @@ const Sample = struct {
     /// figure precisely because the arena never resets: allocated == retained.
     arena_bytes: usize,
     arena_allocations: usize,
+    /// Allocations satisfied from a free list. Zero while a discard loop runs means
+    /// states are not being returned at all.
+    arena_recycled: usize,
     /// Instance handles that were allocated and never returned. The slab recycles,
     /// so this rising means instances are not being deinit'd at all - a different
     /// bug from "state is not freed".
@@ -222,8 +225,12 @@ fn takeSample(cycle: usize) Sample {
     return .{
         .cycle = cycle,
         .resident = memory.residentBytes(),
-        .arena_bytes = if (arena) |a| a.stats().total_bytes_allocated else 0,
+        // bytes_in_use, not total_bytes_allocated: the question is how much is
+        // HELD. The cumulative figure rises identically whether or not anything is
+        // freed, so it reported the arena as leaking even after recycling landed.
+        .arena_bytes = if (arena) |a| a.stats().bytes_in_use else 0,
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
+        .arena_recycled = if (arena) |a| a.stats().total_recycled else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
         .bridge_entries = instance_bridge.entryCount(),
         .gpa_outstanding = counting.outstanding,
@@ -455,7 +462,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
         const arena_delta = @as(i128, @intCast(last.arena_bytes)) - @as(i128, @intCast(samples[0].arena_bytes));
         const arena_per = @divTrunc(arena_delta, @as(i128, @intCast(last.cycle)));
         std.debug.print(
-            "  state arena requested: {d:.1} MB, {d} bytes per element ({d}% of RSS growth)\n",
+            "  state arena held: {d:.1} MB, {d} bytes per element ({d}% of RSS growth)\n",
             .{
                 @as(f64, @floatFromInt(arena_delta)) / (1024.0 * 1024.0),
                 arena_per,
@@ -481,6 +488,10 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 @as(f64, @floatFromInt(gpa_delta)) / (1024.0 * 1024.0),
                 @as(f64, @floatFromInt(total)) / (1024.0 * 1024.0),
             },
+        );
+        std.debug.print(
+            "  states recycled: {d} of {d} arena allocations\n",
+            .{ last.arena_recycled, last.arena_allocations },
         );
         std.debug.print(
             "  wrapper cache entries: {d} (each is a CacheEntry plus a Global<Object>,\n" ++

@@ -106,8 +106,22 @@ pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
         deinit(inst); // Calls Node.deinit_wrapper → Node.deinit
     }
 
-    // Step 2: FullState memory is NOT freed here
-    // The ArenaAllocator will batch-free all FullState memory during onGCSweep
+    // Step 2: Return the state block for reuse.
+    //
+    // The finalizer path, the counterpart to Instance.deinit - and the one that
+    // actually runs for DOM nodes, since their lifetime is V8's to decide. Without
+    // it a collected node returns its Instance handle to the slab but keeps its
+    // state forever, which is what `zig build gc-bench` measures: live instances
+    // fall to 9 under a forced GC while RSS keeps climbing.
+    if (inst.vtable.state_size != 0) {
+        if (ArenaAllocator.tryGet() catch null) |arena| {
+            arena.destroyRaw(
+                @ptrCast(inst.state),
+                inst.vtable.state_size,
+                inst.vtable.state_align,
+            );
+        }
+    }
 
     // Step 3: Return Instance handle to slab allocator
     SlabAllocator.get().free(inst);

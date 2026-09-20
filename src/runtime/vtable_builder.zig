@@ -66,6 +66,10 @@ pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8, c
         // Ancestry table: retires the assumption that every `base` sits at offset 0.
         // See Instance.stateAs and tests/runtime/state_brand_test.zig.
         .ancestors = @import("instance.zig").ancestorsOf(State),
+        // Lets the free path return this state to the right size class without
+        // knowing the type. Free, since State is already here.
+        .state_size = @sizeOf(State),
+        .state_align = @alignOf(State),
         .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };

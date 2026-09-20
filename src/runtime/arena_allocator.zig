@@ -23,8 +23,89 @@ pub const ArenaAllocator = struct {
     total_bytes_allocated: usize,
     total_resets: usize,
 
+    /// Bytes currently held by live states - allocated and not yet destroyed.
+    ///
+    /// `total_bytes_allocated` is cumulative and cannot answer "how much is held":
+    /// it rises identically whether or not anything is freed, which is exactly why
+    /// the retention it was used to report looked unfixable.
+    bytes_in_use: usize = 0,
+
+    /// Free lists, one per size class, of blocks handed back by `destroy`.
+    ///
+    /// This is what makes a create/discard loop bounded. The arena underneath still
+    /// only grows - it has no way to release an individual block - but a freed
+    /// block is handed straight back out, so the loop stops asking for new memory.
+    ///
+    /// Reuse rather than `reset()` deliberately. The arena is process-global and
+    /// holds the Window, the Document and every node still in the tree, so a
+    /// blanket reset would free live state along with dead. Reuse touches only
+    /// blocks their owners have already given up.
+    free_lists: [size_class_count]?*FreeBlock = @splat(null),
+    /// Blocks recycled rather than taken from the arena. Diagnostic: if this stays
+    /// at zero while a discard loop runs, states are not being returned at all.
+    total_recycled: usize = 0,
+
     /// Global instance
     var global: ?ArenaAllocator = null;
+
+    /// A freed block, with the next pointer written into the block itself.
+    ///
+    /// Costs no side allocation, which matters because this runs on the free path
+    /// of every DOM node. It does require every recycled block to be at least
+    /// pointer-sized and pointer-aligned; `sizeClassOf` enforces that by refusing
+    /// anything smaller.
+    const FreeBlock = struct {
+        next: ?*FreeBlock,
+    };
+
+    /// Size classes are powers of two from 16 bytes to 16 KiB.
+    ///
+    /// Exact-size lists would be ideal but there are 1,263 distinct state types;
+    /// power-of-two classes keep the table small while guaranteeing a block is
+    /// never handed to a request larger than itself - the failure that would turn
+    /// into silent corruption far from here.
+    const min_class_shift = 4; // 16 bytes
+    const max_class_shift = 14; // 16 KiB
+    const size_class_count = max_class_shift - min_class_shift + 1;
+
+    /// The class a request of `size`/`alignment` belongs to, or null if it must not
+    /// be recycled.
+    ///
+    /// Null for anything under 16 bytes (no room for the next pointer), anything
+    /// over 16 KiB (rare, and pooling them would hold a lot of memory hostage), and
+    /// anything needing alignment beyond the class size.
+    fn sizeClassOf(size: usize, alignment: usize) ?usize {
+        if (size < @sizeOf(FreeBlock) or alignment > @alignOf(FreeBlock)) return null;
+
+        var shift: usize = min_class_shift;
+        while (shift <= max_class_shift) : (shift += 1) {
+            const class_size = @as(usize, 1) << @intCast(shift);
+            if (size <= class_size and alignment <= class_size) {
+                return shift - min_class_shift;
+            }
+        }
+        return null;
+    }
+
+    /// Bytes a block of the given class holds.
+    fn classSize(class: usize) usize {
+        return @as(usize, 1) << @intCast(class + min_class_shift);
+    }
+
+    /// Take a block of `class` off its free list, or null if the list is empty.
+    fn popFree(self: *ArenaAllocator, class: usize) ?[*]u8 {
+        const head = self.free_lists[class] orelse return null;
+        self.free_lists[class] = head.next;
+        self.total_recycled += 1;
+        return @ptrCast(head);
+    }
+
+    /// Put a block of `class` back on its free list.
+    fn pushFree(self: *ArenaAllocator, class: usize, ptr: [*]u8) void {
+        const block: *FreeBlock = @ptrCast(@alignCast(ptr));
+        block.next = self.free_lists[class];
+        self.free_lists[class] = block;
+    }
 
     /// Initialize the global arena allocator
     pub fn init(backing_allocator: std.mem.Allocator) void {
@@ -71,10 +152,72 @@ pub const ArenaAllocator = struct {
     /// This is the primary allocation method used by generated code:
     ///   const state = try ArenaAllocator.get().create(FullState);
     pub fn create(self: *ArenaAllocator, comptime T: type) !*T {
-        const ptr = try self.arena.allocator().create(T);
+        return @ptrCast(@alignCast(try self.createRaw(@sizeOf(T), @alignOf(T))));
+    }
+
+    /// `create` for a size known only at runtime.
+    ///
+    /// `Instance.deinit` has a `*Instance` and a vtable, not a type, so the free
+    /// path is necessarily untyped; the allocate path has to match it or the two
+    /// would disagree about which class a block belongs to.
+    ///
+    /// The returned memory is ZEROED. `Instance.init` already memsets state,
+    /// because Zig does not apply struct defaults through an allocator - but a
+    /// recycled block also carries the previous occupant's bytes, and an optional
+    /// pointer field coming back non-null would be dereferenced.
+    pub fn createRaw(self: *ArenaAllocator, size: usize, alignment: usize) ![*]u8 {
         self.total_allocations += 1;
-        self.total_bytes_allocated += @sizeOf(T);
-        return ptr;
+        self.total_bytes_allocated += size;
+        self.bytes_in_use += size;
+
+        if (sizeClassOf(size, alignment)) |class| {
+            if (self.popFree(class)) |recycled| {
+                @memset(recycled[0..classSize(class)], 0);
+                return recycled;
+            }
+            // Allocate the whole class, not the request: the block goes back on
+            // this class's list, and a later request in the same class may be
+            // larger than this one.
+            const bytes = try self.arena.allocator().alignedAlloc(
+                u8,
+                .of(FreeBlock),
+                classSize(class),
+            );
+            @memset(bytes, 0);
+            return bytes.ptr;
+        }
+
+        const bytes = self.arena.allocator().rawAlloc(
+            size,
+            std.mem.Alignment.fromByteUnits(@max(alignment, 1)),
+            @returnAddress(),
+        ) orelse return error.OutOfMemory;
+        @memset(bytes[0..size], 0);
+        return bytes;
+    }
+
+    /// Hand a state block back for reuse.
+    ///
+    /// Callers must have run the type's own cleanup first - this releases the
+    /// block, not what it points to. Both call sites (`Instance.deinit` and
+    /// `gc_integration.onObjectFreed`) invoke `vtable.deinit` before getting here,
+    /// which is the same ordering the slab allocator already relies on for the
+    /// Instance handle.
+    pub fn destroy(self: *ArenaAllocator, comptime T: type, ptr: *T) void {
+        self.destroyRaw(@ptrCast(ptr), @sizeOf(T), @alignOf(T));
+    }
+
+    /// `destroy` for a size known only at runtime - the shape the vtable provides.
+    ///
+    /// A block outside every size class is simply dropped: the arena cannot release
+    /// an individual allocation, so the alternative to leaking it is corrupting
+    /// something. `bytes_in_use` is still decremented, so the figure stays honest
+    /// about what callers hold rather than what the arena has reserved.
+    pub fn destroyRaw(self: *ArenaAllocator, ptr: [*]u8, size: usize, alignment: usize) void {
+        self.bytes_in_use -|= size;
+        if (sizeClassOf(size, alignment)) |class| {
+            self.pushFree(class, ptr);
+        }
     }
 
     /// Allocate a slice of items
@@ -82,6 +225,7 @@ pub const ArenaAllocator = struct {
         const slice = try self.arena.allocator().alloc(T, n);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * n;
+        self.bytes_in_use += @sizeOf(T) * n;
         return slice;
     }
 
@@ -90,6 +234,7 @@ pub const ArenaAllocator = struct {
         const slice = try self.arena.allocator().dupe(T, m);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * m.len;
+        self.bytes_in_use += @sizeOf(T) * m.len;
         return slice;
     }
 
@@ -103,6 +248,11 @@ pub const ArenaAllocator = struct {
     pub fn reset(self: *ArenaAllocator) void {
         _ = self.arena.reset(.retain_capacity);
         self.total_resets += 1;
+        // The free lists point into the memory just released. Dropping them is not
+        // optional: reusing a block from a reset arena hands out memory the arena
+        // has already given to someone else.
+        self.free_lists = @splat(null);
+        self.bytes_in_use = 0;
         // Note: We don't reset statistics - they're cumulative
     }
 
@@ -112,6 +262,8 @@ pub const ArenaAllocator = struct {
             .total_allocations = self.total_allocations,
             .total_bytes_allocated = self.total_bytes_allocated,
             .total_resets = self.total_resets,
+            .bytes_in_use = self.bytes_in_use,
+            .total_recycled = self.total_recycled,
             .arena_state = self.arena.state,
         };
     }
@@ -121,6 +273,11 @@ pub const ArenaAllocator = struct {
         total_allocations: usize,
         total_bytes_allocated: usize,
         total_resets: usize,
+        /// Bytes held by live states right now. The figure to read for retention;
+        /// `total_bytes_allocated` only ever rises.
+        bytes_in_use: usize,
+        /// How many allocations were satisfied from a free list.
+        total_recycled: usize,
         arena_state: std.heap.ArenaAllocator.State,
     };
 };

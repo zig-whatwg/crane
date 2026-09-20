@@ -168,11 +168,30 @@ pub const Instance = struct {
             deinit_fn(instance);
         }
 
-        // Step 2: Return Instance handle to slab allocator
-        SlabAllocator.get().free(instance);
+        // Step 2: Return the state block for reuse.
+        //
+        // Must come after the vtable deinit above, which releases what the state
+        // POINTS TO; this releases the state itself. Same ordering the slab has
+        // always relied on for the Instance handle.
+        //
+        // This used to be a comment saying the arena would batch-free it during GC
+        // sweep. Nothing ever called that sweep, so in practice every discarded
+        // node's state was held to process exit - 21.4 MB across 10,000 elements,
+        // measured by `zig build gc-bench`. A blanket reset was never the answer
+        // anyway: the arena is process-global and holds every LIVE node too.
+        const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+        if (instance.vtable.state_size != 0) {
+            if (ArenaAllocator.tryGet() catch null) |arena| {
+                arena.destroyRaw(
+                    @ptrCast(instance.state),
+                    instance.vtable.state_size,
+                    instance.vtable.state_align,
+                );
+            }
+        }
 
-        // Note: State memory is NOT freed here - it's batch-freed during GC sweep
-        // via ArenaAllocator.reset() in gc_integration.zig::onGCSweep()
+        // Step 3: Return Instance handle to slab allocator
+        SlabAllocator.get().free(instance);
     }
 };
 
@@ -247,6 +266,19 @@ pub const VTable = struct {
     /// This interface's state ancestry, innermost first. Empty until codegen emits
     /// it, which is why `stateAs` reports "unknown" rather than guessing.
     ancestors: []const Ancestor = &.{},
+
+    /// Size and alignment of this interface's state.
+    ///
+    /// `Instance.deinit` holds a `*Instance` and nothing else, so without these it
+    /// cannot return the state to the right free list and every discarded node's
+    /// state is retained to process exit - the whole of Phase 6's measured 21.4 MB
+    /// over 10,000 elements.
+    ///
+    /// Defaulted to zero so a hand-written vtable still compiles; zero means "do
+    /// not recycle", which is the safe reading. `buildVTable` fills them in from
+    /// the State type it already receives, so no codegen change is needed.
+    state_size: usize = 0,
+    state_align: usize = 0,
 
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
