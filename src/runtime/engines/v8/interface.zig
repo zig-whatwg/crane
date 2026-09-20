@@ -1302,6 +1302,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Field 0: pointer to Zig instance (*runtime.Instance)
             // Field 1: pointer to type tag (for type-safe unwrapping)
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
+            defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);
             v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
 
             // Per WebIDL spec, platform objects of [Global] interfaces have immutable [[Prototype]].
@@ -3330,10 +3331,18 @@ pub fn V8Interface(comptime Interface: type) type {
             // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
             // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
             const constructor_v8_fn = info.getFunction();
-            // Owned in BOTH branches - `getFunctionRealm` returns a fresh Global too -
-            // so one defer covers them; `current_context` is borrowed and is not.
+            // NOT disposed, despite being owned in both branches. `constructor_context`
+            // below is handed to `ctx_mgr.getOrCreateWithIsolate`, which on its CREATE
+            // path stores it as `ContextEntry.engine_ctx` and hands it to
+            // `WrapperCache.init` - both outliving this callback. Disposing here frees
+            // a handle the context manager still holds.
+            //
+            // This leaks one handle per constructor call on realms already registered,
+            // which is the common case. Fixing it properly means giving the context
+            // manager a way to say "I took ownership", and that is a wider change than
+            // a defer. An earlier version of this code DID dispose here; it was a
+            // use-after-free that only hid because the create path is rarely taken.
             const constructor_v8_context = if (constructor_v8_fn) |f| getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
-            defer if (constructor_v8_context) |c| v8.v8_Context_Dispose(c);
             const constructor_context = constructor_v8_context orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)

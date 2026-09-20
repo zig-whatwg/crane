@@ -432,6 +432,9 @@ pub fn wrapInstanceAsV8Object(
     // for non-constructible interfaces like HTMLCollection and Navigator.
     // See AGENTS.md Golden Rule #16 for details.
     const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
+    // Owned handle. This is the per-element wrapper path, so leaking it here is
+    // one leaked handle for every DOM object the page creates.
+    defer v8.v8_ObjectTemplate_Dispose(instance_template);
     const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         return error.ObjectCreationFailed;
     };

@@ -1526,7 +1526,12 @@ pub extern fn v8_FunctionTemplate_NewWithSignature(isolate: *Isolate, callback: 
 pub extern fn v8_FunctionTemplate_GetFunction(function_template: *FunctionTemplate, context: *Context) ?*Function;
 pub extern fn v8_FunctionTemplate_Dispose(tpl: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *String) void;
+/// Returns a NEWLY ALLOCATED handle, despite V8's own `InstanceTemplate()`
+/// returning a borrowed `Local`. Dispose it with `v8_ObjectTemplate_Dispose`.
 pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
+
+/// Release a handle from `v8_FunctionTemplate_InstanceTemplate`.
+pub extern fn v8_ObjectTemplate_Dispose(tpl: *ObjectTemplate) void;
 pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 /// Get the prototype object from a FunctionTemplate.
 /// This is used when wrapping Zig instances as V8 objects - ObjectTemplate::NewInstance()

@@ -1945,6 +1945,7 @@ pub fn windowIndexedPropertyGetter(
 
     // Get the 'this' object (the global/Window object)
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
 
     // Also try getting the global from the context (might be different from this_obj)
     const global_obj = v8.v8_Context_Global(v8_context);
@@ -2081,6 +2082,7 @@ pub fn windowIndexedPropertyQuery(
     const WindowImpl = @import("impls").Window;
 
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     if (instance_ptr == null) return .kNo;
 
@@ -2111,6 +2113,7 @@ pub fn windowIndexedPropertyEnumerator(
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
 
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     if (instance_ptr == null) {
         // No instance - return empty array
@@ -2180,6 +2183,7 @@ pub fn windowNamedPropertyGetter(
 
     // Get the Window instance from the global object
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
     // If this_obj doesn't have internal fields, try the global object
@@ -2243,6 +2247,7 @@ pub fn windowNamedPropertyQuery(
 
     // Get Window instance
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
     if (instance_ptr == null) {

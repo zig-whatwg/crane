@@ -136,6 +136,8 @@ fn v8RegisterInterface(
 
     // Configure the instance template
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
+    // Owned handle: V8 returns a borrowed Local here, this wrapper allocates.
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
 
     // Set internal field count for wrapper storage
     ffi.v8_ObjectTemplate_SetInternalFieldCount(instance_template, 2);
@@ -301,6 +303,7 @@ fn v8CreateInstance(
 
     // Get the instance template and create a new object
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(func_template);
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
     const v8_object = ffi.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         return EngineError.ObjectCreationFailed;
     };
@@ -388,7 +391,7 @@ fn v8SetupGlobalObject(
 
     // Set up the prototype from the template
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(func_template);
-    _ = instance_template;
+    ffi.v8_ObjectTemplate_Dispose(instance_template);
 
     // TODO: Configure global prototype chain
 

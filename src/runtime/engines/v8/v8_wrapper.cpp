@@ -3236,10 +3236,13 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
-    if (obj) {
-        obj->Reset();
-        delete obj;
-    }
+    if (!obj) return;
+    // See v8_ObjectTemplate_Dispose: while the snapshot is being built every
+    // handle is registered for bulk cleanup, so disposing one here as well is a
+    // double free.
+    if (g_snapshot_mode) return;
+    obj->Reset();
+    delete obj;
 }
 
 // ============================================================================
@@ -4190,6 +4193,28 @@ void v8_FunctionTemplate_SetClassName(Global<FunctionTemplate>* tpl, Global<Stri
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<String> local_name = name->Get(isolate);
     local_tpl->SetClassName(local_name);
+}
+
+// Release a Global<ObjectTemplate>.
+//
+// Typed rather than routing through v8_Global_Dispose: every `Global<T>` happens
+// to have the same layout, but casting between them to pick a destructor is UB
+// that works by accident, and this file has enough of those already.
+//
+// NO-OP IN SNAPSHOT MODE, and this is not optional. `trackHandle` pushes every
+// handle it sees into `g_snapshot_handles` while the snapshot is being built, and
+// `v8_Snapshot_ClearGlobalHandles` resets and deletes all of them at the end. A
+// caller that also disposes gets a double free - which is exactly what happened
+// the first time this function was added, and the snapshot generator aborted
+// inside `resetGlobalHandle`. During generation the snapshot cleanup owns the
+// handle; leaking for the lifetime of a one-shot build tool is the cheap side.
+//
+// ANY disposal added to this wrapper needs the same guard.
+void v8_ObjectTemplate_Dispose(Global<ObjectTemplate>* tpl) {
+    if (!tpl) return;
+    if (g_snapshot_mode) return;
+    tpl->Reset();
+    delete tpl;
 }
 
 Global<ObjectTemplate>* v8_FunctionTemplate_InstanceTemplate(Global<FunctionTemplate>* tpl) {
