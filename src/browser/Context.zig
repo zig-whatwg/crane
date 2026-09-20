@@ -83,16 +83,12 @@ threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = nu
 // Thread-local because the nesting level belongs to the agent, and one agent is one
 // thread with one isolate.
 
-/// Minimum delay once nested deeper than `nesting_threshold`. HTML s8.6 step 5.
-const nested_min_delay_ms: i64 = 4;
-
-/// Nesting depth beyond which `nested_min_delay_ms` applies. HTML s8.6 step 5.
-const nesting_threshold: u32 = 5;
-
-/// The "current timer nesting level". Zero on the event loop's own turn; while a
-/// timer callback runs it is that timer's recorded nesting level, so timers created
-/// inside the callback nest one deeper.
-threadlocal var timer_nesting_level: u32 = 0;
+// HTML §8.6's nesting and clamp now live in `v8.native_timer`, so the worker
+// binding can apply the same rule - it previously had no clamp at all. These are
+// aliases, not a second copy: two definitions of a spec constant is how the two
+// paths diverged in the first place.
+const nested_min_delay_ms = v8.native_timer.nested_min_delay_ms;
+const nesting_threshold = v8.native_timer.nesting_threshold;
 
 /// Restore the timer nesting level at the start of the microtask checkpoint.
 ///
@@ -107,21 +103,14 @@ threadlocal var timer_nesting_level: u32 = 0;
 /// deeper, while one scheduled from a microtask does not inherit the level at all.
 /// The checkpoint runs between tasks, so the level there is 0 by definition.
 fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
-    timer_nesting_level = 0;
+    v8.native_timer.nesting_level = 0;
 }
 
 /// Apply the clamping half of the timer initialisation steps.
 ///
 /// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
 /// so it can be unit-tested without a V8 isolate.
-fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
-    var timeout = requested_ms;
-    if (timeout < 0) timeout = 0;
-    if (nesting > nesting_threshold and timeout < nested_min_delay_ms) {
-        timeout = nested_min_delay_ms;
-    }
-    return timeout;
-}
+const clampTimeout = v8.native_timer.clampTimeout;
 
 /// Set the current timer interface for V8 callbacks
 pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
@@ -264,7 +253,7 @@ const V8TimerContextData = struct {
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
     /// This timer's nesting level, per the timer initialisation steps. While its
-    /// callback runs, `timer_nesting_level` is set to this, so timers created inside
+    /// callback runs, `v8.native_timer.nesting_level` is set to this, so timers created inside
     /// nest one deeper and eventually trip the 4ms clamp.
     nesting_level: u32 = 0,
     /// True while this timer's callback is on the stack.
@@ -339,9 +328,9 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
         // after the task's callback returns, so a timer scheduled from a microtask must
         // NOT inherit the task's nesting level and must not be clamped to 4ms.
         // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
-        const saved_nesting = timer_nesting_level;
-        timer_nesting_level = data.nesting_level;
-        defer timer_nesting_level = saved_nesting;
+        const saved_nesting = v8.native_timer.nesting_level;
+        v8.native_timer.nesting_level = data.nesting_level;
+        defer v8.native_timer.nesting_level = saved_nesting;
 
         // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
         v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
@@ -401,9 +390,9 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         // after the task's callback returns, so a timer scheduled from a microtask must
         // NOT inherit the task's nesting level and must not be clamped to 4ms.
         // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
-        const saved_nesting = timer_nesting_level;
-        timer_nesting_level = data.nesting_level;
-        defer timer_nesting_level = saved_nesting;
+        const saved_nesting = v8.native_timer.nesting_level;
+        v8.native_timer.nesting_level = data.nesting_level;
+        defer v8.native_timer.nesting_level = saved_nesting;
 
         // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
         v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
@@ -1924,8 +1913,8 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Timer initialisation steps (HTML s8.6): clamp before scheduling, and record
     // this timer's nesting level so its own callback nests one deeper.
-    const nesting = timer_nesting_level + 1;
-    const clamped_ms = clampTimeout(delay_ms, timer_nesting_level);
+    const nesting = v8.native_timer.nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
     timer_wrapper.getData().nesting_level = nesting;
 
     // Schedule the timer using TimerInterface with typed callback trampoline
@@ -2077,8 +2066,8 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     // Timer initialisation steps (HTML s8.6), same as setTimeout. The stored delay is
     // the CLAMPED one, so every repeat in v8IntervalHandler inherits it rather than
     // re-deriving an unclamped value.
-    const nesting = timer_nesting_level + 1;
-    const clamped_ms = clampTimeout(delay_ms, timer_nesting_level);
+    const nesting = v8.native_timer.nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
     const delay_u64: u64 = @intCast(clamped_ms);
     timer_wrapper.getData().interval_delay_ms = delay_u64;
     timer_wrapper.getData().nesting_level = nesting;

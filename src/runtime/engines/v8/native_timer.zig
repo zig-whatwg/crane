@@ -42,6 +42,47 @@ const TimerVTable = runtime.TimerVTable;
 
 const log = std.log.scoped(.native_timer);
 
+// ============================================================================
+// HTML §8.6 timer initialisation: nesting and the 4ms clamp
+// ============================================================================
+//
+// One implementation, shared by the window and worker bindings. It lived only in
+// `src/browser/Context.zig`, which is the WINDOW's binding layer - so nested
+// `setTimeout(f, 0)` in a worker was never clamped at all, while the same code in
+// a window was. Both paths schedule through this manager, so this is the one place
+// both can see.
+//
+// It is not in `src/html/event_loop/timers.zig`, which also implements these steps
+// (`MIN_NESTED_DELAY_MS`, `NESTING_LEVEL_THRESHOLD`): nothing spins that event
+// loop, so that copy never runs.
+
+/// Minimum delay once nested deeper than `nesting_threshold`. HTML §8.6 step 5.
+pub const nested_min_delay_ms: i64 = 4;
+
+/// Nesting depth beyond which `nested_min_delay_ms` applies. HTML §8.6 step 5.
+pub const nesting_threshold: u32 = 5;
+
+/// The "current timer nesting level".
+///
+/// Zero on the event loop's own turn; while a timer callback runs it is that
+/// timer's recorded level, so a timer created inside the callback nests one deeper.
+/// Thread-local because a worker runs its callbacks on its own thread and must not
+/// see the window's depth.
+pub threadlocal var nesting_level: u32 = 0;
+
+/// Apply the clamping half of the timer initialisation steps.
+///
+/// Kept separate from the nesting bookkeeping so it can be unit-tested without a V8
+/// isolate - which is the only reason the window's clamp ever had test coverage.
+pub fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
+    var timeout = requested_ms;
+    if (timeout < 0) timeout = 0;
+    if (nesting > nesting_threshold and timeout < nested_min_delay_ms) {
+        timeout = nested_min_delay_ms;
+    }
+    return timeout;
+}
+
 /// One scheduled timer.
 const Entry = struct {
     callback: TimerCallback,

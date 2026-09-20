@@ -37,6 +37,7 @@ const Allocator = std.mem.Allocator;
 
 // V8 FFI through runtime module
 const v8 = @import("v8");
+const native_timer = @import("v8").native_timer;
 const context_manager = v8.context_manager;
 const runtime = @import("runtime");
 
@@ -126,6 +127,9 @@ const WorkerTimerContext = struct {
     is_interval: bool,
     /// Interval delay in milliseconds (for rescheduling)
     interval_delay_ms: u64,
+    /// The timer nesting level this timer was created at. HTML §8.6 records it so
+    /// timers created INSIDE the callback nest one deeper and get clamped.
+    nesting_level: u32,
     /// Allocator for cleanup
     allocator: Allocator,
     /// Whether this timer has been cancelled
@@ -342,6 +346,13 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // Global out from under the running callback.
     ctx.executing = true;
     defer ctx.executing = false;
+
+    // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
+    // so a setTimeout called from inside it nests one deeper. Restored afterwards
+    // because the same thread goes on to run other tasks.
+    const saved_nesting = native_timer.nesting_level;
+    native_timer.nesting_level = ctx.nesting_level;
+    defer native_timer.nesting_level = saved_nesting;
 
     // CRITICAL: Set current_worker_context so that callbacks like postMessage
     // can access the correct worker context. Save and restore the previous context.
@@ -2078,13 +2089,24 @@ fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = false,
         .interval_delay_ms = 0,
+        .nesting_level = native_timer.nesting_level +| 1,
         .allocator = worker_ctx.allocator,
         .cancelled = false,
         .worker_v8_context = worker_ctx,
     };
 
-    // Schedule the timer using the browser's libuv-backed timer interface
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // Apply HTML §8.6's clamp. This was missing entirely on the worker path: a
+    // nested `setTimeout(f, 0)` in a worker ran unclamped while the identical code
+    // in a window was clamped to 4ms, because the clamp lived in the window's
+    // binding layer rather than anywhere both could reach.
+    //
+    // Clamped against the CURRENT level, not the new timer's. The spec reads the
+    // current nesting level in step 4, clamps in step 6, and only then increments
+    // for the timer it is creating - so clamping with `timer_ctx.nesting_level`
+    // (which is already current + 1) would start clamping one level too early and
+    // disagree with the window path.
+    const clamped_ms = native_timer.clampTimeout(delay_ms, native_timer.nesting_level);
+    const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
     const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
 
     if (timer_id == 0) {
@@ -2169,7 +2191,11 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         return;
     };
 
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // setInterval takes the same clamp - §8.6's steps are shared by both, and the
+    // repeat delay is the clamped one, or a nested `setInterval(f, 0)` would spin
+    // the loop as fast as it can schedule.
+    const clamped_interval_ms = native_timer.clampTimeout(delay_ms, native_timer.nesting_level);
+    const delay_u64: u64 = if (clamped_interval_ms >= 0) @intCast(clamped_interval_ms) else 0;
 
     timer_ctx.* = .{
         .callback_global = callback_global,
@@ -2177,6 +2203,7 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         .context = v8_context,
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = true,
+        .nesting_level = native_timer.nesting_level +| 1,
         .interval_delay_ms = delay_u64,
         .allocator = worker_ctx.allocator,
         .cancelled = false,
