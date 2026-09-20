@@ -2943,6 +2943,65 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
+    // GC BENCHMARK (Phase 6 exit criterion)
+    // ========================================================================
+
+    // Same module set and link lines as the REPL, because it is the same thing:
+    // a full Browser driving real JS. It differs only in what it runs and that it
+    // reads resident memory between batches.
+    const gc_bench_exe = b.addExecutable(.{
+        .name = "gc_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/gc_bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "memory", .module = memory_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
+                .{ .name = "fetch", .module = fetch_mod },
+                .{ .name = "platform", .module = platform_mod },
+                .{ .name = "html", .module = html_core_mod },
+                .{ .name = "html_full", .module = html_mod },
+                .{ .name = "dom", .module = dom_mod },
+                .{ .name = "infra", .module = infra_mod },
+                .{ .name = "browser", .module = browser_mod },
+                .{ .name = "impls", .module = impls_mod },
+                .{ .name = "webidl", .module = webidl_mod },
+                .{ .name = "dictionaries", .module = dictionaries_mod },
+            },
+        }),
+    });
+
+    gc_bench_exe.root_module.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+    gc_bench_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    gc_bench_exe.root_module.link_libcpp = true;
+    gc_bench_exe.step.dependOn(&gen_snapshot.step);
+
+    b.installArtifact(gc_bench_exe);
+
+    const run_gc_bench = b.addRunArtifact(gc_bench_exe);
+    run_gc_bench.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_gc_bench.addArgs(args);
+
+    const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
+    gc_bench_step.dependOn(&run_gc_bench.step);
+
+    // ========================================================================
     // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
     // ========================================================================
 

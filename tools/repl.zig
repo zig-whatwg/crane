@@ -56,9 +56,10 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
-        // Browser handles all V8 and runtime cleanup
+        // Browser handles all V8 and runtime cleanup - including destroying itself
+        // (Browser.zig:352). Destroying it here as well was a double free; it never
+        // fired only because the REPL exits the process before this path runs.
         self.browser.deinit();
-        self.allocator.destroy(self.browser);
     }
 
     /// Get V8 isolate from browser
