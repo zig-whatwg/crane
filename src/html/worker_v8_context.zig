@@ -245,6 +245,9 @@ fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     current_worker_context = ctx.worker_v8_context;
     defer current_worker_context = prev_context;
 
+    // Phase 5 instrumentation - see worker.timerTrampoline above.
+    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.microtaskTrampoline");
+
     // Create HandleScope for V8 operations
     const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
     defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
@@ -348,6 +351,13 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // Enter the worker's isolate and context
     v8.ffi.v8_Isolate_Enter(ctx.isolate);
+
+    // Phase 5 instrumentation, placed AFTER the Enter above on purpose: this
+    // trampoline enters the isolate itself, so asserting beforehand just reports
+    // that it has not happened yet. Workers spawn threads
+    // (worker_threading.zig:406), so what is worth checking is whether the Enter
+    // actually took effect on THIS thread.
+    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.timerTrampoline");
     v8.ffi.v8_Context_Enter(ctx.context);
     defer {
         v8.ffi.v8_Context_Exit(ctx.context);
