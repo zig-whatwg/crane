@@ -179,6 +179,9 @@ pub const WorkerContext = struct {
             if (self.callbacks.disposeContext) |dispose_fn| {
                 dispose_fn(engine_ctx);
             }
+            // Clear it: the engine context frees itself in that callback, and the
+            // other teardown path (Worker.deinit) would otherwise dispose it again.
+            self.engine_ctx = null;
         }
 
         // Clean up event loop

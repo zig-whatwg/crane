@@ -158,14 +158,23 @@ pub const InternalState = struct {
         }
         self.pending_outgoing_messages.deinit(self.allocator);
         // Dispose V8 Global handles to prevent memory leaks
-        v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
+        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
+        self.onmessage_handle = null;
         // Borrowed, not owned - see set_onerror. Clearing, not disposing.
         self.onerror_handle = null;
-        v8_engine.disposeOptionalGlobalHandle(&self.onmessageerror_handle);
+        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
+        self.onmessageerror_handle = null;
 
         // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
         if (self.v8_context) |v8_ctx| {
             v8_ctx.deinit();
+            // MUST clear. WorkerV8Context.deinit ends in allocator.destroy(self), and
+            // its is_deinitialized guard lives INSIDE the object it protects - so the
+            // second teardown path (WorkerContext.deinit -> disposeContextCallback)
+            // reads that flag out of freed memory. A flag cannot guard its own
+            // storage; the owner clearing its pointer is what actually prevents the
+            // double destroy.
+            self.v8_context = null;
         }
         if (self.dedicated_worker) |worker| {
             worker.deinit();
@@ -458,7 +467,10 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
-        v8_engine.disposeOptionalGlobalHandle(&internal.onmessage_handle);
+        // Borrowed, not owned: assigned only from extractEventHandler, which
+        // reinterprets an incoming tagged pointer rather than creating a Global.
+        // Disposing here deletes a handle owned elsewhere. See set_onerror.
+        internal.onmessage_handle = null;
         // Properly unwrap the optional before casting to extract the tagged pointer
         internal.onmessage_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
 
@@ -485,7 +497,10 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
-        v8_engine.disposeOptionalGlobalHandle(&internal.onmessageerror_handle);
+        // Borrowed, not owned: assigned only from extractEventHandler, which
+        // reinterprets an incoming tagged pointer rather than creating a Global.
+        // Disposing here deletes a handle owned elsewhere. See set_onerror.
+        internal.onmessageerror_handle = null;
         // Properly unwrap the optional before casting to extract the tagged pointer
         internal.onmessageerror_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
     }

@@ -2211,10 +2211,25 @@ pub fn adopt(
                 // The bare cast read element.attributes from the wrong address, whose
                 // garbage length then drove List.get into out-of-bounds access
                 // (caught by UBSan at infra/list.zig:197 via this exact path).
-                const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
-                for (0..element.attributes.size()) |attr_idx| {
-                    if (element.attributes.get(attr_idx)) |attr| {
-                        attr.base.owner_document = document;
+                // ONLY parser-created elements embed their NodeBase in an
+                // ElementWithBase (element_with_base.zig: `.base = NodeBase{...}`).
+                // WebIDL-created ones allocate a STANDALONE NodeBase
+                // (impls/Node.zig: `allocator.create(NodeBase)`) and keep their
+                // attributes elsewhere entirely, so there is no ElementWithBase to
+                // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
+                // computes a different wrong address.
+                //
+                // node_type == ELEMENT_NODE does NOT distinguish them. owner_instance
+                // does: instance_bridge.register is called only on the WebIDL path,
+                // so a non-null owner means "standalone, not embedded". Reading
+                // `attributes` off a standalone NodeBase yielded a garbage length,
+                // which drove infra.List.get out of bounds (UBSan: list.zig:197).
+                if (desc.owner_instance == null) {
+                    const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
+                    for (0..element.attributes.size()) |attr_idx| {
+                        if (element.attributes.get(attr_idx)) |attr| {
+                            attr.base.owner_document = document;
+                        }
                     }
                 }
             }
