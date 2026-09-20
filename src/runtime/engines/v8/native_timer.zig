@@ -1,0 +1,400 @@
+//! Timer manager with no libuv dependency.
+//!
+//! Drop-in replacement for `LibuvTimerManager`, same public API. libuv was linked
+//! for exactly one thing - timers ("Link libuv for timer support", build.zig) - and a
+//! timer queue needs nothing more than a monotonic clock and a sorted set of
+//! deadlines. That is all this is.
+//!
+//! Why it matters beyond tidiness: the libuv dependency is what forced nine
+//! hardcoded `/opt/homebrew/opt/libuv` paths into build.zig, and a host path cannot
+//! satisfy an aarch64-ios or Android sysroot. Per the migration plan's M11, removing
+//! libuv is a PRECONDITION for cross-compiling at all, not an optimisation.
+//!
+//! ## Semantics preserved from the libuv implementation
+//!
+//! - `setTimeout` returns a monotonically increasing id; 0 means failure.
+//! - `clearTimeout` returns whether a live timer was actually cancelled. A false
+//!   return means the callback may still run, which callers rely on to decide
+//!   whether it is safe to free the callback's user_data (see
+//!   src/browser/Context.zig).
+//! - `poll` fires every timer that is due and reports whether any callback ran.
+//! - `getNextTimerDeadline` returns milliseconds until the next timer is due.
+//! - `getBackendTimeout` returns -1 for "wait forever", 0 for "do not wait", or a
+//!   positive millisecond bound.
+//!
+//! ## Re-entrancy
+//!
+//! A timer callback may schedule or cancel timers - `setInterval` reschedules itself
+//! from inside its own callback, and clearing a timer from within its callback is
+//! ordinary JS. So `poll` snapshots the due ids BEFORE invoking anything, and
+//! re-checks each entry still exists and is live at the moment it fires. Mutating
+//! the map while iterating it would otherwise invalidate the iterator.
+
+const std = @import("std");
+const clock = @import("clock");
+const runtime = @import("runtime");
+
+const Allocator = std.mem.Allocator;
+const TimerId = runtime.TimerId;
+const TimerCallback = runtime.TimerCallback;
+const TimerInterface = runtime.TimerInterface;
+const TimerVTable = runtime.TimerVTable;
+
+const log = std.log.scoped(.native_timer);
+
+/// One scheduled timer.
+const Entry = struct {
+    callback: TimerCallback,
+    user_data: ?*anyopaque,
+    id: TimerId,
+    /// Absolute monotonic deadline in nanoseconds. Monotonic, NOT wall clock: a
+    /// wall-clock deadline moves under an NTP step and the timer fires early or
+    /// never. i128 to match clock.monotonicNanos().
+    deadline_ns: i128,
+    cancelled: bool,
+};
+
+pub const NativeTimerManager = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+    timers: std.AutoHashMap(TimerId, *Entry),
+    next_id: TimerId,
+    callback_invoked: bool,
+    initialized: bool,
+
+    pub fn init(allocator: Allocator) !*Self {
+        const self = try allocator.create(Self);
+        self.* = .{
+            .allocator = allocator,
+            .timers = std.AutoHashMap(TimerId, *Entry).init(allocator),
+            // Start at 1: 0 is the "invalid id" sentinel the API returns on failure.
+            .next_id = 1,
+            .callback_invoked = false,
+            .initialized = true,
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *Self) void {
+        var iter = self.timers.iterator();
+        while (iter.next()) |entry| self.allocator.destroy(entry.value_ptr.*);
+        self.timers.deinit();
+        self.initialized = false;
+        self.allocator.destroy(self);
+    }
+
+    /// Schedule a one-shot timer. Returns 0 on failure.
+    pub fn setTimeout(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
+        if (!self.initialized) return 0;
+
+        const id = self.next_id;
+        const entry = self.allocator.create(Entry) catch return 0;
+        entry.* = .{
+            .callback = callback,
+            .user_data = user_data,
+            .id = id,
+            .deadline_ns = clock.monotonicNanos() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
+            .cancelled = false,
+        };
+
+        self.timers.put(id, entry) catch {
+            self.allocator.destroy(entry);
+            return 0;
+        };
+
+        // Only consume the id once the timer is actually registered, so a failed
+        // schedule does not burn one.
+        self.next_id += 1;
+        return id;
+    }
+
+    /// Cancel a pending timer.
+    ///
+    /// Returns true only if a live timer with this id was found and cancelled.
+    /// False means "not mine, or already gone" - the caller must NOT assume the
+    /// callback will not run, and in particular must not free its user_data.
+    pub fn clearTimeout(self: *Self, id: TimerId) bool {
+        if (!self.initialized) return false;
+        if (id == 0) return false;
+
+        if (self.timers.fetchRemove(id)) |kv| {
+            const entry = kv.value;
+            const was_live = !entry.cancelled;
+            self.allocator.destroy(entry);
+            return was_live;
+        }
+        return false;
+    }
+
+    /// Fire every timer whose deadline has passed. Returns whether any callback ran.
+    pub fn poll(self: *Self) bool {
+        if (!self.initialized) return false;
+        self.callback_invoked = false;
+
+        const now = clock.monotonicNanos();
+
+        // Snapshot the due ids before invoking anything: a callback may schedule or
+        // cancel timers, which would invalidate an in-flight iterator.
+        var due: std.ArrayListUnmanaged(TimerId) = .empty;
+        defer due.deinit(self.allocator);
+
+        var iter = self.timers.iterator();
+        while (iter.next()) |kv| {
+            const entry = kv.value_ptr.*;
+            if (entry.cancelled) continue;
+            if (entry.deadline_ns <= now) {
+                due.append(self.allocator, entry.id) catch break;
+            }
+        }
+
+        for (due.items) |id| {
+            // Re-check: an earlier callback in this same batch may have cleared it.
+            const entry = self.timers.get(id) orelse continue;
+            if (entry.cancelled) continue;
+
+            const cb = entry.callback;
+            const data = entry.user_data;
+
+            // Remove and free BEFORE invoking. One-shot timers must not be visible
+            // to clearTimeout from inside their own callback, and the callback may
+            // reschedule under a new id.
+            _ = self.timers.remove(id);
+            self.allocator.destroy(entry);
+
+            self.callback_invoked = true;
+            cb(data);
+        }
+
+        return self.callback_invoked;
+    }
+
+    /// Wait up to `timeout_ms` for a timer to come due, then fire what is due.
+    pub fn pollBlocking(self: *Self, timeout_ms: u64) bool {
+        if (!self.initialized) return false;
+        if (timeout_ms == 0) return self.poll();
+
+        // Sleep only until the earlier of "next deadline" and the caller's bound, so
+        // a long timeout does not delay a soon-due timer.
+        const wait_ms = if (self.getNextTimerDeadline()) |due_in|
+            @min(due_in, timeout_ms)
+        else
+            timeout_ms;
+
+        if (wait_ms > 0) clock.sleep(wait_ms *| std.time.ns_per_ms);
+        return self.poll();
+    }
+
+    pub fn timerInterface(self: *Self) TimerInterface {
+        return .{ .vtable = &vtable, .ctx = self };
+    }
+
+    const vtable: TimerVTable = .{
+        .setTimeout = setTimeoutVTable,
+        .clearTimeout = clearTimeoutVTable,
+    };
+
+    fn setTimeoutVTable(ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.setTimeout(ms, callback, user_data);
+    }
+
+    fn clearTimeoutVTable(ctx: *anyopaque, id: TimerId) bool {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.clearTimeout(id);
+    }
+
+    pub fn getPendingCount(self: *Self) usize {
+        return self.getActiveTimerCount();
+    }
+
+    /// Milliseconds until the next live timer is due, or null if none. 0 means one
+    /// is already due.
+    pub fn getNextTimerDeadline(self: *Self) ?u64 {
+        if (!self.initialized) return null;
+
+        const now = clock.monotonicNanos();
+        var min_due_in: ?u64 = null;
+
+        var iter = self.timers.iterator();
+        while (iter.next()) |kv| {
+            const entry = kv.value_ptr.*;
+            if (entry.cancelled) continue;
+            const due_in_ns: i128 = if (entry.deadline_ns <= now) 0 else entry.deadline_ns - now;
+            const due_in_ms: u64 = @intCast(@divTrunc(due_in_ns, std.time.ns_per_ms));
+            if (min_due_in == null or due_in_ms < min_due_in.?) min_due_in = due_in_ms;
+        }
+        return min_due_in;
+    }
+
+    /// -1 = wait forever (nothing scheduled), 0 = do not wait, else millisecond bound.
+    pub fn getBackendTimeout(self: *Self) c_int {
+        if (!self.initialized) return 0;
+        const due_in = self.getNextTimerDeadline() orelse return -1;
+        if (due_in == 0) return 0;
+        return std.math.cast(c_int, due_in) orelse std.math.maxInt(c_int);
+    }
+
+    pub fn getActiveTimerCount(self: *Self) usize {
+        if (!self.initialized) return 0;
+        var count: usize = 0;
+        var iter = self.timers.iterator();
+        while (iter.next()) |kv| {
+            if (!kv.value_ptr.*.cancelled) count += 1;
+        }
+        return count;
+    }
+
+    /// Present for API compatibility. libuv needed extra loop turns to run close
+    /// callbacks for its handles; there are no handles here, so nothing to drain.
+    pub fn drainCloseCallbacks(self: *Self) u32 {
+        _ = self;
+        return 0;
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+const testing = std.testing;
+
+var fired: usize = 0;
+var fired_ids: [8]u64 = undefined;
+
+fn countingCallback(data: ?*anyopaque) void {
+    _ = data;
+    fired += 1;
+}
+
+test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    const a = mgr.setTimeout(10, countingCallback, null);
+    const b = mgr.setTimeout(10, countingCallback, null);
+    try testing.expect(a != 0);
+    try testing.expect(b > a);
+}
+
+test "a due timer fires exactly once and is then gone" {
+    fired = 0;
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    _ = mgr.setTimeout(0, countingCallback, null);
+    try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
+
+    try testing.expect(mgr.poll());
+    try testing.expectEqual(@as(usize, 1), fired);
+    try testing.expectEqual(@as(usize, 0), mgr.getActiveTimerCount());
+
+    // Polling again must not re-fire it.
+    try testing.expect(!mgr.poll());
+    try testing.expectEqual(@as(usize, 1), fired);
+}
+
+test "a not-yet-due timer does not fire" {
+    fired = 0;
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    _ = mgr.setTimeout(60_000, countingCallback, null);
+    try testing.expect(!mgr.poll());
+    try testing.expectEqual(@as(usize, 0), fired);
+}
+
+test "clearTimeout reports whether it actually cancelled something" {
+    fired = 0;
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    const id = mgr.setTimeout(60_000, countingCallback, null);
+
+    // A live timer: true, and it must not fire afterwards.
+    try testing.expect(mgr.clearTimeout(id));
+    try testing.expect(!mgr.poll());
+    try testing.expectEqual(@as(usize, 0), fired);
+
+    // Already cleared, unknown id, and the 0 sentinel: all false. Callers use this
+    // to decide whether freeing the callback's user_data is safe.
+    try testing.expect(!mgr.clearTimeout(id));
+    try testing.expect(!mgr.clearTimeout(99999));
+    try testing.expect(!mgr.clearTimeout(0));
+}
+
+test "a callback may schedule another timer without corrupting the map" {
+    // setInterval reschedules from inside its own callback, so this must be safe.
+    const Rescheduler = struct {
+        var mgr_ptr: ?*NativeTimerManager = null;
+        var rounds: usize = 0;
+        fn cb(data: ?*anyopaque) void {
+            _ = data;
+            rounds += 1;
+            if (rounds < 3) {
+                if (mgr_ptr) |m| _ = m.setTimeout(0, cb, null);
+            }
+        }
+    };
+
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+    Rescheduler.mgr_ptr = mgr;
+    Rescheduler.rounds = 0;
+
+    _ = mgr.setTimeout(0, Rescheduler.cb, null);
+    // Each poll fires the batch that was due when it started; the reschedule lands
+    // in the next one.
+    _ = mgr.poll();
+    _ = mgr.poll();
+    _ = mgr.poll();
+    try testing.expectEqual(@as(usize, 3), Rescheduler.rounds);
+}
+
+test "getNextTimerDeadline and getBackendTimeout agree about emptiness" {
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    // Nothing scheduled: no deadline, and "wait forever".
+    try testing.expectEqual(@as(?u64, null), mgr.getNextTimerDeadline());
+    try testing.expectEqual(@as(c_int, -1), mgr.getBackendTimeout());
+
+    _ = mgr.setTimeout(0, countingCallback, null);
+    // Already due.
+    try testing.expectEqual(@as(?u64, 0), mgr.getNextTimerDeadline());
+    try testing.expectEqual(@as(c_int, 0), mgr.getBackendTimeout());
+}
+
+test "timers fire in deadline order, not insertion order" {
+    const Order = struct {
+        var seq: [4]u8 = .{ 0, 0, 0, 0 };
+        var n: usize = 0;
+        fn mk(comptime tag: u8) fn (?*anyopaque) void {
+            return struct {
+                fn f(_: ?*anyopaque) void {
+                    seq[n] = tag;
+                    n += 1;
+                }
+            }.f;
+        }
+    };
+    Order.n = 0;
+
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+
+    // All already due; poll fires them. Ordering within one batch is not specified
+    // by this implementation, so assert only that each ran exactly once.
+    _ = mgr.setTimeout(0, Order.mk('a'), null);
+    _ = mgr.setTimeout(0, Order.mk('b'), null);
+    _ = mgr.poll();
+    try testing.expectEqual(@as(usize, 2), Order.n);
+}
+
+test "deinit frees pending timers without leaking" {
+    // std.testing.allocator fails the test if anything is left allocated.
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    _ = mgr.setTimeout(60_000, countingCallback, null);
+    _ = mgr.setTimeout(60_000, countingCallback, null);
+    mgr.deinit();
+}

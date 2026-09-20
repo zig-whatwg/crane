@@ -491,6 +491,22 @@ pub fn build(b: *std.Build) void {
     ) orelse jitless_default;
     build_options.addOption(bool, "jitless", jitless);
 
+    // Phase 7: select the timer backend.
+    //
+    // libuv is linked for exactly one purpose - timers ("Link libuv for timer
+    // support") - and a timer queue needs only a monotonic clock. Removing it is a
+    // PRECONDITION for cross-compiling (plan M11): the nine hardcoded
+    // /opt/homebrew/opt/libuv paths cannot satisfy an aarch64-ios or Android sysroot.
+    //
+    // Defaults to libuv while the native backend earns trust against the WPT timer
+    // suite; -Dnative-timers=true selects the replacement.
+    const native_timers = b.option(
+        bool,
+        "native-timers",
+        "Use the libuv-free timer backend (Phase 7; required for cross-compiling)",
+    ) orelse false;
+    build_options.addOption(bool, "native_timers", native_timers);
+
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
