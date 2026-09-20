@@ -982,9 +982,18 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // freeing their entries. Then our loop here would iterate over freed pointers.
             // By cleaning up children first, we ensure all child entries are freed before
             // any code tries to iterate over entry.children.items.
-            for (entry.children.items) |child| {
+            // Iterate a COPY: destroyChildContext detaches entries and removes them
+            // from their parent's `children` list, so walking entry.children.items
+            // directly mutates the slice mid-iteration and later elements are read
+            // after free - surfacing as a segfault on a 0xaa-poisoned entry.v8_ctx at
+            // the top of destroyChildContext. destroyChildContext already copies for
+            // exactly this reason; this loop was the one place that did not.
+            var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .empty;
+            children_copy.appendSlice(entry.allocator, entry.children.items) catch {};
+            for (children_copy.items) |child| {
                 destroyChildContext(child, entry.allocator);
             }
+            children_copy.deinit(entry.allocator);
             entry.children.deinit(entry.allocator);
 
             // Clean up Window and Document (DOM tree) before wrapper cache
