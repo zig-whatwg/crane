@@ -30,15 +30,15 @@ pub const Range = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "commonAncestorContainer", "get_commonAncestorContainer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setStart", "call_setStart", 2 },
@@ -66,7 +66,7 @@ pub const Range = struct {
             .{ "getBoundingClientRect", "call_getBoundingClientRect", 0 },
             .{ "toString", "serialize", 0 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "START_TO_START", "get_START_TO_START" },
@@ -74,7 +74,7 @@ pub const Range = struct {
             .{ "END_TO_END", "get_END_TO_END" },
             .{ "END_TO_START", "get_END_TO_START" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setStart",
@@ -102,20 +102,18 @@ pub const Range = struct {
             "getBoundingClientRect",
             "toString",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "commonAncestorContainer", "get_commonAncestorContainer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -153,7 +151,6 @@ pub const Range = struct {
     }
 
     const delegates = .{
-
         .get_END_TO_END = &get_END_TO_END,
         .get_END_TO_START = &get_END_TO_START,
         .get_START_TO_END = &get_START_TO_END,
@@ -226,22 +223,18 @@ pub const Range = struct {
     }
 
     pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
-        
         return try RangeImpl.call_setEnd(instance, node, offset);
     }
 
     pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_setStartBefore(instance, node);
     }
 
     pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_setEndAfter(instance, node);
     }
 
     pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_selectNodeContents(instance, node);
     }
 
@@ -256,8 +249,7 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try RangeImpl.call_insertNode(instance, node);
     }
 
@@ -270,7 +262,7 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_cloneContents(instance);
     }
@@ -280,14 +272,13 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try RangeImpl.call_createContextualFragment(instance, string);
     }
 
     pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_setStartAfter(instance, node);
     }
 
@@ -296,8 +287,7 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try RangeImpl.call_surroundContents(instance, newParent);
     }
 
@@ -306,12 +296,11 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try RangeImpl.call_deleteContents(instance);
     }
 
     pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_selectNode(instance, node);
     }
 
@@ -320,23 +309,20 @@ pub const Range = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_extractContents(instance);
     }
 
     pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!bool {
-        
         return try RangeImpl.call_intersectsNode(instance, node);
     }
 
     pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
-        
         return try RangeImpl.call_setStart(instance, node, offset);
     }
 
     pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
-        
         return try RangeImpl.call_collapse(instance, toStart);
     }
 
@@ -345,22 +331,18 @@ pub const Range = struct {
     }
 
     pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!bool {
-        
         return try RangeImpl.call_isPointInRange(instance, node, offset);
     }
 
     pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
         return try RangeImpl.call_setEndBefore(instance, node);
     }
 
     pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!i16 {
-        
         return try RangeImpl.call_comparePoint(instance, node, offset);
     }
 
     pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: *runtime.Instance) anyerror!i16 {
-        
         return try RangeImpl.call_compareBoundaryPoints(instance, how, sourceRange);
     }
 
@@ -375,5 +357,4 @@ pub const Range = struct {
     pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try RangeImpl.serialize(instance);
     }
-
 };

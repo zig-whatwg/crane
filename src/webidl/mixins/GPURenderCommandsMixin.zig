@@ -41,4 +41,3 @@ pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.I
 pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
     return GPURenderCommandsMixinImpl.call_setPipeline(instance, pipeline);
 }
-

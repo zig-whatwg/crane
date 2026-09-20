@@ -7,6 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const RTCLocalSessionDescriptionInit = struct {
-    @"type": ?enums.RTCSdpType = null,
+    type: ?enums.RTCSdpType = null,
     sdp: ?runtime.DOMString = null,
 };

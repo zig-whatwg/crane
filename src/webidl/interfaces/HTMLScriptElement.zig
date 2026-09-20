@@ -90,10 +90,10 @@ pub const HTMLScriptElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", "set_type" },
@@ -112,27 +112,26 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "blocking", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_static_supports", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "supports",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -228,7 +227,7 @@ pub const HTMLScriptElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", "set_type" },
@@ -247,11 +246,10 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -259,10 +257,10 @@ pub const HTMLScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             src: runtime.USVString = undefined,
             noModule: bool = undefined,
-            @"async": bool = undefined,
+            async: bool = undefined,
             @"defer": bool = undefined,
             blocking: *runtime.Instance = undefined,
             crossOrigin: ?typedefs.DOMString = null,
@@ -280,7 +278,6 @@ pub const HTMLScriptElement = struct {
     );
 
     const delegates = .{
-
         .get_async = &get_async,
         .get_attributionSrc = &get_attributionSrc,
         .get_blocking = &get_blocking,
@@ -356,7 +353,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_type(instance, value);
     }
 
@@ -370,7 +367,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_src(instance, value);
     }
 
@@ -384,7 +381,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_noModule(instance, value);
     }
 
@@ -398,7 +395,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_async(instance, value);
     }
 
@@ -412,7 +409,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_defer(instance, value);
     }
 
@@ -433,7 +430,7 @@ pub const HTMLScriptElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'blocking' forwards to 'value' on the attribute's value
         const target = try get_blocking(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -449,7 +446,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -463,7 +460,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -477,7 +474,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_integrity(instance, value);
     }
 
@@ -491,7 +488,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_fetchPriority(instance, value);
     }
 
@@ -505,7 +502,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_text(instance, value);
     }
 
@@ -519,7 +516,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_charset(instance, value);
     }
 
@@ -533,7 +530,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_event(instance, value);
     }
 
@@ -547,7 +544,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_htmlFor(instance, value);
     }
 
@@ -561,13 +558,11 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLScriptElementImpl.set_attributionSrc(instance, value);
     }
 
     pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
-        
         return try HTMLScriptElementImpl.call_static_supports(instance, @"type");
     }
-
 };

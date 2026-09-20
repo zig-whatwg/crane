@@ -10,5 +10,5 @@ pub const UnderlyingSink = struct {
     write: ?callbacks.UnderlyingSinkWriteCallback = null,
     close: ?callbacks.UnderlyingSinkCloseCallback = null,
     abort: ?callbacks.UnderlyingSinkAbortCallback = null,
-    @"type": ?runtime.JSValue = null,
+    type: ?runtime.JSValue = null,
 };

@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const XRFeatureInit = struct {
-};
+pub const XRFeatureInit = struct {};

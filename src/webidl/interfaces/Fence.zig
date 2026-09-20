@@ -26,14 +26,13 @@ pub const Fence = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "reportEvent", "call_reportEvent", 0 },
@@ -42,7 +41,7 @@ pub const Fence = struct {
             .{ "disableUntrustedNetwork", "call_disableUntrustedNetwork", 0 },
             .{ "notifyEvent", "call_notifyEvent", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "reportEvent",
@@ -51,19 +50,16 @@ pub const Fence = struct {
             "disableUntrustedNetwork",
             "notifyEvent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -76,7 +72,6 @@ pub const Fence = struct {
     );
 
     const delegates = .{
-
         .call_disableUntrustedNetwork = &call_disableUntrustedNetwork,
         .call_getNestedConfigs = &call_getNestedConfigs,
         .call_notifyEvent = &call_notifyEvent,
@@ -109,12 +104,10 @@ pub const Fence = struct {
     }
 
     pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(ReportEventType)) anyerror!void {
-        
         return try FenceImpl.call_reportEvent(instance, event);
     }
 
     pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
-        
         return try FenceImpl.call_notifyEvent(instance, event);
     }
 
@@ -123,12 +116,10 @@ pub const Fence = struct {
     }
 
     pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(FenceEvent)) anyerror!void {
-        
         return try FenceImpl.call_setReportEventDataForAutomaticBeacons(instance, event);
     }
 
     pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FenceImpl.call_disableUntrustedNetwork(instance);
     }
-
 };

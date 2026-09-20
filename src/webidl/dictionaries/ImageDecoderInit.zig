@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const ImageDecoderInit = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     data: typedefs.ImageBufferSource,
     colorSpaceConversion: ?enums.ColorSpaceConversion = null,
     desiredWidth: ?u32 = null,

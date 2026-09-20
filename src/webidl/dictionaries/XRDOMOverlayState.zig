@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const XRDOMOverlayState = struct {
-    @"type": ?enums.XRDOMOverlayType = null,
+    type: ?enums.XRDOMOverlayType = null,
 };

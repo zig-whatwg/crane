@@ -89,25 +89,23 @@ pub const SVGScriptElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", "set_type" },
             .{ "crossOrigin", "get_crossOrigin", "set_crossOrigin" },
             .{ "href", "get_href", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -198,18 +196,17 @@ pub const SVGScriptElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", "set_type" },
             .{ "crossOrigin", "get_crossOrigin", "set_crossOrigin" },
             .{ "href", "get_href", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -217,7 +214,7 @@ pub const SVGScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             crossOrigin: ?typedefs.DOMString = null,
             href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
@@ -226,7 +223,6 @@ pub const SVGScriptElement = struct {
     );
 
     const delegates = .{
-
         .get_crossOrigin = &get_crossOrigin,
         .get_href = &get_href,
         .get_type = &get_type,
@@ -286,5 +282,4 @@ pub const SVGScriptElement = struct {
         state.own.cached_href = value;
         return value;
     }
-
 };

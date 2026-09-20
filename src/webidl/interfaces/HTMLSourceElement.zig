@@ -87,10 +87,10 @@ pub const HTMLSourceElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "src", "get_src", "set_src" },
@@ -101,15 +101,13 @@ pub const HTMLSourceElement = struct {
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -205,7 +203,7 @@ pub const HTMLSourceElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "src", "get_src", "set_src" },
@@ -216,11 +214,10 @@ pub const HTMLSourceElement = struct {
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -229,7 +226,7 @@ pub const HTMLSourceElement = struct {
         Meta.MixinTypes,
         struct {
             src: runtime.USVString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             srcset: runtime.USVString = undefined,
             sizes: typedefs.DOMString = undefined,
             media: typedefs.DOMString = undefined,
@@ -240,7 +237,6 @@ pub const HTMLSourceElement = struct {
     );
 
     const delegates = .{
-
         .get_height = &get_height,
         .get_media = &get_media,
         .get_sizes = &get_sizes,
@@ -300,7 +296,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_src(instance, value);
     }
 
@@ -314,7 +310,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_type(instance, value);
     }
 
@@ -328,7 +324,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_srcset(instance, value);
     }
 
@@ -342,7 +338,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_sizes(instance, value);
     }
 
@@ -356,7 +352,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_media(instance, value);
     }
 
@@ -370,7 +366,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_width(instance, value);
     }
 
@@ -384,8 +380,7 @@ pub const HTMLSourceElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSourceElementImpl.set_height(instance, value);
     }
-
 };

@@ -17,4 +17,3 @@ pub const impl = @import("impls").GPUPipelineBase;
 pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: runtime.JSValue) !*runtime.Instance {
     return GPUPipelineBaseImpl.call_getBindGroupLayout(instance, index);
 }
-

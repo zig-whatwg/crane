@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPUBufferBindingLayout = struct {
-    @"type": ?enums.GPUBufferBindingType = null,
+    type: ?enums.GPUBufferBindingType = null,
     hasDynamicOffset: ?bool = null,
     minBindingSize: ?typedefs.GPUSize64 = null,
 };

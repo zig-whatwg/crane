@@ -39,13 +39,13 @@ pub const RTCDataChannel = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "Transferable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "label", "get_label", null },
@@ -67,19 +67,19 @@ pub const RTCDataChannel = struct {
             .{ "binaryType", "get_binaryType", "set_binaryType" },
             .{ "priority", "get_priority", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
             .{ "send", "call_send", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
             "send",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -87,7 +87,7 @@ pub const RTCDataChannel = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "label", "get_label", null },
@@ -109,11 +109,10 @@ pub const RTCDataChannel = struct {
             .{ "binaryType", "get_binaryType", "set_binaryType" },
             .{ "priority", "get_priority", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -144,7 +143,6 @@ pub const RTCDataChannel = struct {
     );
 
     const delegates = .{
-
         .get_binaryType = &get_binaryType,
         .get_bufferedAmount = &get_bufferedAmount,
         .get_bufferedAmountLowThreshold = &get_bufferedAmountLowThreshold,
@@ -308,12 +306,10 @@ pub const RTCDataChannel = struct {
     }
 
     pub fn call_send(instance: *runtime.Instance, data: runtime.USVString) anyerror!void {
-        
         return try RTCDataChannelImpl.call_send(instance, data);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try RTCDataChannelImpl.call_close(instance);
     }
-
 };

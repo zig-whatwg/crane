@@ -247,6 +247,7 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
             const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
             const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return runtime.JSValue.jsUndefined;
+            defer v8_engine.ffi.v8_Context_Dispose(v8_context);
 
             // Create array with correct size
             const ports_array = v8_engine.ffi.v8_Array_New(v8_isolate, @intCast(internal.transferred_port_count));

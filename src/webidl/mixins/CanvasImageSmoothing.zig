@@ -29,4 +29,3 @@ pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!enums.Ima
 pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.ImageSmoothingQuality) !void {
     return CanvasImageSmoothingImpl.set_imageSmoothingQuality(instance, value);
 }
-

@@ -33,10 +33,10 @@ pub const KeyframeEffect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "target", "get_target", "set_target" },
@@ -44,19 +44,19 @@ pub const KeyframeEffect = struct {
             .{ "composite", "get_composite", "set_composite" },
             .{ "iterationComposite", "get_iterationComposite", "set_iterationComposite" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getKeyframes", "call_getKeyframes", 0 },
             .{ "setKeyframes", "call_setKeyframes", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getKeyframes",
             "setKeyframes",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "getTiming",
@@ -67,7 +67,7 @@ pub const KeyframeEffect = struct {
             "replace",
             "remove",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "target", "get_target", "set_target" },
@@ -75,11 +75,10 @@ pub const KeyframeEffect = struct {
             .{ "composite", "get_composite", "set_composite" },
             .{ "iterationComposite", "get_iterationComposite", "set_iterationComposite" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -96,7 +95,6 @@ pub const KeyframeEffect = struct {
     );
 
     const delegates = .{
-
         .get_composite = &get_composite,
         .get_iterationComposite = &get_iterationComposite,
         .get_pseudoElement = &get_pseudoElement,
@@ -188,12 +186,10 @@ pub const KeyframeEffect = struct {
     }
 
     pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?runtime.JSValue) anyerror!void {
-        
         return try KeyframeEffectImpl.call_setKeyframes(instance, keyframes);
     }
 
     pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try KeyframeEffectImpl.call_getKeyframes(instance);
     }
-
 };

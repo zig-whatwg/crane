@@ -49,4 +49,3 @@ pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!typedefs.
 pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return ElementContentEditableImpl.set_virtualKeyboardPolicy(instance, value);
 }
-

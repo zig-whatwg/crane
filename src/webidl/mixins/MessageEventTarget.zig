@@ -29,4 +29,3 @@ pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return MessageEventTargetImpl.set_onmessageerror(instance, value);
 }
-

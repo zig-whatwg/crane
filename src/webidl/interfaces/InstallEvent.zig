@@ -30,24 +30,23 @@ pub const InstallEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addRoutes", "call_addRoutes", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addRoutes",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -57,15 +56,13 @@ pub const InstallEvent = struct {
             "initEvent",
             "waitUntil",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -78,7 +75,6 @@ pub const InstallEvent = struct {
     );
 
     const delegates = .{
-
         .call_addRoutes = &call_addRoutes,
 
         .deinit = &deinit,
@@ -115,8 +111,6 @@ pub const InstallEvent = struct {
     }
 
     pub fn call_addRoutes(instance: *runtime.Instance, rules: runtime.JSValue) anyerror!runtime.JSValue {
-        
         return try InstallEventImpl.call_addRoutes(instance, rules);
     }
-
 };

@@ -118,6 +118,7 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSVa
     const v8 = @import("v8");
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return initWithString(ctx.allocator, ctx, "");
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return initWithString(ctx.allocator, ctx, "");
+    defer v8.ffi.v8_Context_Dispose(v8_context);
 
     // Get the V8 Value pointer - depends on handle scope
     const v8_handle: *v8.Value = if (engine_handle.handle_scope == .local) blk: {

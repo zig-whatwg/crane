@@ -23,41 +23,37 @@ pub const ElementCSSInlineStyle = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "style", "get_style", "set_style" },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "style", "cssText" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "style", "get_style", "set_style" },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,7 +70,6 @@ pub const ElementCSSInlineStyle = struct {
     );
 
     const delegates = .{
-
         .get_attributeStyleMap = &get_attributeStyleMap,
         .get_style = &get_style,
 
@@ -122,7 +117,7 @@ pub const ElementCSSInlineStyle = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
         const target = try get_style(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "cssText", value);
@@ -139,5 +134,4 @@ pub const ElementCSSInlineStyle = struct {
         state.own.cached_attributeStyleMap = value;
         return value;
     }
-
 };

@@ -24,21 +24,19 @@ pub const WEBGL_clip_cull_distance = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "MAX_CLIP_DISTANCES_WEBGL", "get_MAX_CLIP_DISTANCES_WEBGL" },
@@ -53,23 +51,19 @@ pub const WEBGL_clip_cull_distance = struct {
             .{ "CLIP_DISTANCE6_WEBGL", "get_CLIP_DISTANCE6_WEBGL" },
             .{ "CLIP_DISTANCE7_WEBGL", "get_CLIP_DISTANCE7_WEBGL" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -141,7 +135,6 @@ pub const WEBGL_clip_cull_distance = struct {
     }
 
     const delegates = .{
-
         .get_CLIP_DISTANCE0_WEBGL = &get_CLIP_DISTANCE0_WEBGL,
         .get_CLIP_DISTANCE1_WEBGL = &get_CLIP_DISTANCE1_WEBGL,
         .get_CLIP_DISTANCE2_WEBGL = &get_CLIP_DISTANCE2_WEBGL,
@@ -178,5 +171,4 @@ pub const WEBGL_clip_cull_distance = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_clip_cull_distanceImpl.deinit(instance);
     }
-
 };

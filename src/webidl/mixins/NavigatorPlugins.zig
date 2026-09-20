@@ -29,4 +29,3 @@ pub fn get_pdfViewerEnabled(instance: *runtime.Instance) anyerror!bool {
 pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
     return NavigatorPluginsImpl.call_javaEnabled(instance);
 }
-

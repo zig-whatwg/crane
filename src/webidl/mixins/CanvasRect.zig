@@ -25,4 +25,3 @@ pub fn call_fillRect(instance: *runtime.Instance, x: runtime.JSValue, y: runtime
 pub fn call_clearRect(instance: *runtime.Instance, x: runtime.JSValue, y: runtime.JSValue, w: runtime.JSValue, h: runtime.JSValue) anyerror!void {
     return CanvasRectImpl.call_clearRect(instance, x, y, w, h);
 }
-

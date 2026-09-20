@@ -88,10 +88,10 @@ pub const HTMLFencedFrameElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "config", "get_config", "set_config" },
@@ -100,21 +100,19 @@ pub const HTMLFencedFrameElement = struct {
             .{ "sandbox", "get_sandbox", "set_sandbox" },
             .{ "allow", "get_allow", "set_allow" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "sandbox", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -210,7 +208,7 @@ pub const HTMLFencedFrameElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "config", "get_config", "set_config" },
@@ -219,11 +217,10 @@ pub const HTMLFencedFrameElement = struct {
             .{ "sandbox", "get_sandbox", "set_sandbox" },
             .{ "allow", "get_allow", "set_allow" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -242,7 +239,6 @@ pub const HTMLFencedFrameElement = struct {
     );
 
     const delegates = .{
-
         .get_allow = &get_allow,
         .get_config = &get_config,
         .get_height = &get_height,
@@ -298,7 +294,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_config(instance, value);
     }
 
@@ -312,7 +308,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_width(instance, value);
     }
 
@@ -326,7 +322,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_height(instance, value);
     }
 
@@ -347,7 +343,7 @@ pub const HTMLFencedFrameElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'sandbox' forwards to 'value' on the attribute's value
         const target = try get_sandbox(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -363,8 +359,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_allow(instance, value);
     }
-
 };

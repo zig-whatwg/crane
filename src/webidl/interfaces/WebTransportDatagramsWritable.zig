@@ -29,44 +29,41 @@ pub const WebTransportDatagramsWritable = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Transferable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sendGroup", "get_sendGroup", "set_sendGroup" },
             .{ "sendOrder", "get_sendOrder", "set_sendOrder" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "abort",
             "close",
             "getWriter",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sendGroup", "get_sendGroup", "set_sendGroup" },
             .{ "sendOrder", "get_sendOrder", "set_sendOrder" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -81,7 +78,6 @@ pub const WebTransportDatagramsWritable = struct {
     );
 
     const delegates = .{
-
         .get_sendGroup = &get_sendGroup,
         .get_sendOrder = &get_sendOrder,
 
@@ -128,5 +124,4 @@ pub const WebTransportDatagramsWritable = struct {
     pub fn set_sendOrder(instance: *runtime.Instance, value: i64) anyerror!void {
         try WebTransportDatagramsWritableImpl.set_sendOrder(instance, value);
     }
-
 };

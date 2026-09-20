@@ -22,11 +22,10 @@ pub const CanvasTransform = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "scale", "call_scale", 2 },
@@ -37,7 +36,7 @@ pub const CanvasTransform = struct {
             .{ "setTransform", "call_setTransform", 6 },
             .{ "resetTransform", "call_resetTransform", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "scale",
@@ -48,19 +47,16 @@ pub const CanvasTransform = struct {
             "setTransform",
             "resetTransform",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -73,7 +69,6 @@ pub const CanvasTransform = struct {
     );
 
     const delegates = .{
-
         .call_getTransform = &call_getTransform,
         .call_resetTransform = &call_resetTransform,
         .call_rotate = &call_rotate,
@@ -108,17 +103,14 @@ pub const CanvasTransform = struct {
     }
 
     pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
-        
         return try CanvasTransformImpl.call_rotate(instance, angle);
     }
 
     pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasTransformImpl.call_scale(instance, x, y);
     }
 
     pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasTransformImpl.call_translate(instance, x, y);
     }
 
@@ -127,7 +119,6 @@ pub const CanvasTransform = struct {
     }
 
     pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
         return try CanvasTransformImpl.call_transform(instance, a, b, c, d, e, f);
     }
 
@@ -138,8 +129,6 @@ pub const CanvasTransform = struct {
     }
 
     pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
         return try CanvasTransformImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
-
 };

@@ -29,4 +29,3 @@ pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!typede
 pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return CanvasCompositingImpl.set_globalCompositeOperation(instance, value);
 }
-

@@ -21,4 +21,3 @@ pub fn get_viewBox(instance: *runtime.Instance) !*runtime.Instance {
 pub fn get_preserveAspectRatio(instance: *runtime.Instance) !*runtime.Instance {
     return SVGFitToViewBoxImpl.get_preserveAspectRatio(instance);
 }
-

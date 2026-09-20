@@ -37,24 +37,22 @@ pub const ConvolverNode = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "buffer", "get_buffer", "set_buffer" },
             .{ "normalize", "get_normalize", "set_normalize" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -71,17 +69,16 @@ pub const ConvolverNode = struct {
             "disconnect",
             "disconnect",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "buffer", "get_buffer", "set_buffer" },
             .{ "normalize", "get_normalize", "set_normalize" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -96,7 +93,6 @@ pub const ConvolverNode = struct {
     );
 
     const delegates = .{
-
         .get_buffer = &get_buffer,
         .get_normalize = &get_normalize,
 
@@ -151,5 +147,4 @@ pub const ConvolverNode = struct {
     pub fn set_normalize(instance: *runtime.Instance, value: bool) anyerror!void {
         try ConvolverNodeImpl.set_normalize(instance, value);
     }
-
 };

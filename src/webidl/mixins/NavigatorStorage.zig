@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorStorage;
 pub fn get_storage(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorStorageImpl.get_storage(instance);
 }
-

@@ -8,5 +8,4 @@ const RTCRtpContributingSource = @import("RTCRtpContributingSource.zig").RTCRtpC
 pub const RTCRtpSynchronizationSource = struct {
     // Inherited from RTCRtpContributingSource
     base: RTCRtpContributingSource,
-
 };

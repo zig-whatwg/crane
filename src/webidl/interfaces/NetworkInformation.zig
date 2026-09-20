@@ -39,13 +39,13 @@ pub const NetworkInformation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -56,15 +56,13 @@ pub const NetworkInformation = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "saveData", "get_saveData", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -72,7 +70,7 @@ pub const NetworkInformation = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -83,11 +81,10 @@ pub const NetworkInformation = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "saveData", "get_saveData", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -95,7 +92,7 @@ pub const NetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": enums.ConnectionType = undefined,
+            type: enums.ConnectionType = undefined,
             effectiveType: enums.EffectiveConnectionType = undefined,
             downlinkMax: typedefs.Megabit = undefined,
             downlink: typedefs.Megabit = undefined,
@@ -108,7 +105,6 @@ pub const NetworkInformation = struct {
     );
 
     const delegates = .{
-
         .get_downlink = &get_downlink,
         .get_downlinkMax = &get_downlinkMax,
         .get_effectiveType = &get_effectiveType,
@@ -183,5 +179,4 @@ pub const NetworkInformation = struct {
         state.own.cached_saveData = value;
         return value;
     }
-
 };

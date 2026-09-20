@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -48,4 +47,3 @@ pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

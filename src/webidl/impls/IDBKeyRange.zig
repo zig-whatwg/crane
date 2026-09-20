@@ -325,6 +325,7 @@ fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
             if (v8.ffi.v8_Value_IsNumber(v8_value)) {
                 const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.DataError;
                 const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.DataError;
+                defer v8.ffi.v8_Context_Dispose(context);
                 const num = v8.ffi.v8_Value_NumberValue(v8_value, context);
 
                 // Check for NaN

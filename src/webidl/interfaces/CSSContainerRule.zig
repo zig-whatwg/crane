@@ -29,40 +29,37 @@ pub const CSSContainerRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "containerName", "get_containerName", null },
             .{ "containerQuery", "get_containerQuery", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "insertRule",
             "deleteRule",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "containerName", "get_containerName", null },
             .{ "containerQuery", "get_containerQuery", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -77,7 +74,6 @@ pub const CSSContainerRule = struct {
     );
 
     const delegates = .{
-
         .get_containerName = &get_containerName,
         .get_containerQuery = &get_containerQuery,
 
@@ -113,5 +109,4 @@ pub const CSSContainerRule = struct {
     pub fn get_containerQuery(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSContainerRuleImpl.get_containerQuery(instance);
     }
-
 };

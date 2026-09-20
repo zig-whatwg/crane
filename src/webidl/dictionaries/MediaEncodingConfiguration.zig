@@ -10,5 +10,5 @@ pub const MediaEncodingConfiguration = struct {
     // Inherited from MediaConfiguration
     base: MediaConfiguration,
 
-    @"type": enums.MediaEncodingType,
+    type: enums.MediaEncodingType,
 };

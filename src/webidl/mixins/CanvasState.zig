@@ -29,4 +29,3 @@ pub fn call_restore(instance: *runtime.Instance) anyerror!void {
 pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
     return CanvasStateImpl.call_isContextLost(instance);
 }
-

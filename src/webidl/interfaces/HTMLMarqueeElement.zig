@@ -87,10 +87,10 @@ pub const HTMLMarqueeElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "behavior", "get_behavior", "set_behavior" },
@@ -105,19 +105,19 @@ pub const HTMLMarqueeElement = struct {
             .{ "vspace", "get_vspace", "set_vspace" },
             .{ "width", "get_width", "set_width" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
             .{ "stop", "call_stop", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
             "stop",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -213,7 +213,7 @@ pub const HTMLMarqueeElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "behavior", "get_behavior", "set_behavior" },
@@ -228,11 +228,10 @@ pub const HTMLMarqueeElement = struct {
             .{ "vspace", "get_vspace", "set_vspace" },
             .{ "width", "get_width", "set_width" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -256,7 +255,6 @@ pub const HTMLMarqueeElement = struct {
     );
 
     const delegates = .{
-
         .get_behavior = &get_behavior,
         .get_bgColor = &get_bgColor,
         .get_direction = &get_direction,
@@ -327,7 +325,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_behavior(instance, value);
     }
 
@@ -341,7 +339,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_bgColor(instance, value);
     }
 
@@ -355,7 +353,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_direction(instance, value);
     }
 
@@ -369,7 +367,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_height(instance, value);
     }
 
@@ -383,7 +381,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_hspace(instance, value);
     }
 
@@ -397,7 +395,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_loop(instance, value);
     }
 
@@ -411,7 +409,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_scrollAmount(instance, value);
     }
 
@@ -425,7 +423,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_scrollDelay(instance, value);
     }
 
@@ -439,7 +437,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_trueSpeed(instance, value);
     }
 
@@ -453,7 +451,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_vspace(instance, value);
     }
 
@@ -467,7 +465,7 @@ pub const HTMLMarqueeElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMarqueeElementImpl.set_width(instance, value);
     }
 
@@ -478,5 +476,4 @@ pub const HTMLMarqueeElement = struct {
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try HTMLMarqueeElementImpl.call_stop(instance);
     }
-
 };

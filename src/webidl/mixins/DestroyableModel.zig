@@ -17,4 +17,3 @@ pub const impl = @import("impls").DestroyableModel;
 pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     return DestroyableModelImpl.call_destroy(instance);
 }
-

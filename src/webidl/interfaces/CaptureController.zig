@@ -35,17 +35,17 @@ pub const CaptureController = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "zoomLevel", "get_zoomLevel", null },
             .{ "onzoomlevelchange", "get_onzoomlevelchange", "set_onzoomlevelchange" },
             .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setFocusBehavior", "call_setFocusBehavior", 1 },
@@ -55,7 +55,7 @@ pub const CaptureController = struct {
             .{ "resetZoomLevel", "call_resetZoomLevel", 0 },
             .{ "forwardWheel", "call_forwardWheel", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setFocusBehavior",
@@ -65,7 +65,7 @@ pub const CaptureController = struct {
             "resetZoomLevel",
             "forwardWheel",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -73,18 +73,17 @@ pub const CaptureController = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "zoomLevel", "get_zoomLevel", null },
             .{ "onzoomlevelchange", "get_onzoomlevelchange", "set_onzoomlevelchange" },
             .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -100,7 +99,6 @@ pub const CaptureController = struct {
     );
 
     const delegates = .{
-
         .get_oncapturedmousechange = &get_oncapturedmousechange,
         .get_onzoomlevelchange = &get_onzoomlevelchange,
         .get_zoomLevel = &get_zoomLevel,
@@ -169,12 +167,10 @@ pub const CaptureController = struct {
     }
 
     pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!runtime.JSValue {
-        
         return try CaptureControllerImpl.call_forwardWheel(instance, element);
     }
 
     pub fn call_setFocusBehavior(instance: *runtime.Instance, focusBehavior: CaptureStartFocusBehavior) anyerror!void {
-        
         return try CaptureControllerImpl.call_setFocusBehavior(instance, focusBehavior);
     }
 
@@ -193,5 +189,4 @@ pub const CaptureController = struct {
     pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CaptureControllerImpl.call_getSupportedZoomLevels(instance);
     }
-
 };

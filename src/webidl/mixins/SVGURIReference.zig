@@ -17,4 +17,3 @@ pub const impl = @import("impls").SVGURIReference;
 pub fn get_href(instance: *runtime.Instance) !*runtime.Instance {
     return SVGURIReferenceImpl.get_href(instance);
 }
-

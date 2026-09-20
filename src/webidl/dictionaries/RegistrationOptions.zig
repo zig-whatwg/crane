@@ -7,6 +7,6 @@ const enums = @import("enums");
 
 pub const RegistrationOptions = struct {
     scope: ?runtime.USVString = null,
-    @"type": ?enums.WorkerType = null,
+    type: ?enums.WorkerType = null,
     updateViaCache: ?enums.ServiceWorkerUpdateViaCache = null,
 };

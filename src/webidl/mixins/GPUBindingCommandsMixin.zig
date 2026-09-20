@@ -35,4 +35,3 @@ pub const SetBindGroupArgs = union(enum) {
 pub fn call_setBindGroup(instance: *runtime.Instance, args: SetBindGroupArgs) anyerror!void {
     return GPUBindingCommandsMixinImpl.call_setBindGroup(instance, args);
 }
-

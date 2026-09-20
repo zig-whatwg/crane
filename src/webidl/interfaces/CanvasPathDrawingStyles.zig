@@ -22,7 +22,7 @@ pub const CanvasPathDrawingStyles = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "lineWidth", "get_lineWidth", "set_lineWidth" },
@@ -31,23 +31,22 @@ pub const CanvasPathDrawingStyles = struct {
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setLineDash", "call_setLineDash", 1 },
             .{ "getLineDash", "call_getLineDash", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setLineDash",
             "getLineDash",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "lineWidth", "get_lineWidth", "set_lineWidth" },
@@ -56,11 +55,10 @@ pub const CanvasPathDrawingStyles = struct {
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -78,7 +76,6 @@ pub const CanvasPathDrawingStyles = struct {
     );
 
     const delegates = .{
-
         .get_lineCap = &get_lineCap,
         .get_lineDashOffset = &get_lineDashOffset,
         .get_lineJoin = &get_lineJoin,
@@ -164,8 +161,6 @@ pub const CanvasPathDrawingStyles = struct {
     }
 
     pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-        
         return try CanvasPathDrawingStylesImpl.call_setLineDash(instance, segments);
     }
-
 };

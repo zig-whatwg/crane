@@ -33,28 +33,26 @@ pub const PermissionStatus = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "state", "get_state", null },
             .{ "name", "get_name", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,18 +60,17 @@ pub const PermissionStatus = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "state", "get_state", null },
             .{ "name", "get_name", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,7 +86,6 @@ pub const PermissionStatus = struct {
     );
 
     const delegates = .{
-
         .get_name = &get_name,
         .get_onchange = &get_onchange,
         .get_state = &get_state,
@@ -136,5 +132,4 @@ pub const PermissionStatus = struct {
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try PermissionStatusImpl.set_onchange(instance, value);
     }
-
 };

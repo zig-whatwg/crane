@@ -24,38 +24,36 @@ pub const Global = struct {
             .{ .name = "LegacyNamespace", .value = .{ .identifier = "WebAssembly" } },
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "value", "get_value", "set_value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "valueOf", "call_valueOf", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "valueOf",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "value", "get_value", "set_value" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -69,7 +67,6 @@ pub const Global = struct {
     );
 
     const delegates = .{
-
         .get_value = &get_value,
 
         .set_value = &set_value,
@@ -120,5 +117,4 @@ pub const Global = struct {
     pub fn call_valueOf(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GlobalImpl.call_valueOf(instance);
     }
-
 };

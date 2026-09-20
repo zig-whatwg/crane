@@ -25,10 +25,10 @@ pub const Plugin = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyUnenumerableNamedProperties" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
@@ -36,23 +36,22 @@ pub const Plugin = struct {
             .{ "filename", "get_filename", null },
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
             .{ "namedItem", "call_namedItem", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
             "namedItem",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
@@ -60,11 +59,10 @@ pub const Plugin = struct {
             .{ "filename", "get_filename", null },
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -81,7 +79,6 @@ pub const Plugin = struct {
     );
 
     const delegates = .{
-
         .get_description = &get_description,
         .get_filename = &get_filename,
         .get_length = &get_length,
@@ -132,12 +129,10 @@ pub const Plugin = struct {
     }
 
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
-        
         return try PluginImpl.call_namedItem(instance, name);
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
         return try PluginImpl.call_item(instance, index);
     }
 
@@ -146,5 +141,4 @@ pub const Plugin = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return PluginImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

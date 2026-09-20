@@ -21,4 +21,3 @@ pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTi
 pub fn get_presentationTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     return PaintTimingMixinImpl.get_presentationTime(instance);
 }
-

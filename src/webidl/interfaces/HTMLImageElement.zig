@@ -93,10 +93,10 @@ pub const HTMLImageElement = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyFactoryFunction", .value = .{ .identifier = "Image" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "alt", "get_alt", "set_alt" },
@@ -128,17 +128,17 @@ pub const HTMLImageElement = struct {
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "decode", "call_decode", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "decode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -234,7 +234,7 @@ pub const HTMLImageElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "alt", "get_alt", "set_alt" },
@@ -266,11 +266,10 @@ pub const HTMLImageElement = struct {
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -311,7 +310,6 @@ pub const HTMLImageElement = struct {
     );
 
     const delegates = .{
-
         .get_align = &get_align,
         .get_alt = &get_alt,
         .get_attributionSrc = &get_attributionSrc,
@@ -409,7 +407,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_alt(instance, value);
     }
 
@@ -423,7 +421,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_src(instance, value);
     }
 
@@ -437,7 +435,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_srcset(instance, value);
     }
 
@@ -451,7 +449,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_sizes(instance, value);
     }
 
@@ -465,7 +463,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -479,7 +477,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_useMap(instance, value);
     }
 
@@ -493,7 +491,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_isMap(instance, value);
     }
 
@@ -507,7 +505,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_width(instance, value);
     }
 
@@ -521,7 +519,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_height(instance, value);
     }
 
@@ -551,7 +549,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -565,7 +563,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_decoding(instance, value);
     }
 
@@ -579,7 +577,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_loading(instance, value);
     }
 
@@ -593,7 +591,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_fetchPriority(instance, value);
     }
 
@@ -607,7 +605,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_name(instance, value);
     }
 
@@ -621,7 +619,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_lowsrc(instance, value);
     }
 
@@ -635,7 +633,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_align(instance, value);
     }
 
@@ -649,7 +647,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_hspace(instance, value);
     }
 
@@ -663,7 +661,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_vspace(instance, value);
     }
 
@@ -677,7 +675,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_longDesc(instance, value);
     }
 
@@ -691,7 +689,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_border(instance, value);
     }
 
@@ -713,7 +711,7 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_attributionSrc(instance, value);
     }
 
@@ -727,12 +725,11 @@ pub const HTMLImageElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLImageElementImpl.set_sharedStorageWritable(instance, value);
     }
 
     pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HTMLImageElementImpl.call_decode(instance);
     }
-
 };

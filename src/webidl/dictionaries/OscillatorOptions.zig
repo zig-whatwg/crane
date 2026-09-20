@@ -10,7 +10,7 @@ pub const OscillatorOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    @"type": ?enums.OscillatorType = null,
+    type: ?enums.OscillatorType = null,
     frequency: ?f32 = null,
     detune: ?f32 = null,
     periodicWave: ?*runtime.Instance = null,

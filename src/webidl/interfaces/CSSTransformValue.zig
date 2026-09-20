@@ -28,7 +28,7 @@ pub const CSSTransformValue = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -36,44 +36,43 @@ pub const CSSTransformValue = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
             .{ "is2D", "get_is2D", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toMatrix", "call_toMatrix", 0 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toMatrix",
             "forEach",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "parse",
             "parseAll",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
             .{ "is2D", "get_is2D", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "CSSTransformComponent",
@@ -92,7 +91,6 @@ pub const CSSTransformValue = struct {
     );
 
     const delegates = .{
-
         .get_is2D = &get_is2D,
         .get_length = &get_length,
 
@@ -141,12 +139,10 @@ pub const CSSTransformValue = struct {
     }
 
     pub fn call_setter(instance: *runtime.Instance, index: u32, val: *runtime.Instance) anyerror!void {
-        
         return try CSSTransformValueImpl.call_setter(instance, index, val);
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
         return try CSSTransformValueImpl.call_getter(instance, index);
     }
 
@@ -155,8 +151,6 @@ pub const CSSTransformValue = struct {
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
         return try CSSTransformValueImpl.call_forEach(instance, callback);
     }
-
 };

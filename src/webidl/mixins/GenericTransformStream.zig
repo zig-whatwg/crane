@@ -21,4 +21,3 @@ pub fn get_readable(instance: *runtime.Instance) !*runtime.Instance {
 pub fn get_writable(instance: *runtime.Instance) !*runtime.Instance {
     return GenericTransformStreamImpl.get_writable(instance);
 }
-

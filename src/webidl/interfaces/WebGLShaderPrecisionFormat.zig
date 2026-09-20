@@ -23,43 +23,39 @@ pub const WebGLShaderPrecisionFormat = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "rangeMin", "get_rangeMin", null },
             .{ "rangeMax", "get_rangeMax", null },
             .{ "precision", "get_precision", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "rangeMin", "get_rangeMin", null },
             .{ "rangeMax", "get_rangeMax", null },
             .{ "precision", "get_precision", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -75,7 +71,6 @@ pub const WebGLShaderPrecisionFormat = struct {
     );
 
     const delegates = .{
-
         .get_precision = &get_precision,
         .get_rangeMax = &get_rangeMax,
         .get_rangeMin = &get_rangeMin,
@@ -116,5 +111,4 @@ pub const WebGLShaderPrecisionFormat = struct {
     pub fn get_precision(instance: *runtime.Instance) anyerror!GLint {
         return try WebGLShaderPrecisionFormatImpl.get_precision(instance);
     }
-
 };

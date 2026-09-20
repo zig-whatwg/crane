@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const EncodedVideoChunkInit = struct {
-    @"type": enums.EncodedVideoChunkType,
+    type: enums.EncodedVideoChunkType,
     timestamp: i64,
     duration: ?u64 = null,
     data: typedefs.AllowSharedBufferSource,

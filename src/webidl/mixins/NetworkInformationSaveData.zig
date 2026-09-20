@@ -17,4 +17,3 @@ pub const impl = @import("impls").NetworkInformationSaveData;
 pub fn get_saveData(instance: *runtime.Instance) anyerror!bool {
     return NetworkInformationSaveDataImpl.get_saveData(instance);
 }
-

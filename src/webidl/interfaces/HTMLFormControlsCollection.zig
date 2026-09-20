@@ -27,37 +27,34 @@ pub const HTMLFormControlsCollection = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "namedItem", "call_namedItem", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "namedItem",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "item",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -70,7 +67,6 @@ pub const HTMLFormControlsCollection = struct {
     );
 
     const delegates = .{
-
         .call_namedItem = &call_namedItem,
 
         .deinit = &deinit,
@@ -99,7 +95,6 @@ pub const HTMLFormControlsCollection = struct {
     }
 
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
-        
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }
 
@@ -108,5 +103,4 @@ pub const HTMLFormControlsCollection = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return HTMLFormControlsCollectionImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

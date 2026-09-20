@@ -33,10 +33,10 @@ pub const RTCTrackEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "receiver", "get_receiver", null },
@@ -44,15 +44,13 @@ pub const RTCTrackEvent = struct {
             .{ "streams", "get_streams", null },
             .{ "transceiver", "get_transceiver", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -61,7 +59,7 @@ pub const RTCTrackEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "receiver", "get_receiver", null },
@@ -69,11 +67,10 @@ pub const RTCTrackEvent = struct {
             .{ "streams", "get_streams", null },
             .{ "transceiver", "get_transceiver", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -91,7 +88,6 @@ pub const RTCTrackEvent = struct {
     );
 
     const delegates = .{
-
         .get_receiver = &get_receiver,
         .get_streams = &get_streams,
         .get_track = &get_track,
@@ -153,5 +149,4 @@ pub const RTCTrackEvent = struct {
     pub fn get_transceiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCTrackEventImpl.get_transceiver(instance);
     }
-
 };

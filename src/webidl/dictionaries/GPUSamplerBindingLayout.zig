@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const GPUSamplerBindingLayout = struct {
-    @"type": ?enums.GPUSamplerBindingType = null,
+    type: ?enums.GPUSamplerBindingType = null,
 };

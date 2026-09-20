@@ -28,23 +28,21 @@ pub const CSSFunctionDescriptors = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "result", "get_result", "set_result" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "item",
@@ -59,16 +57,15 @@ pub const CSSFunctionDescriptors = struct {
             "setProperty",
             "item",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "result", "get_result", "set_result" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -82,7 +79,6 @@ pub const CSSFunctionDescriptors = struct {
     );
 
     const delegates = .{
-
         .get_result = &get_result,
 
         .set_result = &set_result,
@@ -121,5 +117,4 @@ pub const CSSFunctionDescriptors = struct {
     pub fn set_result(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFunctionDescriptorsImpl.set_result(instance, value);
     }
-
 };

@@ -13,5 +13,5 @@ pub const RegistrationResponseJSON = struct {
     response: AuthenticatorAttestationResponseJSON,
     authenticatorAttachment: ?runtime.DOMString = null,
     clientExtensionResults: AuthenticationExtensionsClientOutputsJSON,
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
 };

@@ -27,45 +27,43 @@ pub const PushManager = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "supportedContentEncodings", "get_supportedContentEncodings", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "subscribe", "call_subscribe", 0 },
             .{ "getSubscription", "call_getSubscription", 0 },
             .{ "permissionState", "call_permissionState", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "subscribe",
             "getSubscription",
             "permissionState",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "supportedContentEncodings", "get_supportedContentEncodings", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -78,7 +76,6 @@ pub const PushManager = struct {
     );
 
     const delegates = .{
-
         .get_supportedContentEncodings = &get_supportedContentEncodings,
 
         .call_getSubscription = &call_getSubscription,
@@ -116,7 +113,6 @@ pub const PushManager = struct {
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
-        
         return try PushManagerImpl.call_subscribe(instance, options);
     }
 
@@ -125,8 +121,6 @@ pub const PushManager = struct {
     }
 
     pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
-        
         return try PushManagerImpl.call_permissionState(instance, options);
     }
-
 };

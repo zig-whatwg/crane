@@ -28,10 +28,10 @@ pub const CSSPositionTryDescriptors = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "margin", "get_margin", "set_margin" },
@@ -105,15 +105,13 @@ pub const CSSPositionTryDescriptors = struct {
             .{ "positionArea", "get_positionArea", "set_positionArea" },
             .{ "position-area", "get_position_area", "set_position_area" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "item",
@@ -128,7 +126,7 @@ pub const CSSPositionTryDescriptors = struct {
             "setProperty",
             "item",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "margin", "get_margin", "set_margin" },
@@ -202,11 +200,10 @@ pub const CSSPositionTryDescriptors = struct {
             .{ "positionArea", "get_positionArea", "set_positionArea" },
             .{ "position-area", "get_position_area", "set_position_area" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -289,7 +286,6 @@ pub const CSSPositionTryDescriptors = struct {
     );
 
     const delegates = .{
-
         .get_alignSelf = &get_alignSelf,
         .get_align_self = &get_align_self,
         .get_blockSize = &get_blockSize,
@@ -1016,5 +1012,4 @@ pub const CSSPositionTryDescriptors = struct {
     pub fn set_position_area(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_position_area(instance, value);
     }
-
 };

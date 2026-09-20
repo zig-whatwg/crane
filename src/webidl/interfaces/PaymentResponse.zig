@@ -37,10 +37,10 @@ pub const PaymentResponse = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "requestId", "get_requestId", null },
@@ -53,21 +53,21 @@ pub const PaymentResponse = struct {
             .{ "payerPhone", "get_payerPhone", null },
             .{ "onpayerdetailchange", "get_onpayerdetailchange", "set_onpayerdetailchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
             .{ "complete", "call_complete", 0 },
             .{ "retry", "call_retry", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
             "complete",
             "retry",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,7 +75,7 @@ pub const PaymentResponse = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "requestId", "get_requestId", null },
@@ -88,11 +88,10 @@ pub const PaymentResponse = struct {
             .{ "payerPhone", "get_payerPhone", null },
             .{ "onpayerdetailchange", "get_onpayerdetailchange", "set_onpayerdetailchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -132,7 +131,6 @@ pub const PaymentResponse = struct {
     };
 
     const delegates = .{
-
         .get_details = &get_details,
         .get_methodName = &get_methodName,
         .get_onpayerdetailchange = &get_onpayerdetailchange,
@@ -222,15 +220,14 @@ pub const PaymentResponse = struct {
     /// Extended attributes: [NewObject]
     pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try PaymentResponseImpl.call_complete(instance, result, details);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(PaymentValidationErrors)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try PaymentResponseImpl.call_retry(instance, errorFields);
     }
-
 };

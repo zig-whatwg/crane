@@ -25,4 +25,3 @@ pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
 pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
     return TextDecoderCommonImpl.get_ignoreBOM(instance);
 }
-

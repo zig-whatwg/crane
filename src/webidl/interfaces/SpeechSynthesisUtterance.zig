@@ -33,10 +33,10 @@ pub const SpeechSynthesisUtterance = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "text", "get_text", "set_text" },
@@ -53,15 +53,13 @@ pub const SpeechSynthesisUtterance = struct {
             .{ "onmark", "get_onmark", "set_onmark" },
             .{ "onboundary", "get_onboundary", "set_onboundary" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -69,7 +67,7 @@ pub const SpeechSynthesisUtterance = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "text", "get_text", "set_text" },
@@ -85,12 +83,12 @@ pub const SpeechSynthesisUtterance = struct {
             .{ "onmark", "get_onmark", "set_onmark" },
             .{ "onboundary", "get_onboundary", "set_onboundary" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "lang", "get_lang", "set_lang" },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -116,7 +114,6 @@ pub const SpeechSynthesisUtterance = struct {
     );
 
     const delegates = .{
-
         .get_lang = &get_lang,
         .get_onboundary = &get_onboundary,
         .get_onend = &get_onend,
@@ -281,5 +278,4 @@ pub const SpeechSynthesisUtterance = struct {
     pub fn set_onboundary(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_onboundary(instance, value);
     }
-
 };

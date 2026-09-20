@@ -7,6 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const BlobPropertyBag = struct {
-    @"type": ?runtime.DOMString = null,
+    type: ?runtime.DOMString = null,
     endings: ?enums.EndingType = null,
 };

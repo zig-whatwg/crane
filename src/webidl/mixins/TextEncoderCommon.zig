@@ -17,4 +17,3 @@ pub const impl = @import("impls").TextEncoderCommon;
 pub fn get_encoding(instance: *runtime.Instance) anyerror!typedefs.DOMString {
     return TextEncoderCommonImpl.get_encoding(instance);
 }
-

@@ -40,28 +40,27 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "cropTo", "call_cropTo", 1 },
             .{ "clone", "call_clone", 0 },
             .{ "restrictTo", "call_restrictTo", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "cropTo",
             "clone",
             "restrictTo",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -77,15 +76,13 @@ pub const BrowserCaptureMediaStreamTrack = struct {
             "sendCaptureAction",
             "getCaptureHandle",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -98,7 +95,6 @@ pub const BrowserCaptureMediaStreamTrack = struct {
     );
 
     const delegates = .{
-
         .call_clone = &call_clone,
         .call_cropTo = &call_cropTo,
         .call_restrictTo = &call_restrictTo,
@@ -129,17 +125,14 @@ pub const BrowserCaptureMediaStreamTrack = struct {
     }
 
     pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!runtime.JSValue {
-        
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
     pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!runtime.JSValue {
-        
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
     }
-
 };

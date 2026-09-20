@@ -90,10 +90,10 @@ pub const HTMLTableElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "caption", "get_caption", "set_caption" },
@@ -111,7 +111,7 @@ pub const HTMLTableElement = struct {
             .{ "cellPadding", "get_cellPadding", "set_cellPadding" },
             .{ "cellSpacing", "get_cellSpacing", "set_cellSpacing" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createCaption", "call_createCaption", 0 },
@@ -124,7 +124,7 @@ pub const HTMLTableElement = struct {
             .{ "insertRow", "call_insertRow", 0 },
             .{ "deleteRow", "call_deleteRow", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createCaption",
@@ -137,7 +137,7 @@ pub const HTMLTableElement = struct {
             "insertRow",
             "deleteRow",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -233,7 +233,7 @@ pub const HTMLTableElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "caption", "get_caption", "set_caption" },
@@ -251,11 +251,10 @@ pub const HTMLTableElement = struct {
             .{ "cellPadding", "get_cellPadding", "set_cellPadding" },
             .{ "cellSpacing", "get_cellSpacing", "set_cellSpacing" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -284,7 +283,6 @@ pub const HTMLTableElement = struct {
     );
 
     const delegates = .{
-
         .get_align = &get_align,
         .get_bgColor = &get_bgColor,
         .get_border = &get_border,
@@ -366,7 +364,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_caption(instance, value);
     }
 
@@ -380,7 +378,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_tHead(instance, value);
     }
 
@@ -394,7 +392,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_tFoot(instance, value);
     }
 
@@ -432,7 +430,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_align(instance, value);
     }
 
@@ -446,7 +444,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_border(instance, value);
     }
 
@@ -460,7 +458,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_frame(instance, value);
     }
 
@@ -474,7 +472,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_rules(instance, value);
     }
 
@@ -488,7 +486,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_summary(instance, value);
     }
 
@@ -502,7 +500,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_width(instance, value);
     }
 
@@ -516,7 +514,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_bgColor(instance, value);
     }
 
@@ -530,7 +528,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_cellPadding(instance, value);
     }
 
@@ -544,7 +542,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableElementImpl.set_cellSpacing(instance, value);
     }
 
@@ -561,12 +559,11 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try HTMLTableElementImpl.call_deleteCaption(instance);
     }
 
     pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
-        
         return try HTMLTableElementImpl.call_insertRow(instance, index);
     }
 
@@ -583,8 +580,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try HTMLTableElementImpl.call_deleteRow(instance, index);
     }
 
@@ -593,7 +589,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try HTMLTableElementImpl.call_deleteTFoot(instance);
     }
 
@@ -602,8 +598,7 @@ pub const HTMLTableElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try HTMLTableElementImpl.call_deleteTHead(instance);
     }
-
 };

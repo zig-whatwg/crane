@@ -34,29 +34,29 @@ pub const VirtualKeyboard = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "boundingRect", "get_boundingRect", null },
             .{ "overlaysContent", "get_overlaysContent", "set_overlaysContent" },
             .{ "ongeometrychange", "get_ongeometrychange", "set_ongeometrychange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "show", "call_show", 0 },
             .{ "hide", "call_hide", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "show",
             "hide",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -64,18 +64,17 @@ pub const VirtualKeyboard = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "boundingRect", "get_boundingRect", null },
             .{ "overlaysContent", "get_overlaysContent", "set_overlaysContent" },
             .{ "ongeometrychange", "get_ongeometrychange", "set_ongeometrychange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -91,7 +90,6 @@ pub const VirtualKeyboard = struct {
     );
 
     const delegates = .{
-
         .get_boundingRect = &get_boundingRect,
         .get_ongeometrychange = &get_ongeometrychange,
         .get_overlaysContent = &get_overlaysContent,
@@ -154,5 +152,4 @@ pub const VirtualKeyboard = struct {
     pub fn call_hide(instance: *runtime.Instance) anyerror!void {
         return try VirtualKeyboardImpl.call_hide(instance);
     }
-
 };

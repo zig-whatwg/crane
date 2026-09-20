@@ -12,7 +12,7 @@ pub const WebAssembly = struct {
         pub const is_namespace = true;
         pub const BaseType = null;
         pub const MixinTypes = &.{};
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
             .{ "instantiate_BufferSource_object_WebAssemblyCompileOptions", "call_instantiate_BufferSource_object_WebAssemblyCompileOptions" },
@@ -20,7 +20,7 @@ pub const WebAssembly = struct {
             .{ "compile", "call_compile" },
             .{ "validate", "call_validate" },
         };
-        
+
         pub const has_constructor = false;
         pub const properties = .{};
     };
@@ -44,5 +44,4 @@ pub const WebAssembly = struct {
     }
 
     pub const JSTag: runtime.JSValue = undefined;
-
 };

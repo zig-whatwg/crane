@@ -60,10 +60,10 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "ServiceWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "clients", "get_clients", null },
@@ -90,17 +90,17 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "skipWaiting", "call_skipWaiting", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "skipWaiting",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -121,7 +121,7 @@ pub const ServiceWorkerGlobalScope = struct {
             "structuredClone",
             "fetch",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "clients", "get_clients", null },
@@ -148,11 +148,10 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -173,7 +172,6 @@ pub const ServiceWorkerGlobalScope = struct {
     );
 
     const delegates = .{
-
         .get_clients = &get_clients,
         .get_cookieStore = &get_cookieStore,
         .get_onactivate = &get_onactivate,
@@ -450,5 +448,4 @@ pub const ServiceWorkerGlobalScope = struct {
         // [NewObject] - Caller owns the returned object
         return try ServiceWorkerGlobalScopeImpl.call_skipWaiting(instance);
     }
-
 };

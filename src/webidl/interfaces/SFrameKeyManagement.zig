@@ -23,35 +23,33 @@ pub const SFrameKeyManagement = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setEncryptionKey", "call_setEncryptionKey", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setEncryptionKey",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -65,7 +63,6 @@ pub const SFrameKeyManagement = struct {
     );
 
     const delegates = .{
-
         .get_onerror = &get_onerror,
 
         .set_onerror = &set_onerror,
@@ -106,8 +103,6 @@ pub const SFrameKeyManagement = struct {
     }
 
     pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
-        
         return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }
-
 };

@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const ImageEncodeOptions = struct {
-    @"type": ?runtime.DOMString = null,
+    type: ?runtime.DOMString = null,
     quality: ?f64 = null,
 };

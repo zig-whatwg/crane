@@ -24,41 +24,37 @@ pub const Scheduler = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postTask", "call_postTask", 1 },
             .{ "yield", "call_yield", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "postTask",
             "yield",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -71,7 +67,6 @@ pub const Scheduler = struct {
     );
 
     const delegates = .{
-
         .call_postTask = &call_postTask,
         .call_yield = &call_yield,
 
@@ -105,8 +100,6 @@ pub const Scheduler = struct {
     }
 
     pub fn call_postTask(instance: *runtime.Instance, callback: SchedulerPostTaskCallback, options: webidl.Opt(SchedulerPostTaskOptions)) anyerror!runtime.JSValue {
-        
         return try SchedulerImpl.call_postTask(instance, callback, options);
     }
-
 };

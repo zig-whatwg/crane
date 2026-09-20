@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorLocks;
 pub fn get_locks(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorLocksImpl.get_locks(instance);
 }
-

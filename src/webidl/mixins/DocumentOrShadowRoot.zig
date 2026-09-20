@@ -49,4 +49,3 @@ pub fn get_activeElement(instance: *runtime.Instance) !?*runtime.Instance {
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!void {
     return DocumentOrShadowRootImpl.call_getAnimations(instance);
 }
-

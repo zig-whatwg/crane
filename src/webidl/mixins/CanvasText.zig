@@ -25,4 +25,3 @@ pub fn call_strokeText(instance: *runtime.Instance, text: typedefs.DOMString, x:
 pub fn call_fillText(instance: *runtime.Instance, text: typedefs.DOMString, x: runtime.JSValue, y: runtime.JSValue, maxWidth: runtime.JSValue) anyerror!void {
     return CanvasTextImpl.call_fillText(instance, text, x, y, maxWidth);
 }
-

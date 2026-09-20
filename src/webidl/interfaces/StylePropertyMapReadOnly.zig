@@ -24,7 +24,7 @@ pub const StylePropertyMapReadOnly = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -32,12 +32,12 @@ pub const StylePropertyMapReadOnly = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "size", "get_size", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
@@ -46,7 +46,7 @@ pub const StylePropertyMapReadOnly = struct {
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
@@ -54,22 +54,20 @@ pub const StylePropertyMapReadOnly = struct {
             "has",
             "forEach",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "size", "get_size", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -87,7 +85,6 @@ pub const StylePropertyMapReadOnly = struct {
     );
 
     const delegates = .{
-
         .get_size = &get_size,
 
         .call_forEach = &call_forEach,
@@ -125,22 +122,18 @@ pub const StylePropertyMapReadOnly = struct {
     }
 
     pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerror!bool {
-        
         return try StylePropertyMapReadOnlyImpl.call_has(instance, property);
     }
 
     pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try StylePropertyMapReadOnlyImpl.call_get(instance, property);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try StylePropertyMapReadOnlyImpl.call_getAll(instance, property);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
         return try StylePropertyMapReadOnlyImpl.call_forEach(instance, callback);
     }
 
@@ -149,5 +142,4 @@ pub const StylePropertyMapReadOnly = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const StylePropertyMapReadOnlyImpl.IterableEntry {
         return StylePropertyMapReadOnlyImpl.getEntriesInternal(instance);
     }
-
 };

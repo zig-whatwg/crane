@@ -23,38 +23,34 @@ pub const SpeechGrammar = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "src", "get_src", "set_src" },
             .{ "weight", "get_weight", "set_weight" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "src", "get_src", "set_src" },
             .{ "weight", "get_weight", "set_weight" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -69,7 +65,6 @@ pub const SpeechGrammar = struct {
     );
 
     const delegates = .{
-
         .get_src = &get_src,
         .get_weight = &get_weight,
 
@@ -116,5 +111,4 @@ pub const SpeechGrammar = struct {
     pub fn set_weight(instance: *runtime.Instance, value: f32) anyerror!void {
         try SpeechGrammarImpl.set_weight(instance, value);
     }
-
 };

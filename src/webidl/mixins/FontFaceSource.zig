@@ -17,4 +17,3 @@ pub const impl = @import("impls").FontFaceSource;
 pub fn get_fonts(instance: *runtime.Instance) !*runtime.Instance {
     return FontFaceSourceImpl.get_fonts(instance);
 }
-

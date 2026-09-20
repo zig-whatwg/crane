@@ -460,6 +460,7 @@ fn v8ToJSValue(
             const interface_name = template_registry.getInstanceInterfaceName(instance);
             const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
                 return EngineError.OperationFailed;
+            defer ffi.v8_Context_Dispose(context);
             const v8_obj = template_registry.wrapInstanceAsV8Object(
                 instance,
                 interface_name,
@@ -630,6 +631,7 @@ fn v8ThrowDOMException(
     _ = engine_ctx;
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(context);
     const global = ffi.v8_Context_Global(context) orelse return;
 
     // Get the DOMException constructor from global
@@ -750,6 +752,7 @@ fn v8CreateReadableStream(
         return EngineError.OperationFailed;
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_Context_Dispose(context);
 
     const runtime = @import("runtime");
     const instance: *runtime.Instance = @ptrCast(@alignCast(zig_stream));

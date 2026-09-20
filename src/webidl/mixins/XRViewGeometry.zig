@@ -21,4 +21,3 @@ pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!void {
 pub fn get_transform(instance: *runtime.Instance) !*runtime.Instance {
     return XRViewGeometryImpl.get_transform(instance);
 }
-

@@ -91,16 +91,16 @@ pub const HTMLCanvasElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getContext", "call_getContext", 1 },
@@ -109,7 +109,7 @@ pub const HTMLCanvasElement = struct {
             .{ "transferControlToOffscreen", "call_transferControlToOffscreen", 0 },
             .{ "captureStream", "call_captureStream", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getContext",
@@ -118,7 +118,7 @@ pub const HTMLCanvasElement = struct {
             "transferControlToOffscreen",
             "captureStream",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -214,17 +214,16 @@ pub const HTMLCanvasElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -239,7 +238,6 @@ pub const HTMLCanvasElement = struct {
     );
 
     const delegates = .{
-
         .get_height = &get_height,
         .get_width = &get_width,
 
@@ -295,7 +293,7 @@ pub const HTMLCanvasElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLCanvasElementImpl.set_width(instance, value);
     }
 
@@ -309,12 +307,11 @@ pub const HTMLCanvasElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLCanvasElementImpl.set_height(instance, value);
     }
 
     pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?RenderingContext {
-        
         return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }
 
@@ -323,18 +320,14 @@ pub const HTMLCanvasElement = struct {
     }
 
     pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
         return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
     }
 
     pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
         return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
 
     pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
-        
         return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
-
 };

@@ -30,44 +30,40 @@ pub const SmartCardContext = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .SharedWorker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "listReaders", "call_listReaders", 0 },
             .{ "getStatusChange", "call_getStatusChange", 1 },
             .{ "connect", "call_connect", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "listReaders",
             "getStatusChange",
             "connect",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -80,7 +76,6 @@ pub const SmartCardContext = struct {
     );
 
     const delegates = .{
-
         .call_connect = &call_connect,
         .call_getStatusChange = &call_getStatusChange,
         .call_listReaders = &call_listReaders,
@@ -111,17 +106,14 @@ pub const SmartCardContext = struct {
     }
 
     pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!runtime.JSValue {
-        
         return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }
 
     pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: runtime.JSValue, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!runtime.JSValue {
-        
         return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
     pub fn call_listReaders(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SmartCardContextImpl.call_listReaders(instance);
     }
-
 };

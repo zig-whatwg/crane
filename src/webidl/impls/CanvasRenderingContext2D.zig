@@ -480,6 +480,7 @@ pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+    defer v8.ffi.v8_Context_Dispose(context);
 
     // Create V8 array from the stored line dash pattern
     // v8_Array_New returns a Global<Array>* which can be used directly as a Global handle
@@ -788,6 +789,7 @@ pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) 
 
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+    defer v8.ffi.v8_Context_Dispose(context);
 
     // Get the V8 value from runtime.JSValue
     // Check what variant we have

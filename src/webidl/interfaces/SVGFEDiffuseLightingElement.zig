@@ -91,10 +91,10 @@ pub const SVGFEDiffuseLightingElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "in1", "get_in1", null },
@@ -108,15 +108,13 @@ pub const SVGFEDiffuseLightingElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -207,7 +205,7 @@ pub const SVGFEDiffuseLightingElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "in1", "get_in1", null },
@@ -221,11 +219,10 @@ pub const SVGFEDiffuseLightingElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -248,7 +245,6 @@ pub const SVGFEDiffuseLightingElement = struct {
     );
 
     const delegates = .{
-
         .get_diffuseConstant = &get_diffuseConstant,
         .get_height = &get_height,
         .get_in1 = &get_in1,
@@ -324,5 +320,4 @@ pub const SVGFEDiffuseLightingElement = struct {
     pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEDiffuseLightingElementImpl.get_result(instance);
     }
-
 };

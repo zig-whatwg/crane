@@ -101,4 +101,3 @@ pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!typedefs.DOMString 
 pub fn set_wordSpacing(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return CanvasTextDrawingStylesImpl.set_wordSpacing(instance, value);
 }
-

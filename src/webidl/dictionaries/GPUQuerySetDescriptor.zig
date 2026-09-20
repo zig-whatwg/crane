@@ -11,6 +11,6 @@ pub const GPUQuerySetDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    @"type": enums.GPUQueryType,
+    type: enums.GPUQueryType,
     count: typedefs.GPUSize32,
 };

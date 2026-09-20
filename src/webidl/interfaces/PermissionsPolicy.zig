@@ -23,14 +23,13 @@ pub const PermissionsPolicy = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "allowsFeature", "call_allowsFeature", 1 },
@@ -38,7 +37,7 @@ pub const PermissionsPolicy = struct {
             .{ "allowedFeatures", "call_allowedFeatures", 0 },
             .{ "getAllowlistForFeature", "call_getAllowlistForFeature", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "allowsFeature",
@@ -46,19 +45,16 @@ pub const PermissionsPolicy = struct {
             "allowedFeatures",
             "getAllowlistForFeature",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -71,7 +67,6 @@ pub const PermissionsPolicy = struct {
     );
 
     const delegates = .{
-
         .call_allowedFeatures = &call_allowedFeatures,
         .call_allowsFeature = &call_allowsFeature,
         .call_features = &call_features,
@@ -107,7 +102,6 @@ pub const PermissionsPolicy = struct {
     }
 
     pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: DOMString) anyerror!runtime.JSValue {
-        
         return try PermissionsPolicyImpl.call_getAllowlistForFeature(instance, feature);
     }
 
@@ -116,8 +110,6 @@ pub const PermissionsPolicy = struct {
     }
 
     pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: webidl.Opt(DOMString)) anyerror!bool {
-        
         return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin);
     }
-
 };

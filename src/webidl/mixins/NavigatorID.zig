@@ -57,4 +57,3 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!typedefs.DOMString {
 pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
     return NavigatorIDImpl.call_taintEnabled(instance);
 }
-

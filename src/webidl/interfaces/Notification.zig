@@ -39,13 +39,13 @@ pub const Notification = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "permission", "get_permission", null },
@@ -71,23 +71,23 @@ pub const Notification = struct {
             .{ "data", "get_data", null },
             .{ "actions", "get_actions", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_static_requestPermission", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
             "close",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -95,7 +95,7 @@ pub const Notification = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "permission", "get_permission", null },
@@ -119,13 +119,13 @@ pub const Notification = struct {
             .{ "data", "get_data", null },
             .{ "actions", "get_actions", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dir", "get_dir", null },
             .{ "lang", "get_lang", null },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -161,7 +161,6 @@ pub const Notification = struct {
     );
 
     const delegates = .{
-
         .get_actions = &get_actions,
         .get_badge = &get_badge,
         .get_body = &get_body,
@@ -355,12 +354,10 @@ pub const Notification = struct {
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!runtime.JSValue {
-        
         return try NotificationImpl.call_static_requestPermission(instance, deprecatedCallback);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try NotificationImpl.call_close(instance);
     }
-
 };

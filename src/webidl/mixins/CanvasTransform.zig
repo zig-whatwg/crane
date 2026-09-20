@@ -56,4 +56,3 @@ pub const SetTransformArgs = union(enum) {
 pub fn call_setTransform(instance: *runtime.Instance, args: SetTransformArgs) anyerror!void {
     return CanvasTransformImpl.call_setTransform(instance, args);
 }
-

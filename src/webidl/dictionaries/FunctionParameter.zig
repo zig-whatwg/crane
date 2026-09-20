@@ -7,6 +7,6 @@ const typedefs = @import("typedefs");
 
 pub const FunctionParameter = struct {
     name: typedefs.CSSOMString,
-    @"type": typedefs.CSSOMString,
+    type: typedefs.CSSOMString,
     defaultValue: ?typedefs.CSSOMString = null,
 };

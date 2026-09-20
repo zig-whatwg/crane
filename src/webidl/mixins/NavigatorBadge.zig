@@ -21,4 +21,3 @@ pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!void {
 pub fn call_setAppBadge(instance: *runtime.Instance, contents: runtime.JSValue) anyerror!void {
     return NavigatorBadgeImpl.call_setAppBadge(instance, contents);
 }
-

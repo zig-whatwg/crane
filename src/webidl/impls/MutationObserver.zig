@@ -504,6 +504,7 @@ pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Ins
         }
         return;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a HandleScope for V8 operations - all Local handles must be within a scope
     const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {

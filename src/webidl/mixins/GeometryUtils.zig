@@ -29,4 +29,3 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQu
 pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
     return GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
 }
-

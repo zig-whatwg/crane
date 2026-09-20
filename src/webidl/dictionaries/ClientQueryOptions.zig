@@ -7,5 +7,5 @@ const enums = @import("enums");
 
 pub const ClientQueryOptions = struct {
     includeUncontrolled: ?bool = null,
-    @"type": ?enums.ClientType = null,
+    type: ?enums.ClientType = null,
 };

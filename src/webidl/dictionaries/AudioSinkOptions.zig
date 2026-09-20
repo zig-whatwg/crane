@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const AudioSinkOptions = struct {
-    @"type": enums.AudioSinkType,
+    type: enums.AudioSinkType,
 };

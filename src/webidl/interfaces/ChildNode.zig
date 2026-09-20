@@ -22,11 +22,10 @@ pub const ChildNode = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "before", "call_before", 1 },
@@ -34,7 +33,7 @@ pub const ChildNode = struct {
             .{ "replaceWith", "call_replaceWith", 1 },
             .{ "remove", "call_remove", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "before",
@@ -42,21 +41,18 @@ pub const ChildNode = struct {
             "replaceWith",
             "remove",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
-        
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "before",
@@ -75,7 +71,6 @@ pub const ChildNode = struct {
     );
 
     const delegates = .{
-
         .call_after = &call_after,
         .call_before = &call_before,
         .call_remove = &call_remove,
@@ -111,8 +106,7 @@ pub const ChildNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ChildNodeImpl.call_before(instance, nodes);
     }
 
@@ -121,8 +115,7 @@ pub const ChildNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ChildNodeImpl.call_replaceWith(instance, nodes);
     }
 
@@ -131,7 +124,7 @@ pub const ChildNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try ChildNodeImpl.call_remove(instance);
     }
 
@@ -140,9 +133,7 @@ pub const ChildNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ChildNodeImpl.call_after(instance, nodes);
     }
-
 };

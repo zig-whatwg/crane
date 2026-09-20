@@ -2266,6 +2266,7 @@ pub fn setReturnValue(
 ) ConversionError!void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate).?;
+    defer v8.v8_Context_Dispose(context);
     const v8_value = try toV8Value(T, isolate, context, value);
     info.setReturnValue(v8_value);
 }
@@ -2294,6 +2295,7 @@ pub fn throwTypeError(
     message: []const u8,
 ) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     // Log error through context if available
     if (namespace.getGlobalContext()) |ctx| {
@@ -2411,6 +2413,7 @@ fn throwDOMExceptionFallback(
         throwError(isolate, message);
         return;
     };
+    defer v8.v8_Context_Dispose(context);
 
     // Create the error message string
     const msg_str = v8.v8_String_NewFromUtf8(
@@ -2498,6 +2501,7 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Context_Dispose(context);
     const global = v8.v8_Context_Global(context) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
@@ -2704,6 +2708,7 @@ pub fn throwWebIDLError(
     error_name: []const u8,
 ) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    defer if (context) |c| v8.v8_Context_Dispose(c);
     throwWebIDLErrorFromContext(isolate, context.?, error_name);
 }
 
@@ -2914,6 +2919,7 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
             return v8.v8_Undefined(isolate) orelse unreachable;
         }
     };
+    defer v8.v8_Context_Dispose(context);
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(

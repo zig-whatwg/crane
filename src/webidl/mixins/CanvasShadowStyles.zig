@@ -45,4 +45,3 @@ pub fn get_shadowColor(instance: *runtime.Instance) anyerror!typedefs.DOMString 
 pub fn set_shadowColor(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return CanvasShadowStylesImpl.set_shadowColor(instance, value);
 }
-

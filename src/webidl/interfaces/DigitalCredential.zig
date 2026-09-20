@@ -27,48 +27,47 @@ pub const DigitalCredential = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "protocol", "get_protocol", null },
             .{ "data", "get_data", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "userAgentAllowsProtocol", "call_static_userAgentAllowsProtocol", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
             "userAgentAllowsProtocol",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
             "willRequestConditionalCreation",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "protocol", "get_protocol", null },
             .{ "data", "get_data", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -97,7 +96,6 @@ pub const DigitalCredential = struct {
     };
 
     const delegates = .{
-
         .get_data = &get_data,
         .get_protocol = &get_protocol,
 
@@ -145,7 +143,6 @@ pub const DigitalCredential = struct {
     }
 
     pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: DOMString) anyerror!bool {
-        
         return try DigitalCredentialImpl.call_static_userAgentAllowsProtocol(instance, protocol);
     }
 
@@ -153,5 +150,4 @@ pub const DigitalCredential = struct {
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!DigitalCredentialToJSON {
         return try DigitalCredentialImpl.call_toJSON(instance);
     }
-
 };

@@ -636,7 +636,7 @@ var global_pool_mutex: std.Io.Mutex = .init;
 /// maximum connection reuse efficiency.
 pub fn getGlobalPool(allocator: Allocator) !*ConnectionPool {
     std.Io.Threaded.mutexLock(&global_pool_mutex);
-        defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 
     if (global_pool == null) {
         global_pool = try ConnectionPool.init(allocator);
@@ -647,7 +647,7 @@ pub fn getGlobalPool(allocator: Allocator) !*ConnectionPool {
 /// Cleanup the global pool. Call at program shutdown.
 pub fn cleanupGlobalPool() void {
     std.Io.Threaded.mutexLock(&global_pool_mutex);
-        defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 
     if (global_pool) |pool| {
         pool.deinit();

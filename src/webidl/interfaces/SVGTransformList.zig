@@ -24,16 +24,16 @@ pub const SVGTransformList = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
             .{ "numberOfItems", "get_numberOfItems", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clear", "call_clear", 0 },
@@ -46,7 +46,7 @@ pub const SVGTransformList = struct {
             .{ "createSVGTransformFromMatrix", "call_createSVGTransformFromMatrix", 0 },
             .{ "consolidate", "call_consolidate", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "clear",
@@ -59,21 +59,19 @@ pub const SVGTransformList = struct {
             "createSVGTransformFromMatrix",
             "consolidate",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
             .{ "numberOfItems", "get_numberOfItems", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -88,7 +86,6 @@ pub const SVGTransformList = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
         .get_numberOfItems = &get_numberOfItems,
 
@@ -136,7 +133,6 @@ pub const SVGTransformList = struct {
     }
 
     pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_removeItem(instance, index);
     }
 
@@ -145,22 +141,18 @@ pub const SVGTransformList = struct {
     }
 
     pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_appendItem(instance, newItem);
     }
 
     pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_insertItemBefore(instance, newItem, index);
     }
 
     pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_initialize(instance, newItem);
     }
 
     pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_createSVGTransformFromMatrix(instance, matrix);
     }
 
@@ -169,18 +161,14 @@ pub const SVGTransformList = struct {
     }
 
     pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_getItem(instance, index);
     }
 
     pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
-        
         return try SVGTransformListImpl.call_setter(instance, index, newItem);
     }
 
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
         return try SVGTransformListImpl.call_replaceItem(instance, newItem, index);
     }
-
 };

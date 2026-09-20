@@ -144,6 +144,7 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
         // Get V8 context
         const isolate = v8.v8_Isolate_GetCurrent() orelse break :blk "";
         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk "";
+        defer v8.v8_Context_Dispose(v8_context);
 
         // First pass: calculate total size needed
         var total_size: usize = 0;
@@ -365,6 +366,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Get V8 context for promise creation
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+    defer v8.v8_Context_Dispose(context);
 
     // Create a V8 string from the bytes (UTF-8 decode)
     const v8_string = if (bytes.len > 0)
@@ -599,6 +601,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Get V8 context for promise creation
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+    defer v8.v8_Context_Dispose(context);
 
     // Create a V8 ArrayBuffer with the blob bytes
     const array_buffer = v8.v8_ArrayBuffer_New(isolate, bytes.len) orelse return error.OutOfMemory;

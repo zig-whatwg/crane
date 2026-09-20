@@ -596,6 +596,7 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const accessor_window: ?*runtime.Instance = v8.context_manager.getCurrentAccessorWindow() orelse blk: {
         // No accessor on stack - fall back to V8's current context
         const current_ctx = v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse break :blk null;
+        defer v8.ffi.v8_Context_Dispose(current_ctx);
         break :blk v8.context_manager.getWindowForContext(current_ctx);
     };
 

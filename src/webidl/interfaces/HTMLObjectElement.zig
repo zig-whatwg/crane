@@ -90,10 +90,10 @@ pub const HTMLObjectElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", "set_data" },
@@ -119,7 +119,7 @@ pub const HTMLObjectElement = struct {
             .{ "useMap", "get_useMap", "set_useMap" },
             .{ "border", "get_border", "set_border" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getSVGDocument", "call_getSVGDocument", 0 },
@@ -127,7 +127,7 @@ pub const HTMLObjectElement = struct {
             .{ "reportValidity", "call_reportValidity", 0 },
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getSVGDocument",
@@ -135,7 +135,7 @@ pub const HTMLObjectElement = struct {
             "reportValidity",
             "setCustomValidity",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -231,7 +231,7 @@ pub const HTMLObjectElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", "set_data" },
@@ -257,11 +257,10 @@ pub const HTMLObjectElement = struct {
             .{ "useMap", "get_useMap", "set_useMap" },
             .{ "border", "get_border", "set_border" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -270,7 +269,7 @@ pub const HTMLObjectElement = struct {
         Meta.MixinTypes,
         struct {
             data: runtime.USVString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             name: typedefs.DOMString = undefined,
             form: ?*runtime.Instance = null,
             width: typedefs.DOMString = undefined,
@@ -296,7 +295,6 @@ pub const HTMLObjectElement = struct {
     );
 
     const delegates = .{
-
         .get_align = &get_align,
         .get_archive = &get_archive,
         .get_border = &get_border,
@@ -385,7 +383,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_data(instance, value);
     }
 
@@ -399,7 +397,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_type(instance, value);
     }
 
@@ -413,7 +411,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_name(instance, value);
     }
 
@@ -431,7 +429,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_width(instance, value);
     }
 
@@ -445,7 +443,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_height(instance, value);
     }
 
@@ -479,7 +477,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_align(instance, value);
     }
 
@@ -493,7 +491,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_archive(instance, value);
     }
 
@@ -507,7 +505,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_code(instance, value);
     }
 
@@ -521,7 +519,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_declare(instance, value);
     }
 
@@ -535,7 +533,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_hspace(instance, value);
     }
 
@@ -549,7 +547,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_standby(instance, value);
     }
 
@@ -563,7 +561,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_vspace(instance, value);
     }
 
@@ -577,7 +575,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_codeBase(instance, value);
     }
 
@@ -591,7 +589,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_codeType(instance, value);
     }
 
@@ -605,7 +603,7 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_useMap(instance, value);
     }
 
@@ -619,12 +617,11 @@ pub const HTMLObjectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLObjectElementImpl.set_border(instance, value);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLObjectElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -639,5 +636,4 @@ pub const HTMLObjectElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLObjectElementImpl.call_checkValidity(instance);
     }
-
 };

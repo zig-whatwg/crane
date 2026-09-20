@@ -97,4 +97,3 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn set_hash(instance: *runtime.Instance, value: runtime.JSValue) !void {
     return HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
 }
-

@@ -23,33 +23,29 @@ pub const CharacteristicEventHandlers = struct {
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -63,7 +59,6 @@ pub const CharacteristicEventHandlers = struct {
     );
 
     const delegates = .{
-
         .get_oncharacteristicvaluechanged = &get_oncharacteristicvaluechanged,
 
         .set_oncharacteristicvaluechanged = &set_oncharacteristicvaluechanged,
@@ -100,5 +95,4 @@ pub const CharacteristicEventHandlers = struct {
     pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try CharacteristicEventHandlersImpl.set_oncharacteristicvaluechanged(instance, value);
     }
-
 };

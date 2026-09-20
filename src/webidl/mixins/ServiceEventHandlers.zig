@@ -37,4 +37,3 @@ pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!typedefs.Event
 pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return ServiceEventHandlersImpl.set_onserviceremoved(instance, value);
 }
-

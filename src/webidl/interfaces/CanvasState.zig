@@ -20,11 +20,10 @@ pub const CanvasState = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "save", "call_save", 0 },
@@ -32,7 +31,7 @@ pub const CanvasState = struct {
             .{ "reset", "call_reset", 0 },
             .{ "isContextLost", "call_isContextLost", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "save",
@@ -40,19 +39,16 @@ pub const CanvasState = struct {
             "reset",
             "isContextLost",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -65,7 +61,6 @@ pub const CanvasState = struct {
     );
 
     const delegates = .{
-
         .call_isContextLost = &call_isContextLost,
         .call_reset = &call_reset,
         .call_restore = &call_restore,
@@ -111,5 +106,4 @@ pub const CanvasState = struct {
     pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
         return try CanvasStateImpl.call_isContextLost(instance);
     }
-
 };

@@ -25,4 +25,3 @@ pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.JSVa
 pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
     return GPUDebugCommandsMixinImpl.call_popDebugGroup(instance);
 }
-

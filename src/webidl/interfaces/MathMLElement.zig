@@ -85,10 +85,10 @@ pub const MathMLElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "style", "get_style", "set_style" },
@@ -199,28 +199,26 @@ pub const MathMLElement = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "style", "cssText" },
         };
-        
+
         /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
         /// Getters return undefined, setters silently return
         pub const lenient_this_attributes = .{
             "onmouseenter",
             "onmouseleave",
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -309,7 +307,7 @@ pub const MathMLElement = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "style", "get_style", "set_style" },
@@ -420,11 +418,10 @@ pub const MathMLElement = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -442,7 +439,6 @@ pub const MathMLElement = struct {
     );
 
     const delegates = .{
-
         .get_attributeStyleMap = &get_attributeStyleMap,
         .get_onabort = &get_onabort,
         .get_onanimationcancel = &get_onanimationcancel,
@@ -700,7 +696,7 @@ pub const MathMLElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
         const target = try get_style(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "cssText", value);
@@ -1563,5 +1559,4 @@ pub const MathMLElement = struct {
     pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try MathMLElementImpl.set_onsnapchanging(instance, value);
     }
-
 };

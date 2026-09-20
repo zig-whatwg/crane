@@ -410,6 +410,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return the empty composedPath as a V8 array
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
         const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+        defer v8_engine.ffi.v8_Context_Dispose(v8_context);
         const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
             composed_path.deinit();
             return error.NotImplemented;
@@ -535,6 +536,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         composed_path.deinit();
         return error.NotImplemented;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
 
     const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
         composed_path.deinit();

@@ -21,4 +21,3 @@ pub fn get_language(instance: *runtime.Instance) anyerror!typedefs.DOMString {
 pub fn get_languages(instance: *runtime.Instance) anyerror!void {
     return NavigatorLanguageImpl.get_languages(instance);
 }
-

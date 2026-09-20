@@ -20,35 +20,33 @@ pub const ReadableStreamGenericReader = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "cancel", "call_cancel", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "cancel",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -62,7 +60,6 @@ pub const ReadableStreamGenericReader = struct {
     );
 
     const delegates = .{
-
         .get_closed = &get_closed,
 
         .call_cancel = &call_cancel,
@@ -97,8 +94,6 @@ pub const ReadableStreamGenericReader = struct {
     }
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try ReadableStreamGenericReaderImpl.call_cancel(instance, reason);
     }
-
 };

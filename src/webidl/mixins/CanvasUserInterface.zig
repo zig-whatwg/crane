@@ -28,4 +28,3 @@ pub const DrawFocusIfNeededArgs = union(enum) {
 pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, args: DrawFocusIfNeededArgs) anyerror!void {
     return CanvasUserInterfaceImpl.call_drawFocusIfNeeded(instance, args);
 }
-

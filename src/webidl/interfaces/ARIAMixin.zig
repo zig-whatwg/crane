@@ -22,7 +22,7 @@ pub const ARIAMixin = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "role", "get_role", "set_role" },
@@ -78,19 +78,16 @@ pub const ARIAMixin = struct {
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "role", "get_role", "set_role" },
@@ -146,11 +143,10 @@ pub const ARIAMixin = struct {
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -215,7 +211,6 @@ pub const ARIAMixin = struct {
     );
 
     const delegates = .{
-
         .get_ariaActiveDescendantElement = &get_ariaActiveDescendantElement,
         .get_ariaAtomic = &get_ariaAtomic,
         .get_ariaAutoComplete = &get_ariaAutoComplete,
@@ -357,7 +352,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_role(instance, value);
     }
 
@@ -371,7 +366,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaActiveDescendantElement(instance, value);
     }
 
@@ -385,7 +380,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaAtomic(instance, value);
     }
 
@@ -399,7 +394,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaAutoComplete(instance, value);
     }
 
@@ -413,7 +408,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaBrailleLabel(instance, value);
     }
 
@@ -427,7 +422,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaBrailleRoleDescription(instance, value);
     }
 
@@ -441,7 +436,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaBusy(instance, value);
     }
 
@@ -455,7 +450,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaChecked(instance, value);
     }
 
@@ -469,7 +464,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaColCount(instance, value);
     }
 
@@ -483,7 +478,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaColIndex(instance, value);
     }
 
@@ -497,7 +492,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaColIndexText(instance, value);
     }
 
@@ -511,7 +506,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaColSpan(instance, value);
     }
 
@@ -525,7 +520,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaControlsElements(instance, value);
     }
 
@@ -539,7 +534,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaCurrent(instance, value);
     }
 
@@ -553,7 +548,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaDescribedByElements(instance, value);
     }
 
@@ -567,7 +562,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaDescription(instance, value);
     }
 
@@ -581,7 +576,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaDetailsElements(instance, value);
     }
 
@@ -595,7 +590,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaDisabled(instance, value);
     }
 
@@ -609,7 +604,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaErrorMessageElements(instance, value);
     }
 
@@ -623,7 +618,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaExpanded(instance, value);
     }
 
@@ -637,7 +632,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaFlowToElements(instance, value);
     }
 
@@ -651,7 +646,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaHasPopup(instance, value);
     }
 
@@ -665,7 +660,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaHidden(instance, value);
     }
 
@@ -679,7 +674,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaInvalid(instance, value);
     }
 
@@ -693,7 +688,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaKeyShortcuts(instance, value);
     }
 
@@ -707,7 +702,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaLabel(instance, value);
     }
 
@@ -721,7 +716,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaLabelledByElements(instance, value);
     }
 
@@ -735,7 +730,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaLevel(instance, value);
     }
 
@@ -749,7 +744,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaLive(instance, value);
     }
 
@@ -763,7 +758,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaModal(instance, value);
     }
 
@@ -777,7 +772,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaMultiLine(instance, value);
     }
 
@@ -791,7 +786,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaMultiSelectable(instance, value);
     }
 
@@ -805,7 +800,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaOrientation(instance, value);
     }
 
@@ -819,7 +814,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaOwnsElements(instance, value);
     }
 
@@ -833,7 +828,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaPlaceholder(instance, value);
     }
 
@@ -847,7 +842,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaPosInSet(instance, value);
     }
 
@@ -861,7 +856,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaPressed(instance, value);
     }
 
@@ -875,7 +870,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaReadOnly(instance, value);
     }
 
@@ -889,7 +884,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRelevant(instance, value);
     }
 
@@ -903,7 +898,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRequired(instance, value);
     }
 
@@ -917,7 +912,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRoleDescription(instance, value);
     }
 
@@ -931,7 +926,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRowCount(instance, value);
     }
 
@@ -945,7 +940,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRowIndex(instance, value);
     }
 
@@ -959,7 +954,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRowIndexText(instance, value);
     }
 
@@ -973,7 +968,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaRowSpan(instance, value);
     }
 
@@ -987,7 +982,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaSelected(instance, value);
     }
 
@@ -1001,7 +996,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaSetSize(instance, value);
     }
 
@@ -1015,7 +1010,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaSort(instance, value);
     }
 
@@ -1029,7 +1024,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaValueMax(instance, value);
     }
 
@@ -1043,7 +1038,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaValueMin(instance, value);
     }
 
@@ -1057,7 +1052,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaValueNow(instance, value);
     }
 
@@ -1071,8 +1066,7 @@ pub const ARIAMixin = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ARIAMixinImpl.set_ariaValueText(instance, value);
     }
-
 };

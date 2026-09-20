@@ -28,49 +28,47 @@ pub const PushSubscription = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "endpoint", "get_endpoint", null },
             .{ "expirationTime", "get_expirationTime", null },
             .{ "options", "get_options", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getKey", "call_getKey", 1 },
             .{ "unsubscribe", "call_unsubscribe", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getKey",
             "unsubscribe",
             "toJSON",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "endpoint", "get_endpoint", null },
             .{ "expirationTime", "get_expirationTime", null },
             .{ "options", "get_options", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -87,7 +85,6 @@ pub const PushSubscription = struct {
     );
 
     const delegates = .{
-
         .get_endpoint = &get_endpoint,
         .get_expirationTime = &get_expirationTime,
         .get_options = &get_options,
@@ -150,8 +147,6 @@ pub const PushSubscription = struct {
     }
 
     pub fn call_getKey(instance: *runtime.Instance, name: PushEncryptionKeyName) anyerror!?runtime.JSValue {
-        
         return try PushSubscriptionImpl.call_getKey(instance, name);
     }
-
 };

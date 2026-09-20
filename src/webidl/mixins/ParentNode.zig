@@ -54,4 +54,3 @@ pub fn call_append(instance: *runtime.Instance, nodes: runtime.JSValue) anyerror
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: runtime.JSValue) anyerror!void {
     return ParentNodeImpl.call_replaceChildren(instance, nodes);
 }
-

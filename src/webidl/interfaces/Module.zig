@@ -28,44 +28,39 @@ pub const Module = struct {
             .{ .name = "LegacyNamespace", .value = .{ .identifier = "WebAssembly" } },
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "exports", "call_static_exports", 1 },
             .{ "imports", "call_static_imports", 1 },
             .{ "customSections", "call_static_customSections", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "exports",
             "imports",
             "customSections",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -78,7 +73,6 @@ pub const Module = struct {
     );
 
     const delegates = .{
-
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
@@ -113,18 +107,14 @@ pub const Module = struct {
     }
 
     pub fn call_static_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
-        
         return try ModuleImpl.call_static_imports(instance, moduleObject);
     }
 
     pub fn call_static_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: DOMString) anyerror!runtime.JSValue {
-        
         return try ModuleImpl.call_static_customSections(instance, moduleObject, sectionName);
     }
 
     pub fn call_static_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
-        
         return try ModuleImpl.call_static_exports(instance, moduleObject);
     }
-
 };

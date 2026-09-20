@@ -22,10 +22,10 @@ pub const PerformanceTiming = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "navigationStart", "get_navigationStart", null },
@@ -50,21 +50,20 @@ pub const PerformanceTiming = struct {
             .{ "loadEventStart", "get_loadEventStart", null },
             .{ "loadEventEnd", "get_loadEventEnd", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "navigationStart", "get_navigationStart", null },
@@ -89,11 +88,10 @@ pub const PerformanceTiming = struct {
             .{ "loadEventStart", "get_loadEventStart", null },
             .{ "loadEventEnd", "get_loadEventEnd", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -157,7 +155,6 @@ pub const PerformanceTiming = struct {
     };
 
     const delegates = .{
-
         .get_connectEnd = &get_connectEnd,
         .get_connectStart = &get_connectStart,
         .get_domComplete = &get_domComplete,
@@ -295,5 +292,4 @@ pub const PerformanceTiming = struct {
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceTimingToJSON {
         return try PerformanceTimingImpl.call_toJSON(instance);
     }
-
 };

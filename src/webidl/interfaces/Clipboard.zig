@@ -34,14 +34,13 @@ pub const Clipboard = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "read", "call_read", 0 },
@@ -49,7 +48,7 @@ pub const Clipboard = struct {
             .{ "write", "call_write", 1 },
             .{ "writeText", "call_writeText", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "read",
@@ -57,7 +56,7 @@ pub const Clipboard = struct {
             "write",
             "writeText",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -65,15 +64,13 @@ pub const Clipboard = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -86,7 +83,6 @@ pub const Clipboard = struct {
     );
 
     const delegates = .{
-
         .call_read = &call_read,
         .call_readText = &call_readText,
         .call_write = &call_write,
@@ -122,18 +118,14 @@ pub const Clipboard = struct {
     }
 
     pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!runtime.JSValue {
-        
         return try ClipboardImpl.call_read(instance, formats);
     }
 
     pub fn call_write(instance: *runtime.Instance, data: ClipboardItems) anyerror!runtime.JSValue {
-        
         return try ClipboardImpl.call_write(instance, data);
     }
 
     pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!runtime.JSValue {
-        
         return try ClipboardImpl.call_writeText(instance, data);
     }
-
 };

@@ -95,10 +95,10 @@ pub const SVGMarkerElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "refX", "get_refX", null },
@@ -112,13 +112,13 @@ pub const SVGMarkerElement = struct {
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setOrientToAuto", "call_setOrientToAuto", 0 },
             .{ "setOrientToAngle", "call_setOrientToAngle", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_MARKERUNITS_UNKNOWN", "get_SVG_MARKERUNITS_UNKNOWN" },
@@ -129,13 +129,13 @@ pub const SVGMarkerElement = struct {
             .{ "SVG_MARKER_ORIENT_ANGLE", "get_SVG_MARKER_ORIENT_ANGLE" },
             .{ "SVG_MARKER_ORIENT_AUTO_START_REVERSE", "get_SVG_MARKER_ORIENT_AUTO_START_REVERSE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setOrientToAuto",
             "setOrientToAngle",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -226,7 +226,7 @@ pub const SVGMarkerElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "refX", "get_refX", null },
@@ -240,11 +240,10 @@ pub const SVGMarkerElement = struct {
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -315,7 +314,6 @@ pub const SVGMarkerElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_MARKERUNITS_STROKEWIDTH = &get_SVG_MARKERUNITS_STROKEWIDTH,
         .get_SVG_MARKERUNITS_UNKNOWN = &get_SVG_MARKERUNITS_UNKNOWN,
         .get_SVG_MARKERUNITS_USERSPACEONUSE = &get_SVG_MARKERUNITS_USERSPACEONUSE,
@@ -481,12 +479,10 @@ pub const SVGMarkerElement = struct {
     }
 
     pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: *runtime.Instance) anyerror!void {
-        
         return try SVGMarkerElementImpl.call_setOrientToAngle(instance, angle);
     }
 
     pub fn call_setOrientToAuto(instance: *runtime.Instance) anyerror!void {
         return try SVGMarkerElementImpl.call_setOrientToAuto(instance);
     }
-
 };

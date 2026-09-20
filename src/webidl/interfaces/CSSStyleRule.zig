@@ -32,48 +32,45 @@ pub const CSSStyleRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
             .{ "styleMap", "get_styleMap", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "style", "cssText" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "insertRule",
             "deleteRule",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
             .{ "styleMap", "get_styleMap", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -91,7 +88,6 @@ pub const CSSStyleRule = struct {
     );
 
     const delegates = .{
-
         .get_selectorText = &get_selectorText,
         .get_style = &get_style,
         .get_styleMap = &get_styleMap,
@@ -149,7 +145,7 @@ pub const CSSStyleRule = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
         const target = try get_style(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "cssText", value);
@@ -166,5 +162,4 @@ pub const CSSStyleRule = struct {
         state.own.cached_styleMap = value;
         return value;
     }
-
 };

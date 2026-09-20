@@ -21,4 +21,3 @@ pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn set_label(instance: *runtime.Instance, value: runtime.JSValue) !void {
     return GPUObjectBaseImpl.set_label(instance, value);
 }
-

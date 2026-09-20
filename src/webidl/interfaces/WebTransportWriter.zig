@@ -26,26 +26,25 @@ pub const WebTransportWriter = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "atomicWrite", "call_atomicWrite", 0 },
             .{ "commit", "call_commit", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "atomicWrite",
             "commit",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "abort",
@@ -53,15 +52,13 @@ pub const WebTransportWriter = struct {
             "releaseLock",
             "write",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,7 +71,6 @@ pub const WebTransportWriter = struct {
     );
 
     const delegates = .{
-
         .call_atomicWrite = &call_atomicWrite,
         .call_commit = &call_commit,
 
@@ -108,8 +104,6 @@ pub const WebTransportWriter = struct {
     }
 
     pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try WebTransportWriterImpl.call_atomicWrite(instance, chunk);
     }
-
 };

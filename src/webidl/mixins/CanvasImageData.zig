@@ -57,4 +57,3 @@ pub fn call_createImageData(instance: *runtime.Instance, args: CreateImageDataAr
 pub fn call_getImageData(instance: *runtime.Instance, sx: runtime.JSValue, sy: runtime.JSValue, sw: runtime.JSValue, sh: runtime.JSValue, settings: dictionaries.ImageDataSettings) !*runtime.Instance {
     return CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
 }
-

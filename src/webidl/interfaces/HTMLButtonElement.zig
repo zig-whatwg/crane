@@ -92,10 +92,10 @@ pub const HTMLButtonElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "command", "get_command", "set_command" },
@@ -117,21 +117,21 @@ pub const HTMLButtonElement = struct {
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "checkValidity", "call_checkValidity", 0 },
             .{ "reportValidity", "call_reportValidity", 0 },
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "checkValidity",
             "reportValidity",
             "setCustomValidity",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -227,7 +227,7 @@ pub const HTMLButtonElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "command", "get_command", "set_command" },
@@ -249,11 +249,10 @@ pub const HTMLButtonElement = struct {
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -271,7 +270,7 @@ pub const HTMLButtonElement = struct {
             formNoValidate: bool = undefined,
             formTarget: typedefs.DOMString = undefined,
             name: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             value: typedefs.DOMString = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
@@ -284,7 +283,6 @@ pub const HTMLButtonElement = struct {
     );
 
     const delegates = .{
-
         .get_command = &get_command,
         .get_commandForElement = &get_commandForElement,
         .get_disabled = &get_disabled,
@@ -365,7 +363,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_command(instance, value);
     }
 
@@ -379,7 +377,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_commandForElement(instance, value);
     }
 
@@ -393,7 +391,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_disabled(instance, value);
     }
 
@@ -411,7 +409,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_formAction(instance, value);
     }
 
@@ -425,7 +423,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_formEnctype(instance, value);
     }
 
@@ -439,7 +437,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_formMethod(instance, value);
     }
 
@@ -453,7 +451,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_formNoValidate(instance, value);
     }
 
@@ -467,7 +465,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_formTarget(instance, value);
     }
 
@@ -481,7 +479,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_name(instance, value);
     }
 
@@ -495,7 +493,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_type(instance, value);
     }
 
@@ -509,7 +507,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_value(instance, value);
     }
 
@@ -539,7 +537,7 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_popoverTargetElement(instance, value);
     }
 
@@ -553,12 +551,11 @@ pub const HTMLButtonElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLButtonElementImpl.set_popoverTargetAction(instance, value);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLButtonElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -569,5 +566,4 @@ pub const HTMLButtonElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLButtonElementImpl.call_checkValidity(instance);
     }
-
 };

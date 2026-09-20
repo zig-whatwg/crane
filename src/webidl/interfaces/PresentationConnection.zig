@@ -38,10 +38,10 @@ pub const PresentationConnection = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -53,21 +53,21 @@ pub const PresentationConnection = struct {
             .{ "binaryType", "get_binaryType", "set_binaryType" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
             .{ "terminate", "call_terminate", 0 },
             .{ "send", "call_send", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
             "terminate",
             "send",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,7 +75,7 @@ pub const PresentationConnection = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -87,11 +87,10 @@ pub const PresentationConnection = struct {
             .{ "binaryType", "get_binaryType", "set_binaryType" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -112,7 +111,6 @@ pub const PresentationConnection = struct {
     );
 
     const delegates = .{
-
         .get_binaryType = &get_binaryType,
         .get_id = &get_id,
         .get_onclose = &get_onclose,
@@ -210,7 +208,6 @@ pub const PresentationConnection = struct {
     }
 
     pub fn call_send(instance: *runtime.Instance, message: DOMString) anyerror!void {
-        
         return try PresentationConnectionImpl.call_send(instance, message);
     }
 
@@ -221,5 +218,4 @@ pub const PresentationConnection = struct {
     pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         return try PresentationConnectionImpl.call_terminate(instance);
     }
-
 };

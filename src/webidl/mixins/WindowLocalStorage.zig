@@ -17,4 +17,3 @@ pub const impl = @import("impls").WindowLocalStorage;
 pub fn get_localStorage(instance: *runtime.Instance) !*runtime.Instance {
     return WindowLocalStorageImpl.get_localStorage(instance);
 }
-

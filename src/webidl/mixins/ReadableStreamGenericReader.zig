@@ -21,4 +21,3 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!void {
 pub fn call_cancel(instance: *runtime.Instance, reason: runtime.JSValue) anyerror!void {
     return ReadableStreamGenericReaderImpl.call_cancel(instance, reason);
 }
-

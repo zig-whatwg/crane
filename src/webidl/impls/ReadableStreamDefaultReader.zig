@@ -131,6 +131,7 @@ fn convertReadResultPromiseToV8(
     const allocator = std.heap.c_allocator; // TODO: Pass allocator properly
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+    defer v8.v8_Context_Dispose(context);
 
     // Create bridge that will resolve V8 promise when Zig promise settles
     const bridge = try ReadResultPromiseBridge.init(allocator, isolate, context);
@@ -474,6 +475,7 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
         // Return rejected promise with TypeError using V8 Promise directly
         const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8.v8_Context_Dispose(context);
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));

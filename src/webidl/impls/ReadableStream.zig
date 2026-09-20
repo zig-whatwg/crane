@@ -866,6 +866,7 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
         // Stream is locked - return rejected promise with TypeError
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot cancel a locked stream");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -897,6 +898,7 @@ fn readableStreamCancel(
     if (internal.state == .closed) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
@@ -906,6 +908,7 @@ fn readableStreamCancel(
     if (internal.state == .errored) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         // Reject with stream.[[storedError]]
         // Use type-safe StoredError API to check for error presence
@@ -975,6 +978,7 @@ pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, re
     if (internal.state == .closed) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const v8_promise = promise_utils.createResolvedV8Promise(void, isolate, context, {}) catch return error.OutOfMemory;
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
@@ -984,6 +988,7 @@ pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, re
     if (internal.state == .errored) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         // Use type-safe StoredError API
         const exception = if (internal.stored_error.hasError())
@@ -1168,6 +1173,7 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     if (internal.reader != .none) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(allocator, "Cannot pipe a locked stream");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -1182,6 +1188,7 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     if (dest_internal.writer != .none) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(allocator, "Cannot pipe to a locked stream");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -1427,6 +1434,7 @@ fn readableStreamTee(
     // Get V8 isolate and context for array creation
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
     const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
 
     // Create V8 Array containing [branch1, branch2] using the array utility
     const v8_array = v8_engine.createPair(isolate, v8_context, branch1, branch2) catch {

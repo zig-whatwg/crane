@@ -29,24 +29,22 @@ pub const CapturedMouseEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "surfaceX", "get_surfaceX", null },
             .{ "surfaceY", "get_surfaceY", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -55,17 +53,16 @@ pub const CapturedMouseEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "surfaceX", "get_surfaceX", null },
             .{ "surfaceY", "get_surfaceY", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -80,7 +77,6 @@ pub const CapturedMouseEvent = struct {
     );
 
     const delegates = .{
-
         .get_surfaceX = &get_surfaceX,
         .get_surfaceY = &get_surfaceY,
 
@@ -124,5 +120,4 @@ pub const CapturedMouseEvent = struct {
     pub fn get_surfaceY(instance: *runtime.Instance) anyerror!i32 {
         return try CapturedMouseEventImpl.get_surfaceY(instance);
     }
-
 };

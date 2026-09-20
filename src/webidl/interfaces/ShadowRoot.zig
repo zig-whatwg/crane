@@ -50,10 +50,10 @@ pub const ShadowRoot = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mode", "get_mode", null },
@@ -72,27 +72,27 @@ pub const ShadowRoot = struct {
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
         };
-        
+
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
         /// Setters silently do nothing (don't throw, don't modify)
         pub const lenient_setter_attributes = .{
             "fullscreenElement",
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "getAnimations", "call_getAnimations", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setHTMLUnsafe",
             "getHTML",
             "getAnimations",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -122,7 +122,7 @@ pub const ShadowRoot = struct {
             "querySelector",
             "querySelectorAll",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mode", "get_mode", null },
@@ -141,11 +141,10 @@ pub const ShadowRoot = struct {
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -177,7 +176,6 @@ pub const ShadowRoot = struct {
     );
 
     const delegates = .{
-
         .get_activeElement = &get_activeElement,
         .get_adoptedStyleSheets = &get_adoptedStyleSheets,
         .get_clonable = &get_clonable,
@@ -270,7 +268,7 @@ pub const ShadowRoot = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
@@ -332,14 +330,11 @@ pub const ShadowRoot = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
-        
         return try ShadowRootImpl.call_getHTML(instance, options);
     }
-
 };

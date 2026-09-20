@@ -10,7 +10,7 @@ pub const BiquadFilterOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    @"type": ?enums.BiquadFilterType = null,
+    type: ?enums.BiquadFilterType = null,
     Q: ?f32 = null,
     detune: ?f32 = null,
     frequency: ?f32 = null,

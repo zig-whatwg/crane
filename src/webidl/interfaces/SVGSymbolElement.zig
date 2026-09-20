@@ -96,24 +96,22 @@ pub const SVGSymbolElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -207,17 +205,16 @@ pub const SVGSymbolElement = struct {
             "getCTM",
             "getScreenCTM",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "viewBox", "get_viewBox", null },
             .{ "preserveAspectRatio", "get_preserveAspectRatio", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -234,7 +231,6 @@ pub const SVGSymbolElement = struct {
     );
 
     const delegates = .{
-
         .get_preserveAspectRatio = &get_preserveAspectRatio,
         .get_viewBox = &get_viewBox,
 
@@ -286,5 +282,4 @@ pub const SVGSymbolElement = struct {
         state.own.cached_preserveAspectRatio = value;
         return value;
     }
-
 };

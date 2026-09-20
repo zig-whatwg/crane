@@ -95,12 +95,12 @@ pub const SVGPathElement = struct {
             SVGPathData,
         };
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "pathLength", "get_pathLength", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTotalLength", "call_getTotalLength", 0 },
@@ -109,7 +109,7 @@ pub const SVGPathElement = struct {
             .{ "getPathData", "call_getPathData", 0 },
             .{ "setPathData", "call_setPathData", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getTotalLength",
@@ -118,7 +118,7 @@ pub const SVGPathElement = struct {
             "getPathData",
             "setPathData",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -214,16 +214,15 @@ pub const SVGPathElement = struct {
             "isPointInFill",
             "isPointInStroke",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "pathLength", "get_pathLength", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -237,7 +236,6 @@ pub const SVGPathElement = struct {
     );
 
     const delegates = .{
-
         .get_pathLength = &get_pathLength,
 
         .call_getPathData = &call_getPathData,
@@ -280,23 +278,18 @@ pub const SVGPathElement = struct {
     }
 
     pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
-        
         return try SVGPathElementImpl.call_setPathData(instance, pathData);
     }
 
     pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!?*runtime.Instance {
-        
         return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
     }
 
     pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!runtime.JSValue {
-        
         return try SVGPathElementImpl.call_getPathData(instance, settings);
     }
 
     pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
-        
         return try SVGPathElementImpl.call_getPointAtLength(instance, distance);
     }
-
 };

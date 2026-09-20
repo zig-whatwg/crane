@@ -96,10 +96,10 @@ pub const HTMLInputElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "accept", "get_accept", "set_accept" },
@@ -155,7 +155,7 @@ pub const HTMLInputElement = struct {
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "stepUp", "call_stepUp", 0 },
@@ -168,7 +168,7 @@ pub const HTMLInputElement = struct {
             .{ "setSelectionRange", "call_setSelectionRange", 2 },
             .{ "showPicker", "call_showPicker", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "stepUp",
@@ -181,7 +181,7 @@ pub const HTMLInputElement = struct {
             "setSelectionRange",
             "showPicker",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -277,7 +277,7 @@ pub const HTMLInputElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "accept", "get_accept", "set_accept" },
@@ -333,11 +333,10 @@ pub const HTMLInputElement = struct {
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -377,7 +376,7 @@ pub const HTMLInputElement = struct {
             size: u32 = undefined,
             src: runtime.USVString = undefined,
             step: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             defaultValue: typedefs.DOMString = undefined,
             value: typedefs.DOMString = undefined,
             valueAsDate: ?runtime.JSValue = null,
@@ -402,7 +401,6 @@ pub const HTMLInputElement = struct {
     );
 
     const delegates = .{
-
         .get_accept = &get_accept,
         .get_align = &get_align,
         .get_alpha = &get_alpha,
@@ -555,7 +553,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_accept(instance, value);
     }
 
@@ -569,7 +567,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_alpha(instance, value);
     }
 
@@ -583,7 +581,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_alt(instance, value);
     }
 
@@ -597,7 +595,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_autocomplete(instance, value);
     }
 
@@ -611,7 +609,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_defaultChecked(instance, value);
     }
 
@@ -633,7 +631,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_colorSpace(instance, value);
     }
 
@@ -647,7 +645,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_dirName(instance, value);
     }
 
@@ -661,7 +659,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_disabled(instance, value);
     }
 
@@ -687,7 +685,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_formAction(instance, value);
     }
 
@@ -701,7 +699,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_formEnctype(instance, value);
     }
 
@@ -715,7 +713,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_formMethod(instance, value);
     }
 
@@ -729,7 +727,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_formNoValidate(instance, value);
     }
 
@@ -743,7 +741,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_formTarget(instance, value);
     }
 
@@ -757,7 +755,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_height(instance, value);
     }
 
@@ -783,7 +781,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_max(instance, value);
     }
 
@@ -797,7 +795,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_maxLength(instance, value);
     }
 
@@ -811,7 +809,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_min(instance, value);
     }
 
@@ -825,7 +823,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_minLength(instance, value);
     }
 
@@ -839,7 +837,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_multiple(instance, value);
     }
 
@@ -853,7 +851,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_name(instance, value);
     }
 
@@ -867,7 +865,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_pattern(instance, value);
     }
 
@@ -881,7 +879,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_placeholder(instance, value);
     }
 
@@ -895,7 +893,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_readOnly(instance, value);
     }
 
@@ -909,7 +907,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_required(instance, value);
     }
 
@@ -923,7 +921,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_size(instance, value);
     }
 
@@ -937,7 +935,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_src(instance, value);
     }
 
@@ -951,7 +949,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_step(instance, value);
     }
 
@@ -965,7 +963,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_type(instance, value);
     }
 
@@ -979,7 +977,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_defaultValue(instance, value);
     }
 
@@ -993,7 +991,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_value(instance, value);
     }
 
@@ -1023,7 +1021,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_width(instance, value);
     }
 
@@ -1077,7 +1075,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_capture(instance, value);
     }
 
@@ -1103,7 +1101,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_align(instance, value);
     }
 
@@ -1117,7 +1115,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_useMap(instance, value);
     }
 
@@ -1131,7 +1129,7 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_popoverTargetElement(instance, value);
     }
 
@@ -1145,17 +1143,15 @@ pub const HTMLInputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLInputElementImpl.set_popoverTargetAction(instance, value);
     }
 
     pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
-        
         return try HTMLInputElementImpl.call_stepDown(instance, n);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLInputElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -1164,7 +1160,6 @@ pub const HTMLInputElement = struct {
     }
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
-        
         return try HTMLInputElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
 
@@ -1173,12 +1168,10 @@ pub const HTMLInputElement = struct {
     }
 
     pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
-        
         return try HTMLInputElementImpl.call_setRangeText(instance, replacement);
     }
 
     pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
-        
         return try HTMLInputElementImpl.call_stepUp(instance, n);
     }
 
@@ -1189,5 +1182,4 @@ pub const HTMLInputElement = struct {
     pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
         return try HTMLInputElementImpl.call_showPicker(instance);
     }
-
 };

@@ -27,18 +27,16 @@ pub const JsonLdProcessor = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "JsonLd" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .JsonLd = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "compact", "call_static_compact", 1 },
@@ -48,7 +46,7 @@ pub const JsonLdProcessor = struct {
             .{ "toRdf", "call_static_toRdf", 1 },
             .{ "frame", "call_static_frame", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "compact",
@@ -58,19 +56,16 @@ pub const JsonLdProcessor = struct {
             "toRdf",
             "frame",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -83,7 +78,6 @@ pub const JsonLdProcessor = struct {
     );
 
     const delegates = .{
-
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
@@ -118,33 +112,26 @@ pub const JsonLdProcessor = struct {
     }
 
     pub fn call_static_compact(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_compact(instance, input, context, options);
     }
 
     pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_fromRdf(instance, input, options);
     }
 
     pub fn call_static_toRdf(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_toRdf(instance, input, options);
     }
 
     pub fn call_static_expand(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_expand(instance, input, options);
     }
 
     pub fn call_static_frame(instance: *runtime.Instance, input: JsonLdInput, frame: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_frame(instance, input, frame, options);
     }
 
     pub fn call_static_flatten(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
-        
         return try JsonLdProcessorImpl.call_static_flatten(instance, input, context, options);
     }
-
 };

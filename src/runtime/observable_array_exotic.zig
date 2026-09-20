@@ -272,6 +272,7 @@ fn getTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
     const state = getStateFromInfo(info) orelse {
         const undef = v8.v8_Undefined(isolate) orelse return;
         info.setReturnValue(undef);
@@ -333,6 +334,7 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const args_count = info.length();
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     if (args_count < 4) {
         const false_val = v8.v8_Boolean_New(isolate, false);
@@ -433,6 +435,7 @@ fn ownKeysTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     const state = getStateFromInfo(info) orelse {
         const array = v8.v8_Array_New(isolate, 0);
@@ -548,6 +551,7 @@ fn ownKeysTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 fn getOwnPropertyDescriptorTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     // Return a descriptor: { value: <value>, writable: true, enumerable: true, configurable: true }
     const desc = v8.v8_Object_New(isolate) orelse return;
@@ -588,6 +592,7 @@ fn deletePropertyTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 fn getPrototypeOfTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     // Get Array.prototype
     // Note: Local handles are managed by V8's HandleScope, no explicit release needed.

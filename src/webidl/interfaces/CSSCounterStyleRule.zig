@@ -27,10 +27,10 @@ pub const CSSCounterStyleRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
@@ -45,19 +45,16 @@ pub const CSSCounterStyleRule = struct {
             .{ "speakAs", "get_speakAs", "set_speakAs" },
             .{ "fallback", "get_fallback", "set_fallback" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
@@ -71,12 +68,12 @@ pub const CSSCounterStyleRule = struct {
             .{ "speakAs", "get_speakAs", "set_speakAs" },
             .{ "fallback", "get_fallback", "set_fallback" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "prefix", "get_prefix", "set_prefix" },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -100,7 +97,6 @@ pub const CSSCounterStyleRule = struct {
     );
 
     const delegates = .{
-
         .get_additiveSymbols = &get_additiveSymbols,
         .get_fallback = &get_fallback,
         .get_name = &get_name,
@@ -237,5 +233,4 @@ pub const CSSCounterStyleRule = struct {
     pub fn set_fallback(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSCounterStyleRuleImpl.set_fallback(instance, value);
     }
-
 };

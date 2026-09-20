@@ -31,26 +31,24 @@ pub const USBConnectionEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Worker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "device", "get_device", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -59,16 +57,15 @@ pub const USBConnectionEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "device", "get_device", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -83,7 +80,6 @@ pub const USBConnectionEvent = struct {
     );
 
     const delegates = .{
-
         .get_device = &get_device,
 
         .deinit = &deinit,
@@ -130,5 +126,4 @@ pub const USBConnectionEvent = struct {
         state.own.cached_device = value;
         return value;
     }
-
 };

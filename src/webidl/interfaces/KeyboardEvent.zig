@@ -32,10 +32,10 @@ pub const KeyboardEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "key", "get_key", null },
@@ -50,13 +50,13 @@ pub const KeyboardEvent = struct {
             .{ "charCode", "get_charCode", null },
             .{ "keyCode", "get_keyCode", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getModifierState", "call_getModifierState", 1 },
             .{ "initKeyboardEvent", "call_initKeyboardEvent", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "DOM_KEY_LOCATION_STANDARD", "get_DOM_KEY_LOCATION_STANDARD" },
@@ -64,13 +64,13 @@ pub const KeyboardEvent = struct {
             .{ "DOM_KEY_LOCATION_RIGHT", "get_DOM_KEY_LOCATION_RIGHT" },
             .{ "DOM_KEY_LOCATION_NUMPAD", "get_DOM_KEY_LOCATION_NUMPAD" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getModifierState",
             "initKeyboardEvent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -80,7 +80,7 @@ pub const KeyboardEvent = struct {
             "initEvent",
             "initUIEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "key", "get_key", null },
@@ -95,11 +95,10 @@ pub const KeyboardEvent = struct {
             .{ "charCode", "get_charCode", null },
             .{ "keyCode", "get_keyCode", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -147,7 +146,6 @@ pub const KeyboardEvent = struct {
     }
 
     const delegates = .{
-
         .get_DOM_KEY_LOCATION_LEFT = &get_DOM_KEY_LOCATION_LEFT,
         .get_DOM_KEY_LOCATION_NUMPAD = &get_DOM_KEY_LOCATION_NUMPAD,
         .get_DOM_KEY_LOCATION_RIGHT = &get_DOM_KEY_LOCATION_RIGHT,
@@ -245,13 +243,10 @@ pub const KeyboardEvent = struct {
     }
 
     pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {
-        
         return try KeyboardEventImpl.call_getModifierState(instance, keyArg);
     }
 
     pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
-        
         return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, keyArg, locationArg, ctrlKey, altKey, shiftKey, metaKey);
     }
-
 };

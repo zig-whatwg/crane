@@ -32,10 +32,10 @@ pub const FetchEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "request", "get_request", null },
@@ -45,17 +45,17 @@ pub const FetchEvent = struct {
             .{ "replacesClientId", "get_replacesClientId", null },
             .{ "handled", "get_handled", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "respondWith", "call_respondWith", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "respondWith",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -65,7 +65,7 @@ pub const FetchEvent = struct {
             "initEvent",
             "waitUntil",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "request", "get_request", null },
@@ -75,11 +75,10 @@ pub const FetchEvent = struct {
             .{ "replacesClientId", "get_replacesClientId", null },
             .{ "handled", "get_handled", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -99,7 +98,6 @@ pub const FetchEvent = struct {
     );
 
     const delegates = .{
-
         .get_clientId = &get_clientId,
         .get_handled = &get_handled,
         .get_preloadResponse = &get_preloadResponse,
@@ -175,8 +173,6 @@ pub const FetchEvent = struct {
     }
 
     pub fn call_respondWith(instance: *runtime.Instance, r: runtime.JSValue) anyerror!void {
-        
         return try FetchEventImpl.call_respondWith(instance, r);
     }
-
 };

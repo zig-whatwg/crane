@@ -17,4 +17,3 @@ pub const impl = @import("impls").GetSVGDocument;
 pub fn call_getSVGDocument(instance: *runtime.Instance) !*runtime.Instance {
     return GetSVGDocumentImpl.call_getSVGDocument(instance);
 }
-

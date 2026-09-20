@@ -8,5 +8,5 @@ const typedefs = @import("typedefs");
 pub const MediaImage = struct {
     src: runtime.USVString,
     sizes: ?runtime.DOMString = null,
-    @"type": ?runtime.DOMString = null,
+    type: ?runtime.DOMString = null,
 };

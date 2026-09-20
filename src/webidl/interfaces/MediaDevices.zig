@@ -40,16 +40,16 @@ pub const MediaDevices = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
             .{ "oncaptureaction", "get_oncaptureaction", "set_oncaptureaction" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "enumerateDevices", "call_enumerateDevices", 0 },
@@ -61,7 +61,7 @@ pub const MediaDevices = struct {
             .{ "getSupportedConstraints", "call_getSupportedConstraints", 0 },
             .{ "getUserMedia", "call_getUserMedia", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "enumerateDevices",
@@ -73,7 +73,7 @@ pub const MediaDevices = struct {
             "getSupportedConstraints",
             "getUserMedia",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -81,17 +81,16 @@ pub const MediaDevices = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
             .{ "oncaptureaction", "get_oncaptureaction", "set_oncaptureaction" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -106,7 +105,6 @@ pub const MediaDevices = struct {
     );
 
     const delegates = .{
-
         .get_oncaptureaction = &get_oncaptureaction,
         .get_ondevicechange = &get_ondevicechange,
 
@@ -164,7 +162,6 @@ pub const MediaDevices = struct {
     }
 
     pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {
-        
         return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config);
     }
 
@@ -173,32 +170,26 @@ pub const MediaDevices = struct {
     }
 
     pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: runtime.JSValue) anyerror!void {
-        
         return try MediaDevicesImpl.call_setSupportedCaptureActions(instance, actions);
     }
 
     pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(AudioOutputOptions)) anyerror!runtime.JSValue {
-        
         return try MediaDevicesImpl.call_selectAudioOutput(instance, options);
     }
 
     pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!runtime.JSValue {
-        
         return try MediaDevicesImpl.call_getViewportMedia(instance, options);
     }
 
     pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!runtime.JSValue {
-        
         return try MediaDevicesImpl.call_getDisplayMedia(instance, options);
     }
 
     pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(MediaStreamConstraints)) anyerror!runtime.JSValue {
-        
         return try MediaDevicesImpl.call_getUserMedia(instance, constraints);
     }
 
     pub fn call_getSupportedConstraints(instance: *runtime.Instance) anyerror!MediaTrackSupportedConstraints {
         return try MediaDevicesImpl.call_getSupportedConstraints(instance);
     }
-
 };

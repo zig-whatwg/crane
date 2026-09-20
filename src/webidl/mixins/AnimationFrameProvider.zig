@@ -21,4 +21,3 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: runtime.JS
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
     return AnimationFrameProviderImpl.call_requestAnimationFrame(instance, callback);
 }
-

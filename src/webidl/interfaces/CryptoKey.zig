@@ -25,13 +25,13 @@ pub const CryptoKey = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -39,19 +39,16 @@ pub const CryptoKey = struct {
             .{ "algorithm", "get_algorithm", null },
             .{ "usages", "get_usages", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -59,11 +56,10 @@ pub const CryptoKey = struct {
             .{ "algorithm", "get_algorithm", null },
             .{ "usages", "get_usages", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -71,7 +67,7 @@ pub const CryptoKey = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": enums.KeyType = undefined,
+            type: enums.KeyType = undefined,
             extractable: bool = undefined,
             algorithm: runtime.JSValue = undefined,
             usages: runtime.JSValue = undefined,
@@ -80,7 +76,6 @@ pub const CryptoKey = struct {
     );
 
     const delegates = .{
-
         .get_algorithm = &get_algorithm,
         .get_extractable = &get_extractable,
         .get_type = &get_type,
@@ -126,5 +121,4 @@ pub const CryptoKey = struct {
     pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CryptoKeyImpl.get_usages(instance);
     }
-
 };

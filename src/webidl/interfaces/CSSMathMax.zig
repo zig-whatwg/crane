@@ -34,7 +34,7 @@ pub const CSSMathMax = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -42,20 +42,18 @@ pub const CSSMathMax = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "values", "get_values", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "parse",
@@ -72,16 +70,15 @@ pub const CSSMathMax = struct {
             "type",
             "parse",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "values", "get_values", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -95,7 +92,6 @@ pub const CSSMathMax = struct {
     );
 
     const delegates = .{
-
         .get_values = &get_values,
 
         .deinit = &deinit,
@@ -134,5 +130,4 @@ pub const CSSMathMax = struct {
     pub fn get_values(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMathMaxImpl.get_values(instance);
     }
-
 };

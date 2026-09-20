@@ -275,6 +275,7 @@ pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
     const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a V8 array with the thresholds
     const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(internal.thresholds.items.len));
@@ -373,6 +374,7 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
     const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a V8 array with the entries
     const entries = internal.queued_entries.toOwnedSlice(internal.allocator) catch return runtime.JSValue.jsUndefined;
@@ -599,6 +601,7 @@ fn invokeCallback(internal: *InternalState) !void {
         std.log.debug("[IntersectionObserver] No current context!", .{});
         return;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(context);
     std.log.debug("[IntersectionObserver] Got callback={*}, isolate={*}, context={*}", .{ callback_global.ptr, isolate, context });
 
     // Create a HandleScope for V8 operations

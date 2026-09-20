@@ -29,7 +29,7 @@ pub const CSSHWB = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -37,7 +37,7 @@ pub const CSSHWB = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "h", "get_h", "set_h" },
@@ -45,22 +45,20 @@ pub const CSSHWB = struct {
             .{ "b", "get_b", "set_b" },
             .{ "alpha", "get_alpha", "set_alpha" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "parse",
             "parseAll",
             "parse",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "h", "get_h", "set_h" },
@@ -68,11 +66,10 @@ pub const CSSHWB = struct {
             .{ "b", "get_b", "set_b" },
             .{ "alpha", "get_alpha", "set_alpha" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -89,7 +86,6 @@ pub const CSSHWB = struct {
     );
 
     const delegates = .{
-
         .get_alpha = &get_alpha,
         .get_b = &get_b,
         .get_h = &get_h,
@@ -164,5 +160,4 @@ pub const CSSHWB = struct {
     pub fn set_alpha(instance: *runtime.Instance, value: CSSNumberish) anyerror!void {
         try CSSHWBImpl.set_alpha(instance, value);
     }
-
 };

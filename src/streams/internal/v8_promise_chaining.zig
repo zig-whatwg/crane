@@ -449,6 +449,7 @@ fn extractReadResultProperties(
     // Get isolate and context
     const isolate = v8.v8_Isolate_GetCurrent() orelse return false;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+    defer v8.v8_Context_Dispose(context);
 
     const v8_object: *v8.Object = @ptrCast(v8_result);
 
@@ -496,6 +497,7 @@ pub fn chainToIteratorPromise(
     // Get V8 context
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+    defer v8.v8_Context_Dispose(v8_context);
 
     // Get allocator
     const allocator = std.heap.c_allocator;

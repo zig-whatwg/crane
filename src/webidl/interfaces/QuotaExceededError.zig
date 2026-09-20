@@ -27,38 +27,34 @@ pub const QuotaExceededError = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "quota", "get_quota", null },
             .{ "requested", "get_requested", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "quota", "get_quota", null },
             .{ "requested", "get_requested", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -73,7 +69,6 @@ pub const QuotaExceededError = struct {
     );
 
     const delegates = .{
-
         .get_quota = &get_quota,
         .get_requested = &get_requested,
 
@@ -117,5 +112,4 @@ pub const QuotaExceededError = struct {
     pub fn get_requested(instance: *runtime.Instance) anyerror!?f64 {
         return try QuotaExceededErrorImpl.get_requested(instance);
     }
-
 };

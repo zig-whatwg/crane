@@ -24,13 +24,13 @@ pub const CanvasFillStrokeStyles = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "strokeStyle", "get_strokeStyle", "set_strokeStyle" },
             .{ "fillStyle", "get_fillStyle", "set_fillStyle" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
@@ -38,7 +38,7 @@ pub const CanvasFillStrokeStyles = struct {
             .{ "createConicGradient", "call_createConicGradient", 3 },
             .{ "createPattern", "call_createPattern", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createLinearGradient",
@@ -46,21 +46,19 @@ pub const CanvasFillStrokeStyles = struct {
             "createConicGradient",
             "createPattern",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "strokeStyle", "get_strokeStyle", "set_strokeStyle" },
             .{ "fillStyle", "get_fillStyle", "set_fillStyle" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -83,7 +81,6 @@ pub const CanvasFillStrokeStyles = struct {
     );
 
     const delegates = .{
-
         .get_fillStyle = &get_fillStyle,
         .get_strokeStyle = &get_strokeStyle,
 
@@ -137,23 +134,18 @@ pub const CanvasFillStrokeStyles = struct {
     }
 
     pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-        
         return try CanvasFillStrokeStylesImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
     pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-        
         return try CanvasFillStrokeStylesImpl.call_createConicGradient(instance, startAngle, x, y);
     }
 
     pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-        
         return try CanvasFillStrokeStylesImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
 
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
-        
         return try CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
     }
-
 };

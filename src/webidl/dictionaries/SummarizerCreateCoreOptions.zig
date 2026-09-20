@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const SummarizerCreateCoreOptions = struct {
-    @"type": ?enums.SummarizerType = null,
+    type: ?enums.SummarizerType = null,
     format: ?enums.SummarizerFormat = null,
     length: ?enums.SummarizerLength = null,
     expectedInputLanguages: ?[]const runtime.DOMString = null,

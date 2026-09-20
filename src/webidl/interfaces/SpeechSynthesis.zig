@@ -34,10 +34,10 @@ pub const SpeechSynthesis = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "pending", "get_pending", null },
@@ -45,7 +45,7 @@ pub const SpeechSynthesis = struct {
             .{ "paused", "get_paused", null },
             .{ "onvoiceschanged", "get_onvoiceschanged", "set_onvoiceschanged" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "speak", "call_speak", 1 },
@@ -54,7 +54,7 @@ pub const SpeechSynthesis = struct {
             .{ "resume", "call_resume", 0 },
             .{ "getVoices", "call_getVoices", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "speak",
@@ -63,7 +63,7 @@ pub const SpeechSynthesis = struct {
             "resume",
             "getVoices",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -71,7 +71,7 @@ pub const SpeechSynthesis = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "pending", "get_pending", null },
@@ -79,11 +79,10 @@ pub const SpeechSynthesis = struct {
             .{ "paused", "get_paused", null },
             .{ "onvoiceschanged", "get_onvoiceschanged", "set_onvoiceschanged" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -100,7 +99,6 @@ pub const SpeechSynthesis = struct {
     );
 
     const delegates = .{
-
         .get_onvoiceschanged = &get_onvoiceschanged,
         .get_paused = &get_paused,
         .get_pending = &get_pending,
@@ -168,7 +166,6 @@ pub const SpeechSynthesis = struct {
     }
 
     pub fn call_speak(instance: *runtime.Instance, utterance: *runtime.Instance) anyerror!void {
-        
         return try SpeechSynthesisImpl.call_speak(instance, utterance);
     }
 
@@ -179,5 +176,4 @@ pub const SpeechSynthesis = struct {
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try SpeechSynthesisImpl.call_cancel(instance);
     }
-
 };

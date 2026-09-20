@@ -23,10 +23,10 @@ pub const AudioListener = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "positionX", "get_positionX", null },
@@ -39,23 +39,22 @@ pub const AudioListener = struct {
             .{ "upY", "get_upY", null },
             .{ "upZ", "get_upZ", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setPosition", "call_setPosition", 3 },
             .{ "setOrientation", "call_setOrientation", 6 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setPosition",
             "setOrientation",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "positionX", "get_positionX", null },
@@ -68,11 +67,10 @@ pub const AudioListener = struct {
             .{ "upY", "get_upY", null },
             .{ "upZ", "get_upZ", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -94,7 +92,6 @@ pub const AudioListener = struct {
     );
 
     const delegates = .{
-
         .get_forwardX = &get_forwardX,
         .get_forwardY = &get_forwardY,
         .get_forwardZ = &get_forwardZ,
@@ -170,13 +167,10 @@ pub const AudioListener = struct {
     }
 
     pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32, xUp: f32, yUp: f32, zUp: f32) anyerror!void {
-        
         return try AudioListenerImpl.call_setOrientation(instance, x, y, z, xUp, yUp, zUp);
     }
 
     pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
-        
         return try AudioListenerImpl.call_setPosition(instance, x, y, z);
     }
-
 };

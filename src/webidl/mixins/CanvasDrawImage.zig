@@ -47,4 +47,3 @@ pub const DrawImageArgs = union(enum) {
 pub fn call_drawImage(instance: *runtime.Instance, args: DrawImageArgs) anyerror!void {
     return CanvasDrawImageImpl.call_drawImage(instance, args);
 }
-

@@ -197,6 +197,7 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         // Fallback: try current context's global (for backwards compatibility)
         const isolate = info.getIsolate();
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        defer v8.v8_Context_Dispose(context);
         const global = v8.v8_Context_Global(context) orelse return null;
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));
@@ -205,6 +206,7 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         // Fallback: try current context's global (for backwards compatibility)
         const isolate = info.getIsolate();
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        defer v8.v8_Context_Dispose(context);
         const global = v8.v8_Context_Global(context) orelse return null;
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));

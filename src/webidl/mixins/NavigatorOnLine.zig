@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorOnLine;
 pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
     return NavigatorOnLineImpl.get_onLine(instance);
 }
-

@@ -92,10 +92,10 @@ pub const SVGFEMorphologyElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "in1", "get_in1", null },
@@ -108,22 +108,20 @@ pub const SVGFEMorphologyElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_MORPHOLOGY_OPERATOR_UNKNOWN", "get_SVG_MORPHOLOGY_OPERATOR_UNKNOWN" },
             .{ "SVG_MORPHOLOGY_OPERATOR_ERODE", "get_SVG_MORPHOLOGY_OPERATOR_ERODE" },
             .{ "SVG_MORPHOLOGY_OPERATOR_DILATE", "get_SVG_MORPHOLOGY_OPERATOR_DILATE" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -214,7 +212,7 @@ pub const SVGFEMorphologyElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "in1", "get_in1", null },
@@ -227,11 +225,10 @@ pub const SVGFEMorphologyElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -272,7 +269,6 @@ pub const SVGFEMorphologyElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_MORPHOLOGY_OPERATOR_DILATE = &get_SVG_MORPHOLOGY_OPERATOR_DILATE,
         .get_SVG_MORPHOLOGY_OPERATOR_ERODE = &get_SVG_MORPHOLOGY_OPERATOR_ERODE,
         .get_SVG_MORPHOLOGY_OPERATOR_UNKNOWN = &get_SVG_MORPHOLOGY_OPERATOR_UNKNOWN,
@@ -346,5 +342,4 @@ pub const SVGFEMorphologyElement = struct {
     pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEMorphologyElementImpl.get_result(instance);
     }
-
 };

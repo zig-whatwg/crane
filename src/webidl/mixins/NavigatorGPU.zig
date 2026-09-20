@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorGPU;
 pub fn get_gpu(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorGPUImpl.get_gpu(instance);
 }
-

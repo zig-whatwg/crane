@@ -210,6 +210,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
             const callback = comptime generateCallback(method);
             const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            defer v8.v8_Context_Dispose(context);
             const fn_obj = v8.v8_FunctionTemplate_GetFunction(
                 fn_template,
                 context,

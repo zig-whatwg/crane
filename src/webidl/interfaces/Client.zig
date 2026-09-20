@@ -28,10 +28,10 @@ pub const Client = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "url", "get_url", null },
@@ -40,21 +40,20 @@ pub const Client = struct {
             .{ "type", "get_type", null },
             .{ "lifecycleState", "get_lifecycleState", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "postMessage",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "url", "get_url", null },
@@ -63,11 +62,10 @@ pub const Client = struct {
             .{ "type", "get_type", null },
             .{ "lifecycleState", "get_lifecycleState", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -78,14 +76,13 @@ pub const Client = struct {
             url: runtime.USVString = undefined,
             frameType: enums.FrameType = undefined,
             id: typedefs.DOMString = undefined,
-            @"type": enums.ClientType = undefined,
+            type: enums.ClientType = undefined,
             lifecycleState: enums.ClientLifecycleState = undefined,
             _internal: ?*ClientImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_frameType = &get_frameType,
         .get_id = &get_id,
         .get_lifecycleState = &get_lifecycleState,
@@ -140,8 +137,6 @@ pub const Client = struct {
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-        
         return try ClientImpl.call_postMessage(instance, message, transfer);
     }
-
 };

@@ -17,4 +17,3 @@ pub const impl = @import("impls").GlobalPrivacyControl;
 pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
     return GlobalPrivacyControlImpl.get_globalPrivacyControl(instance);
 }
-

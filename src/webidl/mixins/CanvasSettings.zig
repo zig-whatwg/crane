@@ -17,4 +17,3 @@ pub const impl = @import("impls").CanvasSettings;
 pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionaries.CanvasRenderingContext2DSettings {
     return CanvasSettingsImpl.call_getContextAttributes(instance);
 }
-

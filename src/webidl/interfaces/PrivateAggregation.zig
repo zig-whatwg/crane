@@ -26,43 +26,39 @@ pub const PrivateAggregation = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "InterestGroupScriptRunnerGlobalScope", "SharedStorageWorklet" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .InterestGroupScriptRunnerGlobalScope = true,
             .SharedStorageWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "contributeToHistogram", "call_contributeToHistogram", 1 },
             .{ "contributeToHistogramOnEvent", "call_contributeToHistogramOnEvent", 2 },
             .{ "enableDebugMode", "call_enableDebugMode", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "contributeToHistogram",
             "contributeToHistogramOnEvent",
             "enableDebugMode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -75,7 +71,6 @@ pub const PrivateAggregation = struct {
     );
 
     const delegates = .{
-
         .call_contributeToHistogram = &call_contributeToHistogram,
         .call_contributeToHistogramOnEvent = &call_contributeToHistogramOnEvent,
         .call_enableDebugMode = &call_enableDebugMode,
@@ -106,18 +101,14 @@ pub const PrivateAggregation = struct {
     }
 
     pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: PAHistogramContribution) anyerror!void {
-        
         return try PrivateAggregationImpl.call_contributeToHistogram(instance, contribution);
     }
 
     pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(PADebugModeOptions)) anyerror!void {
-        
         return try PrivateAggregationImpl.call_enableDebugMode(instance, options);
     }
 
     pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: DOMString, contribution: runtime.JSValue) anyerror!void {
-        
         return try PrivateAggregationImpl.call_contributeToHistogramOnEvent(instance, event, contribution);
     }
-
 };

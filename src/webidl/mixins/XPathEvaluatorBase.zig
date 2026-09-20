@@ -25,4 +25,3 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: typedefs.DOMString
 pub fn call_createExpression(instance: *runtime.Instance, expression: typedefs.DOMString, resolver: ??*runtime.CallbackWrapper) !*runtime.Instance {
     return XPathEvaluatorBaseImpl.call_createExpression(instance, expression, resolver);
 }
-

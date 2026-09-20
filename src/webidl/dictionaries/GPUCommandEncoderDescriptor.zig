@@ -8,5 +8,4 @@ const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObject
 pub const GPUCommandEncoderDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
-
 };

@@ -92,10 +92,10 @@ pub const SVGFEGaussianBlurElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "in1", "get_in1", null },
@@ -108,12 +108,12 @@ pub const SVGFEGaussianBlurElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setStdDeviation", "call_setStdDeviation", 2 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_EDGEMODE_UNKNOWN", "get_SVG_EDGEMODE_UNKNOWN" },
@@ -121,12 +121,12 @@ pub const SVGFEGaussianBlurElement = struct {
             .{ "SVG_EDGEMODE_WRAP", "get_SVG_EDGEMODE_WRAP" },
             .{ "SVG_EDGEMODE_NONE", "get_SVG_EDGEMODE_NONE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setStdDeviation",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -217,7 +217,7 @@ pub const SVGFEGaussianBlurElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "in1", "get_in1", null },
@@ -230,11 +230,10 @@ pub const SVGFEGaussianBlurElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -280,7 +279,6 @@ pub const SVGFEGaussianBlurElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_EDGEMODE_DUPLICATE = &get_SVG_EDGEMODE_DUPLICATE,
         .get_SVG_EDGEMODE_NONE = &get_SVG_EDGEMODE_NONE,
         .get_SVG_EDGEMODE_UNKNOWN = &get_SVG_EDGEMODE_UNKNOWN,
@@ -359,8 +357,6 @@ pub const SVGFEGaussianBlurElement = struct {
     }
 
     pub fn call_setStdDeviation(instance: *runtime.Instance, stdDeviationX: f32, stdDeviationY: f32) anyerror!void {
-        
         return try SVGFEGaussianBlurElementImpl.call_setStdDeviation(instance, stdDeviationX, stdDeviationY);
     }
-
 };

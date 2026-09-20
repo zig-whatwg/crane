@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorAutomationInformation;
 pub fn get_webdriver(instance: *runtime.Instance) anyerror!bool {
     return NavigatorAutomationInformationImpl.get_webdriver(instance);
 }
-

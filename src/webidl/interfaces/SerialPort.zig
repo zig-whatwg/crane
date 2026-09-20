@@ -39,13 +39,13 @@ pub const SerialPort = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onconnect", "get_onconnect", "set_onconnect" },
@@ -54,7 +54,7 @@ pub const SerialPort = struct {
             .{ "readable", "get_readable", null },
             .{ "writable", "get_writable", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getInfo", "call_getInfo", 0 },
@@ -64,7 +64,7 @@ pub const SerialPort = struct {
             .{ "close", "call_close", 0 },
             .{ "forget", "call_forget", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getInfo",
@@ -74,7 +74,7 @@ pub const SerialPort = struct {
             "close",
             "forget",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -82,7 +82,7 @@ pub const SerialPort = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onconnect", "get_onconnect", "set_onconnect" },
@@ -91,11 +91,10 @@ pub const SerialPort = struct {
             .{ "readable", "get_readable", null },
             .{ "writable", "get_writable", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -113,7 +112,6 @@ pub const SerialPort = struct {
     );
 
     const delegates = .{
-
         .get_connected = &get_connected,
         .get_onconnect = &get_onconnect,
         .get_ondisconnect = &get_ondisconnect,
@@ -184,7 +182,6 @@ pub const SerialPort = struct {
     }
 
     pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(SerialOutputSignals)) anyerror!runtime.JSValue {
-        
         return try SerialPortImpl.call_setSignals(instance, signals);
     }
 
@@ -205,8 +202,6 @@ pub const SerialPort = struct {
     }
 
     pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!runtime.JSValue {
-        
         return try SerialPortImpl.call_open(instance, options);
     }
-
 };

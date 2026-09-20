@@ -181,4 +181,3 @@ pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!typedefs.Event
 pub fn set_onportalactivate(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return WindowEventHandlersImpl.set_onportalactivate(instance, value);
 }
-

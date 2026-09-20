@@ -27,38 +27,35 @@ pub const OTPCredential = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "code", "get_code", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
             "willRequestConditionalCreation",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "code", "get_code", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -72,7 +69,6 @@ pub const OTPCredential = struct {
     );
 
     const delegates = .{
-
         .get_code = &get_code,
 
         .deinit = &deinit,
@@ -103,5 +99,4 @@ pub const OTPCredential = struct {
     pub fn get_code(instance: *runtime.Instance) anyerror!DOMString {
         return try OTPCredentialImpl.get_code(instance);
     }
-
 };

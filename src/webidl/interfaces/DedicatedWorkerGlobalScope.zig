@@ -61,10 +61,10 @@ pub const DedicatedWorkerGlobalScope = struct {
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "DedicatedWorker" } } },
             .{ .name = "Exposed", .value = .{ .identifier = "DedicatedWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .DedicatedWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
@@ -72,7 +72,7 @@ pub const DedicatedWorkerGlobalScope = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 2 },
@@ -80,7 +80,7 @@ pub const DedicatedWorkerGlobalScope = struct {
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
             .{ "cancelAnimationFrame", "call_cancelAnimationFrame", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "postMessage",
@@ -88,7 +88,7 @@ pub const DedicatedWorkerGlobalScope = struct {
             "requestAnimationFrame",
             "cancelAnimationFrame",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -109,7 +109,7 @@ pub const DedicatedWorkerGlobalScope = struct {
             "structuredClone",
             "fetch",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
@@ -117,11 +117,10 @@ pub const DedicatedWorkerGlobalScope = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -138,7 +137,6 @@ pub const DedicatedWorkerGlobalScope = struct {
     );
 
     const delegates = .{
-
         .get_name = &get_name,
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
@@ -217,22 +215,18 @@ pub const DedicatedWorkerGlobalScope = struct {
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try DedicatedWorkerGlobalScopeImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-        
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        
         return try DedicatedWorkerGlobalScopeImpl.call_requestAnimationFrame(instance, callback);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try DedicatedWorkerGlobalScopeImpl.call_close(instance);
     }
-
 };

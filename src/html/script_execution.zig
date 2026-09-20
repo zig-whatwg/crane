@@ -1587,6 +1587,7 @@ pub fn handleDynamicImport(
         resolver.reject("No V8 context available");
         return;
     };
+    defer v8.ffi.v8_Context_Dispose(v8_context);
 
     // Create V8 String for source and URL
     const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse {

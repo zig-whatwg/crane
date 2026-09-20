@@ -45,10 +45,10 @@ pub const XRFrame = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "session", "get_session", null },
@@ -58,7 +58,7 @@ pub const XRFrame = struct {
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getViewerPose", "call_getViewerPose", 1 },
@@ -72,7 +72,7 @@ pub const XRFrame = struct {
             .{ "fillJointRadii", "call_fillJointRadii", 2 },
             .{ "fillPoses", "call_fillPoses", 3 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getViewerPose",
@@ -86,11 +86,10 @@ pub const XRFrame = struct {
             "fillJointRadii",
             "fillPoses",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "session", "get_session", null },
@@ -100,11 +99,10 @@ pub const XRFrame = struct {
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -126,7 +124,6 @@ pub const XRFrame = struct {
     );
 
     const delegates = .{
-
         .get_body = &get_body,
         .get_detectedMeshes = &get_detectedMeshes,
         .get_detectedPlanes = &get_detectedPlanes,
@@ -219,53 +216,42 @@ pub const XRFrame = struct {
     }
 
     pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
-        
         return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
     }
 
     pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: runtime.JSValue, radii: runtime.JSValue) anyerror!bool {
-        
         return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
     }
 
     pub fn call_fillPoses(instance: *runtime.Instance, spaces: runtime.JSValue, baseSpace: *runtime.Instance, transforms: runtime.JSValue) anyerror!bool {
-        
         return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
     }
 
     pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!runtime.JSValue {
-        
         return try XRFrameImpl.call_createAnchor(instance, pose, space);
     }
 
     pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
-        
         return try XRFrameImpl.call_getDepthInformation(instance, view);
     }
 
     pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
-        
         return try XRFrameImpl.call_getHitTestResults(instance, hitTestSource);
     }
 
     pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
-        
         return try XRFrameImpl.call_getPose(instance, space, baseSpace);
     }
 
     pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
-        
         return try XRFrameImpl.call_getHitTestResultsForTransientInput(instance, hitTestSource);
     }
 
     pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) anyerror!?*runtime.Instance {
-        
         return try XRFrameImpl.call_getViewerPose(instance, referenceSpace);
     }
 
     pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
-        
         return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
     }
-
 };

@@ -21,4 +21,3 @@ pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: typedef
 pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: typedefs.DOMString, url: runtime.JSValue) anyerror!void {
     return NavigatorContentUtilsImpl.call_unregisterProtocolHandler(instance, scheme, url);
 }
-

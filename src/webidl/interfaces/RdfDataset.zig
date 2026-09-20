@@ -24,43 +24,41 @@ pub const RdfDataset = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "JsonLd" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .JsonLd = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "defaultGraph", "get_defaultGraph", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 2 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
             "forEach",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "defaultGraph", "get_defaultGraph", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -78,7 +76,6 @@ pub const RdfDataset = struct {
     );
 
     const delegates = .{
-
         .get_defaultGraph = &get_defaultGraph,
 
         .call_add = &call_add,
@@ -122,12 +119,10 @@ pub const RdfDataset = struct {
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
         return try RdfDatasetImpl.call_forEach(instance, callback);
     }
 
     pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
-        
         return try RdfDatasetImpl.call_add(instance, graphName, graph);
     }
 
@@ -136,5 +131,4 @@ pub const RdfDataset = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const RdfDatasetImpl.IterableEntry {
         return RdfDatasetImpl.getEntriesInternal(instance);
     }
-
 };
