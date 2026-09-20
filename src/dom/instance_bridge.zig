@@ -42,7 +42,6 @@ pub const BridgeContext = struct {
 ///
 /// Thread safety: This is NOT thread-safe. DOM operations should be single-threaded.
 var instance_to_nodebase: std.AutoHashMap(*anyopaque, *NodeBase) = undefined;
-var nodebase_to_instance: std.AutoHashMap(*NodeBase, *anyopaque) = undefined;
 var initialized: bool = false;
 
 /// Initialize the bridge registry
@@ -50,7 +49,6 @@ var initialized: bool = false;
 pub fn init() void {
     if (initialized) return;
     instance_to_nodebase = std.AutoHashMap(*anyopaque, *NodeBase).init(std.heap.page_allocator);
-    nodebase_to_instance = std.AutoHashMap(*NodeBase, *anyopaque).init(std.heap.page_allocator);
     initialized = true;
 }
 
@@ -59,7 +57,6 @@ pub fn init() void {
 pub fn deinit() void {
     if (!initialized) return;
     instance_to_nodebase.deinit();
-    nodebase_to_instance.deinit();
     initialized = false;
 }
 
@@ -84,7 +81,8 @@ pub fn deinit() void {
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     if (!initialized) init();
     try instance_to_nodebase.put(instance, node_base);
-    try nodebase_to_instance.put(node_base, instance);
+    // Reverse direction lives on the node itself - see NodeBase.owner_instance.
+    node_base.owner_instance = instance;
 }
 
 /// Unregister a mapping when a Node is destroyed
@@ -94,7 +92,9 @@ pub fn unregister(instance: *anyopaque) void {
     if (!initialized) return;
 
     if (instance_to_nodebase.get(instance)) |node_base| {
-        _ = nodebase_to_instance.remove(node_base);
+        // Not strictly required - the field dies with the node - but clearing it
+        // keeps a freed instance from being observable through a resurrected node.
+        node_base.owner_instance = null;
     }
     _ = instance_to_nodebase.remove(instance);
 }
@@ -127,8 +127,9 @@ pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
 /// }
 /// ```
 pub fn getInstance(node_base: *NodeBase) ?*anyopaque {
-    if (!initialized) return null;
-    return nodebase_to_instance.get(node_base);
+    // No map, no global state, no initialization order to get wrong: the owning
+    // instance is a field of the node. Callers are unchanged.
+    return node_base.owner_instance;
 }
 
 /// Check if a NodeBase is from a registered runtime.Instance

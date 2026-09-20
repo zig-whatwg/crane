@@ -27,6 +27,22 @@ pub const NodeBase = struct {
     // ========================================================================
 
     allocator: Allocator,
+
+    /// The runtime.Instance that owns this NodeBase, or null for a NodeBase built
+    /// outside the WebIDL layer.
+    ///
+    /// Stored here rather than in a side table. This replaced the global
+    /// `nodebase_to_instance: AutoHashMap(*NodeBase, *anyopaque)` in
+    /// src/dom/instance_bridge.zig: a process-wide mutable map on page_allocator,
+    /// explicitly documented as "NOT thread-safe", consulted 37 times across the DOM
+    /// hot path. The owning instance is a property OF the node, so it belongs on the
+    /// node - which also makes it die with the node instead of needing an unregister
+    /// call to avoid leaking an entry.
+    ///
+    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the concrete
+    /// runtime.Instance type, matching the bridge API it replaces.
+    owner_instance: ?*anyopaque = null,
+
     node_type: u16,
     node_name: []const u8,
     /// Tracks whether node_name was dynamically allocated (vs a string literal).
