@@ -154,9 +154,11 @@ pub fn init(
 
     // Initialize internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the
+    // arena. With `set` it was dropped from the map and held to process
+    // exit - 904 bytes per discarded element, measured.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -923,8 +925,8 @@ fn parseBorderShorthand(value: []const u8) BorderShorthandParsed {
 
     // Border style keywords
     const style_keywords = [_][]const u8{
-        "none", "hidden", "dotted", "dashed", "solid",
-        "double", "groove", "ridge", "inset", "outset",
+        "none",   "hidden", "dotted", "dashed", "solid",
+        "double", "groove", "ridge",  "inset",  "outset",
     };
 
     // Border width keywords

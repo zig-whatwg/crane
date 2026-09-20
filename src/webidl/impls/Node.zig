@@ -1155,9 +1155,11 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
 
     // Initialize internal state for copy in the global registry
     // (getInternal() uses the registry, not state._internal)
-    const copy_internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to
+    // the arena. With `set` it was dropped from the map and held to
+    // process exit - measured at 904 bytes per discarded element.
+    const copy_internal = try Registry.createIn(copy, ArenaAllocator.get());
     copy_internal.* = InternalState.init(allocator);
-    try Registry.set(copy, copy_internal);
 
     // Copy node properties
     copy_internal.node_type = node_internal.node_type;
