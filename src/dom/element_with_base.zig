@@ -261,3 +261,14 @@ pub const ElementWithBase = struct {
         return self.base.child_nodes.size();
     }
 };
+
+comptime {
+    // Several call sites still recover a *ElementWithBase from its `base` field. The
+    // safe ones use @fieldParentPtr; any that cast assume offset 0, which auto
+    // layout does NOT promise - it orders by descending alignment, so adding a
+    // low-alignment field ahead of `base` would silently move it and corrupt
+    // every such recovery. Make that a compile error instead.
+    if (@offsetOf(ElementWithBase, "base") != 0) {
+        @compileError("ElementWithBase.base must remain at offset 0; a caller recovers the parent by casting");
+    }
+}

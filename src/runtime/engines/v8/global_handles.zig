@@ -119,7 +119,11 @@ pub const GlobalHandle = struct {
     /// After calling this, the GlobalHandle should not be used. The underlying
     /// V8 value may be garbage collected if no other references exist.
     ///
-    /// This is idempotent - calling dispose multiple times is safe.
+    /// NOT idempotent, despite what this comment used to claim. The guard below
+    /// rejects only null and absurd addresses; a FREED heap pointer still looks
+    /// perfectly valid, so a second dispose deletes it again. That false promise is
+    /// what let callers dispose borrowed handles freely - see impls/Worker.zig.
+    /// Callers must own the handle and must not dispose it twice.
     pub fn dispose(self: GlobalHandle) void {
         // Safety check: verify the pointer looks like a valid heap address before disposal.
         // Invalid addresses indicate memory corruption and would crash in V8.

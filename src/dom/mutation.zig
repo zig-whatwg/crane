@@ -2202,9 +2202,16 @@ pub fn adopt(
 
             // Step 3.1.2: If element, update attribute node documents
             if (desc.node_type == ELEMENT_NODE) {
-                // Access element attributes via ElementWithBase if available
-                // Cast to ElementWithBase since elements have NodeBase as first field
-                const element = @as(*element_with_base.ElementWithBase, @ptrCast(desc));
+                // Access element attributes via ElementWithBase.
+                //
+                // @fieldParentPtr, NOT @ptrCast. ElementWithBase is a plain struct,
+                // so Zig's auto layout does not guarantee `base` sits at offset 0 no
+                // matter what the "MUST be the first field" comment on it says - it
+                // orders by alignment. @fieldParentPtr computes the real offset.
+                // The bare cast read element.attributes from the wrong address, whose
+                // garbage length then drove List.get into out-of-bounds access
+                // (caught by UBSan at infra/list.zig:197 via this exact path).
+                const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
                 for (0..element.attributes.size()) |attr_idx| {
                     if (element.attributes.get(attr_idx)) |attr| {
                         attr.base.owner_document = document;

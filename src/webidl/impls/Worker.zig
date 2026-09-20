@@ -159,7 +159,8 @@ pub const InternalState = struct {
         self.pending_outgoing_messages.deinit(self.allocator);
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
-        v8_engine.disposeOptionalGlobalHandle(&self.onerror_handle);
+        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
+        self.onerror_handle = null;
         v8_engine.disposeOptionalGlobalHandle(&self.onmessageerror_handle);
 
         // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
@@ -417,7 +418,15 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
-        v8_engine.disposeOptionalGlobalHandle(&internal.onerror_handle);
+        // NOT disposed. `onerror_handle` is only ever assigned from
+        // extractEventHandler, which REINTERPRETS an incoming tagged pointer as a
+        // GlobalHandle - it does not create one (GlobalHandle.create appears nowhere
+        // in this file). The handle is borrowed; whoever produced the tagged pointer
+        // owns it. Disposing here deleted a V8 Global this code never owned, and the
+        // next dispose of the same Global hit freed memory - surfacing as UBSan
+        // trapping inside v8_Global_Dispose (v8_wrapper.cpp:8434), which is a bare
+        // SIGTRAP in ReleaseSafe and silent corruption otherwise.
+        internal.onerror_handle = null;
         // Properly unwrap the optional before casting to extract the tagged pointer
         if (value) |v| {
             const casted: *const anyopaque = @ptrCast(v);
