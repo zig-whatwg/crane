@@ -2700,7 +2700,10 @@ pub fn build(b: *std.Build) void {
         .name = "codegen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/codegen_main.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
+            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
+            // for the phone and then run it here.
+            .target = b.graph.host,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "codegen", .module = codegen_mod },
@@ -2723,7 +2726,10 @@ pub fn build(b: *std.Build) void {
         .name = "idl-scanner",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/idl_scanner_main.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
+            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
+            // for the phone and then run it here.
+            .target = b.graph.host,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "codegen", .module = codegen_mod },
@@ -3449,7 +3455,10 @@ pub fn build(b: *std.Build) void {
         .name = "cldr-download",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/download.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
+            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
+            // for the phone and then run it here.
+            .target = b.graph.host,
             .optimize = optimize,
         }),
     });
@@ -3466,7 +3475,10 @@ pub fn build(b: *std.Build) void {
         .name = "cldr-extract",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/extract.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
+            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
+            // for the phone and then run it here.
+            .target = b.graph.host,
             .optimize = optimize,
         }),
     });
@@ -3483,7 +3495,10 @@ pub fn build(b: *std.Build) void {
         .name = "cldr-encode",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/cldr/encode.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. Using `target` cross-compiled it,
+            // so `zig build -Dtarget=aarch64-ios` tried to build the code generator
+            // for the phone and then run it here.
+            .target = b.graph.host,
             .optimize = optimize,
         }),
     });
