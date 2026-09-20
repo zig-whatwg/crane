@@ -1498,7 +1498,19 @@ pub fn writeStateStruct(
 /// XMLHttpRequestUpload genuinely store handlers in State - so a blanket rule would
 /// silently break them. Add an interface here only after checking its impl.
 fn implOwnsEventHandlers(impl_name: []const u8) bool {
-    const owners = [_][]const u8{"HTMLElementImpl"};
+    // Each verified the same way as HTMLElement: zero `own.on*` accesses in the
+    // impl AND in the generated interface (whose accessors delegate to the impl).
+    const owners = [_][]const u8{
+        "HTMLElementImpl", // 105 slots
+        "WindowImpl", // 130
+        "DocumentImpl", // 113
+        "SVGElementImpl", // 104
+        "MathMLElementImpl", // 104
+        "HTMLBodyElementImpl", // 21
+        "SVGSVGElementImpl", // 20
+        "HTMLFrameSetElementImpl", // 20
+        "ServiceWorkerGlobalScopeImpl", // 19
+    };
     for (owners) |o| {
         if (std.mem.eql(u8, impl_name, o)) return true;
     }
