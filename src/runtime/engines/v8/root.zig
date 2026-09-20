@@ -127,6 +127,9 @@ pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 pub const wrapper_cache_mod = @import("wrapper_cache.zig");
 pub const WrapperCache = wrapper_cache_mod.WrapperCache;
 
+/// Isolate ownership checking (Phase 5 groundwork) - see isolate_ownership.zig.
+pub const isolate_ownership = @import("isolate_ownership.zig");
+
 /// Timer manager for V8 isolates. libuv-free since Phase 7 - see native_timer.zig.
 pub const native_timer = @import("native_timer.zig");
 pub const NativeTimerManager = native_timer.NativeTimerManager;

@@ -237,6 +237,10 @@ fn microtaskCallback(data: ?*anyopaque) callconv(.c) void {
         return;
     }
 
+    // Phase 5 instrumentation: microtasks run from V8's own drain, so this should
+    // always be owned - a report here would be a strong signal.
+    @import("v8").isolate_ownership.assertOwned(ctx.isolate, "WindowOrWorkerGlobalScope.microtaskCallback");
+
     // Create a HandleScope for V8 operations
     const handle_scope = v8_ffi.v8_HandleScope_New(ctx.isolate);
     defer v8_ffi.v8_HandleScope_Dispose(handle_scope);

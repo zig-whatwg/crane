@@ -319,6 +319,10 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const isolate = data.isolate;
     const context = data.v8_context;
 
+    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
+    // exactly where isolate confinement would break if it is broken.
+    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
+
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
     v8.ffi.v8_Context_Enter(context);
@@ -378,6 +382,10 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
 
     const isolate = data.isolate;
     const context = data.v8_context;
+
+    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
+    // exactly where isolate confinement would break if it is broken.
+    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
 
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
