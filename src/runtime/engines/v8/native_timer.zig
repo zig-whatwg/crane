@@ -169,17 +169,33 @@ pub const NativeTimerManager = struct {
         return self.callback_invoked;
     }
 
-    /// Wait up to `timeout_ms` for a timer to come due, then fire what is due.
+    /// Longest this backend will block the caller's event loop in one call.
+    ///
+    /// libuv's pollBlocking ran the WHOLE loop and returned as soon as any handle
+    /// became ready, so a long timeout never starved I/O. This backend knows about
+    /// timers and nothing else, so sleeping for the caller's full timeout would
+    /// monopolise the loop and stall everything that is not a timer - script
+    /// loading, worker message dispatch, microtask progress. Observed symptom: the
+    /// test file completes with NO subtest results at all.
+    ///
+    /// So the wait is sliced. The caller re-drives us in its own loop, so the total
+    /// wait is still honoured; it just becomes interruptible.
+    const max_block_ms: u64 = 1;
+
+    /// Wait (briefly) for a timer to come due, then fire what is due.
     pub fn pollBlocking(self: *Self, timeout_ms: u64) bool {
         if (!self.initialized) return false;
         if (timeout_ms == 0) return self.poll();
 
-        // Sleep only until the earlier of "next deadline" and the caller's bound, so
-        // a long timeout does not delay a soon-due timer.
-        const wait_ms = if (self.getNextTimerDeadline()) |due_in|
-            @min(due_in, timeout_ms)
-        else
-            timeout_ms;
+        // Anything already due: fire it now rather than sleeping first.
+        if (self.poll()) return true;
+
+        // Sleep until the earliest of: the next deadline, the caller's bound, and
+        // max_block_ms - see above for why that last cap exists.
+        const next = self.getNextTimerDeadline() orelse timeout_ms;
+        // Explicit u64: @min against a comptime-known bound narrows the result type
+        // (to u1 for max_block_ms = 1), and the ns_per_ms multiply then overflows it.
+        const wait_ms: u64 = @min(@min(next, timeout_ms), max_block_ms);
 
         if (wait_ms > 0) clock.sleep(wait_ms *| std.time.ns_per_ms);
         return self.poll();

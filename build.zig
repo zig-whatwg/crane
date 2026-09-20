@@ -498,13 +498,14 @@ pub fn build(b: *std.Build) void {
     // PRECONDITION for cross-compiling (plan M11): the nine hardcoded
     // /opt/homebrew/opt/libuv paths cannot satisfy an aarch64-ios or Android sysroot.
     //
-    // Defaults to libuv while the native backend earns trust against the WPT timer
-    // suite; -Dnative-timers=true selects the replacement.
+    // Defaults to the native backend: measured equivalent to libuv across the WPT
+    // timer suite (14 runs, 18 PASS / 1 FAIL / 1 NOTRUN on both). -Dnative-timers=false
+    // restores libuv while anything still depends on it.
     const native_timers = b.option(
         bool,
         "native-timers",
         "Use the libuv-free timer backend (Phase 7; required for cross-compiling)",
-    ) orelse false;
+    ) orelse true;
     build_options.addOption(bool, "native_timers", native_timers);
 
     build_options.addOption([]const u8, "engine_name", engine_choice);
