@@ -5112,10 +5112,6 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return .kYes;
-            };
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5174,6 +5170,24 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
+            };
+
+            // Acquired HERE, not at entry. `v8_Isolate_GetCurrentContext` heap-
+            // allocates a Global<Context> where V8 hands back a borrowed Local, and
+            // every `return .kNo` above it abandoned one. That is the common case,
+            // not a corner: this interceptor runs for EVERY property miss on a
+            // named-property interface, and `isSupportedPropertyName` rejects all
+            // of them - `document.createElement` included. `leaks --atExit` put it
+            // at 31,597 abandoned contexts per 200,000 cycles from this line alone.
+            //
+            // Still not disposed on the paths below. Whether `wrapInstanceAsV8Object`
+            // stores the pointer is unproven, and releasing a context that is kept
+            // is a use-after-free - which is what happened in 6c64a3925 and again
+            // in the getter fix reverted by 5abd41550. Not allocating is safe
+            // without needing that answer; disposing is not.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return .kYes;
             };
 
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
