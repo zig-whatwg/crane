@@ -587,6 +587,7 @@ pub fn build(b: *std.Build) void {
             "permissions",
             "html",
             "intl",
+            "websocket",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -2126,6 +2127,46 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
+        };
+    }
+
+    // WebSocket tests (WHATWG WebSockets API)
+    //
+    // OPT-IN: reachable only via `-Dspec=websocket`, deliberately NOT part of
+    // `all`. `tests/websocket/` had no entry here at all, so neither its 332
+    // lines nor the 52 test blocks inside `src/websocket/` were ever compiled,
+    // let alone run - and wiring them up shows why nobody noticed. Nothing in
+    // the build referenced `src/websocket/{events,send_buffer}.zig`, and Zig
+    // only analyses what is referenced, so the module sat out the 0.16
+    // migration in plain sight:
+    //
+    //   src/websocket/events.zig, send_buffer.zig   7 errors
+    //     still on the 0.15 ArrayList API - `std.ArrayList(T).init(allocator)`,
+    //     and `append`/`deinit` without the allocator argument.
+    //   tests/websocket/websocket_test.zig          7 errors
+    //     drifted from the impl - `CloseCodes.INVALID_PAYLOAD_DATA` does not
+    //     exist, and `SendBuffer.init` takes one argument, not two.
+    //
+    // Folding that into `all` today would turn `zig build test` red for
+    // everyone, which is worse than the status quo. Gating it keeps the default
+    // suite green while making the debt reachable, reproducible and countable:
+    // `zig build test -Dspec=websocket` prints all 14 errors.
+    //
+    // TODO: fix those 14, then give this block the same
+    // `spec_filter == null or ... "all" or ...` condition as every spec above.
+    if (spec_filter != null and std.mem.eql(u8, spec_filter.?, "websocket")) {
+        const websocket_tests = b.addTest(.{ .root_module = websocket_mod });
+        const run_websocket_tests = b.addRunArtifact(websocket_tests);
+        test_step.dependOn(&run_websocket_tests.step);
+
+        // Add dedicated test files from tests/websocket/
+        // `websocket_mod` already carries its own `fetch` import, which is where
+        // the curl linkage comes from, so the test root needs nothing else.
+        const websocket_imports = [_]std.Build.Module.Import{
+            .{ .name = "websocket", .module = websocket_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add websocket test files: {}\n", .{err});
         };
     }
 
