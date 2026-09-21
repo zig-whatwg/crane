@@ -2502,10 +2502,16 @@ pub fn throwDOMException(
         return;
     };
     defer v8.v8_Context_Dispose(context);
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Object_Dispose(global);
 
     // Get the DOMException constructor from global
     const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
@@ -2585,11 +2591,17 @@ pub fn throwDOMExceptionFromContext(
     message: []const u8,
 ) void {
     log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse {
         log.debug("[throwDOMExceptionFromContext] fallback - no global\n", .{});
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Object_Dispose(global);
 
     // Get the DOMException constructor from the specified context's global
     const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {

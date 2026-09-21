@@ -2886,7 +2886,13 @@ fn dateToLocaleTimeStringCallback(info: *const v8.FunctionCallbackInfo) callconv
 
 /// Register toLocaleString methods on built-in prototypes
 pub fn registerToLocaleStringMethods(isolate: *v8.Isolate, context: *v8.Context) void {
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     // ========================================================================
     // Number.prototype.toLocaleString
@@ -4805,7 +4811,13 @@ fn segmenterSegmentCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     const iter_fn_obj = v8.v8_FunctionTemplate_GetFunction(iter_fn, context) orelse return;
 
     // Get Symbol.iterator
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
     const symbol_key = v8.v8_String_NewFromUtf8(isolate, "Symbol", 6) orelse return;
     defer v8.v8_String_Dispose(symbol_key);
     const symbol_obj = v8.v8_Object_Get(global, context, @ptrCast(symbol_key)) orelse return;
@@ -6213,7 +6225,13 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     // ========================================================================
     // Add Intl to global object
     // ========================================================================
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
     const intl_key = v8.v8_String_NewFromUtf8(isolate, "Intl", 4) orelse return;
     defer v8.v8_String_Dispose(intl_key);
 
