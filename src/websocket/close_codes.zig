@@ -84,10 +84,27 @@ pub const CloseCodes = struct {
     pub const TLS_HANDSHAKE: u16 = 1015;
 
     /// Check if a close code is valid for use in a Close frame.
-    /// Per RFC 6455, codes 1005, 1006, and 1015 must not be set in Close frames.
+    ///
+    /// Per RFC 6455 Section 7.4.1, codes 1005, 1006 and 1015 are reserved values
+    /// that "MUST NOT be set as a status code in a Close control frame by an
+    /// endpoint". 1004 is listed as "Reserved. The specific meaning might be
+    /// defined in the future" and has no IANA assignment, so an endpoint has no
+    /// meaning to send it with either - the Autobahn suite treats a received
+    /// 1004 as a protocol error, and no browser emits it.
+    ///
+    /// This is the *protocol*-level check: it accepts 1001-2999, which RFC 6455
+    /// reserves for the protocol itself. It is deliberately wider than the
+    /// WHATWG `close(code, reason)` check.
+    ///
+    /// TODO: WHATWG `close()` step 1 is narrower still - script may pass only
+    /// 1000 or 3000-4999, otherwise "InvalidAccessError"
+    /// (https://websockets.spec.whatwg.org/#dom-websocket-close). That check
+    /// belongs at the WebIDL boundary, not here; `connection.close()` currently
+    /// applies this protocol-level test to script-supplied codes and so still
+    /// accepts 1001-2999.
     pub fn isValidForCloseFrame(code: u16) bool {
         return switch (code) {
-            NO_STATUS_RECEIVED, ABNORMAL_CLOSURE, TLS_HANDSHAKE => false,
+            RESERVED, NO_STATUS_RECEIVED, ABNORMAL_CLOSURE, TLS_HANDSHAKE => false,
             else => isValidCode(code),
         };
     }
@@ -162,6 +179,7 @@ test "close_codes - isValidForCloseFrame" {
     try std.testing.expect(CloseCodes.isValidForCloseFrame(4000));
 
     // Invalid codes (reserved, must not be sent)
+    try std.testing.expect(!CloseCodes.isValidForCloseFrame(1004));
     try std.testing.expect(!CloseCodes.isValidForCloseFrame(1005));
     try std.testing.expect(!CloseCodes.isValidForCloseFrame(1006));
     try std.testing.expect(!CloseCodes.isValidForCloseFrame(1015));
