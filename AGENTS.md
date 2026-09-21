@@ -528,3 +528,57 @@ counts: 100k vs 400k differing by <3 KB is ~0 B/cycle.
 
 **Takeaway**: **If a memory tool looks broken, suspect your own teardown before
 the tool.**
+
+---
+
+### Architecture: A conversion that allocates nothing still looks allocated
+
+**Date**: 2026-09-21
+**Lesson**: `needsArgCleanup` called every slice "owned", including one that aliased V8's heap.
+
+**Why**: `conv.convertAllowSharedBufferSource` discards its allocator on purpose
+(`_ = allocator; // Not needed - we create a non-owning view`) and returns
+`.{ .byte_slice = src_ptr[0..len] }` over `v8_ArrayBuffer_Data`. Nothing in the
+type says so — the arm is a plain `[]const u8`, the same shape a string that
+`fromV8String` allocated has.
+
+**What Happened**: `freeConvertedArg` walked the union, found the slice, and
+handed V8's backing store to `allocator.free`. `panic: Invalid free` on every
+`new TextDecoder(label).decode(nonEmptyTypedArray)` — 67 of 149 `encoding/` WPT
+files, all fifteen `textdecoder-*` among them. The empty case survived because
+the cleanup path skips zero-length slices, so it read as "some decodes crash".
+
+**Fix**: `argConversionIsNonOwning`, consulted *before* any structural rule
+(the arm that carries the view is itself a slice, so every later rule claims
+it). Pinned by `tests/v8/buffer_source_ownership_test.zig` — including the
+default, which must stay "owned" or every string argument leaks.
+
+**Takeaway**: **Ownership is a property of the conversion, not of the type.
+Grep `conversions.zig` for "non-owning" before trusting a structural rule.**
+
+---
+
+### Spec Compliance: The decoder reports the error; the caller picks the mode
+
+**Date**: 2026-09-21
+**Lesson**: A decoder that substitutes U+FFFD itself makes `{fatal: true}` impossible.
+
+**Why**: Encoding § 8.1.1 returns `error` from the handler and § 5.1.3 turns it
+into a TypeError or a U+FFFD. Deciding inside the decoder throws away the only
+information the caller needs.
+
+**What Happened**: The UTF-8 decoder wrote U+FFFD at all three error sites and
+returned `input_empty`, so `TextDecoder.zig`'s `if (result.status ==
+.malformed) { if (fatal) ... }` was dead code — 35 of 36 subtests in
+`textdecoder-fatal.any.js` failed on `assert_throws_js`, while
+`textdecoder-fatal-single-byte.any.js` passed 64,512, because the single-byte
+decoder reports. The contract was already written down, in that decoder's own
+comment.
+
+**Fix**: Return `.malformed` with the spec's error extent — step 4 RESTORES the
+offending continuation byte, so it is not part of the error — and give
+`Decoder` a `decodeReplacement` so replacement-mode callers substitute once
+instead of four times by hand.
+
+**Takeaway**: **When one decoder in a family passes a conformance file and its
+siblings do not, diff their contracts before their algorithms.**
