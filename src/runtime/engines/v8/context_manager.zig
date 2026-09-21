@@ -196,6 +196,25 @@ const ManagerState = struct {
     /// storing pointers, the entries themselves don't move when HashMap grows.
     contexts: std.AutoHashMap(usize, *ContextEntry),
 
+    /// Entries taken out of `contexts` but not yet freed.
+    ///
+    /// Instances created in a context hold `ctx == &entry.runtime_ctx` - that is
+    /// the whole reason entries are heap-allocated, per the note above. Neither
+    /// `destroyChildContext` nor `removeContext` destroys those Instances; they
+    /// are deliberately left for the slab's wholesale teardown. So freeing the
+    /// entry underneath them left every one of them pointing at
+    /// DebugAllocator-poisoned memory, where `_v8_wrapper_cache_storage` reads
+    /// back as 0xAAAA_AAAA_AAAA_AAAA: non-null, and not 8-aligned, so
+    /// `markInstanceCleanedUp` panicked in its `@alignCast` instead of quietly
+    /// returning a wrong answer. Retiring the entry keeps every stale `ctx`
+    /// pointing at a real, inert ContextData until `deinit` drains this list.
+    ///
+    /// Costs one entry plus its ContextData's own buffers per destroyed context,
+    /// for the lifetime of the manager. That is retention, not a leak - the drain
+    /// frees all of it - and it buys away a class of use-after-free that no
+    /// caller of `instance.ctx` can defend against on its own.
+    retired: std.ArrayListUnmanaged(*ContextEntry) = .empty,
+
     /// Default allocator to use for new contexts
     default_allocator: std.mem.Allocator,
 
@@ -449,6 +468,16 @@ pub fn deinit() void {
             // Free the heap-allocated entry itself
             state.allocator.destroy(entry);
         }
+
+        // Free the entries retired earlier by removeContext/destroyChildContext.
+        // Held until now because Instances created in those contexts still point
+        // at `entry.runtime_ctx`; by this point every Instance is going away with
+        // the slab, so the ContextData can go too.
+        for (state.retired.items) |entry| {
+            if (entry.owns_context) entry.runtime_ctx.deinit();
+            state.allocator.destroy(entry);
+        }
+        state.retired.deinit(state.allocator);
 
         // Mark cleanup complete
         coordinator.endContextCleanup();
@@ -981,9 +1010,15 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
 
     if (state.contexts.fetchRemove(key)) |kv| {
         const entry = kv.value; // This is now *ContextEntry
-        defer state.allocator.destroy(entry); // Free the heap-allocated entry
+        // Retire rather than destroy: Instances created in this context are not
+        // destroyed below (they go with the slab) and their `ctx` points into
+        // this entry. See ManagerState.retired.
+        defer retireEntry(state, entry);
         if (entry.owns_context) {
-            var ctx_data = entry.runtime_ctx;
+            // A pointer, not a copy - `clearV8WrapperCacheStorage` below has to
+            // land on the entry's own ContextData, which is what every Instance
+            // in this context reads through.
+            const ctx_data = &entry.runtime_ctx;
             const cleanup_coordinator = runtime.cleanup_coordinator;
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
@@ -1087,7 +1122,8 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // NOTE: Module cache cleanup removed - caching disabled
             // (see handleDynamicImport comment)
 
-            ctx_data.deinit();
+            // NOTE: no `ctx_data.deinit()` here - deinit()'s drain does it, once
+            // no Instance can still be pointing at this ContextData.
         }
 
         // Clean up document URL if we own it
@@ -2636,6 +2672,36 @@ pub fn createChildContext(
     return child_entry;
 }
 
+/// Take an entry out of service without freeing it.
+///
+/// See `ManagerState.retired`: an Instance's `ctx` is a pointer INTO this entry,
+/// and the Instances outlive the entry. What can be released has been released by
+/// the caller; this makes the ContextData inert so that a stale `ctx` answers
+/// "no wrapper cache, no engine context, no realm" rather than reading poison.
+///
+/// `engine` is left alone on purpose - it points at a static interface, and
+/// `ContextData.deinit` needs it to release `_engine_event_loop_storage`.
+fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
+    entry.runtime_ctx.clearV8WrapperCacheStorage();
+    entry.runtime_ctx.engine_ctx = null;
+    entry.runtime_ctx.realm = null;
+    entry.runtime_ctx.event_loop = null;
+    entry.runtime_ctx.timer = null;
+    entry.children = .empty;
+    entry.parent_entry = null;
+    entry.window_instance = null;
+    entry.document_url = null;
+    entry.owns_document_url = false;
+
+    state.retired.append(state.allocator, entry) catch {
+        // Only reachable if this allocator is out of memory, which it is about to
+        // be torn down anyway. Fall back to the old behaviour rather than leak the
+        // entry outright.
+        if (entry.owns_context) entry.runtime_ctx.deinit();
+        state.allocator.destroy(entry);
+    };
+}
+
 /// Destroy a child context and clean up resources
 ///
 /// This recursively destroys all child contexts, removes from parent's
@@ -2808,7 +2874,9 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
             realm.deinit();
         }
 
-        ctx_data.deinit();
+        // NOTE: `ctx_data.deinit()` is deliberately NOT called here. It runs in
+        // deinit()'s drain instead, so the ContextData - logger included - stays
+        // valid for as long as an Instance can still be holding a pointer to it.
     }
 
     // 6. Clean up document URL if we own it
@@ -2818,9 +2886,10 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         }
     }
 
-    // 7. Remove from context map and free the heap-allocated entry
+    // 7. Take the entry out of the map, but keep it alive: Instances created in
+    // this context were not destroyed above and still point into it.
     _ = state.contexts.remove(key);
-    state.allocator.destroy(entry);
+    retireEntry(state, entry);
 }
 
 /// Get the realm for a V8 context
