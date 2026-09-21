@@ -2205,29 +2205,16 @@ pub fn build(b: *std.Build) void {
 
     // WebSocket tests (WHATWG WebSockets API)
     //
-    // OPT-IN: reachable only via `-Dspec=websocket`, deliberately NOT part of
-    // `all`. `tests/websocket/` had no entry here at all, so neither its 332
-    // lines nor the 52 test blocks inside `src/websocket/` were ever compiled,
-    // let alone run - and wiring them up shows why nobody noticed. Nothing in
-    // the build referenced `src/websocket/{events,send_buffer}.zig`, and Zig
-    // only analyses what is referenced, so the module sat out the 0.16
-    // migration in plain sight:
+    // These were opt-in behind `-Dspec=websocket` and left out of `all` while the
+    // module carried 14 compile errors. `tests/websocket/` had no entry here at
+    // all, so neither its tests nor the ones inside `src/websocket/` were ever
+    // compiled - and nothing in the build referenced
+    // `src/websocket/{events,send_buffer}.zig`, so those two files sat out the
+    // Zig 0.16 ArrayList migration in plain sight while `zig build` stayed green.
     //
-    //   src/websocket/events.zig, send_buffer.zig   7 errors
-    //     still on the 0.15 ArrayList API - `std.ArrayList(T).init(allocator)`,
-    //     and `append`/`deinit` without the allocator argument.
-    //   tests/websocket/websocket_test.zig          7 errors
-    //     drifted from the impl - `CloseCodes.INVALID_PAYLOAD_DATA` does not
-    //     exist, and `SendBuffer.init` takes one argument, not two.
-    //
-    // Folding that into `all` today would turn `zig build test` red for
-    // everyone, which is worse than the status quo. Gating it keeps the default
-    // suite green while making the debt reachable, reproducible and countable:
-    // `zig build test -Dspec=websocket` prints all 14 errors.
-    //
-    // TODO: fix those 14, then give this block the same
-    // `spec_filter == null or ... "all" or ...` condition as every spec above.
-    if (spec_filter != null and std.mem.eql(u8, spec_filter.?, "websocket")) {
+    // All 14 are fixed, so this runs with `all` like every other spec. Keep it
+    // that way: a gated test block is a test block that rots.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "websocket")) {
         const websocket_tests = b.addTest(.{ .root_module = websocket_mod });
         const run_websocket_tests = b.addRunArtifact(websocket_tests);
         test_step.dependOn(&run_websocket_tests.step);
