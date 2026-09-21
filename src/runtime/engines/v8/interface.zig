@@ -1966,6 +1966,21 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (is_global_interface) {
                                 // Get the method's context - V8 enters the function's creation context
                                 if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
+                                    // The last of the two per-element context leaks that
+                                    // `leaks --atExit` named. This branch runs for [Global]
+                                    // interfaces, so every `window.document` read reached it
+                                    // and abandoned a Global<Context>: 31,597 per 200,000
+                                    // cycles, 1.00 per createElement.
+                                    //
+                                    // Safe to release, and provably so rather than hopefully:
+                                    // `method_ctx` appears on exactly two lines - this one and
+                                    // the call below - and `v8_Context_Global` reads it into a
+                                    // Local and returns a FRESH Global<Object> built from
+                                    // `local_context->Global()`. It keeps no pointer to the
+                                    // context. That is the distinction from the disposes
+                                    // reverted in 5abd41550 and 6c64a3925, where the callee's
+                                    // retention was never established.
+                                    defer v8.v8_Context_Dispose(method_ctx);
                                     if (v8.v8_Context_Global(method_ctx)) |method_global| {
                                         // Owned: v8_Context_Global allocates where V8's Context::Global()
                                         // returns a borrowed Local. Everything below only compares it or
