@@ -265,16 +265,64 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return token_list;
 }
 
+/// The form's "listed elements", per
+/// https://html.spec.whatwg.org/multipage/forms.html#dom-form-elements
+///
+/// input[type=image] is deliberately excluded: it is a listed element but the
+/// spec removes it from this particular collection.
+const LISTED_ELEMENTS = [_][]const u8{
+    "button", "fieldset", "input", "object", "output", "select", "textarea",
+};
+
+fn collectListedElements(node: *runtime.Instance, collection: *runtime.Instance) anyerror!void {
+    const HTMLCollectionImpl = @import("HTMLCollection.zig");
+
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        if (NodeImpl.getNodeType(c) orelse 0 == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const name = elem_internal.local_name.asSlice();
+                for (LISTED_ELEMENTS) |listed| {
+                    if (std.ascii.eqlIgnoreCase(name, listed)) {
+                        // input[type=image] is a listed element but is excluded
+                        // from form.elements specifically.
+                        const excluded = std.ascii.eqlIgnoreCase(name, "input") and
+                            if (elem_internal.findAttribute(null, "type")) |t|
+                                std.ascii.eqlIgnoreCase(t.value, "image")
+                            else
+                                false;
+                        if (!excluded) try HTMLCollectionImpl.addElement(collection, c);
+                        break;
+                    }
+                }
+            }
+        }
+        // Descend unconditionally: controls nest inside fieldsets, divs and
+        // anything else, and a nested <form> is a parse error rather than
+        // something to guard against here.
+        try collectListedElements(c, collection);
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
 /// Getter for elements
+/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-elements
 pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+
+    const collection = try interfaces.HTMLCollection.init(elem_internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
+
+    try collectListedElements(instance, collection);
+    return collection;
 }
 
 /// Getter for length
+/// Spec: the number of elements in the form's elements collection.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    const collection = try get_elements(instance);
+    defer interfaces.HTMLCollection.deinit(collection);
+    return interfaces.HTMLCollection.get_length(collection);
 }
 
 /// Setter for acceptCharset
