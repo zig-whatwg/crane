@@ -614,35 +614,47 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
 
-    // Validate spec filter
+    // Validate spec filter.
+    //
+    // One name per `std.mem.eql(u8, spec_filter.?, "...")` branch below, and one
+    // branch per name. Keep the two in step: a name here with no branch silently
+    // runs nothing, and a branch with no name here is unreachable because this
+    // check exits first.
+    //
+    // The "Valid specs:" message is derived from this array rather than spelled
+    // out a second time. Three copies of one list is what let it rot: the array
+    // named 25 of the 28 specs, the message 24, and no two agreed.
+    const valid_specs = [_][]const u8{
+        "all",
+        "infra",
+        "webidl",
+        "dom",
+        "selector",
+        "encoding",
+        "url",
+        "urlpattern",
+        "console",
+        "streams",
+        "mimesniff",
+        "quirks",
+        "css",
+        "storage",
+        "cookiestore",
+        "runtime",
+        "codegen",
+        "v8",
+        "file",
+        "fs",
+        "fetch",
+        "trusted_types",
+        "csp",
+        "permissions",
+        "html",
+        "intl",
+        "platform",
+        "websocket",
+    };
     if (spec_filter) |spec| {
-        const valid_specs = [_][]const u8{
-            "all",
-            "infra",
-            "webidl",
-            "dom",
-            "encoding",
-            "url",
-            "urlpattern",
-            "console",
-            "streams",
-            "mimesniff",
-            "quirks",
-            "css",
-            "storage",
-            "runtime",
-            "codegen",
-            "v8",
-            "file",
-            "fs",
-            "fetch",
-            "trusted_types",
-            "csp",
-            "permissions",
-            "html",
-            "intl",
-            "websocket",
-        };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
             if (std.mem.eql(u8, spec, valid_spec)) {
@@ -652,7 +664,11 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl\n", .{});
+            std.debug.print("Valid specs:", .{});
+            for (valid_specs, 0..) |valid_spec, i| {
+                std.debug.print("{s} {s}", .{ if (i == 0) "" else ",", valid_spec });
+            }
+            std.debug.print("\n", .{});
             std.process.exit(1);
         }
     }
