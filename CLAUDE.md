@@ -293,8 +293,6 @@ each other in `/tmp`.
 ## Known debt — do not add to it
 
 - 434 impls-boundary violations (`zig build lint-impls`)
-- Intermittently red suite: `tests/storage/backend_benchmark_test.zig` asserts
-  absolute wall-clock (`avgNs() < 1_000_000`) and fails under load
 - Untested and undocumented code exists
 
 These are real and being paid down. Saying "zero tolerance" about them trains
