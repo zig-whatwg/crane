@@ -26,12 +26,12 @@ test "CloseCodes - standard codes" {
     try testing.expectEqual(@as(u16, 1003), websocket.CloseCodes.UNSUPPORTED_DATA);
     try testing.expectEqual(@as(u16, 1005), websocket.CloseCodes.NO_STATUS_RECEIVED);
     try testing.expectEqual(@as(u16, 1006), websocket.CloseCodes.ABNORMAL_CLOSURE);
-    try testing.expectEqual(@as(u16, 1007), websocket.CloseCodes.INVALID_PAYLOAD_DATA);
+    try testing.expectEqual(@as(u16, 1007), websocket.CloseCodes.INVALID_FRAME_PAYLOAD_DATA);
     try testing.expectEqual(@as(u16, 1008), websocket.CloseCodes.POLICY_VIOLATION);
     try testing.expectEqual(@as(u16, 1009), websocket.CloseCodes.MESSAGE_TOO_BIG);
     try testing.expectEqual(@as(u16, 1010), websocket.CloseCodes.MANDATORY_EXTENSION);
     try testing.expectEqual(@as(u16, 1011), websocket.CloseCodes.INTERNAL_ERROR);
-    try testing.expectEqual(@as(u16, 1015), websocket.CloseCodes.TLS_HANDSHAKE_FAILURE);
+    try testing.expectEqual(@as(u16, 1015), websocket.CloseCodes.TLS_HANDSHAKE);
 }
 
 test "CloseCodes - isValidForCloseFrame" {
@@ -240,36 +240,36 @@ test "WebSocketEventTask - create error" {
 // =============================================================================
 
 test "SendBuffer - basic operations" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 0);
+    var buffer = websocket.SendBuffer.init(testing.allocator);
     defer buffer.deinit();
 
     try testing.expectEqual(@as(u64, 0), buffer.getBufferedAmount());
-    try testing.expect(!buffer.hasMessages());
+    try testing.expect(buffer.isEmpty());
 }
 
 test "SendBuffer - queue text message" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 0);
+    var buffer = websocket.SendBuffer.init(testing.allocator);
     defer buffer.deinit();
 
     try buffer.queueText("Hello, World!");
 
-    try testing.expect(buffer.hasMessages());
+    try testing.expect(!buffer.isEmpty());
     try testing.expectEqual(@as(u64, 13), buffer.getBufferedAmount());
 }
 
 test "SendBuffer - queue binary message" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 0);
+    var buffer = websocket.SendBuffer.init(testing.allocator);
     defer buffer.deinit();
 
     const data = [_]u8{ 0x01, 0x02, 0x03, 0x04 };
     try buffer.queueBinary(&data);
 
-    try testing.expect(buffer.hasMessages());
+    try testing.expect(!buffer.isEmpty());
     try testing.expectEqual(@as(u64, 4), buffer.getBufferedAmount());
 }
 
 test "SendBuffer - dequeue preserves order" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 0);
+    var buffer = websocket.SendBuffer.init(testing.allocator);
     defer buffer.deinit();
 
     try buffer.queueText("First");
@@ -288,19 +288,19 @@ test "SendBuffer - dequeue preserves order" {
     try testing.expect(buffer.dequeue() == null);
 }
 
-test "SendBuffer - markSent updates bufferedAmount" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 0);
+test "SendBuffer - markTransmitted updates bufferedAmount" {
+    var buffer = websocket.SendBuffer.init(testing.allocator);
     defer buffer.deinit();
 
     try buffer.queueText("Hello"); // 5 bytes
     try testing.expectEqual(@as(u64, 5), buffer.getBufferedAmount());
 
-    buffer.markSent(5);
+    buffer.markTransmitted(5);
     try testing.expectEqual(@as(u64, 0), buffer.getBufferedAmount());
 }
 
 test "SendBuffer - max size limit" {
-    var buffer = websocket.SendBuffer.init(testing.allocator, 10);
+    var buffer = websocket.SendBuffer.initWithLimit(testing.allocator, 10);
     defer buffer.deinit();
 
     try buffer.queueText("Hello"); // 5 bytes
