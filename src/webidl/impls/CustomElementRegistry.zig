@@ -441,9 +441,13 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
         return runtime.JSValue.fromHandleNonOwning(@constCast(def.constructor));
     }
 
-    // Step 2: Return undefined - represented as error since return type is non-nullable
-    // In JS, this returns undefined. The runtime layer should handle this error as undefined.
-    return error.NotImplemented;
+    // Step 2: no definition matches, so return undefined.
+    //
+    // This returned `error.NotImplemented` before, which V8 turns into a THROWN
+    // exception - so `customElements.get('nope')` threw where the spec requires
+    // it to hand back undefined, and feature detection of the form
+    // `if (customElements.get(name))` blew up instead of taking the false branch.
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getName(constructor)
