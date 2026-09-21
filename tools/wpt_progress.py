@@ -26,6 +26,12 @@ WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_worklist.txt')
 RESULTS = os.path.join(REPO, 'wpt-results')
 DEFAULT_OUT = os.path.join(RESULTS, 'progress.html')
 
+# Accumulated history, kept OUT of wpt-results/ because the runner owns that
+# directory and reuses journal.shard*.jsonl on every run. A killed baseline and
+# three small runs silently overwrote a 2,052-file journal set that way, and the
+# report dropped from 1,510 sources to 77 with nothing to say why.
+STATE = os.path.join(REPO, 'tmp', 'wpt-progress-state.json')
+
 # status -> (label, css class). Anything unrecognised is treated as an error,
 # which is the safe direction: a status we do not know about is not a pass.
 GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED'}
@@ -43,8 +49,21 @@ def load_worklist():
 
 
 def load_results():
-    """Latest record per path. Later journals win, so a re-run supersedes."""
+    """Latest record per path, accumulated across runs.
+
+    Journals are transient - the runner reuses their filenames - so results are
+    merged into a persistent state file and read back from there. A path a run
+    did not touch keeps its previous result rather than reverting to unrun.
+    """
     records = {}
+
+    # Previously accumulated.
+    try:
+        with open(STATE) as f:
+            records = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        records = {}
+
     files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')),
                    key=os.path.getmtime)
     for fn in files:
@@ -59,7 +78,18 @@ def load_results():
             if 'path' in rec:
                 rec['_journal'] = os.path.basename(fn)
                 rec['_mtime'] = os.path.getmtime(fn)
-                records[rec['path']] = rec
+                prev = records.get(rec['path'])
+                # Only supersede with something at least as recent, so replaying
+                # an old journal cannot roll the picture backwards.
+                if prev is None or rec['_mtime'] >= prev.get('_mtime', 0):
+                    records[rec['path']] = rec
+
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp_path = STATE + '.tmp'
+    with open(tmp_path, 'w') as f:
+        json.dump(records, f)
+    os.replace(tmp_path, STATE)  # atomic: a crash mid-write cannot truncate it
+
     return records, files
 
 
@@ -251,8 +281,10 @@ def render(areas, worklist, records, files, out_path):
   which does not block 0.1.
   <br><br>Journals read (most recent {min(len(files), 8)}):
   <ul>{journals}</ul>
-  Refresh with <code>zig build wpt -- --from-file=tests/wpt_0_1_worklist.txt
-  --journal=wpt-results/journal.jsonl</code> then re-run this script.
+  Results accumulate in <code>tmp/wpt-progress-state.json</code>; journals in
+  <code>wpt-results/</code> are transient and the runner reuses their names.
+  <br>Refresh with <code>zig build wpt -- --from-file=tests/wpt_0_1_worklist.txt</code>
+  then re-run this script.
 </footer>
 </div></body></html>"""
 
