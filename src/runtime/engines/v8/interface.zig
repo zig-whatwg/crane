@@ -2457,7 +2457,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };
@@ -3467,7 +3467,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get or create isolate allocator (uses page_allocator as fallback)
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                 conv.throwError(isolate, "Failed to get isolate allocator");
                 return;
             };
@@ -3898,7 +3898,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                 info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
                 return;
             };
@@ -7484,7 +7484,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };

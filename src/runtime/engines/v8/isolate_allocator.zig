@@ -97,14 +97,19 @@ pub fn initIsolateAllocator(
         };
         data.allocator = data.arena.allocator();
     } else {
+        // Non-arena: hand back the PARENT allocator, so `free` actually frees.
+        //
+        // Not a DebugAllocator: that retains freed pages to detect use-after-free
+        // and never returns them to the OS, which would swap one non-reclaiming
+        // allocator for another. The parent is whatever the caller supplied, and
+        // the call sites supply `std.heap.c_allocator`.
         data.* = .{
-            .allocator = undefined, // Set below
+            .allocator = parent,
             .parent = parent,
             .arena = undefined,
-            .gpa = .init,
+            .gpa = undefined,
             .use_arena = false,
         };
-        data.allocator = data.gpa.allocator();
     }
 
     // Store in isolate
@@ -172,8 +177,21 @@ pub fn getOrInitAllocator(
         return alloc;
     }
 
-    // Initialize with arena (faster for callbacks)
-    try initIsolateAllocator(isolate, fallback, true);
+    // NOT an arena, despite "faster for callbacks".
+    //
+    // An arena's `free` is a no-op, so every per-callback argument conversion
+    // accumulated for the life of the isolate - and this allocator serves the
+    // method and getter dispatchers, i.e. every DOM call. `resetArena` exists for
+    // exactly this, with the comment "Call this after each callback", and nothing
+    // has ever called it.
+    //
+    // Resetting would be the other fix, but it is only safe if nothing allocated
+    // during the callback outlives it, and that is not something the dispatcher
+    // can know for 1,263 interfaces. Making `free` real is safe by construction:
+    // callers that free reclaim, callers that do not leak exactly as much as they
+    // already did. It is also backed by malloc rather than the page allocator, so
+    // the memory is visible to `mstats()` instead of vanishing into VM_ALLOCATE.
+    try initIsolateAllocator(isolate, fallback, false);
     return getIsolateAllocator(isolate).?;
 }
 
