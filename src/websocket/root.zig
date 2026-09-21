@@ -84,6 +84,38 @@
 //!
 //! All events are dispatched via the task queue using "networking" task source.
 //!
+//! ## Status: what is wired, and what is not
+//!
+//! The live path is real: `src/webidl/impls/WebSocket.zig` drives
+//! `WebSocketConnection`, which drives `curl_backend.zig`, which sets
+//! `CURLOPT_CONNECT_ONLY = CURL_CONNECT_ONLY_WEBSOCKET` and moves frames with
+//! `curl_ws_send`/`curl_ws_recv` against vendored curl 8.18.0.
+//!
+//! Two modules above describe an intended design that nothing calls yet. Both
+//! compile and are tested; neither is reachable from the live path:
+//!
+//! - **`events.zig`** - the four-event dispatch. `WebSocket.zig` stores
+//!   `onopen`/`onmessage`/`onerror`/`onclose` as V8 `Global` handles and never
+//!   invokes them, so no event of any kind fires today. Routing them through
+//!   `WebSocketEventQueue` needs a dispatch path built in `WebSocket.zig`
+//!   first; the queue is the easy half.
+//!
+//! - **`send_buffer.zig`** - `bufferedAmount`. `connection.zig` carries a plain
+//!   `buffered_amount: u64` field (connection.zig:95) that is initialised to 0,
+//!   read by `WebSocket.zig`, and never written, so the attribute returns a
+//!   constant 0. `SendBuffer` is the only implementation of the spec semantics
+//!   in the tree. Swapping it in is *not* just wiring: `call_send` is still a
+//!   stub that discards its JSValue, and `curl_backend.sendFrame` is
+//!   synchronous, so a queue-then-flush would take `bufferedAmount` 0 -> n -> 0
+//!   inside one call, which no observer can see. The spec getter returns what
+//!   had not been transmitted "as of the last time the event loop reached step
+//!   1", so a meaningful value needs an asynchronous flush at event-loop turns.
+//!   `sendFrame` also returns `error.PartialSend` and drops the unsent tail -
+//!   the one place a send buffer would earn its keep today.
+//!
+//! They were kept, not deleted, because both are 0.1 requirements and
+//! `connection.zig` does not implement either one.
+//!
 //! ## Usage Example
 //!
 //! ```zig
