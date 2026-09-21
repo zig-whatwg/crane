@@ -1637,6 +1637,23 @@ pub const TreeBuilder = struct {
         self.insertion_mode = .text;
     }
 
+    /// Pop the current template insertion mode, if there is one.
+    ///
+    /// https://html.spec.whatwg.org/multipage/parsing.html#the-insertion-mode
+    /// says "pop the current template insertion mode off the stack of template
+    /// insertion modes" - and the stack can legitimately be empty when a
+    /// fragment is parsed straight into an "in template" mode, which is exactly
+    /// what `Element.innerHTML` does.
+    ///
+    /// `len - 1` on an unsigned length underflows there, and Zig's safety check
+    /// ABORTS THE PROCESS rather than failing the parse: a WPT run hit it with
+    /// `thread ... panic: integer overflow` and took the whole shard down.
+    /// Five of the eight pop sites had no emptiness check; three already did.
+    fn popTemplateInsertionMode(self: *TreeBuilder) void {
+        if (self.template_insertion_modes.len == 0) return;
+        _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+    }
+
     fn handleTemplateEndTag(self: *TreeBuilder) !void {
         // Check if template is in stack
         var has_template = false;
@@ -2958,28 +2975,28 @@ pub const TreeBuilder = struct {
                     std.mem.eql(u8, name, "tfoot") or
                     std.mem.eql(u8, name, "thead"))
                 {
-                    _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+                    self.popTemplateInsertionMode();
                     try self.template_insertion_modes.append(.in_table);
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "col")) {
-                    _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+                    self.popTemplateInsertionMode();
                     try self.template_insertion_modes.append(.in_column_group);
                     self.insertion_mode = .in_column_group;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "tr")) {
-                    _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+                    self.popTemplateInsertionMode();
                     try self.template_insertion_modes.append(.in_table_body);
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "td") or std.mem.eql(u8, name, "th")) {
-                    _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+                    self.popTemplateInsertionMode();
                     try self.template_insertion_modes.append(.in_row);
                     self.insertion_mode = .in_row;
                     try self.processToken(token);
                 } else {
                     // Any other start tag
-                    _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+                    self.popTemplateInsertionMode();
                     try self.template_insertion_modes.append(.in_body);
                     self.insertion_mode = .in_body;
                     try self.processToken(token);
