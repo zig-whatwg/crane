@@ -662,7 +662,20 @@ fn writeString(buf: []u8, start: usize, s: []const u8) usize {
 // V8 String Helpers
 // ============================================================================
 
+/// Read a V8 string into `buf`, TAKING OWNERSHIP of the handle.
+///
+/// Every one of the 49 call sites passes a freshly created handle - inline as
+/// `readV8String(v8.v8_Value_ToString(v, ctx), ...)`, or bound on the line above -
+/// and none of them released it. `v8_Value_ToString` allocates a
+/// `Global<String>` where V8's own API returns a borrowed `Local`, so each call
+/// leaked one.
+///
+/// Consuming it here rather than adding 49 `defer`s: the ownership is uniform, a
+/// single point cannot drift out of sync with the call sites, and a caller that
+/// wanted to keep the handle would have to stop using this helper - which is a
+/// compile-visible change rather than a silent leak.
 fn readV8String(str: ?*v8.String, context: *v8.Context, buf: []u8) ?[]const u8 {
+    defer if (str) |s| v8.v8_String_Dispose(s);
     if (str) |s| {
         const len = v8.v8_String_Utf8Length(s);
         if (len > 0 and len < buf.len) {
