@@ -93,6 +93,7 @@ pub const algorithms = @import("algorithms.zig");
 pub const queryCookies = algorithms.queryCookies;
 pub const setCookie = algorithms.setCookie;
 pub const deleteCookie = algorithms.deleteCookie;
+pub const MAX_EXPIRY_MS = algorithms.MAX_EXPIRY_MS;
 pub const createCookieListItem = algorithms.createCookieListItem;
 pub const normalizeCookieNameOrValue = algorithms.normalizeCookieNameOrValue;
 pub const CookieError = algorithms.CookieError;

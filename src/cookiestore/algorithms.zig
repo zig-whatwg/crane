@@ -10,6 +10,7 @@
 //! - create a CookieListItem
 
 const std = @import("std");
+const clock = @import("clock");
 const Cookie = @import("cookie.zig").Cookie;
 const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
@@ -34,6 +35,12 @@ pub const CookieError = error{
     OutOfMemory,
 };
 
+/// Longest lifetime a cookie may be given.
+///
+/// RFC 6265bis §5.5: an expiry-time more than 400 days in the future is capped
+/// at 400 days from now. Applies to both `expires` and `maxAge`.
+pub const MAX_EXPIRY_MS: i64 = 400 * 24 * 60 * 60 * 1000;
+
 /// Options for setting a cookie
 /// https://cookiestore.spec.whatwg.org/#set-a-cookie
 pub const SetCookieOptions = struct {
@@ -41,12 +48,23 @@ pub const SetCookieOptions = struct {
     name: []const u8,
     /// Cookie value (required)
     value: []const u8,
-    /// Expiration time as milliseconds timestamp (null = session cookie)
+    /// Expiration time as milliseconds timestamp (null = session cookie).
+    /// Mutually exclusive with `max_age`.
     expires: ?i64 = null,
+    /// Lifetime in seconds from now (null = not supplied).
+    /// Mutually exclusive with `expires`; a non-positive value expires the
+    /// cookie immediately, which deletes any cookie of the same identity.
+    max_age: ?i64 = null,
     /// Domain attribute (null = host-only cookie)
     domain: ?[]const u8 = null,
     /// Path attribute (default = "/")
     path: []const u8 = "/",
+    /// Path component of the creation URL.
+    ///
+    /// Only consulted when `path` is empty, to compute the default-path
+    /// (RFC 6265bis §5.1.4). CookieStore.set() passes "/" explicitly, so this
+    /// is for callers that follow the HTTP rule instead.
+    url_path: []const u8 = "/",
     /// SameSite attribute (default = strict)
     same_site: SameSite = .strict,
     /// Whether this is a partitioned cookie
@@ -173,12 +191,16 @@ pub fn setCookie(
         host_only = false;
     }
 
-    // Step 12: Expires handling (already passed in options)
+    // Step 12: Expires / Max-Age handling.
+    const expiry_time = try resolveExpiry(options.expires, options.max_age);
 
-    // Step 13-16: Path validation
+    // Step 13-16: Path validation. The default-path comes from the creation
+    // URL's *path* (RFC 6265bis §5.1.4); passing the host here made
+    // getDefaultPath return "/" unconditionally, since a host never starts
+    // with "/".
     var path = options.path;
     if (path.len == 0) {
-        path = domain_matching.getDefaultPath(url_host);
+        path = domain_matching.getDefaultPath(options.url_path);
     }
 
     validation.validatePath(path) catch {
@@ -211,7 +233,7 @@ pub fn setCookie(
     cookie.secure = secure;
     cookie.same_site = same_site;
     cookie.host_only = host_only;
-    cookie.expiry_time = options.expires;
+    cookie.expiry_time = expiry_time;
 
     if (cookie_domain) |d| {
         try cookie.setDomain(d);
@@ -235,6 +257,38 @@ pub fn setCookie(
 
     // Clean up our temporary cookie (jar clones it)
     cookie.deinit();
+}
+
+/// Resolve the expiry-time for a cookie being set.
+/// RFC 6265bis §5.5 steps 3-5, as reached from
+/// https://cookiestore.spec.whatwg.org/#set-a-cookie
+///
+/// Returns null for a session cookie, or a wall-clock millisecond timestamp.
+/// A timestamp already in the past is how a deletion is expressed: `jar.store`
+/// drops the matching cookie and declines to store the expired one.
+fn resolveExpiry(expires: ?i64, max_age: ?i64) CookieError!?i64 {
+    // `expires` and `maxAge` are mutually exclusive; supplying both fails,
+    // which the Cookie Store API surfaces to script as a TypeError.
+    if (expires != null and max_age != null) {
+        return CookieError.ValidationError;
+    }
+
+    const now = clock.wallMillis();
+    // Saturating so an absurd max-age cannot wrap past the ceiling.
+    const ceiling = now +| MAX_EXPIRY_MS;
+
+    if (max_age) |seconds| {
+        // Non-positive max-age means the earliest representable date.
+        if (seconds <= 0) return 0;
+        return @min(now +| (seconds *| 1000), ceiling);
+    }
+
+    if (expires) |at| {
+        return @min(at, ceiling);
+    }
+
+    // Neither given: a session cookie, which never expires by time.
+    return null;
 }
 
 /// Delete a cookie algorithm
