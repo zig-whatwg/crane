@@ -90,31 +90,21 @@ pub const CurlWebSocket = struct {
         const url_copy = try allocator.dupe(u8, url);
         errdefer allocator.free(url_copy);
 
-        // Build comma-separated protocol list if provided
+        // Build comma-separated protocol list if provided.
+        //
+        // Must be joined into an *exactly* sized allocation. The previous version
+        // reserved `p.len + 1` per protocol - one separator too many, since N
+        // protocols need N-1 commas - and then handed `buf[0..offset]` to
+        // `deinit`, so the free length never matched the alloc length. That is an
+        // allocator contract violation, not a leak: `std.testing.allocator`
+        // reports "Allocation size 10 bytes does not match free size 9".
         var protocols_copy: ?[]const u8 = null;
         if (options.protocols) |protos| {
             if (protos.len > 0) {
-                var total_len: usize = 0;
-                for (protos) |p| {
-                    total_len += p.len + 1; // +1 for comma or null
-                }
-
-                const buf = try allocator.alloc(u8, total_len);
-                errdefer allocator.free(buf);
-
-                var offset: usize = 0;
-                for (protos, 0..) |p, i| {
-                    @memcpy(buf[offset..][0..p.len], p);
-                    offset += p.len;
-                    if (i < protos.len - 1) {
-                        buf[offset] = ',';
-                        offset += 1;
-                    }
-                }
-
-                protocols_copy = buf[0..offset];
+                protocols_copy = try std.mem.join(allocator, ",", protos);
             }
         }
+        errdefer if (protocols_copy) |p| allocator.free(p);
 
         self.* = .{
             .allocator = allocator,
@@ -368,6 +358,34 @@ test "CurlWebSocket - initialization with protocols" {
 
     try std.testing.expect(ws.protocols != null);
     try std.testing.expectEqualStrings("chat,json", ws.protocols.?);
+}
+
+test "CurlWebSocket - protocol list is exactly sized" {
+    const allocator = std.testing.allocator;
+
+    // Regression: the join over-reserved one separator per protocol and then
+    // freed a shorter slice than it allocated. std.testing.allocator fails the
+    // test on the size mismatch, so every arity has to be exercised - a single
+    // protocol needs zero commas, three need two.
+    {
+        const protocols = [_][]const u8{"chat"};
+        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        defer ws.deinit();
+        try std.testing.expectEqualStrings("chat", ws.protocols.?);
+    }
+    {
+        const protocols = [_][]const u8{ "chat", "json", "graphql-ws" };
+        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        defer ws.deinit();
+        try std.testing.expectEqualStrings("chat,json,graphql-ws", ws.protocols.?);
+    }
+    {
+        // An empty protocol list must stay null, not become an empty allocation.
+        const protocols = [_][]const u8{};
+        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        defer ws.deinit();
+        try std.testing.expect(ws.protocols == null);
+    }
 }
 
 test "CurlWebSocket - not connected errors" {
