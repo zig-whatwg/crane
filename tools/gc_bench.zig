@@ -325,16 +325,30 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, a, "--profile")) profile = true;
     }
 
+    // `--c-alloc` swaps Zig's DebugAllocator for malloc.
+    //
+    // This is a control, not a mode. DebugAllocator retains freed pages so it can
+    // detect use-after-free, so it never returns memory to the OS - which would
+    // make RSS climb across a create/discard loop with nothing leaking, and this
+    // benchmark's whole job is to decide whether something is leaking. Every other
+    // pool here has plateaued while RSS keeps rising, so the allocator is the
+    // remaining suspect. Under malloc the same run is measured against an allocator
+    // that does return pages, and `mstats()` already reports it.
+    var use_c_alloc = false;
+    for (args[1..]) |a| {
+        if (std.mem.eql(u8, a, "--c-alloc")) use_c_alloc = true;
+    }
+
     var debug_gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_gpa.deinit();
 
-    counting = .{ .child = debug_gpa.allocator() };
+    counting = .{ .child = if (use_c_alloc) std.heap.c_allocator else debug_gpa.allocator() };
     if (profile) {
         counting.profile = true;
         counting.live = .empty;
         // Bookkeeping uses the RAW allocator, never the counted one: recording an
         // allocation must not itself register as an allocation.
-        counting.tracking_allocator = debug_gpa.allocator();
+        counting.tracking_allocator = if (use_c_alloc) std.heap.c_allocator else debug_gpa.allocator();
     }
     defer if (counting.live) |*m| m.deinit(counting.tracking_allocator);
     const allocator = counting.allocator();
@@ -502,7 +516,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "malloc MB",   "v8 external MB",
+        "B/cycle", "malloc MB",   "zig-side MB",
     });
 
     const first = samples[0].resident;
@@ -541,7 +555,11 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 // Zig's allocator, which `mstats()` cannot see: DebugAllocator
                 // goes to the page allocator (mmap), not malloc. Without this the
                 // accounting has a hole the size of everything Crane allocates.
-                @as(f64, @floatFromInt(s.v8_external)) / (1024.0 * 1024.0),
+                // Zig-side outstanding bytes, counted by CountingAllocator regardless
+                // of what backs it. Under --c-alloc both allocators share malloc, so
+                // `mstats` can no longer separate Crane's allocations from the C++
+                // wrapper's; this can.
+                @as(f64, @floatFromInt(s.gpa_outstanding)) / (1024.0 * 1024.0),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
