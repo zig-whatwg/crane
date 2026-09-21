@@ -85,6 +85,18 @@ pub fn mallocInUseBytes() ?usize {
     return stats.bytes_used;
 }
 
+/// Total bytes malloc has taken from the OS, in use or not.
+///
+/// The pair matters. `bytes_used` climbing means something is leaking; `bytes_total`
+/// climbing while `bytes_used` stays flat means the heap is FRAGMENTING - memory is
+/// freed but the pages are not returned, so RSS keeps rising with nothing leaked.
+/// Those need opposite fixes, and resident memory alone cannot tell them apart.
+pub fn mallocHeapBytes() ?usize {
+    if (builtin.os.tag != .macos) return null;
+    const stats = mstats();
+    return stats.bytes_total;
+}
+
 /// macOS `struct mstats` from <malloc/malloc.h>.
 const MStats = extern struct {
     bytes_total: usize,

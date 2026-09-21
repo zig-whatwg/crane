@@ -219,6 +219,10 @@ const Sample = struct {
     /// Bytes held by malloc - the C++ heap. Distinguishes a missing `delete` from
     /// V8's page allocator not returning memory.
     malloc_in_use: usize,
+    /// Total malloc heap, in use or not - fragmentation shows here, not above.
+    malloc_heap: usize,
+    /// V8 external memory: backing stores and external strings, outside the JS heap.
+    v8_external: usize,
 };
 
 /// The isolate to ask for heap statistics, set once the browser exists.
@@ -267,6 +271,13 @@ fn takeSample(cycle: usize) Sample {
         .live_context_globals = v8.ffi.v8_Debug_LiveContextGlobals(),
         .live_object_globals = v8.ffi.v8_Debug_LiveObjectGlobals(),
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
+        .malloc_heap = memory.mallocHeapBytes() orelse 0,
+        .v8_external = blk: {
+            const iso = heap_isolate orelse break :blk 0;
+            var ext: usize = 0;
+            v8.ffi.v8_Isolate_GetHeapUsage(iso, null, null, &ext);
+            break :blk ext;
+        },
         .v8_total = blk: {
             const iso = heap_isolate orelse break :blk 0;
             var total: usize = 0;
@@ -491,7 +502,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "malloc MB",   "live Object<>",
+        "B/cycle", "malloc MB",   "v8 external MB",
     });
 
     const first = samples[0].resident;
@@ -527,7 +538,10 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 growth,
                 slope,
                 @as(f64, @floatFromInt(s.malloc_in_use)) / (1024.0 * 1024.0),
-                @as(f64, @floatFromInt(s.live_object_globals)),
+                // Zig's allocator, which `mstats()` cannot see: DebugAllocator
+                // goes to the page allocator (mmap), not malloc. Without this the
+                // accounting has a hole the size of everything Crane allocates.
+                @as(f64, @floatFromInt(s.v8_external)) / (1024.0 * 1024.0),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
