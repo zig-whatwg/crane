@@ -20,6 +20,21 @@ web platform, the host supplies pixels. It links for `aarch64-ios`.
 
 Conformance is judged by WPT (`zig build wpt`), not by our own tests.
 
+**The goal is web spec conformance, not compatibility with any one framework.**
+Crane is a general-purpose browser engine: the target is everything a headless
+browser engine can run, with rendering and layout the single deliberate
+exclusion. A framework's test suite - React's, or anything else's - is a way to
+VERIFY that, never a way to scope it.
+
+So **"framework X does not use this" is not a reason to leave something out**,
+and neither is it a reason to stop halfway through an algorithm. That criterion
+was used by mistake early in this work and produced two real defects: an
+`addEventListener` options flatten that handled only the boolean form because
+"React passes booleans", which made `addEventListener(t, fn, 2.3)` register as
+a bubble listener when the spec says capture; and `navigation-api/` excluded
+from the WPT worklist on the grounds that React and Phoenix do not need it.
+When in doubt, implement what the spec says and let WPT report the gap.
+
 **Not everything has a spec.** V8 handle ownership, allocator lifetimes and
 teardown order are engine concerns — read the code, not `specs/`.
 

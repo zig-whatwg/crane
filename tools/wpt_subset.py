@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Generate the Crane 0.1 WPT worklist from the upstream manifest.
 
+THE GOAL IS WEB SPEC CONFORMANCE, NOT COMPATIBILITY WITH ANY ONE FRAMEWORK.
+
+Crane is a general-purpose browser engine. The target is everything a headless
+browser engine can run, with rendering and layout as the single deliberate
+exclusion. A framework's test suite - React's, or anything else's - is a way to
+VERIFY that, never a way to scope it. "Framework X does not use this" is not a
+reason to leave something out, and was mistakenly used as one in an earlier
+revision of this file.
+
 The 0.1 target is a SLICE of several specs, not a set of whole directories, so
 the in-scope allowlist in tests/wpt_runner/config.zig is too coarse to express
 it. This emits a path worklist the runner consumes directly:
@@ -31,10 +40,10 @@ WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_worklist.txt')
 
 # Prefix -> why it is in. Checked in order; first match wins.
 INCLUDE = [
-    # --- Core DOM. react-dom's entire surface lives here. -------------------
+    # --- Core DOM. ---------------------------------------------------------
     ('dom/nodes/',            'node tree, attributes, createElement'),
-    ('dom/events/',           'React delegates 93 event types at the root; capture required'),
-    ('dom/ranges/',           'createRange; React selection restore on commit'),
+    ('dom/events/',           'event dispatch: capture, bubble, propagation, listener options'),
+    ('dom/ranges/',           'Range and selection'),
     ('dom/collections/',      'HTMLCollection'),
     ('dom/lists/',            'DOMTokenList / classList'),
     ('dom/abort/',            'AbortController, required by fetch'),
@@ -50,17 +59,17 @@ INCLUDE = [
     ('html/syntax/',          'HTML parsing'),
 
     # --- Scripting and the event loop. -------------------------------------
-    ('html/webappapis/timers/',                   "setTimeout: React's scheduler falls back to it"),
-    ('html/webappapis/microtask-queuing/',        'queueMicrotask, required by React'),
+    ('html/webappapis/timers/',                   'setTimeout/setInterval and their clamping'),
+    ('html/webappapis/microtask-queuing/',        'queueMicrotask and microtask ordering'),
     ('html/webappapis/structured-clone/',         'postMessage payloads'),
     ('html/webappapis/scripting/',                'onX handlers, error reporting'),
     ('html/webappapis/atob/',                     'base64'),
     ('html/webappapis/dynamic-markup-insertion/', 'innerHTML, document.write'),
 
-    # --- Elements React and app frameworks actually touch. ------------------
-    ('html/semantics/forms/',              'React controlled inputs: value/checked/selected'),
+    # --- Element interfaces. -----------------------------------------------
+    ('html/semantics/forms/',              'form controls: value, checkedness, validation, submission'),
     ('html/semantics/scripting-1/',        '<script> loading and execution'),
-    ('html/semantics/document-metadata/',  'React 19 hoistables: title/link/style/meta'),
+    ('html/semantics/document-metadata/',  'title, link, style, meta, base'),
     ('html/semantics/selectors/',          'querySelector / matches'),
     ('html/semantics/tabular-data/',       'table element parsing quirks'),
     ('html/semantics/the-button-element/', 'button'),
@@ -84,6 +93,7 @@ INCLUDE = [
     ('cookiestore/',   "CookieStore; must unify onto curl's cookie engine"),
 
     # --- Already in the runner's scope and largely working. ----------------
+    ('navigation-api/', 'Navigation API - in scope: a headless engine navigates'),
     ('url/', 'URL'), ('urlpattern/', 'URLPattern'), ('encoding/', 'Encoding'),
     ('console/', 'Console'), ('mimesniff/', 'MIME Sniffing'), ('streams/', 'Streams'),
     ('webidl/', 'WebIDL'),
@@ -110,7 +120,6 @@ EXCLUDE = [
     ('html/semantics/popovers/',           'not in 0.1'),
     ('html/semantics/permission-element/', 'not in 0.1'),
     ('html/semantics/interestfor/',        'not in 0.1'),
-    ('navigation-api/',                    'new Navigation API; React and Phoenix do not need it'),
     ('html/browsers/browsing-the-web/back-forward-cache/',  'not in 0.1'),
     ('html/browsers/browsing-the-web/overlapping-navigations', 'not in 0.1'),
     ('html/browsers/browsing-the-web/read-media/', 'media'),
