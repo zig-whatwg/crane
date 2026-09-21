@@ -1824,6 +1824,18 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "No current context");
                         return;
                     };
+                    // THE one-per-element context leak. This fires on every attribute
+                    // read - `document`, `el.id`, `el.tagName` - and nothing released
+                    // it. The live-handle counter showed contexts growing 1.00 per
+                    // createElement; this was all of it.
+                    //
+                    // Safe either way the `orelse` below lands: when
+                    // `getter_context_owned` is non-null this value goes unused, and
+                    // when it is null this becomes `getter_context`, which only feeds
+                    // return-value conversion. Getters take no arguments, so
+                    // `fromV8Value` - the one conversion path that retains a context -
+                    // is not involved at all.
+                    defer v8.v8_Context_Dispose(caller_context);
                     // Owned: this returns a fresh Global<Context> per call, which nothing was
                     // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
                     // one only; the `orelse` fallback is borrowed and freeing it would be a

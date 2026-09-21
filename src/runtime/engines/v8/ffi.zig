@@ -665,6 +665,11 @@ pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
 /// `GetHeapStatistics` and plainly visible in RSS.
 pub extern fn v8_Debug_LiveStringGlobals() i64;
 
+/// Live `Global<Context>` handles: created by `v8_Isolate_GetCurrentContext`
+/// minus disposed. Flat across a create/discard loop means contexts are not
+/// leaking per element, whatever the cumulative creation count says.
+pub extern fn v8_Debug_LiveContextGlobals() i64;
+
 /// Every `Global<T>` handed to Zig, CUMULATIVE creations - not a live count.
 /// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
 /// nearly all of them. Read it as a rate: N per element on a create-and-discard

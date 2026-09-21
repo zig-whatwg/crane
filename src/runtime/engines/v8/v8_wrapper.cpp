@@ -1730,9 +1730,22 @@ void v8_Isolate_Exit(Isolate* isolate) {
     isolate->Exit();
 }
 
+// Live Global<Context> handles: created minus disposed.
+//
+// The same instrument that settled the string question. Cumulative creations
+// cannot distinguish "created 6 per element and released 6" from "created 6 and
+// released none" - and for strings the cumulative number turned out to be almost
+// entirely startup, which made a 4-per-element leak look real when there was none.
+static std::atomic<int64_t> g_live_context_globals{0};
+
+extern "C" int64_t v8_Debug_LiveContextGlobals() {
+    return g_live_context_globals.load(std::memory_order_relaxed);
+}
+
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -1835,10 +1848,13 @@ Global<Context>* v8_Context_NewWithGlobalConstructor(Isolate* isolate, Global<Fu
 }
 
 void v8_Context_Dispose(Global<Context>* context) {
-    if (context) {
-        context->Reset();
-        delete context;
-    }
+    if (!context) return;
+    // Snapshot-mode guarded like the other disposals: trackHandle registers these
+    // for bulk cleanup while the snapshot is built.
+    if (g_snapshot_mode) return;
+    g_live_context_globals.fetch_sub(1, std::memory_order_relaxed);
+    context->Reset();
+    delete context;
 }
 
 void v8_Context_Enter(Global<Context>* context) {
@@ -2337,9 +2353,34 @@ V8ToStringResult* v8_Value_ToString_Safe(Global<Value>* value, Global<Context>* 
 }
 
 void v8_FreeToStringResult(V8ToStringResult* result) {
-    if (result) {
-        delete result;
+    if (!result) return;
+
+    // Release the HANDLES, not just the struct that points at them.
+    //
+    // `v8_Value_ToString_Safe` fills both fields with `trackHandle(new Global<...>)`
+    // - a C++ allocation plus a slot in V8's global handle table - and deleting the
+    // struct alone leaked both. Every caller already does
+    // `defer v8_FreeToStringResult(result)`, so this fixes them all at once, and it
+    // measured at 1.2 handles per DOM object on the createElement path.
+    //
+    // Callers copy the string out before this runs (`v8_String_Utf8Length` +
+    // `WriteUtf8`, or `fromV8String`), and `v8_Isolate_ThrowException` converts the
+    // exception to a Local and hands it to V8, which roots it independently.
+    //
+    // Snapshot-mode guarded like every other disposal here: `trackHandle` registers
+    // these for bulk cleanup while the snapshot is built, and freeing them twice
+    // aborts inside `resetGlobalHandle`.
+    if (!g_snapshot_mode) {
+        if (result->value) {
+            result->value->Reset();
+            delete result->value;
+        }
+        if (result->exception) {
+            result->exception->Reset();
+            delete result->exception;
+        }
     }
+    delete result;
 }
 
 bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {

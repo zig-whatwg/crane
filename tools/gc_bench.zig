@@ -208,6 +208,12 @@ const Sample = struct {
     /// Cumulative Global<T> creations. Each is a C++ allocation plus a slot in
     /// V8's global handle table, which `used_heap_size` does not count.
     live_strings: i64,
+    /// Global<String> handles LIVE right now (created minus disposed). Unlike the
+    /// cumulative count, this shows whether a family is actually leaking: flat
+    /// means every string created per element is also released.
+    live_string_globals: i64,
+    /// Live Global<Context> handles - the family with the highest creation rate.
+    live_context_globals: i64,
     /// Bytes held by malloc - the C++ heap. Distinguishes a missing `delete` from
     /// V8's page allocator not returning memory.
     malloc_in_use: usize,
@@ -255,6 +261,8 @@ fn takeSample(cycle: usize) Sample {
             break :blk used;
         },
         .live_strings = v8.ffi.v8_Debug_CreatedGlobals(),
+        .live_string_globals = v8.ffi.v8_Debug_LiveStringGlobals(),
+        .live_context_globals = v8.ffi.v8_Debug_LiveContextGlobals(),
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .v8_total = blk: {
             const iso = heap_isolate orelse break :blk 0;
@@ -463,7 +471,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "malloc MB",   "Global<T> made",
+        "B/cycle", "malloc MB",   "live Context<>",
     });
 
     const first = samples[0].resident;
@@ -499,7 +507,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 growth,
                 slope,
                 @as(f64, @floatFromInt(s.malloc_in_use)) / (1024.0 * 1024.0),
-                @as(f64, @floatFromInt(s.live_strings)),
+                @as(f64, @floatFromInt(s.live_context_globals)),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
