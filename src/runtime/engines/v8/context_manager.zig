@@ -276,7 +276,12 @@ pub fn deinit() void {
             log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
             if (entry.owns_context) {
                 log.debug("[context_manager.deinit] Owns context - processing\n", .{});
-                var ctx_data = entry.runtime_ctx;
+                // A pointer, not a copy. Every Instance created in this context
+                // holds `ctx == &entry.runtime_ctx`, so anything that clears a
+                // field has to land on the entry's own ContextData; on a copy it
+                // is a no-op and the entry goes on advertising resources this
+                // function has already freed.
+                const ctx_data = &entry.runtime_ctx;
 
                 // Phase: ShadowRealm cleanup
                 // Dispose any ShadowRealm contexts that were created by this context.
@@ -405,6 +410,10 @@ pub fn deinit() void {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     cache_ptr.deinit();
                     ctx_data.getAllocator().destroy(cache_ptr);
+                    // The realm and context-data phases below still run, and both
+                    // can reach an Instance whose ctx is this one. Leave no pointer
+                    // to the cache we just freed.
+                    ctx_data.clearV8WrapperCacheStorage();
                 }
 
                 // Phase: Event Loop cleanup
@@ -2690,7 +2699,12 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
 
     // 4. Clean up owned resources (key already computed at top of function)
     if (entry.owns_context) {
-        var ctx_data = entry.runtime_ctx;
+        // A pointer, not a copy: `clearV8WrapperCacheStorage` in 4c has to land on
+        // the entry's own ContextData. On a copy it was a no-op, so between 4c and
+        // step 7 `entry.runtime_ctx` still pointed at the WrapperCache 4c had just
+        // freed - and every Instance created in this context reads the cache
+        // through exactly that field.
+        const ctx_data = &entry.runtime_ctx;
 
         // 4a. Clean up Window and its DOM tree BEFORE wrapper cache cleanup
         // We must call the full Window.deinit() (not just InternalState.deinit)

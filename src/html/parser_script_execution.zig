@@ -417,6 +417,17 @@ pub const DomTreeAdapter = struct {
     /// Mapping from TreeNode pointers to DOM Element instances.
     node_map: std.AutoHashMap(*TreeNode, *runtime.Instance),
 
+    /// The DOM nodes this adapter created and has not yet seen attached to the
+    /// tree - the only ones it may free in `deinit`.
+    ///
+    /// A node is added on creation and dropped the moment `appendChild` succeeds,
+    /// because from then on it is V8's: the wrapper cache holds it and a weak
+    /// callback can return its Instance handle to the slab at any time. A pointer
+    /// to an attached node is therefore not safe to dereference later, let alone
+    /// deinit. An unattached node is unreachable from script, so nothing can have
+    /// wrapped or collected it and its pointer stays valid until we free it here.
+    unattached_nodes: std.AutoHashMap(*runtime.Instance, void),
+
     pub fn init(
         allocator: Allocator,
         ctx: runtime.Context,
@@ -427,39 +438,46 @@ pub const DomTreeAdapter = struct {
             .ctx = ctx,
             .document = document,
             .node_map = std.AutoHashMap(*TreeNode, *runtime.Instance).init(allocator),
+            .unattached_nodes = std.AutoHashMap(*runtime.Instance, void).init(allocator),
         };
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
-        // Clean up any orphaned DOM nodes that were NOT successfully attached to the tree.
+        // Free the DOM nodes this adapter created and never managed to attach.
         //
-        // During parsing, onNodeCreated creates DOM nodes and adds them to node_map.
-        // onChildAppended then attaches them to the tree. However, if appendChild fails
-        // (silently caught) or if onChildAppended is never called for a node, that node
-        // becomes an orphan - it exists in node_map but has no parent.
+        // onNodeCreated creates a DOM node before the tree builder knows where it
+        // goes; onChildAppended attaches it. If appendChild fails (errors here are
+        // swallowed) or onChildAppended never runs for that node, nothing else will
+        // ever free it - attached nodes are freed by Document.deinit's tree walk.
         //
-        // Nodes that ARE attached to the tree will be cleaned up recursively when
-        // Document.deinit is called (via Node.deinit's child traversal).
-        //
-        // We MUST clean up orphaned nodes here to prevent memory leaks.
-        var it = self.node_map.iterator();
-        while (it.next()) |entry| {
-            const dom_node = entry.value_ptr.*;
+        // This iterates `unattached_nodes`, NOT `node_map`. node_map keeps an entry
+        // for every node the parser ever created, including the ones it attached,
+        // and an attached node belongs to V8: `Node.deinit` on an orphaned ancestor
+        // frees its whole subtree, a script can detach a node and drop it, and
+        // either way a weak callback returns the Instance handle to the slab, where
+        // the next allocation takes the address over. Deciding ownership from a
+        // reread of `getParent(dom_node)` therefore dereferenced pointers V8 had
+        // already recycled: on a large document the recycled slot belonged to a
+        // node of some other context, and markInstanceCleanedUp panicked with
+        // "incorrect alignment" reading its wrapper cache. `unattached_nodes` only
+        // ever holds nodes that no wrapper and no script can reach, so every
+        // pointer in it is still ours.
+        var it = self.unattached_nodes.keyIterator();
+        while (it.next()) |key| {
+            const dom_node = key.*;
 
-            // Skip the document node - it's managed externally
+            // The document is created and freed by the caller, never by us.
             if (dom_node == self.document) continue;
 
-            // Check if this node has a parent (i.e., was successfully attached)
+            // Belt: a node that somehow acquired a parent without going through
+            // onChildAppended is attached, whatever this map says.
             const NodeImpl = impls.Node;
-            // Use getParent helper which reads from NodeBase
             if (NodeImpl.getParent(dom_node) == null) {
-                // This node is an orphan - clean it up
-                // Use deinitNodeByType to properly clean up based on node type
                 NodeImpl.deinitNodeByType(dom_node);
             }
         }
 
-        // Clean up the HashMap itself
+        self.unattached_nodes.deinit();
         self.node_map.deinit();
     }
 
@@ -467,6 +485,14 @@ pub const DomTreeAdapter = struct {
     /// Creates the corresponding DOM node and adds it to the map.
     pub fn onNodeCreated(self: *DomTreeAdapter, tree_node: *TreeNode) !void {
         const dom_node = try self.createDomNode(tree_node);
+
+        // Record ownership BEFORE publishing the node, so a failing put below
+        // still leaves the node on the list `deinit` frees. Note that node_map is
+        // keyed by TreeNode and a second create for the same TreeNode overwrites
+        // it - `unattached_nodes` is keyed by instance and keeps both.
+        if (dom_node != self.document) {
+            try self.unattached_nodes.put(dom_node, {});
+        }
         try self.node_map.put(tree_node, dom_node);
     }
 
@@ -477,7 +503,11 @@ pub const DomTreeAdapter = struct {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
-        _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
+        // Hand the child over to V8 only if it really was attached: a failed
+        // append leaves it orphaned and still ours to free.
+        if (interfaces.Node.call_appendChild(parent_dom, child_dom)) |_| {
+            _ = self.unattached_nodes.remove(child_dom);
+        } else |_| {}
 
         // CRITICAL: If appending <html> to document, set documentElement
         // Per DOM spec, documentElement is the first Element child of the Document
