@@ -109,7 +109,7 @@ pub fn globalInit() !void {
         log.debug("[CURL] First init - initializing libcurl globally\n", .{});
         const result = curl.global_init(curl.CURL_GLOBAL_DEFAULT);
         if (result != curl.CURLE_OK) {
-            log.debug("[CURL] ERROR: global_init failed with code: {}\n", .{result});
+            log.warn("curl_global_init failed with code {d}: {s}", .{ result, curl.getErrorMessage(result) });
             return error.CurlGlobalInitFailed;
         }
 
@@ -127,7 +127,10 @@ pub fn globalInit() !void {
             _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_DNS);
             log.debug("[CURL] Global share configured with connection and DNS sharing\n", .{});
         } else {
-            log.debug("[CURL] WARNING: Failed to create global share!\n", .{});
+            // No share means no connection reuse, which exhausts sockets after
+            // roughly 25 requests. Not fatal here, but it will look like one
+            // later, so say it now.
+            log.warn("curl_share_init failed; connections will not be pooled", .{});
         }
     }
     global_init_count += 1;
@@ -157,7 +160,7 @@ pub fn globalCleanup() void {
             log.debug("[CURL] Full cleanup complete\n", .{});
         }
     } else {
-        log.debug("[CURL] WARNING: globalCleanup called but count already 0!\n", .{});
+        log.warn("globalCleanup called with the reference count already 0", .{});
     }
 }
 
@@ -369,7 +372,7 @@ pub const LibcurlBackend = struct {
         // Create curl easy handle
         log.debug("[CURL REQUEST #{}] Creating easy handle...\n", .{req_num});
         const handle = curl.easy_init() orelse {
-            log.debug("[CURL REQUEST #{}] ERROR: easy_init returned null!\n", .{req_num});
+            log.warn("{s} {s}: curl_easy_init failed (out of memory)", .{ request.method, request.url });
             return NetworkError.OutOfMemory;
         };
         log.debug("[CURL REQUEST #{}] Easy handle created: {*}\n", .{ req_num, handle });
@@ -392,6 +395,21 @@ pub const LibcurlBackend = struct {
             cm.attachToHandle(handle);
         }
 
+        // Give curl somewhere to explain itself.
+        //
+        // Without this a transport failure is a bare CURLcode, and
+        // `curl_easy_strerror` only names the category: an mbedTLS entropy
+        // failure and an expired certificate are both "SSL connect error". The
+        // buffer is where "ssl_handshake returned: (-0x0034) CTR_DRBG - The
+        // entropy source failed" comes from.
+        //
+        // It has to outlive the handle, which this frame does - `easy_cleanup`
+        // is deferred above. curl never clears it, so each attempt zeroes the
+        // first byte; see `curl.errorBufferMessage`.
+        var error_buf: [curl.CURL_ERROR_SIZE]u8 = undefined;
+        error_buf[0] = 0;
+        _ = curl.easy_setopt(handle, curl.CURLOPT_ERRORBUFFER, &error_buf);
+
         // Initialize callback context
         var ctx = CallbackContext.init(allocator, &self.aborted);
         defer {
@@ -401,7 +419,7 @@ pub const LibcurlBackend = struct {
         // Configure request
         log.debug("[CURL REQUEST #{}] Configuring request...\n", .{req_num});
         configureRequest(handle, request, &ctx) catch {
-            log.debug("[CURL REQUEST #{}] ERROR: configureRequest failed\n", .{req_num});
+            log.warn("{s} {s}: failed to configure the request (out of memory)", .{ request.method, request.url });
             ctx.deinit();
             return NetworkError.OutOfMemory;
         };
@@ -415,6 +433,10 @@ pub const LibcurlBackend = struct {
         log.debug("[CURL REQUEST #{}] Starting perform loop (max {} retries)...\n", .{ req_num, max_retries });
         while (retry_count < max_retries) : (retry_count += 1) {
             log.debug("[CURL REQUEST #{}] Attempt {}/{}: calling easy_perform...\n", .{ req_num, retry_count + 1, max_retries });
+            // curl leaves the error buffer alone on success and never clears it,
+            // so a retry that succeeds would otherwise still be carrying the
+            // previous attempt's message.
+            error_buf[0] = 0;
             result = curl.easy_perform(handle);
             log.debug("[CURL REQUEST #{}] easy_perform returned: {} (CURLE_OK={})\n", .{ req_num, result, curl.CURLE_OK });
             if (result == curl.CURLE_OK) break;
@@ -456,9 +478,20 @@ pub const LibcurlBackend = struct {
                     .{ req_num, ctx.response_body.items.len },
                 );
             } else {
-                log.debug("[CURL REQUEST #{}] ERROR: curl error code: {}\n", .{ req_num, result });
+                // A hard transport failure, at warn: this used to be `log.debug`
+                // and the WPT runner's default level is `.warn`, so a DNS
+                // failure, a refused connection and a TLS handshake error all
+                // printed exactly nothing.
+                const net_err = curl_error.mapCurlError(result);
+                log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
+                    request.method,
+                    request.url,
+                    result,
+                    curl.errorBufferMessage(&error_buf, result),
+                    @errorName(net_err),
+                });
                 ctx.deinit();
-                return curl_error.mapCurlError(result);
+                return net_err;
             }
         }
 
@@ -1024,6 +1057,35 @@ test "LibcurlBackend - multiple init/cleanup cycles" {
     }
 
     try std.testing.expectEqual(@as(usize, 0), global_init_count);
+}
+
+test "LibcurlBackend - a refused connection is mapped, not swallowed" {
+    // Port 9 (discard) on loopback: refused immediately, no DNS lookup and no
+    // external network. The point is that a hard transport failure comes back as
+    // a NetworkError the caller can act on - and that the warn-level line
+    // naming it now exists, where every diagnostic on this path used to be
+    // log.debug and the WPT runner's default level is .warn, so a DNS failure,
+    // a refused connection and a TLS handshake error printed nothing at all.
+    const allocator = std.testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    const back = try LibcurlBackend.init(allocator);
+    defer back.deinit();
+
+    const request = NetworkRequest{
+        .url = "http://127.0.0.1:9/",
+        .method = "GET",
+        .headers = &.{},
+        .body = null,
+        .connect_timeout_ms = 2_000,
+    };
+
+    try std.testing.expectError(
+        NetworkError.ConnectionRefused,
+        back.getBackend().send(allocator, &request),
+    );
 }
 
 test "LibcurlBackend - concurrent global init" {

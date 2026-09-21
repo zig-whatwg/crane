@@ -191,6 +191,24 @@ pub const CURLOPT_FRESH_CONNECT = c.CURLOPT_FRESH_CONNECT;
 /// Accept-Encoding header (empty = all supported)
 pub const CURLOPT_ACCEPT_ENCODING = c.CURLOPT_ACCEPT_ENCODING;
 
+// Diagnostics
+/// Buffer libcurl writes a human-readable explanation of a failure into.
+///
+/// This is the difference between "curl error 35" and "ssl_handshake returned:
+/// (-0x0034) CTR_DRBG - The entropy source failed". `curl_easy_strerror` only
+/// names the *category* of a CURLcode; the specific cause - which syscall, which
+/// TLS alert, which mbedTLS return value - exists nowhere else.
+///
+/// Contract, from https://curl.se/libcurl/c/CURLOPT_ERRORBUFFER.html:
+/// the buffer must be at least `CURL_ERROR_SIZE` bytes, it must stay alive until
+/// `curl_easy_cleanup`, curl writes a NUL-terminated string into it only when a
+/// transfer fails, and it is never cleared - so zero the first byte before each
+/// transfer and read it with `errorBufferMessage`.
+pub const CURLOPT_ERRORBUFFER = c.CURLOPT_ERRORBUFFER;
+
+/// Minimum size of a `CURLOPT_ERRORBUFFER` buffer (256).
+pub const CURL_ERROR_SIZE = c.CURL_ERROR_SIZE;
+
 // Debugging
 /// Verbose output
 pub const CURLOPT_VERBOSE = c.CURLOPT_VERBOSE;
@@ -797,6 +815,27 @@ pub fn getErrorMessage(code: CURLcode) []const u8 {
     return std.mem.span(easy_strerror(code));
 }
 
+/// What libcurl left in a `CURLOPT_ERRORBUFFER`, or the generic message for
+/// `code` when it left nothing.
+///
+/// curl writes a NUL-terminated string into the buffer and never clears it, so
+/// the caller zeroes `buf[0]` before the transfer and this reads up to the first
+/// NUL. It does not assume a terminator is present: a buffer curl filled exactly
+/// to `CURL_ERROR_SIZE` has none, per its documented behaviour of truncating
+/// rather than overflowing.
+///
+/// The fallback matters. Not every failure leaves a message - a transfer that
+/// never started, or one whose failure curl has no detail for, comes back with
+/// an untouched buffer - and a caller logging an empty string would be no better
+/// off than before the option existed.
+pub fn errorBufferMessage(buf: []const u8, code: CURLcode) []const u8 {
+    const end = std.mem.indexOfScalar(u8, buf, 0) orelse buf.len;
+    // curl's own messages sometimes carry a trailing newline.
+    const msg = std.mem.trimEnd(u8, buf[0..end], " \t\r\n");
+    if (msg.len > 0) return msg;
+    return getErrorMessage(code);
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -820,6 +859,75 @@ test "curl_ffi - version string" {
 test "curl_ffi - error message" {
     const msg = getErrorMessage(CURLE_COULDNT_CONNECT);
     try std.testing.expect(msg.len > 0);
+}
+
+test "curl_ffi - CURLOPT_ERRORBUFFER is declared" {
+    // The option that turns "curl error 35" into a sentence. It was missing
+    // from these bindings, which is why an mbedTLS entropy failure reached the
+    // journal as a bare number and took a 2,052-file analysis to name.
+    try std.testing.expect(CURLOPT_ERRORBUFFER != 0);
+    // CURLOPTTYPE_OBJECTPOINT + 10.
+    try std.testing.expectEqual(@as(c_uint, 10010), @as(c_uint, @intCast(CURLOPT_ERRORBUFFER)));
+    try std.testing.expectEqual(@as(c_int, 256), @as(c_int, @intCast(CURL_ERROR_SIZE)));
+}
+
+test "curl_ffi - errorBufferMessage reads what curl wrote" {
+    var buf: [CURL_ERROR_SIZE]u8 = @splat(0);
+    const written = "ssl_handshake returned: (-0x0034) CTR_DRBG - The entropy source failed";
+    @memcpy(buf[0..written.len], written);
+
+    try std.testing.expectEqualStrings(written, errorBufferMessage(&buf, CURLE_SSL_CONNECT_ERROR));
+}
+
+test "curl_ffi - errorBufferMessage trims curl's trailing newline" {
+    var buf: [CURL_ERROR_SIZE]u8 = @splat(0);
+    const written = "Failed to connect to 127.0.0.1 port 9\n";
+    @memcpy(buf[0..written.len], written);
+
+    try std.testing.expectEqualStrings(
+        "Failed to connect to 127.0.0.1 port 9",
+        errorBufferMessage(&buf, CURLE_COULDNT_CONNECT),
+    );
+}
+
+test "curl_ffi - errorBufferMessage falls back when curl wrote nothing" {
+    // curl only touches the buffer on failure and never clears it, so an empty
+    // one is the normal case for a failure it has no detail for. Returning ""
+    // there would leave the log line as uninformative as it was before.
+    var buf: [CURL_ERROR_SIZE]u8 = @splat(0);
+
+    const msg = errorBufferMessage(&buf, CURLE_COULDNT_CONNECT);
+    try std.testing.expect(msg.len > 0);
+    try std.testing.expectEqualStrings(getErrorMessage(CURLE_COULDNT_CONNECT), msg);
+}
+
+test "curl_ffi - errorBufferMessage tolerates a buffer with no terminator" {
+    // curl truncates rather than overflowing, so a message that fills the
+    // buffer exactly has no NUL. Scanning for one unconditionally would read
+    // past the end.
+    var buf: [CURL_ERROR_SIZE]u8 = @splat('x');
+
+    const msg = errorBufferMessage(&buf, CURLE_COULDNT_CONNECT);
+    try std.testing.expectEqual(@as(usize, CURL_ERROR_SIZE), msg.len);
+}
+
+test "curl_ffi - CURLOPT_ERRORBUFFER is filled by a real transport failure" {
+    // Port 9 (discard) on loopback: refused immediately, no DNS lookup and no
+    // external network. This is the wiring, end to end - the option is set, the
+    // transfer fails, and curl's own explanation is in the buffer.
+    const handle = easy_init() orelse return error.EasyInitFailed;
+    defer easy_cleanup(handle);
+
+    var buf: [CURL_ERROR_SIZE]u8 = undefined;
+    buf[0] = 0;
+    try std.testing.expect(easy_setopt(handle, CURLOPT_ERRORBUFFER, &buf) == CURLE_OK);
+    _ = easy_setopt(handle, CURLOPT_URL, "http://127.0.0.1:9/");
+    _ = easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, @as(c_long, 2000));
+
+    const code = easy_perform(handle);
+    try std.testing.expect(code != CURLE_OK);
+    try std.testing.expect(buf[0] != 0);
+    try std.testing.expect(errorBufferMessage(&buf, code).len > 0);
 }
 
 test "curl_ffi - websocket constants defined" {
