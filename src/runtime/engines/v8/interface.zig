@@ -2305,6 +2305,32 @@ pub fn V8Interface(comptime Interface: type) type {
                         };
 
                         info.setReturnValue(v8_value);
+
+                        // Release the handle when this branch minted it. Attribute
+                        // getters are the hot path - every `el.id`, `el.className`,
+                        // `el.tagName` lands here - and `v8_String_NewFromUtf8`,
+                        // `toV8UnsignedLong`, `v8_Null`, `v8_Undefined` and friends
+                        // each allocate a fresh `Global<T>` that nothing was freeing.
+                        //
+                        // NOT for instance wrappers: `conv.instanceToV8` reaches
+                        // `wrapInstanceAsV8Object`, which returns the pointer the
+                        // wrapper cache stored and owns. Disposing that frees the
+                        // cache's handle and leaves its weak callback armed on freed
+                        // memory. Same reasoning as `Converted`; this branch simply
+                        // knows its type at comptime and can say so directly.
+                        //
+                        // Safe after `setReturnValue`, which does not take ownership.
+                        const getter_returns_wrapper = comptime blk: {
+                            const P = PayloadType;
+                            break :blk P == *runtime.Instance or
+                                isRuntimeInstancePtr(P) or
+                                P == ?*runtime.Instance or
+                                isOptionalRuntimeInstancePtr(P) or
+                                P == runtime.JSValue;
+                        };
+                        if (comptime !getter_returns_wrapper) {
+                            v8.v8_Global_Dispose(v8_value);
+                        }
                     }
                 }
             };
