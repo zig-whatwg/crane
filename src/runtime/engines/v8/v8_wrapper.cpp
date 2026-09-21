@@ -145,6 +145,19 @@ static Global<T>* trackHandle(Global<T>* handle) {
     return handle;
 }
 
+// `v8_GetGlobalPrototype` returning null is an EXPECTED outcome, not an error:
+// the caller (template_registry.zig) falls back to the template's own prototype
+// for interfaces that are not exposed on the global object. Reporting it ran
+// `fprintf(stderr)` once per wrapped element, so it is off unless asked for.
+#ifndef CRANE_PROTO_MISS_LOG
+#define CRANE_PROTO_MISS_LOG 0
+#endif
+#if CRANE_PROTO_MISS_LOG
+#define CRANE_PROTO_MISS(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define CRANE_PROTO_MISS(...) ((void)0)
+#endif
+
 // ============================================================================
 // Debug Alignment Checks
 // ============================================================================
@@ -4398,13 +4411,13 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> name_str = String::NewFromUtf8(isolate, constructor_name).ToLocalChecked();
     MaybeLocal<Value> maybe_constructor = global->Get(ctx, name_str);
     if (maybe_constructor.IsEmpty()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> constructor_val = maybe_constructor.ToLocalChecked();
     if (!constructor_val->IsFunction()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
         return nullptr;
     }
 
@@ -4414,55 +4427,17 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
     MaybeLocal<Value> maybe_proto = constructor->Get(ctx, prototype_str);
     if (maybe_proto.IsEmpty()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> proto_val = maybe_proto.ToLocalChecked();
     if (!proto_val->IsObject()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
         return nullptr;
     }
 
     Local<Object> proto_obj = proto_val.As<Object>();
-
-    // Debug: trace the prototype chain
-    if (strcmp(constructor_name, "HTMLDivElement") == 0) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] HTMLDivElement prototype chain:\n");
-        Local<Value> current = proto_obj;
-        int depth = 0;
-        while (!current->IsNull() && current->IsObject() && depth < 10) {
-            Local<Object> obj = current.As<Object>();
-            // Try to get constructor name
-            MaybeLocal<Value> ctor = obj->Get(ctx, String::NewFromUtf8Literal(isolate, "constructor"));
-            if (!ctor.IsEmpty() && ctor.ToLocalChecked()->IsFunction()) {
-                Local<Function> ctor_fn = ctor.ToLocalChecked().As<Function>();
-                Local<Value> name = ctor_fn->GetName();
-                String::Utf8Value name_utf8(isolate, name);
-                fprintf(stderr, "  [%d] %s.prototype\n", depth, *name_utf8);
-
-                // Check if this prototype === globalThis.ConstructorName.prototype
-                if (depth > 0) { // Skip HTMLDivElement itself
-                    MaybeLocal<Value> maybe_global_ctor = global->Get(ctx, name);
-                    if (!maybe_global_ctor.IsEmpty() && maybe_global_ctor.ToLocalChecked()->IsFunction()) {
-                        Local<Function> global_ctor = maybe_global_ctor.ToLocalChecked().As<Function>();
-                        MaybeLocal<Value> maybe_global_proto = global_ctor->Get(ctx, prototype_str);
-                        if (!maybe_global_proto.IsEmpty() && maybe_global_proto.ToLocalChecked()->IsObject()) {
-                            Local<Object> global_proto = maybe_global_proto.ToLocalChecked().As<Object>();
-                            bool same = obj->SameValue(global_proto);
-                            fprintf(stderr, "      [same as globalThis.%s.prototype: %s]\n", *name_utf8, same ? "YES" : "NO");
-                        }
-                    }
-                }
-            } else {
-                fprintf(stderr, "  [%d] (unknown)\n", depth);
-            }
-            MaybeLocal<Value> maybe_next = obj->GetPrototype();
-            if (maybe_next.IsEmpty()) break;
-            current = maybe_next.ToLocalChecked();
-            depth++;
-        }
-    }
 
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
