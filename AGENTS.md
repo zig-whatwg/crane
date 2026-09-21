@@ -424,6 +424,40 @@ acquire, or restructure so you never acquire it.
 
 ---
 
+### Architecture: A module cannot be test-linked if it is its own dependency
+
+**Date**: 2026-09-21
+**Lesson**: `zig test` collects test blocks from the ROOT module only, and a module that is its own transitive dependency cannot be cloned into a test root.
+
+**Why**: Two separate walls, both measured rather than guessed:
+
+* **Cloning it** (same root file, own link objects) fails when the module
+  appears twice in one compile. `build.zig:1850` does
+  `impls_mod.addImport("html", html_mod)`, so `html_mod` depends on itself
+  transitively and the command line carries both `-Mroot=src/html/full.zig` and
+  `-Mhtml=src/html/full.zig`:
+  `error: file exists in modules 'root' and 'html'`.
+* **Linking V8 into it in place** produces **844** `duplicate symbol definition`
+  errors, because a module's link objects belong to every artifact downstream of
+  it, and four of them already compile `v8_wrapper.cpp`.
+* A generated root doing `_ = @import("html")` does not help either: test blocks
+  are collected from the root module only, never from an imported one.
+
+**What Happened**: `src/html/`'s module-root test target has no V8 link. It is
+GREEN today and stays green only while Zig's lazy analysis never walks from an
+`src/html/` test block into a `v8_*` extern. The same latency applies to
+`dom_mod`, `intl_mod` and `platform_mod`.
+
+**Fix**: Either break the cycle - have `src/webidl/impls/**` reach HTML through
+`html_core`, as it already does for DOMParser, innerHTML and Window - or keep
+every V8-reaching HTML test under `tests/html/`, which IS V8-linked.
+
+**Takeaway**: **"It has no V8 link" and "it is red" are different states.** The
+gap is latent until something references across it - the same shape as the
+re-export lesson above.
+
+---
+
 ### Architecture: An impl's return value is the JS return value, verbatim
 
 **Date**: 2026-09-21
@@ -723,3 +757,38 @@ copy's `deinit()` was already freeing the original's buffers.
 **Takeaway**: **A struct field read into a `var` is a copy; if you mean to clear
 the original, bind a pointer. Grep for `var x = y.field` wherever a teardown
 path "clears" something.**
+
+---
+
+### Architecture: A struct that hands out interior pointers cannot be freed on its own schedule
+
+**Date**: 2026-09-21
+**Lesson**: `ContextEntry` is heap-allocated *precisely* so that `instance.ctx` can
+point into it - and then `removeContext` and `destroyChildContext` freed it while
+those Instances were still alive.
+
+**Why**: `Instance.ctx` is `*ContextData`, and the ContextData lives inline in
+`ContextEntry`. The comment on `ManagerState.contexts` spells the dependency out:
+entries are heap-allocated and stored by pointer so that "any pointer into
+entry.runtime_ctx (like Window.ctx or Element.ctx)" survives a rehash. But
+teardown deliberately does **not** destroy that context's Instances - "the slab
+allocator will batch-free all instances during full teardown anyway" - so freeing
+the entry leaves every one of them holding an interior pointer into freed memory.
+The invariant was written down in the file and broken 800 lines later.
+
+**What Happened**: `state.allocator` is a `DebugAllocator`, which poisons freed
+memory with 0xAA. So `entry.runtime_ctx._v8_wrapper_cache_storage` read back as
+`0xAAAA_AAAA_AAAA_AAAA` - non-null, so `orelse return` passed it through, and 2
+mod 4, so `markInstanceCleanedUp` died in its `@alignCast` with `panic: incorrect
+alignment`. Stack: navigate -> `Context.deinit` -> `removeContext` ->
+`destroyChildContext` -> `Window.deinit` -> `Document.deinit` -> `Node.deinit`.
+Every other reader of `instance.ctx` was reading the same poison, just quietly.
+
+**Fix**: retire the entry instead of freeing it. Clear the fields that can dangle,
+push it onto `ManagerState.retired`, and free the whole list in `deinit()`, where
+the Instances are going away anyway. One entry per destroyed context for the
+manager's lifetime, all of it freed at the end.
+
+**Takeaway**: **A structure that hands out pointers to its interior must outlive
+every holder. When you cannot enumerate the holders, retire rather than free -
+0xAA is not null, so a poisoned read is a crash, not a null check.**
