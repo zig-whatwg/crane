@@ -239,6 +239,60 @@ fn configureStaticLibcurl(
     // macOS: No additional libraries needed with mbedTLS
 }
 
+/// Warns when `-Dsystem-curl` selects a libcurl that cannot do WebSockets.
+///
+/// `curl_ws_send`/`curl_ws_recv` have been declared in `<curl/websockets.h>`
+/// since 7.86, so the link always succeeds. A libcurl built without the feature
+/// just returns `CURLE_UNSUPPORTED_PROTOCOL` at runtime - invisible at build
+/// time, and afterwards indistinguishable from a Crane bug. macOS still ships
+/// 8.7.1, whose `curl-config --features` has no `WebSockets` entry; the vendored
+/// curl (8.18.0, see `configureStaticLibcurl`) has it compiled in.
+///
+/// Advisory only: `-Dsystem-curl` is a legitimate shortcut for work that never
+/// opens a WebSocket, so a missing feature must warn rather than fail.
+fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
+    var code: u8 = 0;
+    const features = b.runAllowFail(
+        &.{ "curl-config", "--features" },
+        &code,
+        .ignore,
+    ) catch {
+        std.debug.print(
+            "warning: -Dsystem-curl is set, but `curl-config --features` would not run, " ++
+                "so the system libcurl's WebSocket support is unverified.\n" ++
+                "         If WebSockets fail at runtime, omit -Dsystem-curl to build the " ++
+                "vendored curl 8.18.0.\n",
+            .{},
+        );
+        return;
+    };
+
+    // One feature per line. No other curl feature name contains "WebSockets".
+    var it = std.mem.tokenizeAny(u8, features, " \t\r\n");
+    while (it.next()) |feature| {
+        if (std.ascii.eqlIgnoreCase(feature, "WebSockets")) return;
+    }
+
+    var version_code: u8 = 0;
+    const version_out: []const u8 = b.runAllowFail(
+        &.{ "curl-config", "--version" },
+        &version_code,
+        .ignore,
+    ) catch "";
+    const version = std.mem.trim(u8, version_out, " \t\r\n");
+
+    std.debug.print(
+        "warning: -Dsystem-curl is set and the system {s} lacks WebSocket support " ++
+            "(`curl-config --features` lists no `WebSockets`).\n" ++
+            "         src/websocket links that libcurl, so `curl_ws_send` resolves at " ++
+            "link time and returns CURLE_UNSUPPORTED_PROTOCOL at run time: every " ++
+            "WebSocket connection fails,\n" ++
+            "         and the WebSocket tests with it. Omit -Dsystem-curl to build the " ++
+            "vendored curl 8.18.0, which has WebSockets compiled in.\n",
+        .{if (version.len != 0) version else "libcurl"},
+    );
+}
+
 /// Helper function to add all .zig test files from a directory
 fn addTestFilesFromDir(
     builder: *std.Build,
@@ -1595,6 +1649,9 @@ pub fn build(b: *std.Build) void {
     if (use_system_curl) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
+        // ...which may be a libcurl without WebSockets. Say so now rather than
+        // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL.
+        warnIfSystemCurlLacksWebSockets(b);
     } else {
         // Production: Statically compile libcurl with mbedTLS
         configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
