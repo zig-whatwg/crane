@@ -92,10 +92,10 @@ pub const HTMLIFrameElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "src", "get_src", "set_src" },
@@ -124,23 +124,23 @@ pub const HTMLIFrameElement = struct {
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "sandbox", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getSVGDocument", "call_getSVGDocument", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getSVGDocument",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -236,7 +236,7 @@ pub const HTMLIFrameElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "src", "get_src", "set_src" },
@@ -265,11 +265,10 @@ pub const HTMLIFrameElement = struct {
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -312,7 +311,6 @@ pub const HTMLIFrameElement = struct {
     );
 
     const delegates = .{
-
         .get_adAuctionHeaders = &get_adAuctionHeaders,
         .get_align = &get_align,
         .get_allow = &get_allow,
@@ -366,7 +364,7 @@ pub const HTMLIFrameElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -407,7 +405,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_src(instance, value);
     }
 
@@ -421,7 +419,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_srcdoc(instance, value);
     }
 
@@ -456,7 +454,7 @@ pub const HTMLIFrameElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'sandbox' forwards to 'value' on the attribute's value
         const target = try get_sandbox(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -472,7 +470,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_allow(instance, value);
     }
 
@@ -486,7 +484,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_allowFullscreen(instance, value);
     }
 
@@ -500,7 +498,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_width(instance, value);
     }
 
@@ -514,7 +512,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_height(instance, value);
     }
 
@@ -528,7 +526,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -542,7 +540,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_loading(instance, value);
     }
 
@@ -564,7 +562,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_browsingTopics(instance, value);
     }
 
@@ -578,7 +576,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_csp(instance, value);
     }
 
@@ -600,7 +598,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_adAuctionHeaders(instance, value);
     }
 
@@ -614,7 +612,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_align(instance, value);
     }
 
@@ -628,7 +626,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_scrolling(instance, value);
     }
 
@@ -642,7 +640,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_frameBorder(instance, value);
     }
 
@@ -656,7 +654,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_longDesc(instance, value);
     }
 
@@ -670,7 +668,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_marginHeight(instance, value);
     }
 
@@ -684,7 +682,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_marginWidth(instance, value);
     }
 
@@ -720,12 +718,11 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLIFrameElementImpl.set_sharedStorageWritable(instance, value);
     }
 
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLIFrameElementImpl.call_getSVGDocument(instance);
     }
-
 };

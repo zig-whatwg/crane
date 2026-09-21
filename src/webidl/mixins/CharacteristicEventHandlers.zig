@@ -21,4 +21,3 @@ pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!ty
 pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return CharacteristicEventHandlersImpl.set_oncharacteristicvaluechanged(instance, value);
 }
-

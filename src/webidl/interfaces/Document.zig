@@ -109,10 +109,10 @@ pub const Document = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyOverrideBuiltIns" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "implementation", "get_implementation", null },
@@ -293,13 +293,13 @@ pub const Document = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "location", "href" },
         };
-        
+
         /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
         /// Getters return undefined, setters silently return
         pub const lenient_this_attributes = .{
@@ -307,7 +307,7 @@ pub const Document = struct {
             "onmouseenter",
             "onmouseleave",
         };
-        
+
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
         /// Setters silently do nothing (don't throw, don't modify)
         pub const lenient_setter_attributes = .{
@@ -315,7 +315,7 @@ pub const Document = struct {
             "fullscreen",
             "fullscreenElement",
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementsByTagName", "call_getElementsByTagName", 1 },
@@ -384,12 +384,12 @@ pub const Document = struct {
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parseHTMLUnsafe", "call_static_parseHTMLUnsafe", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getElementsByTagName",
@@ -459,7 +459,7 @@ pub const Document = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -482,7 +482,7 @@ pub const Document = struct {
             "replaceChild",
             "removeChild",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "implementation", "get_implementation", null },
@@ -661,15 +661,15 @@ pub const Document = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dir", "get_dir", "set_dir" },
             .{ "hidden", "get_hidden", null },
         };
-        
+
         pub const has_constructor = true;
-        
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "fullscreen",
@@ -695,17 +695,10 @@ pub const Document = struct {
             documentElement: ?*runtime.Instance = null,
             fragmentDirective: *runtime.Instance = undefined,
             prerendering: bool = undefined,
-            onprerenderingchange: typedefs.EventHandler = undefined,
             fullscreenEnabled: bool = undefined,
             fullscreen: bool = undefined,
-            onfullscreenchange: typedefs.EventHandler = undefined,
-            onfullscreenerror: typedefs.EventHandler = undefined,
             timeline: *runtime.Instance = undefined,
             pictureInPictureEnabled: bool = undefined,
-            onpointerlockchange: typedefs.EventHandler = undefined,
-            onpointerlockerror: typedefs.EventHandler = undefined,
-            onfreeze: typedefs.EventHandler = undefined,
-            onresume: typedefs.EventHandler = undefined,
             wasDiscarded: bool = undefined,
             namedFlows: *runtime.Instance = undefined,
             rootElement: ?*runtime.Instance = null,
@@ -731,8 +724,6 @@ pub const Document = struct {
             designMode: typedefs.DOMString = undefined,
             hidden: bool = undefined,
             visibilityState: enums.DocumentVisibilityState = undefined,
-            onreadystatechange: typedefs.EventHandler = undefined,
-            onvisibilitychange: typedefs.EventHandler = undefined,
             fgColor: typedefs.DOMString = undefined,
             linkColor: typedefs.DOMString = undefined,
             vlinkColor: typedefs.DOMString = undefined,
@@ -755,111 +746,7 @@ pub const Document = struct {
             firstElementChild: ?*runtime.Instance = null,
             lastElementChild: ?*runtime.Instance = null,
             childElementCount: u32 = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onauxclick: typedefs.EventHandler = undefined,
-            onbeforeinput: typedefs.EventHandler = undefined,
-            onbeforematch: typedefs.EventHandler = undefined,
-            onbeforetoggle: typedefs.EventHandler = undefined,
-            onblur: typedefs.EventHandler = undefined,
-            oncancel: typedefs.EventHandler = undefined,
-            oncanplay: typedefs.EventHandler = undefined,
-            oncanplaythrough: typedefs.EventHandler = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            onclick: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
-            oncommand: typedefs.EventHandler = undefined,
-            oncontextlost: typedefs.EventHandler = undefined,
-            oncontextmenu: typedefs.EventHandler = undefined,
-            oncontextrestored: typedefs.EventHandler = undefined,
-            oncopy: typedefs.EventHandler = undefined,
-            oncuechange: typedefs.EventHandler = undefined,
-            oncut: typedefs.EventHandler = undefined,
-            ondblclick: typedefs.EventHandler = undefined,
-            ondrag: typedefs.EventHandler = undefined,
-            ondragend: typedefs.EventHandler = undefined,
-            ondragenter: typedefs.EventHandler = undefined,
-            ondragleave: typedefs.EventHandler = undefined,
-            ondragover: typedefs.EventHandler = undefined,
-            ondragstart: typedefs.EventHandler = undefined,
-            ondrop: typedefs.EventHandler = undefined,
-            ondurationchange: typedefs.EventHandler = undefined,
-            onemptied: typedefs.EventHandler = undefined,
-            onended: typedefs.EventHandler = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
-            onfocus: typedefs.EventHandler = undefined,
-            onformdata: typedefs.EventHandler = undefined,
-            oninput: typedefs.EventHandler = undefined,
-            oninvalid: typedefs.EventHandler = undefined,
-            onkeydown: typedefs.EventHandler = undefined,
-            onkeypress: typedefs.EventHandler = undefined,
-            onkeyup: typedefs.EventHandler = undefined,
-            onload: typedefs.EventHandler = undefined,
-            onloadeddata: typedefs.EventHandler = undefined,
-            onloadedmetadata: typedefs.EventHandler = undefined,
-            onloadstart: typedefs.EventHandler = undefined,
-            onmousedown: typedefs.EventHandler = undefined,
-            onmouseenter: typedefs.EventHandler = undefined,
-            onmouseleave: typedefs.EventHandler = undefined,
-            onmousemove: typedefs.EventHandler = undefined,
-            onmouseout: typedefs.EventHandler = undefined,
-            onmouseover: typedefs.EventHandler = undefined,
-            onmouseup: typedefs.EventHandler = undefined,
-            onpaste: typedefs.EventHandler = undefined,
-            onpause: typedefs.EventHandler = undefined,
-            onplay: typedefs.EventHandler = undefined,
-            onplaying: typedefs.EventHandler = undefined,
-            onprogress: typedefs.EventHandler = undefined,
-            onratechange: typedefs.EventHandler = undefined,
-            onreset: typedefs.EventHandler = undefined,
-            onresize: typedefs.EventHandler = undefined,
-            onscroll: typedefs.EventHandler = undefined,
-            onscrollend: typedefs.EventHandler = undefined,
-            onsecuritypolicyviolation: typedefs.EventHandler = undefined,
-            onseeked: typedefs.EventHandler = undefined,
-            onseeking: typedefs.EventHandler = undefined,
-            onselect: typedefs.EventHandler = undefined,
-            onslotchange: typedefs.EventHandler = undefined,
-            onstalled: typedefs.EventHandler = undefined,
-            onsubmit: typedefs.EventHandler = undefined,
-            onsuspend: typedefs.EventHandler = undefined,
-            ontimeupdate: typedefs.EventHandler = undefined,
-            ontoggle: typedefs.EventHandler = undefined,
-            onvolumechange: typedefs.EventHandler = undefined,
-            onwaiting: typedefs.EventHandler = undefined,
-            onwebkitanimationend: typedefs.EventHandler = undefined,
-            onwebkitanimationiteration: typedefs.EventHandler = undefined,
-            onwebkitanimationstart: typedefs.EventHandler = undefined,
-            onwebkittransitionend: typedefs.EventHandler = undefined,
-            onwheel: typedefs.EventHandler = undefined,
-            onselectstart: typedefs.EventHandler = undefined,
-            onselectionchange: typedefs.EventHandler = undefined,
-            onanimationstart: typedefs.EventHandler = undefined,
-            onanimationiteration: typedefs.EventHandler = undefined,
-            onanimationend: typedefs.EventHandler = undefined,
-            onanimationcancel: typedefs.EventHandler = undefined,
-            ontransitionrun: typedefs.EventHandler = undefined,
-            ontransitionstart: typedefs.EventHandler = undefined,
-            ontransitionend: typedefs.EventHandler = undefined,
-            ontransitioncancel: typedefs.EventHandler = undefined,
-            onbeforexrselect: typedefs.EventHandler = undefined,
-            onpointerover: typedefs.EventHandler = undefined,
-            onpointerenter: typedefs.EventHandler = undefined,
-            onpointerdown: typedefs.EventHandler = undefined,
-            onpointermove: typedefs.EventHandler = undefined,
-            onpointerrawupdate: typedefs.EventHandler = undefined,
-            onpointerup: typedefs.EventHandler = undefined,
-            onpointercancel: typedefs.EventHandler = undefined,
-            onpointerout: typedefs.EventHandler = undefined,
-            onpointerleave: typedefs.EventHandler = undefined,
-            ongotpointercapture: typedefs.EventHandler = undefined,
-            onlostpointercapture: typedefs.EventHandler = undefined,
-            ontouchstart: typedefs.EventHandler = undefined,
-            ontouchend: typedefs.EventHandler = undefined,
-            ontouchmove: typedefs.EventHandler = undefined,
-            ontouchcancel: typedefs.EventHandler = undefined,
-            onfencedtreeclick: typedefs.EventHandler = undefined,
-            onsnapchanged: typedefs.EventHandler = undefined,
-            onsnapchanging: typedefs.EventHandler = undefined,
             cached_implementation: ?*runtime.Instance = null,
             cached_fragmentDirective: ?*runtime.Instance = null,
             cached_images: ?*runtime.Instance = null,
@@ -879,7 +766,6 @@ pub const Document = struct {
     );
 
     const delegates = .{
-
         .get_URL = &get_URL,
         .get_activeElement = &get_activeElement,
         .get_activeViewTransition = &get_activeViewTransition,
@@ -1257,7 +1143,7 @@ pub const Document = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -1470,7 +1356,7 @@ pub const Document = struct {
         const target_opt = try get_location(instance);
         // Per WebIDL spec: if the target is null, throw TypeError
         const target = target_opt orelse return error.TypeError;
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "href", value);
@@ -1514,7 +1400,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_title(instance, value);
     }
 
@@ -1528,7 +1414,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_dir(instance, value);
     }
 
@@ -1542,7 +1428,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_body(instance, value);
     }
 
@@ -1640,7 +1526,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_designMode(instance, value);
     }
 
@@ -1680,7 +1566,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_fgColor(instance, value);
     }
 
@@ -1694,7 +1580,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_linkColor(instance, value);
     }
 
@@ -1708,7 +1594,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_vlinkColor(instance, value);
     }
 
@@ -1722,7 +1608,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_alinkColor(instance, value);
     }
 
@@ -1736,7 +1622,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_bgColor(instance, value);
     }
 
@@ -2720,13 +2606,11 @@ pub const Document = struct {
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_getElementById(instance, elementId);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_browsingTopics(instance, options);
     }
 
@@ -2735,18 +2619,15 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_open(instance, unused1, unused2);
     }
 
     pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
 
     pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_static_parseHTMLUnsafe(instance, html);
     }
 
@@ -2755,8 +2636,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_writeln(instance, text);
     }
 
@@ -2773,30 +2653,26 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_append(instance, nodes);
     }
 
     pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_getBoxQuads(instance, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
     }
 
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_createNSResolver(instance, nodeResolver);
     }
 
@@ -2805,14 +2681,13 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options);
     }
 
     pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_measureElement(instance, element);
     }
 
@@ -2821,24 +2696,22 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try DocumentImpl.call_close(instance);
     }
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByClassName(instance, classNames);
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createEvent(instance: *runtime.Instance, interface: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createEvent(instance, interface);
     }
 
@@ -2853,72 +2726,65 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createElement(instance, localName, options);
     }
 
     pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_hasRedemptionRecord(instance, issuer);
     }
 
     pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_querySelector(instance, selectors);
     }
 
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_measureText(instance, text, styleMap);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createAttribute(instance: *runtime.Instance, localName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createAttribute(instance, localName);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createComment(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createComment(instance, data);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createTextNode(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createTextNode(instance, data);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_querySelectorAll(instance, selectors);
     }
 
     pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
     pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
     }
 
@@ -2929,24 +2795,21 @@ pub const Document = struct {
     }
 
     pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandEnabled(instance, commandId);
     }
 
     pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_getter(instance, name);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
     }
 
     pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_requestStorageAccessFor(instance, requestedOrigin);
     }
 
@@ -2955,8 +2818,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_adoptNode(instance, node);
     }
 
@@ -2965,8 +2827,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_write(instance, text);
     }
 
@@ -2979,8 +2840,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
 
@@ -2991,12 +2851,11 @@ pub const Document = struct {
     /// Extended attributes: [NewObject]
     pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
     pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try DocumentImpl.call_hasPrivateToken(instance, issuer);
     }
 
@@ -3013,22 +2872,18 @@ pub const Document = struct {
     }
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
 
     pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByName(instance, elementName);
     }
 
     pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
@@ -3039,12 +2894,11 @@ pub const Document = struct {
     /// Extended attributes: [NewObject]
     pub fn call_createCDATASection(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createCDATASection(instance, data);
     }
 
     pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
@@ -3053,8 +2907,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_replaceChildren(instance, nodes);
     }
 
@@ -3063,14 +2916,13 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_importNode(instance, node, options);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
@@ -3079,12 +2931,10 @@ pub const Document = struct {
     }
 
     pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: DOMString) anyerror!DOMString {
-        
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
     pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
@@ -3093,8 +2943,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_prepend(instance, nodes);
     }
 
@@ -3111,7 +2960,7 @@ pub const Document = struct {
     /// Extended attributes: [NewObject]
     pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: DOMString, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createProcessingInstruction(instance, target, data);
     }
 
@@ -3120,15 +2969,14 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_moveBefore(instance, node, child);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
@@ -3137,5 +2985,4 @@ pub const Document = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return DocumentImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

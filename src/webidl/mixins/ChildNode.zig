@@ -29,4 +29,3 @@ pub fn call_remove(instance: *runtime.Instance) anyerror!void {
 pub fn call_after(instance: *runtime.Instance, nodes: runtime.JSValue) anyerror!void {
     return ChildNodeImpl.call_after(instance, nodes);
 }
-

@@ -109,10 +109,10 @@ pub const InternalResponse = struct {
 
         response.* = .{
             .allocator = allocator,
-            .url_list = .{},
+            .url_list = .empty,
             .status_message = "",
             .header_list = HeaderList.init(allocator),
-            .cors_exposed_header_name_list = .{},
+            .cors_exposed_header_name_list = .empty,
             .body_info = ResponseBodyInfo.init(),
         };
 
@@ -176,13 +176,13 @@ pub const InternalResponse = struct {
             .allocator = self.allocator,
             .response_type = self.response_type,
             .aborted = self.aborted,
-            .url_list = .{},
+            .url_list = .empty,
             .status = self.status,
             .status_message = self.status_message,
             .header_list = try self.header_list.clone(self.allocator),
             .body = null,
             .cache_state = self.cache_state,
-            .cors_exposed_header_name_list = .{},
+            .cors_exposed_header_name_list = .empty,
             .range_requested = self.range_requested,
             .request_includes_credentials = self.request_includes_credentials,
             .timing_allow_passed = self.timing_allow_passed,

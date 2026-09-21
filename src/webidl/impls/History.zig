@@ -71,7 +71,7 @@ pub const InternalState = struct {
     window: ?*runtime.Instance = null,
 
     /// Session history entries for this browsing context
-    entries: std.ArrayListUnmanaged(HistoryEntry) = .{},
+    entries: std.ArrayListUnmanaged(HistoryEntry) = .empty,
 
     /// Current index in the entries list
     current_index: usize = 0,

@@ -93,10 +93,10 @@ pub const SVGFETurbulenceElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "baseFrequencyX", "get_baseFrequencyX", null },
@@ -111,11 +111,10 @@ pub const SVGFETurbulenceElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_TURBULENCE_TYPE_UNKNOWN", "get_SVG_TURBULENCE_TYPE_UNKNOWN" },
@@ -125,11 +124,10 @@ pub const SVGFETurbulenceElement = struct {
             .{ "SVG_STITCHTYPE_STITCH", "get_SVG_STITCHTYPE_STITCH" },
             .{ "SVG_STITCHTYPE_NOSTITCH", "get_SVG_STITCHTYPE_NOSTITCH" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -220,7 +218,7 @@ pub const SVGFETurbulenceElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "baseFrequencyX", "get_baseFrequencyX", null },
@@ -235,11 +233,10 @@ pub const SVGFETurbulenceElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -252,7 +249,7 @@ pub const SVGFETurbulenceElement = struct {
             numOctaves: *runtime.Instance = undefined,
             seed: *runtime.Instance = undefined,
             stitchTiles: *runtime.Instance = undefined,
-            @"type": *runtime.Instance = undefined,
+            type: *runtime.Instance = undefined,
             x: *runtime.Instance = undefined,
             y: *runtime.Instance = undefined,
             width: *runtime.Instance = undefined,
@@ -297,7 +294,6 @@ pub const SVGFETurbulenceElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_STITCHTYPE_NOSTITCH = &get_SVG_STITCHTYPE_NOSTITCH,
         .get_SVG_STITCHTYPE_STITCH = &get_SVG_STITCHTYPE_STITCH,
         .get_SVG_STITCHTYPE_UNKNOWN = &get_SVG_STITCHTYPE_UNKNOWN,
@@ -318,7 +314,7 @@ pub const SVGFETurbulenceElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -384,5 +380,4 @@ pub const SVGFETurbulenceElement = struct {
     pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFETurbulenceElementImpl.get_result(instance);
     }
-
 };

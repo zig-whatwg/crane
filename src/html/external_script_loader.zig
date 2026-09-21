@@ -52,7 +52,10 @@ const ElementImpl = impls.Element;
 
 // HTML parser types
 const html_core = @import("html_core");
+const host = @import("host");
 const TreeNode = html_core.parser.TreeNode;
+
+const log = std.log.scoped(.external_script_loader);
 
 /// Script execution type based on script attributes
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
@@ -148,8 +151,8 @@ pub const ExternalScriptLoader = struct {
             .allocator = allocator,
             .base_dir = base_dir,
             .test_dir = test_dir,
-            .async_scripts = .{},
-            .defer_scripts = .{},
+            .async_scripts = .empty,
+            .defer_scripts = .empty,
             .custom_loader = null,
             .custom_loader_context = null,
             .loaded_scripts = std.StringHashMap(void).init(allocator),
@@ -251,10 +254,12 @@ pub const ExternalScriptLoader = struct {
         }
 
         // Default: read from file system
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+        const io = host.io();
+        const file = try host.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
-        return try file.readToEndAlloc(self.allocator, MAX_SCRIPT_SIZE);
+        var file_reader = file.reader(io, &.{});
+        return try file_reader.interface.allocRemaining(self.allocator, .limited(MAX_SCRIPT_SIZE));
     }
 
     /// Check if a script has already been loaded
@@ -340,7 +345,7 @@ pub const ExternalScriptLoader = struct {
             .classic_blocking => {
                 // Parser-blocking: load and execute now
                 const content = self.loadScriptContent(resolved_path) catch |err| {
-                    std.debug.print("Failed to load external script {s}: {}\n", .{ resolved_path, err });
+                    log.err("Failed to load external script {s}: {}", .{ resolved_path, err });
                     self.allocator.free(resolved_path);
                     return null;
                 };
@@ -370,7 +375,7 @@ pub const ExternalScriptLoader = struct {
 
             // Load content
             const content = self.loadScriptContent(pending.url) catch |err| {
-                std.debug.print("Failed to load deferred script {s}: {}\n", .{ pending.url, err });
+                log.err("Failed to load deferred script {s}: {}", .{ pending.url, err });
                 continue;
             };
             defer self.allocator.free(content);
@@ -380,7 +385,7 @@ pub const ExternalScriptLoader = struct {
 
             // Execute
             executor(self.allocator, pending.script_element, content) catch |err| {
-                std.debug.print("Failed to execute deferred script {s}: {}\n", .{ pending.url, err });
+                log.err("Failed to execute deferred script {s}: {}", .{ pending.url, err });
             };
         }
 
@@ -409,7 +414,7 @@ pub const ExternalScriptLoader = struct {
 
             // Try to load content
             const content = self.loadScriptContent(pending.url) catch |err| {
-                std.debug.print("Failed to load async script {s}: {}\n", .{ pending.url, err });
+                log.err("Failed to load async script {s}: {}", .{ pending.url, err });
                 i += 1;
                 continue;
             };
@@ -420,7 +425,7 @@ pub const ExternalScriptLoader = struct {
 
             // Execute
             executor(self.allocator, pending.script_element, content) catch |err| {
-                std.debug.print("Failed to execute async script {s}: {}\n", .{ pending.url, err });
+                log.err("Failed to execute async script {s}: {}", .{ pending.url, err });
             };
 
             // Remove from list (cleanup happens in deinit)

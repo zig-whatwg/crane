@@ -29,6 +29,8 @@ const InternalResponse = fetch.internal.InternalResponse;
 // Runtime for module compilation
 const runtime = @import("runtime");
 
+const log = std.log.scoped(.module_graph);
+
 /// Module fetch status
 pub const ModuleStatus = enum {
     /// Module is being fetched
@@ -419,7 +421,7 @@ pub const ModuleGraphFetcher = struct {
         if (self.graph.isInFetchingStack(url)) {
             // Circular dependency detected - this is allowed for modules
             // The module will be linked during instantiation
-            std.debug.print("Circular dependency detected: {s}\n", .{url});
+            log.debug("Circular dependency detected: {s}", .{url});
             return;
         }
 
@@ -466,7 +468,7 @@ pub const ModuleGraphFetcher = struct {
         const fetcher = ctx.fetcher;
 
         fetcher.performFetch(ctx.url, ctx.node) catch |err| {
-            std.debug.print("Module fetch error: {}\n", .{err});
+            log.err("Module fetch error: {}", .{err});
             ctx.node.setFailed("Network error during fetch") catch {};
             fetcher.graph.recordError("Network error during fetch", ctx.url) catch {};
         };
@@ -492,7 +494,7 @@ pub const ModuleGraphFetcher = struct {
         const response = fetch.fetchSimple(self.allocator, url) catch |err| {
             try node.setFailed("Network error");
             try self.graph.recordError("Failed to fetch module", url);
-            std.debug.print("Failed to fetch module {s}: {}\n", .{ url, err });
+            log.err("Failed to fetch module {s}: {}", .{ url, err });
             return;
         };
         defer response.deinit();

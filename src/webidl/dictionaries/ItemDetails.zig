@@ -11,7 +11,7 @@ pub const ItemDetails = struct {
     itemId: runtime.DOMString,
     title: runtime.DOMString,
     price: PaymentCurrencyAmount,
-    @"type": ?enums.ItemType = null,
+    type: ?enums.ItemType = null,
     description: ?runtime.DOMString = null,
     iconURLs: ?[]const runtime.DOMString = null,
     subscriptionPeriod: ?runtime.DOMString = null,

@@ -8,6 +8,6 @@ const enums = @import("enums");
 
 pub const WorkerOptions = struct {
     name: ?runtime.DOMString = null,
-    @"type": ?enums.WorkerType = null,
+    type: ?enums.WorkerType = null,
     credentials: ?enums.RequestCredentials = null,
 };

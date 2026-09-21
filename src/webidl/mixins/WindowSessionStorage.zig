@@ -17,4 +17,3 @@ pub const impl = @import("impls").WindowSessionStorage;
 pub fn get_sessionStorage(instance: *runtime.Instance) !*runtime.Instance {
     return WindowSessionStorageImpl.get_sessionStorage(instance);
 }
-

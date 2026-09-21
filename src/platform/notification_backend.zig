@@ -31,6 +31,7 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// Notification permission state
@@ -217,7 +218,7 @@ pub const Notification = struct {
             .icon = icon_copy,
             .badge = badge_copy,
             .vibrate = vibrate_copy,
-            .timestamp = options.timestamp orelse std.time.milliTimestamp(),
+            .timestamp = options.timestamp orelse clock.wallMillis(),
             .renotify = options.renotify,
             .silent = options.silent,
             .require_interaction = options.require_interaction,
@@ -396,7 +397,7 @@ pub const StubNotificationBackend = struct {
         self.* = StubNotificationBackend{
             .allocator = allocator,
             .permission = .default,
-            .active_notifications = .{},
+            .active_notifications = .empty,
             .next_id = 1,
             .event_callback = null,
             .max_actions = 2, // Common default

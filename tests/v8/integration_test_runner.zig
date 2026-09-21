@@ -10,20 +10,20 @@
 
 const std = @import("std");
 const mock_server = @import("mock_server");
+const clock = @import("clock");
 const HttpMockServer = @import("http_mock_server").HttpMockServer;
 
 /// Shared server instance for communication between main and server thread
 var shared_server: ?*HttpMockServer = null;
-var server_ready: std.Thread.ResetEvent = .{};
+// std.Thread.ResetEvent was removed in 0.16; std.Io.Event replaces it.
+var server_ready: std.Io.Event = .unset;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// See test_runner.zig: 0.16 delivers args (and gpa/arena/io) via std.process.Init.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Parse command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 3) {
         std.debug.print("Usage: {s} <repl-exe> <test-file-1> [test-file-2] ...\n", .{args[0]});
@@ -36,10 +36,10 @@ pub fn main() !void {
     std.debug.print("Starting integration test runner with {d} test(s)\n", .{test_files.len});
 
     // Start mock server in background thread
-    const server_thread = try std.Thread.spawn(.{}, runMockServer, .{allocator});
+    const server_thread = try std.Thread.spawn(.{}, runMockServer, .{ allocator, init.io });
 
     // Wait for server to be ready
-    try waitForServer(allocator);
+    try waitForServer(allocator, init.io);
 
     std.debug.print("\nMock server is ready. Running tests...\n\n", .{});
 
@@ -51,7 +51,7 @@ pub fn main() !void {
     for (test_files) |test_file| {
         std.debug.print("Running: {s}\n", .{test_file});
 
-        const result = try runTest(allocator, repl_exe, test_file);
+        const result = try runTest(allocator, init.io, repl_exe, test_file);
 
         // Track assertion counts
         total_assertions_passed += result.assertions_passed;
@@ -93,8 +93,8 @@ pub fn main() !void {
     }
 }
 
-fn runMockServer(allocator: std.mem.Allocator) void {
-    const server = HttpMockServer.init(allocator) catch |err| {
+fn runMockServer(allocator: std.mem.Allocator, io: std.Io) void {
+    const server = HttpMockServer.init(allocator, io) catch |err| {
         std.debug.print("Failed to initialize mock server: {}\n", .{err});
         return;
     };
@@ -104,16 +104,16 @@ fn runMockServer(allocator: std.mem.Allocator) void {
     shared_server = server;
 
     // Signal that server is ready
-    server_ready.set();
+    server_ready.set(io);
 
     server.start() catch |err| {
         std.debug.print("Mock server error: {}\n", .{err});
     };
 }
 
-fn waitForServer(_: std.mem.Allocator) !void {
+fn waitForServer(_: std.mem.Allocator, io: std.Io) !void {
     // Wait for the server thread to signal it's ready
-    server_ready.wait();
+    try server_ready.wait(io);
 
     // Also verify we can connect
     const max_attempts = 50;
@@ -121,14 +121,16 @@ fn waitForServer(_: std.mem.Allocator) !void {
 
     var attempt: usize = 0;
     while (attempt < max_attempts) : (attempt += 1) {
-        // Try to connect to the server
-        const address = std.net.Address.parseIp("127.0.0.1", 8080) catch unreachable;
-        const stream = std.net.tcpConnectToAddress(address) catch {
-            std.Thread.sleep(delay_ms * std.time.ns_per_ms);
+        // Try to connect to the server. 0.16 moved net onto std.Io.net and every
+        // socket operation takes the `Io`; `tcpConnectToAddress` is now
+        // `IpAddress.connect`, and `ConnectOptions.mode` has no default.
+        const address = std.Io.net.IpAddress.parse("127.0.0.1", 8080) catch unreachable;
+        const stream = address.connect(io, .{ .mode = .stream }) catch {
+            clock.sleep(delay_ms * std.time.ns_per_ms);
             continue;
         };
 
-        stream.close();
+        stream.close(io);
         return; // Server is ready
     }
 
@@ -143,21 +145,24 @@ const TestResult = struct {
     assertions_total: usize,
 };
 
-fn runTest(allocator: std.mem.Allocator, repl_exe: []const u8, test_file: []const u8) !TestResult {
-    // Run: repl_exe test_file
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+fn runTest(allocator: std.mem.Allocator, io: std.Io, repl_exe: []const u8, test_file: []const u8) !TestResult {
+    // Run: repl_exe test_file.
+    // 0.16 replaced std.process.Child.run with std.process.run(gpa, io, options):
+    // the allocator moved out of the options struct and an Io is required.
+    const result = try std.process.run(allocator, io, .{
         .argv = &[_][]const u8{ repl_exe, test_file },
-        .max_output_bytes = 1024 * 1024, // 1MB
+        // 0.16 split max_output_bytes into per-stream Io.Limit values.
+        .stdout_limit = .limited(1024 * 1024),
+        .stderr_limit = .limited(1024 * 1024),
     });
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
     const success = switch (result.term) {
-        .Exited => |code| code == 0,
-        .Signal => false,
-        .Stopped => false,
-        .Unknown => false,
+        .exited => |code| code == 0,
+        .signal => false,
+        .stopped => false,
+        .unknown => false,
     };
 
     // Always capture and return stdout - it contains individual assertion results
@@ -197,7 +202,7 @@ fn parseAssertionCounts(output: []const u8) struct { passed: usize, total: usize
         // Look for "N/M passed" pattern
         if (std.mem.endsWith(u8, trimmed, "passed")) {
             // Find the "N/M" part before "passed"
-            const without_passed = std.mem.trimRight(u8, trimmed[0 .. trimmed.len - 6], &std.ascii.whitespace);
+            const without_passed = std.mem.trimEnd(u8, trimmed[0 .. trimmed.len - 6], &std.ascii.whitespace);
             // Parse "N/M"
             if (std.mem.indexOf(u8, without_passed, "/")) |slash_pos| {
                 const passed_str = without_passed[0..slash_pos];

@@ -34,6 +34,7 @@ const MockState = struct {
 
 /// Mock VTable for testing
 const mock_vtable = runtime.VTable{
+    .name = "<mock-element>",
     .deinit = null,
     .methods_ptr = &.{},
 };

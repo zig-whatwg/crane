@@ -143,3 +143,14 @@ pub const AttrWithBase = struct {
         self.owner_element = handles.anyopaqueToElement(element_ptr);
     }
 };
+
+comptime {
+    // Several call sites still recover a *AttrWithBase from its `base` field. The
+    // safe ones use @fieldParentPtr; any that cast assume offset 0, which auto
+    // layout does NOT promise - it orders by descending alignment, so adding a
+    // low-alignment field ahead of `base` would silently move it and corrupt
+    // every such recovery. Make that a compile error instead.
+    if (@offsetOf(AttrWithBase, "base") != 0) {
+        @compileError("AttrWithBase.base must remain at offset 0; a caller recovers the parent by casting");
+    }
+}

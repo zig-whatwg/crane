@@ -64,6 +64,12 @@ const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
 const wpt_options = @import("wpt_options");
+const clock = @import("clock");
+const host = @import("host");
+/// Phase 5 measuring instrument. The runner both reports its process-wide totals
+/// at the end and writes per-file deltas into the journal, so a sharded run can
+/// be added back up by the supervisor.
+const isolate_ownership = @import("v8").isolate_ownership;
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -157,10 +163,10 @@ pub const ProgressTracker = struct {
         return ProgressTracker{
             .allocator = allocator,
             .total = total,
-            .start_time = std.time.milliTimestamp(),
+            .start_time = clock.monotonicMillis(),
             .verbose = verbose,
             .failures_by_category = std.StringHashMap(usize).init(allocator),
-            .failure_details = .{},
+            .failure_details = .empty,
         };
     }
 
@@ -230,7 +236,7 @@ pub const ProgressTracker = struct {
 
         // Track if this test has any failures for the final report
         var has_failures = result.status != .ok;
-        var failure_subtests: std.ArrayList(FailureDetail.SubtestFailure) = .{};
+        var failure_subtests: std.ArrayList(FailureDetail.SubtestFailure) = .empty;
 
         // Count ALL subtests including notrun/precondition_failed
         for (result.subtests.items) |sub| {
@@ -415,7 +421,7 @@ pub const ProgressTracker = struct {
     }
 
     pub fn getElapsedTime(self: *ProgressTracker) []const u8 {
-        const elapsed_ms: u64 = @intCast(std.time.milliTimestamp() - self.start_time);
+        const elapsed_ms: u64 = @intCast(clock.monotonicMillis() - self.start_time);
         const seconds = (elapsed_ms / 1000) % 60;
         const minutes = (elapsed_ms / 60000) % 60;
         const hours = elapsed_ms / 3600000;
@@ -544,6 +550,20 @@ pub const ProgressTracker = struct {
         // Duration
         print("  ⏱️  Duration: {s}\n", .{elapsed});
 
+        // Isolate ownership (Phase 5). Reported as violations/checks rather than
+        // violations alone: 0 violations out of 0 checks means the instrument never
+        // ran, which is NOT the same as the invariant holding, and the two are
+        // indistinguishable if only violations are shown.
+        if (isolate_ownership.mode != .off) {
+            const v = isolate_ownership.violations();
+            const c = isolate_ownership.checks();
+            if (c == 0) {
+                print("  🔒 Isolate ownership: not measured (0 checks ran)\n", .{});
+            } else {
+                print("  🔒 Isolate ownership: {d} violation(s) in {d} checks\n", .{ v, c });
+            }
+        }
+
         // Top failing categories
         if (self.failures_by_category.count() > 0) {
             print("\n  📉 Top Failing Categories\n", .{});
@@ -585,9 +605,14 @@ pub const ProgressTracker = struct {
     }
 };
 
-/// Calculate the total number of test runs, accounting for multi-context execution.
-/// Each test file may run multiple times if it specifies multiple globals.
-/// Only counts contexts that are actually implemented (window, worker).
+/// Calculate the total number of test runs, accounting for multi-context and
+/// multi-variant execution.
+///
+/// A test file may run several times: once per implemented global it declares,
+/// times once per `<meta name="variant">` it declares. Only contexts that are
+/// actually implemented (window, worker) are counted, because the unimplemented
+/// ones are skipped rather than run - counting them would leave the progress
+/// bar short of its own total on every multi-global file.
 fn calculateTotalTests(
     allocator: std.mem.Allocator,
     discovery: DiscoveryResult,
@@ -611,16 +636,10 @@ fn calculateTotalTests(
         };
         defer parsed.deinit();
 
-        // Count only implemented contexts
-        var context_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) {
-                context_count += 1;
-            }
-        }
-
-        // If no implemented contexts, we still count it as 1 (will skip execution)
-        total += if (context_count > 0) context_count else 1;
+        // Once per implemented context, times once per declared variant. The
+        // rule lives on the metadata so it can be tested against the same
+        // parser the execution loop runs on; see `TestMetadata.runCount`.
+        total += parsed.metadata.runCount();
     }
 
     return total;
@@ -634,8 +653,10 @@ pub fn executeTests(
     report: *result_reporter.WptReport,
     server: *wpt_server.WptServer,
 ) !void {
-    // Calculate total accounting for multi-context execution
-    // This requires parsing all files upfront, but gives accurate progress tracking
+    // Calculate total accounting for multi-context and multi-variant execution.
+    // This requires parsing all files upfront, but gives accurate progress
+    // tracking - and it is what makes this number comparable to the "Scope:"
+    // line printed above it, which counts manifest URLs.
     const total = try calculateTotalTests(allocator, discovery, options);
     const file_count = discovery.test_files.items.len;
     print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
@@ -722,82 +743,105 @@ pub fn executeTests(
                 continue;
             }
 
-            // Determine context name for multi-context tests
-            // For .any.js tests with multiple globals, include context suffix
-            // For single-context tests (.window.js, .worker.js), context is null
-            const context_name: ?[]const u8 = if (parsed.metadata.globals.items.len > 1)
-                global_context.toString()
-            else
-                null;
+            // ...and once per variant within each of them. The two axes
+            // multiply, and MANIFEST.json lists every combination as its own
+            // test URL, so this loop is what makes the runner's numerator count
+            // in the same unit as the scoreboard's denominator. A file with no
+            // variants iterates exactly once, over a single empty string.
+            for (parsed.metadata.variantsOrDefault()) |variant| {
+                // How this run is named in the results. Owned rather than
+                // borrowed: a run told apart by both axes at once has no static
+                // string to point at.
+                const context_name: ?[]const u8 = try test_parser.runLabel(
+                    allocator,
+                    global_context,
+                    parsed.metadata.globals.items.len,
+                    variant,
+                );
+                defer if (context_name) |n| allocator.free(n);
 
-            // Execute test in this context
-            const test_result = executeTestFileInContext(
-                allocator,
-                test_file,
-                browser,
-                global_context,
-                &parsed,
-                context_name,
-                server,
-            ) catch |err| {
-                // Create error result with stack trace and context
-                var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
-                error_result.status = .@"error";
+                // Execute test in this context
+                const test_result = executeTestFileInContext(
+                    allocator,
+                    test_file,
+                    browser,
+                    global_context,
+                    &parsed,
+                    context_name,
+                    variant,
+                    server,
+                ) catch |err| {
+                    // Create error result with stack trace and context
+                    var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
+                    error_result.status = .@"error";
 
-                // Capture and print full stack trace for debugging
-                const trace = @errorReturnTrace();
-                if (trace) |t| {
-                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
-                    std.debug.print("Error: {}\n", .{err});
-                    std.debug.dumpStackTrace(t.*);
-                    std.debug.print("=== END ERROR ===\n\n", .{});
-                } else {
-                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
-                    std.debug.print("Error: {} (no stack trace available)\n", .{err});
-                    std.debug.print("=== END ERROR ===\n\n", .{});
-                }
+                    // Capture and print full stack trace for debugging
+                    const trace = @errorReturnTrace();
+                    if (trace) |t| {
+                        std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                        std.debug.print("Error: {}\n", .{err});
+                        // 0.16 split the two StackTrace types: @errorReturnTrace()
+                        // yields std.builtin.StackTrace {index, instruction_addresses}
+                        // while dumpStackTrace now takes *const std.debug.StackTrace
+                        // {return_addresses, skipped}. Convert rather than cast - the
+                        // valid entries are instruction_addresses[0..index], and index
+                        // exceeding the buffer means the trace wrapped.
+                        const valid = @min(t.index, t.instruction_addresses.len);
+                        const dbg_trace: std.debug.StackTrace = .{
+                            .return_addresses = t.instruction_addresses[0..valid],
+                            .skipped = @enumFromInt(t.index - valid),
+                        };
+                        std.debug.dumpStackTrace(&dbg_trace);
+                        std.debug.print("=== END ERROR ===\n\n", .{});
+                    } else {
+                        std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                        std.debug.print("Error: {} (no stack trace available)\n", .{err});
+                        std.debug.print("=== END ERROR ===\n\n", .{});
+                    }
 
-                error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
+                    error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
 
-                // Record with expected status so expected-fail tests don't increment error count
+                    // Record with expected status so expected-fail tests don't increment error count
+                    if (expected_results) |*exp| {
+                        progress.recordResultWithExpected(test_file.path, error_result, exp);
+                    } else {
+                        progress.recordResult(test_file.path, error_result);
+                    }
+                    progress.printProgressWithContext(test_file.path, context_name);
+
+                    try report.addResult(error_result);
+                    tally.add(error_result);
+                    error_result.deinit(allocator);
+                    continue;
+                };
+
+                // Record result with expected status metadata for proper counting
                 if (expected_results) |*exp| {
-                    progress.recordResultWithExpected(test_file.path, error_result, exp);
+                    progress.recordResultWithExpected(test_file.path, test_result, exp);
                 } else {
-                    progress.recordResult(test_file.path, error_result);
+                    progress.recordResult(test_file.path, test_result);
                 }
                 progress.printProgressWithContext(test_file.path, context_name);
 
-                try report.addResult(error_result);
-                tally.add(error_result);
-                error_result.deinit(allocator);
-                continue;
-            };
+                // Add result with expected status metadata (for XFAIL tracking)
+                if (expected_results) |*exp| {
+                    try report.addResultWithExpected(test_result, exp);
+                } else {
+                    try report.addResult(test_result);
+                }
 
-            // Record result with expected status metadata for proper counting
-            if (expected_results) |*exp| {
-                progress.recordResultWithExpected(test_file.path, test_result, exp);
-            } else {
-                progress.recordResult(test_file.path, test_result);
+                tally.add(test_result);
+
+                // Clean up the test result (addResult copies the data)
+                var mutable_result = test_result;
+                mutable_result.deinit(allocator);
             }
-            progress.printProgressWithContext(test_file.path, context_name);
-
-            // Add result with expected status metadata (for XFAIL tracking)
-            if (expected_results) |*exp| {
-                try report.addResultWithExpected(test_result, exp);
-            } else {
-                try report.addResult(test_result);
-            }
-
-            tally.add(test_result);
-
-            // Clean up the test result (addResult copies the data)
-            var mutable_result = test_result;
-            mutable_result.deinit(allocator);
         }
 
-        // Every context of this file reported, so the file is done. Journal it
-        // before starting the next one: anything after this point that kills
-        // the process must not be blamed on this test.
+        // Every run of this file reported - every global, times every variant -
+        // so the file is done. Journal it before starting the next one:
+        // anything after this point that kills the process must not be blamed
+        // on this test.
         if (run_journal) |*j| try tally.record(j, test_file.path);
 
         // Reset HTTP connection pool between test files to prevent connection exhaustion
@@ -813,12 +857,13 @@ pub fn executeTests(
     progress.printSummary(output_path);
 }
 
-/// Per-file totals accumulated across the contexts a test file runs in.
+/// Per-file totals accumulated across the runs a test file fans out into - one
+/// per implemented global, times one per declared variant.
 ///
-/// The journal records one line per *file*, not per context. A context is not a
-/// resumable unit: a supervisor can only restart at a file boundary, so a
-/// half-finished file has to look unfinished, which means no record until every
-/// context of it has reported.
+/// The journal records one line per *file*, not per run. Neither a global nor a
+/// variant is a resumable unit: a supervisor can only restart at a file
+/// boundary, so a half-finished file has to look unfinished, which means no
+/// record until every run of it has reported.
 const FileTally = struct {
     index: usize,
     status: journal.Status = .ok,
@@ -829,16 +874,31 @@ const FileTally = struct {
     duration_ms: u64 = 0,
     nav_ms: u64 = 0,
     load_ms: u64 = 0,
-    contexts: usize = 0,
+    /// How many (global, variant) pairs reported into this tally.
+    runs: usize = 0,
     /// Wall clock across everything this file cost, started at the top of the
     /// loop so loading and parsing are inside it. `duration_ms` cannot serve
     /// this purpose: it only covers the wait for `__wpt_complete`, and a page
     /// whose subtests are synchronous has already run them all before that wait
     /// begins - so the most expensive files in the corpus score near zero on it.
-    timer: ?std.time.Timer = null,
+    timer: ?clock.Timer = null,
+
+    /// Phase 5 isolate-ownership counters as they stood BEFORE this file ran.
+    ///
+    /// The instrument's counters are process-global and monotonic, so the number
+    /// belonging to one file is a delta. Snapshotting here rather than resetting
+    /// keeps the running total intact for `printSummary`, which reports the whole
+    /// process - both readings come from the same source and cannot disagree.
+    ownership_checks_at_start: usize = 0,
+    ownership_violations_at_start: usize = 0,
 
     fn start() FileTally {
-        return .{ .index = 0, .timer = std.time.Timer.start() catch null };
+        return .{
+            .index = 0,
+            .timer = clock.Timer.start(),
+            .ownership_checks_at_start = isolate_ownership.checks(),
+            .ownership_violations_at_start = isolate_ownership.violations(),
+        };
     }
 
     fn wallMs(self: *const FileTally) u64 {
@@ -847,13 +907,13 @@ const FileTally = struct {
     }
 
     fn add(self: *FileTally, result: test_harness.TestResult) void {
-        self.contexts += 1;
+        self.runs += 1;
         self.duration_ms += result.duration_ms;
         self.nav_ms += result.nav_ms;
         self.load_ms += result.load_ms;
 
-        // Worst status across contexts wins - a file that errored in one global
-        // has not passed, however well it did in the others.
+        // Worst status across runs wins - a file that errored in one global or
+        // one variant has not passed, however well it did in the others.
         const status: journal.Status = switch (result.status) {
             .ok => .ok,
             .timeout => .timeout,
@@ -884,14 +944,22 @@ const FileTally = struct {
             .nav_ms = self.nav_ms,
             .load_ms = self.load_ms,
             .wall_ms = self.wallMs(),
+            .ownership_checks = isolate_ownership.checks() -| self.ownership_checks_at_start,
+            .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
         });
     }
 };
 
-/// Execute a single test file in a specific context using the shared BrowserAdapter
-/// This function is called once per context (e.g., window, worker) for each test file.
+/// Execute a single test file in a specific context and variant using the shared
+/// BrowserAdapter.
+///
+/// This function is called once per (context, variant) pair for each test file -
+/// e.g. window and worker, times each `<meta name="variant">` the file declares.
 /// File content and parsed metadata are passed in to avoid re-loading/re-parsing.
-/// context_name is the string to include in results (null for single-context tests).
+/// context_name is the string to include in results (null when the file runs
+/// only once and there is nothing to tell apart); `variant` goes into the URL,
+/// not into `test_path`, which stays the bare source path everything else keys
+/// off.
 fn executeTestFileInContext(
     allocator: std.mem.Allocator,
     test_file: TestFile,
@@ -899,21 +967,22 @@ fn executeTestFileInContext(
     context: test_parser.GlobalType,
     parsed: *test_parser.ParsedTest,
     context_name: ?[]const u8,
+    variant: []const u8,
     server: *wpt_server.WptServer,
 ) !test_harness.TestResult {
     // For HTML files, fetch from HTTP server and let the browser handle it properly
     // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
     if (test_file.file_type == .html) {
         // Build HTTP URL for this test
-        const test_url = try server.buildTestUrl(allocator, test_file.path, .window);
+        const test_url = try server.buildTestUrl(allocator, test_file.path, .window, variant);
         defer allocator.free(test_url);
 
         // Fetch and run from HTTP URL
         // The wpt serve handles proper resource serving (testharness.js, etc.)
         var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, .window);
 
-        // HTML tests are single-context, so context_name should be null
-        // But if it's provided (shouldn't happen), we need to set it
+        // HTML tests have a single global, so context_name is set only when the
+        // file declares variants - the label is then the variant alone.
         if (context_name) |ctx| {
             result.context = try allocator.dupe(u8, ctx);
         }
@@ -926,13 +995,13 @@ fn executeTestFileInContext(
     // 2. Handle META: script directives automatically
     // 3. Apply URL rewrites (WebIDLParser.js -> webidl2.js, etc.)
     // This is the correct browser-like behavior
-    const test_url = try server.buildTestUrl(allocator, test_file.path, context);
+    const test_url = try server.buildTestUrl(allocator, test_file.path, context, variant);
     defer allocator.free(test_url);
 
     // Fetch and run from HTTP URL
     var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, context);
 
-    // Set the context name for multi-context tests
+    // Set the label for tests that run more than once
     if (context_name) |ctx| {
         result.context = try allocator.dupe(u8, ctx);
     }
@@ -945,7 +1014,7 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
     const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_file.path });
     defer allocator.free(full_path);
 
-    return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
+    return try host.cwd().readFileAlloc(host.io(), full_path, allocator, .limited(10 * 1024 * 1024));
 }
 
 /// Buffer behind `print`. Sized to hold a heavy test file's worth of subtest
@@ -953,17 +1022,34 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
 /// emits about 11,000 - so a whole file usually drains in a handful of writes
 /// rather than one per line. See output.zig for the measurements.
 var stderr_buffer: [256 * 1024]u8 = undefined;
-var stderr_writer: std.fs.File.Writer = undefined;
+var stderr_writer: std.Io.File.Writer = undefined;
 var stderr_sink: output.Sink = undefined;
-var stderr_once = std.once(initStderrSink);
+
+/// One-shot initialisation of `stderr_sink`.
+///
+/// Zig 0.16 removed `std.once`, so this open-codes the same contract: the
+/// winner of the compare-and-swap runs `initStderrSink`, and every other caller
+/// blocks until it is `done` rather than reading a half-built sink. A plain
+/// bool would not do - `print` is reached from V8's worker threads as well as
+/// the runner's main loop. `std.Io.Mutex` would not do either, because this can
+/// run before the process `Io` is up.
+const OnceState = enum(u8) { uninitialized, initializing, done };
+var stderr_state: std.atomic.Value(OnceState) = .init(.uninitialized);
 
 fn initStderrSink() void {
-    stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    stderr_writer = std.Io.File.stderr().writer(host.io(), &stderr_buffer);
     stderr_sink = .{ .w = &stderr_writer.interface };
 }
 
 fn sink() *output.Sink {
-    stderr_once.call();
+    if (stderr_state.load(.acquire) != .done) {
+        if (stderr_state.cmpxchgStrong(.uninitialized, .initializing, .acq_rel, .acquire) == null) {
+            initStderrSink();
+            stderr_state.store(.done, .release);
+        } else {
+            while (stderr_state.load(.acquire) != .done) std.atomic.spinLoopHint();
+        }
+    }
     return &stderr_sink;
 }
 
@@ -987,11 +1073,17 @@ fn flushOutput() void {
 /// of a baseline, and it is what lets a CI job go red. Returning an error from
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    // Adopt the Io std.start already built rather than letting host.io() build a
+    // second one. A self-built Io.Threaded starts with an EMPTY environment, so
+    // every std.process.spawn through it - notably `wpt serve` - would run with no
+    // PATH at all. See src/platform/host.zig.
+    host.adopt(init.io);
+
     // Neither path out of here runs deferred code: std.process.exit does not,
     // and an error return prints a trace and exits. So the flush is explicit on
     // both, or the tail of a run - including its summary - is lost.
-    const code = run() catch |err| {
+    const code = run(init) catch |err| {
         flushOutput();
         return err;
     };
@@ -999,14 +1091,13 @@ pub fn main() !void {
     if (code != 0) std.process.exit(code);
 }
 
-fn run() !u8 {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn run(init: std.process.Init) !u8 {
+    // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
+    // std.process.Init carries them, along with a gpa and a process-lifetime arena,
+    // so taking Init replaces the hand-rolled allocator too.
+    const allocator = init.gpa;
 
-    // Parse command-line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var options = try parseArgs(allocator, args[1..]);
     defer options.deinit();
@@ -1018,7 +1109,7 @@ fn run() !u8 {
     const harness_path = try std.fs.path.join(allocator, &.{ options.wpt_root, "resources", "testharness.js" });
     defer allocator.free(harness_path);
 
-    std.fs.cwd().access(harness_path, .{}) catch {
+    host.cwd().access(host.io(), harness_path, .{}) catch {
         print("Error: WPT submodule not found.\n", .{});
         print("Please initialize the submodule with:\n", .{});
         print("  git submodule update --init tests/wpt\n", .{});
@@ -1090,7 +1181,7 @@ fn run() !u8 {
     }
 
     if (options.wantsSupervisor()) {
-        return supervise(allocator, options, discovery);
+        return supervise(allocator, init.io, options, discovery);
     }
 
     // Create report
@@ -1240,8 +1331,9 @@ fn writeWorklistFile(
     path: []const u8,
     discovery: DiscoveryResult,
 ) !void {
+    const io = host.io();
     if (std.fs.path.dirname(path)) |dir| {
-        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -1251,10 +1343,10 @@ fn writeWorklistFile(
     defer allocator.free(paths);
     for (discovery.test_files.items, 0..) |tf, i| paths[i] = tf.path;
 
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    var file = try host.cwd().createFile(io, path, .{});
+    defer file.close(io);
     var buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&buf);
+    var file_writer = file.writer(io, &buf);
     try selection.writeWorklist(&file_writer.interface, paths);
     try file_writer.interface.flush();
 }
@@ -1271,8 +1363,9 @@ fn writeShardWorklist(
     discovery: DiscoveryResult,
     indices: []const usize,
 ) !void {
+    const io = host.io();
     if (std.fs.path.dirname(path)) |dir| {
-        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -1282,10 +1375,10 @@ fn writeShardWorklist(
     defer allocator.free(paths);
     for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
 
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    var file = try host.cwd().createFile(io, path, .{});
+    defer file.close(io);
     var buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&buf);
+    var file_writer = file.writer(io, &buf);
     try selection.writeWorklist(&file_writer.interface, paths);
     try file_writer.interface.flush();
 }
@@ -1294,6 +1387,10 @@ fn writeShardWorklist(
 /// journal to write, and the paths in that worklist so a crash can be named.
 const Shard = struct {
     allocator: std.mem.Allocator,
+    /// The process Io. Carried on the shard rather than reached for globally so
+    /// it travels with the shard into its worker thread; 0.16 needs one to spawn
+    /// and wait on the child process.
+    io: std.Io,
     options: *const Options,
     self_exe: []const u8,
     worklist_path: []const u8,
@@ -1344,7 +1441,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
         defer allocator.free(out_arg);
 
-        var argv: std.ArrayList([]const u8) = .{};
+        var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(allocator);
         try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
         if (!options.verbose) try argv.append(allocator, "--quiet");
@@ -1356,11 +1453,14 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // output and misreport the order of the run.
         flushOutput();
 
-        var child = std.process.Child.init(argv.items, allocator);
-        const term = try child.spawnAndWait();
+        // 0.16: Child.init + spawnAndWait become std.process.spawn(io, options)
+        // followed by wait(io). Behaviour is unchanged - still a blocking wait for
+        // this one shard - and Term's union tags are lowercase now.
+        var child = try std.process.spawn(shard.io, .{ .argv = argv.items });
+        const term = try child.wait(shard.io);
 
         const clean = switch (term) {
-            .Exited => |code| code == 0,
+            .exited => |code| code == 0,
             else => false,
         };
         if (clean) {
@@ -1428,6 +1528,7 @@ const ShardRun = struct {
 /// is. It is not going away by making any one step cheaper, but it does divide.
 fn runShardsInParallel(
     allocator: std.mem.Allocator,
+    io: std.Io,
     options: Options,
     discovery: DiscoveryResult,
     self_exe: []const u8,
@@ -1472,6 +1573,7 @@ fn runShardsInParallel(
         runs[i] = .{
             .shard = .{
                 .allocator = allocator,
+                .io = io,
                 .options = &options,
                 .self_exe = self_exe,
                 .worklist_path = wl,
@@ -1523,13 +1625,14 @@ fn runShardsInParallel(
 /// child starts one past it, so the loop always advances.
 fn supervise(
     allocator: std.mem.Allocator,
+    io: std.Io,
     options: Options,
     discovery: DiscoveryResult,
 ) !u8 {
     const total = discovery.test_files.items.len;
     if (total == 0) return 0;
 
-    std.fs.cwd().makePath(options.output_dir) catch |err| switch (err) {
+    host.cwd().createDirPath(host.io(), options.output_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
@@ -1551,7 +1654,7 @@ fn supervise(
         fresh.deinit();
     }
 
-    const self_exe = try std.fs.selfExePathAlloc(allocator);
+    const self_exe = try std.process.executablePathAlloc(host.io(), allocator);
     defer allocator.free(self_exe);
 
     // The supervisor owns the server for the whole run; children adopt it
@@ -1580,7 +1683,7 @@ fn supervise(
     );
 
     if (shard_count > 1) {
-        try runShardsInParallel(allocator, options, discovery, self_exe, journal_path, shard_count);
+        try runShardsInParallel(allocator, io, options, discovery, self_exe, journal_path, shard_count);
     } else {
         const worklist_paths = try allocator.alloc([]const u8, total);
         defer allocator.free(worklist_paths);
@@ -1588,6 +1691,7 @@ fn supervise(
 
         try runShard(allocator, .{
             .allocator = allocator,
+            .io = io,
             .options = &options,
             .self_exe = self_exe,
             .worklist_path = worklist_path,
@@ -1613,6 +1717,20 @@ fn supervise(
         s.subtests_timed_out,
         s.subtests_notrun,
     });
+
+    // Phase 5. The supervisor's own counters are meaningless - it runs no tests -
+    // so this is summed out of the journal, which is the only place the children's
+    // numbers survive their exit. Printed as a pair because `0 violations` from an
+    // instrument that never executed is indistinguishable from a clean run.
+    if (s.ownership_checks == 0) {
+        print("Isolate ownership: not measured (0 checks across {d} records)\n", .{log.records.len});
+    } else {
+        print("Isolate ownership: {d} violation(s) in {d} checks\n", .{
+            s.ownership_violations,
+            s.ownership_checks,
+        });
+    }
+
     print("\nJournal: {s}\n", .{journal_path});
 
     const selected = try selectedPaths(allocator, discovery);
@@ -1676,7 +1794,7 @@ test "multi-context: parsing and context iteration integration" {
     defer parsed.deinit();
 
     // Simulate the execution loop that would run in each context
-    var results: std.ArrayListUnmanaged(test_harness.TestResult) = .{};
+    var results: std.ArrayListUnmanaged(test_harness.TestResult) = .empty;
     defer {
         for (results.items) |*r| r.deinit(allocator);
         results.deinit(allocator);
@@ -1763,96 +1881,10 @@ test "multi-context: result collection per context" {
     try std.testing.expectEqual(@as(usize, 0), totals.failed);
 }
 
-test "calculateTotalTests counts implemented contexts" {
-    // This test verifies that calculateTotalTests correctly counts
-    // the total number of test executions (not files) when accounting
-    // for multi-context execution.
-
-    // Test the counting logic directly:
-    // - .any.js with no META: defaults to window + worker, but only window is implemented = 1
-    // - .any.js with global=window: explicit window = 1
-    // - .any.js with global=window,worker: only window is implemented = 1
-    // - .any.js with global=window,worker,sharedworker: only window is implemented = 1
-    // - .window.js: always window = 1
-    // - .worker.js: always worker = 0 (worker not implemented)
-
-    const allocator = std.testing.allocator;
-
-    // Test case 1: .any.js with no META defaults to window+worker, but only window implemented
-    {
-        const content = "test(() => {});";
-        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
-        defer parsed.deinit();
-
-        var implemented_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) implemented_count += 1;
-        }
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
-    }
-
-    // Test case 2: explicit single context
-    {
-        const content =
-            \\// META: global=window
-            \\test(() => {});
-        ;
-        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
-        defer parsed.deinit();
-
-        var implemented_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) implemented_count += 1;
-        }
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
-    }
-
-    // Test case 3: mix of implemented and unimplemented contexts
-    {
-        const content =
-            \\// META: global=window,worker,sharedworker,serviceworker
-            \\test(() => {});
-        ;
-        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
-        defer parsed.deinit();
-
-        var implemented_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) implemented_count += 1;
-        }
-        // only window is implemented (worker, sharedworker, serviceworker are not)
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
-    }
-
-    // Test case 4: .window.js forces window only
-    {
-        const content =
-            \\// META: global=worker
-            \\test(() => {});
-        ;
-        var parsed = try test_parser.parseTestFile(allocator, "test.window.js", content);
-        defer parsed.deinit();
-
-        var implemented_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) implemented_count += 1;
-        }
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
-        try std.testing.expectEqual(test_parser.GlobalType.window, parsed.metadata.globals.items[0]);
-    }
-
-    // Test case 5: .worker.js forces worker only (but worker is not implemented)
-    {
-        const content = "test(() => {});";
-        var parsed = try test_parser.parseTestFile(allocator, "test.worker.js", content);
-        defer parsed.deinit();
-
-        var implemented_count: usize = 0;
-        for (parsed.metadata.globals.items) |ctx| {
-            if (ctx.isImplemented()) implemented_count += 1;
-        }
-        // Worker is not implemented, so 0 contexts will execute
-        try std.testing.expectEqual(@as(usize, 0), implemented_count);
-        try std.testing.expectEqual(test_parser.GlobalType.worker, parsed.metadata.globals.items[0]);
-    }
-}
+// `calculateTotalTests` used to be covered by a test here that re-implemented
+// its counting inline rather than calling it. Two things were wrong with that:
+// test blocks in main.zig are not part of `harness_sources` and so never run,
+// and the copy drifted - it still asserted the dedicated worker was
+// unimplemented long after it started running. The rule now lives in
+// `TestMetadata.runCount`, in a module the test step actually compiles, and is
+// covered there by the `runCount:` tests.

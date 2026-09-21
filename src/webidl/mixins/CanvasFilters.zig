@@ -21,4 +21,3 @@ pub fn get_filter(instance: *runtime.Instance) anyerror!typedefs.DOMString {
 pub fn set_filter(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return CanvasFiltersImpl.set_filter(instance, value);
 }
-

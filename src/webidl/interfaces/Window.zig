@@ -111,10 +111,10 @@ pub const Window = struct {
             .{ .name = "Global", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyUnenumerableNamedProperties" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "window", "get_window", null },
@@ -314,20 +314,20 @@ pub const Window = struct {
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "location", "href" },
         };
-        
+
         /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
         /// Getters return undefined, setters silently return
         pub const lenient_this_attributes = .{
             "onmouseenter",
             "onmouseleave",
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
@@ -377,7 +377,7 @@ pub const Window = struct {
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
             .{ "cancelAnimationFrame", "call_cancelAnimationFrame", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
@@ -427,7 +427,7 @@ pub const Window = struct {
             "requestAnimationFrame",
             "cancelAnimationFrame",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -435,7 +435,7 @@ pub const Window = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "window", "get_window", null },
@@ -635,11 +635,10 @@ pub const Window = struct {
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -672,9 +671,6 @@ pub const Window = struct {
             navigator: *runtime.Instance = undefined,
             clientInformation: *runtime.Instance = undefined,
             originAgentCluster: bool = undefined,
-            ondeviceorientation: typedefs.EventHandler = undefined,
-            ondeviceorientationabsolute: typedefs.EventHandler = undefined,
-            ondevicemotion: typedefs.EventHandler = undefined,
             viewport: *runtime.Instance = undefined,
             cookieStore: *runtime.Instance = undefined,
             credentialless: bool = undefined,
@@ -683,13 +679,10 @@ pub const Window = struct {
             documentPictureInPicture: *runtime.Instance = undefined,
             event: union(enum) {
                 Event: Event,
-                @"undefined": void,
+                undefined: void,
             } = undefined,
             orientation: i16 = undefined,
-            onorientationchange: typedefs.EventHandler = undefined,
             sharedStorage: ?*runtime.Instance = null,
-            onappinstalled: typedefs.EventHandler = undefined,
-            onbeforeinstallprompt: typedefs.EventHandler = undefined,
             external: *runtime.Instance = undefined,
             screen: *runtime.Instance = undefined,
             visualViewport: ?*runtime.Instance = null,
@@ -709,132 +702,8 @@ pub const Window = struct {
             launchQueue: *runtime.Instance = undefined,
             portalHost: ?*runtime.Instance = null,
             pushManager: *runtime.Instance = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onauxclick: typedefs.EventHandler = undefined,
-            onbeforeinput: typedefs.EventHandler = undefined,
-            onbeforematch: typedefs.EventHandler = undefined,
-            onbeforetoggle: typedefs.EventHandler = undefined,
-            onblur: typedefs.EventHandler = undefined,
-            oncancel: typedefs.EventHandler = undefined,
-            oncanplay: typedefs.EventHandler = undefined,
-            oncanplaythrough: typedefs.EventHandler = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            onclick: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
-            oncommand: typedefs.EventHandler = undefined,
-            oncontextlost: typedefs.EventHandler = undefined,
-            oncontextmenu: typedefs.EventHandler = undefined,
-            oncontextrestored: typedefs.EventHandler = undefined,
-            oncopy: typedefs.EventHandler = undefined,
-            oncuechange: typedefs.EventHandler = undefined,
-            oncut: typedefs.EventHandler = undefined,
-            ondblclick: typedefs.EventHandler = undefined,
-            ondrag: typedefs.EventHandler = undefined,
-            ondragend: typedefs.EventHandler = undefined,
-            ondragenter: typedefs.EventHandler = undefined,
-            ondragleave: typedefs.EventHandler = undefined,
-            ondragover: typedefs.EventHandler = undefined,
-            ondragstart: typedefs.EventHandler = undefined,
-            ondrop: typedefs.EventHandler = undefined,
-            ondurationchange: typedefs.EventHandler = undefined,
-            onemptied: typedefs.EventHandler = undefined,
-            onended: typedefs.EventHandler = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
-            onfocus: typedefs.EventHandler = undefined,
-            onformdata: typedefs.EventHandler = undefined,
-            oninput: typedefs.EventHandler = undefined,
-            oninvalid: typedefs.EventHandler = undefined,
-            onkeydown: typedefs.EventHandler = undefined,
-            onkeypress: typedefs.EventHandler = undefined,
-            onkeyup: typedefs.EventHandler = undefined,
-            onload: typedefs.EventHandler = undefined,
-            onloadeddata: typedefs.EventHandler = undefined,
-            onloadedmetadata: typedefs.EventHandler = undefined,
-            onloadstart: typedefs.EventHandler = undefined,
-            onmousedown: typedefs.EventHandler = undefined,
-            onmouseenter: typedefs.EventHandler = undefined,
-            onmouseleave: typedefs.EventHandler = undefined,
-            onmousemove: typedefs.EventHandler = undefined,
-            onmouseout: typedefs.EventHandler = undefined,
-            onmouseover: typedefs.EventHandler = undefined,
-            onmouseup: typedefs.EventHandler = undefined,
-            onpaste: typedefs.EventHandler = undefined,
-            onpause: typedefs.EventHandler = undefined,
-            onplay: typedefs.EventHandler = undefined,
-            onplaying: typedefs.EventHandler = undefined,
-            onprogress: typedefs.EventHandler = undefined,
-            onratechange: typedefs.EventHandler = undefined,
-            onreset: typedefs.EventHandler = undefined,
-            onresize: typedefs.EventHandler = undefined,
-            onscroll: typedefs.EventHandler = undefined,
-            onscrollend: typedefs.EventHandler = undefined,
-            onsecuritypolicyviolation: typedefs.EventHandler = undefined,
-            onseeked: typedefs.EventHandler = undefined,
-            onseeking: typedefs.EventHandler = undefined,
-            onselect: typedefs.EventHandler = undefined,
-            onslotchange: typedefs.EventHandler = undefined,
-            onstalled: typedefs.EventHandler = undefined,
-            onsubmit: typedefs.EventHandler = undefined,
-            onsuspend: typedefs.EventHandler = undefined,
-            ontimeupdate: typedefs.EventHandler = undefined,
-            ontoggle: typedefs.EventHandler = undefined,
-            onvolumechange: typedefs.EventHandler = undefined,
-            onwaiting: typedefs.EventHandler = undefined,
-            onwebkitanimationend: typedefs.EventHandler = undefined,
-            onwebkitanimationiteration: typedefs.EventHandler = undefined,
-            onwebkitanimationstart: typedefs.EventHandler = undefined,
-            onwebkittransitionend: typedefs.EventHandler = undefined,
-            onwheel: typedefs.EventHandler = undefined,
-            onselectstart: typedefs.EventHandler = undefined,
-            onselectionchange: typedefs.EventHandler = undefined,
-            onanimationstart: typedefs.EventHandler = undefined,
-            onanimationiteration: typedefs.EventHandler = undefined,
-            onanimationend: typedefs.EventHandler = undefined,
-            onanimationcancel: typedefs.EventHandler = undefined,
-            ontransitionrun: typedefs.EventHandler = undefined,
-            ontransitionstart: typedefs.EventHandler = undefined,
-            ontransitionend: typedefs.EventHandler = undefined,
-            ontransitioncancel: typedefs.EventHandler = undefined,
-            onbeforexrselect: typedefs.EventHandler = undefined,
-            onpointerover: typedefs.EventHandler = undefined,
-            onpointerenter: typedefs.EventHandler = undefined,
-            onpointerdown: typedefs.EventHandler = undefined,
-            onpointermove: typedefs.EventHandler = undefined,
-            onpointerrawupdate: typedefs.EventHandler = undefined,
-            onpointerup: typedefs.EventHandler = undefined,
-            onpointercancel: typedefs.EventHandler = undefined,
-            onpointerout: typedefs.EventHandler = undefined,
-            onpointerleave: typedefs.EventHandler = undefined,
-            ongotpointercapture: typedefs.EventHandler = undefined,
-            onlostpointercapture: typedefs.EventHandler = undefined,
-            ontouchstart: typedefs.EventHandler = undefined,
-            ontouchend: typedefs.EventHandler = undefined,
-            ontouchmove: typedefs.EventHandler = undefined,
-            ontouchcancel: typedefs.EventHandler = undefined,
-            onfencedtreeclick: typedefs.EventHandler = undefined,
-            onsnapchanged: typedefs.EventHandler = undefined,
-            onsnapchanging: typedefs.EventHandler = undefined,
-            onafterprint: typedefs.EventHandler = undefined,
-            onbeforeprint: typedefs.EventHandler = undefined,
             onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
-            onhashchange: typedefs.EventHandler = undefined,
-            onlanguagechange: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
-            onoffline: typedefs.EventHandler = undefined,
-            ononline: typedefs.EventHandler = undefined,
-            onpagehide: typedefs.EventHandler = undefined,
-            onpagereveal: typedefs.EventHandler = undefined,
-            onpageshow: typedefs.EventHandler = undefined,
-            onpageswap: typedefs.EventHandler = undefined,
-            onpopstate: typedefs.EventHandler = undefined,
-            onrejectionhandled: typedefs.EventHandler = undefined,
-            onstorage: typedefs.EventHandler = undefined,
-            onunhandledrejection: typedefs.EventHandler = undefined,
-            onunload: typedefs.EventHandler = undefined,
-            ongamepadconnected: typedefs.EventHandler = undefined,
-            ongamepaddisconnected: typedefs.EventHandler = undefined,
-            onportalactivate: typedefs.EventHandler = undefined,
             origin: runtime.USVString = undefined,
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
@@ -861,7 +730,6 @@ pub const Window = struct {
     );
 
     const delegates = .{
-
         .get_caches = &get_caches,
         .get_clientInformation = &get_clientInformation,
         .get_closed = &get_closed,
@@ -1278,7 +1146,7 @@ pub const Window = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -1342,7 +1210,7 @@ pub const Window = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'location' forwards to 'href' on the attribute's value
         const target = try get_location(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "href", value);
@@ -3027,52 +2895,42 @@ pub const Window = struct {
     }
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        
         return try WindowImpl.call_atob(instance, data);
     }
 
     pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        
         return try WindowImpl.call_btoa(instance, data);
     }
 
     pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(DOMString), features: webidl.Opt(DOMString)) anyerror!?WindowProxy {
-        
         return try WindowImpl.call_open(instance, url, target, features);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_moveTo(instance, x, y);
     }
 
     pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
 
     pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(DOMString)) anyerror!bool {
-        
         return try WindowImpl.call_confirm(instance, message);
     }
 
     pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: IdleRequestCallback, options: webidl.Opt(IdleRequestOptions)) anyerror!u32 {
-        
         return try WindowImpl.call_requestIdleCallback(instance, callback, options);
     }
 
     pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
     }
 
     pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_getter(instance, name);
     }
 
@@ -3082,7 +2940,6 @@ pub const Window = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: DOMString) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
     }
 
@@ -3092,27 +2949,22 @@ pub const Window = struct {
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-        
         return try WindowImpl.call_reportError(instance, e);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowImpl.call_clearTimeout(instance, id);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowImpl.call_clearInterval(instance, id);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        
         return try WindowImpl.call_queueMicrotask(instance, callback);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        
         return try WindowImpl.call_requestAnimationFrame(instance, callback);
     }
 
@@ -3121,12 +2973,10 @@ pub const Window = struct {
     }
 
     pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(DOMString), default: webidl.Opt(DOMString)) anyerror!?DOMString {
-        
         return try WindowImpl.call_prompt(instance, message, default);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
         return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
 
@@ -3149,42 +2999,35 @@ pub const Window = struct {
     /// Extended attributes: [NewObject]
     pub fn call_matchMedia(instance: *runtime.Instance, query: CSSOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_matchMedia(instance, query);
     }
 
     pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_showDirectoryPicker(instance, options);
     }
 
     pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
     pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_scrollBy(instance, options);
     }
 
     pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_queryLocalFonts(instance, options);
     }
 
     pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        
         return try WindowImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_scrollTo(instance, options);
     }
 
     pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        
         return try WindowImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
@@ -3193,36 +3036,32 @@ pub const Window = struct {
     }
 
     pub fn call_navigate(instance: *runtime.Instance, dir: SpatialNavigationDirection) anyerror!void {
-        
         return try WindowImpl.call_navigate(instance, dir);
     }
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_showOpenFilePicker(instance, options);
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
     pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(DeferredRequestInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_fetchLater(instance, input, init_data);
     }
 
     pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
-        
         return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_fetch(instance, input, init_data);
     }
 
@@ -3233,12 +3072,11 @@ pub const Window = struct {
     /// Extended attributes: [NewObject]
     pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?CSSOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);
     }
 
     pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_resizeBy(instance, x, y);
     }
 
@@ -3247,17 +3085,14 @@ pub const Window = struct {
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try WindowImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try WindowImpl.call_scroll(instance, options);
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
-        
         return try WindowImpl.call_item(instance, index);
     }
 
@@ -3266,5 +3101,4 @@ pub const Window = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return WindowImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

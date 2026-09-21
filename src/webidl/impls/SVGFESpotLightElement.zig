@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -90,4 +89,3 @@ pub fn get_limitingConeAngle(instance: *runtime.Instance) anyerror!*runtime.Inst
     _ = instance;
     return error.NotImplemented;
 }
-

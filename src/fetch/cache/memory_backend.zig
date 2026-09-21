@@ -13,6 +13,7 @@ const Allocator = std.mem.Allocator;
 const cache_key = @import("cache_key.zig");
 const CacheKey = cache_key.CacheKey;
 const cache_entry = @import("cache_entry.zig");
+const clock = @import("clock");
 const CacheEntry = cache_entry.CacheEntry;
 
 /// In-memory HTTP cache backend.
@@ -101,7 +102,7 @@ pub const MemoryCacheBackend = struct {
         const node_ptr = self.entries.getPtr(hash_key) orelse return null;
 
         // Check if expired
-        const now = std.time.timestamp();
+        const now = clock.wallSeconds();
         if (!node_ptr.entry.isFresh(self.is_shared_cache, now)) {
             // Check stale-while-revalidate
             if (!node_ptr.entry.canServeStaleWhileRevalidate(self.is_shared_cache, now)) {
@@ -211,9 +212,9 @@ pub const MemoryCacheBackend = struct {
 
     /// Remove expired entries.
     pub fn removeExpired(self: *Self) usize {
-        const now = std.time.timestamp();
+        const now = clock.wallSeconds();
         var removed: usize = 0;
-        var keys_to_remove = std.ArrayListUnmanaged([]const u8){};
+        var keys_to_remove: std.ArrayListUnmanaged([]const u8) = .empty;
         defer keys_to_remove.deinit(self.allocator);
 
         // Collect keys to remove
@@ -325,7 +326,7 @@ test "MemoryCacheBackend - basic store and match" {
     defer key.deinit();
 
     // Use current time for realistic timestamps
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
 
     // Create an entry
     const headers = [_]CacheEntry.Header{
@@ -367,7 +368,7 @@ test "MemoryCacheBackend - delete entry" {
     const key = try CacheKey.init(allocator, "https://example.com/", "GET", null);
     defer key.deinit();
 
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
     const headers = [_]CacheEntry.Header{
         .{ .name = "Cache-Control", .value = "max-age=3600" },
     };
@@ -389,7 +390,7 @@ test "MemoryCacheBackend - clear all" {
     var cache = MemoryCacheBackend.init(allocator);
     defer cache.deinit();
 
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
 
     // Add multiple entries
     for (0..5) |i| {
@@ -420,7 +421,7 @@ test "MemoryCacheBackend - LRU eviction" {
     var cache = MemoryCacheBackend.initWithOptions(allocator, 3, 0, false);
     defer cache.deinit();
 
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
 
     // Add 3 entries
     for (0..3) |i| {
@@ -515,7 +516,7 @@ test "MemoryCacheBackend - getStats" {
     var cache = MemoryCacheBackend.initWithOptions(allocator, 100, 1024 * 1024, false);
     defer cache.deinit();
 
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
     const key = try CacheKey.init(allocator, "https://example.com/", "GET", null);
     defer key.deinit();
 

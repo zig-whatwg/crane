@@ -223,8 +223,18 @@ fn cleanupIsolateTemplates(isolate: ?*v8.Isolate, allocator: std.mem.Allocator) 
 }
 
 /// Cleanup handler for template registry
-fn cleanupTemplateRegistry(_: ?*v8.Isolate, _: std.mem.Allocator) void {
+fn cleanupTemplateRegistry(isolate: ?*v8.Isolate, _: std.mem.Allocator) void {
     const template_registry = @import("template_registry.zig");
+    if (isolate) |iso| {
+        // Scope the disposal to THIS isolate. The isolate was already being passed
+        // here and discarded; with the registry now holding entries for more than
+        // one isolate, clear() would dispose a live worker isolate's
+        // FunctionTemplates alongside the ones actually being torn down.
+        template_registry.clearForIsolate(iso);
+        return;
+    }
+    // No isolate named: this is full teardown, so the process-wide C++ caches and
+    // global Zig state that clear() also resets do need to go.
     template_registry.clear();
 }
 

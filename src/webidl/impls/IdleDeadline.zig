@@ -10,6 +10,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const clock = @import("clock");
 const IdleDeadline = interfaces.IdleDeadline;
 
 pub const State = IdleDeadline.State;
@@ -97,7 +98,7 @@ pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
 pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     const internal = Registry.get(instance) orelse return 0;
 
-    const now = std.time.milliTimestamp();
+    const now = clock.monotonicMillis();
     const remaining = internal.deadline - now;
 
     // Return 0 if deadline has passed, otherwise return remaining time
@@ -113,7 +114,7 @@ test "IdleDeadline - didTimeout returns correct value" {
 
     // Test with did_timeout = false
     {
-        const future_deadline = std.time.milliTimestamp() + 1000;
+        const future_deadline = clock.monotonicMillis() + 1000;
         const deadline = try createWithDeadline(allocator, future_deadline, false);
         defer deinit(deadline);
 
@@ -122,7 +123,7 @@ test "IdleDeadline - didTimeout returns correct value" {
 
     // Test with did_timeout = true
     {
-        const future_deadline = std.time.milliTimestamp() + 1000;
+        const future_deadline = clock.monotonicMillis() + 1000;
         const deadline = try createWithDeadline(allocator, future_deadline, true);
         defer deinit(deadline);
 
@@ -134,7 +135,7 @@ test "IdleDeadline - timeRemaining returns positive for future deadline" {
     const allocator = std.testing.allocator;
 
     // Set deadline 1 second in the future
-    const future_deadline = std.time.milliTimestamp() + 1000;
+    const future_deadline = clock.monotonicMillis() + 1000;
     const deadline = try createWithDeadline(allocator, future_deadline, false);
     defer deinit(deadline);
 
@@ -149,7 +150,7 @@ test "IdleDeadline - timeRemaining returns 0 for past deadline" {
     const allocator = std.testing.allocator;
 
     // Set deadline 1 second in the past
-    const past_deadline = std.time.milliTimestamp() - 1000;
+    const past_deadline = clock.monotonicMillis() - 1000;
     const deadline = try createWithDeadline(allocator, past_deadline, true);
     defer deinit(deadline);
 

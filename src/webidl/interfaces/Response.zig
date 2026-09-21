@@ -34,13 +34,13 @@ pub const Response = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -53,7 +53,7 @@ pub const Response = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -64,14 +64,14 @@ pub const Response = struct {
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "error", "call_static_error", 0 },
             .{ "redirect", "call_static_redirect", 1 },
             .{ "json", "call_static_json", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "error",
@@ -85,11 +85,10 @@ pub const Response = struct {
             "json",
             "text",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -102,11 +101,10 @@ pub const Response = struct {
             .{ "body", "get_body", null },
             .{ "bodyUsed", "get_bodyUsed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -114,7 +112,7 @@ pub const Response = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": enums.ResponseType = undefined,
+            type: enums.ResponseType = undefined,
             url: runtime.USVString = undefined,
             redirected: bool = undefined,
             status: u16 = undefined,
@@ -129,7 +127,6 @@ pub const Response = struct {
     );
 
     const delegates = .{
-
         .get_body = &get_body,
         .get_bodyUsed = &get_bodyUsed,
         .get_headers = &get_headers,
@@ -150,7 +147,7 @@ pub const Response = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -246,7 +243,7 @@ pub const Response = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ResponseImpl.call_static_json(instance, data, init_data);
     }
 
@@ -265,7 +262,7 @@ pub const Response = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ResponseImpl.call_static_redirect(instance, url, status);
     }
 
@@ -286,5 +283,4 @@ pub const Response = struct {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_clone(instance);
     }
-
 };

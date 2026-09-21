@@ -5,7 +5,7 @@
 //! ## Example
 //!
 //! ```zig
-//! const source = try std.fs.cwd().readFileAlloc(allocator, "dom.idl", 10 * 1024 * 1024);
+//! const source = try std.Io.Dir.cwd().readFileAlloc(io, "dom.idl", allocator, .limited(10 * 1024 * 1024));
 //! defer allocator.free(source);
 //!
 //! const idl_file = try Parser.parse(allocator, source);

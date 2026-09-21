@@ -17,4 +17,3 @@ pub const impl = @import("impls").PushManagerAttribute;
 pub fn get_pushManager(instance: *runtime.Instance) !*runtime.Instance {
     return PushManagerAttributeImpl.get_pushManager(instance);
 }
-

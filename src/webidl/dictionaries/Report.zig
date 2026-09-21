@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const ReportBody = @import("ReportBody.zig").ReportBody;
 
 pub const Report = struct {
-    @"type": ?runtime.DOMString = null,
+    type: ?runtime.DOMString = null,
     url: ?runtime.DOMString = null,
     body: ?ReportBody = null,
 };

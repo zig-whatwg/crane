@@ -23,15 +23,15 @@ pub const Storage = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "key", "call_key", 1 },
@@ -39,7 +39,7 @@ pub const Storage = struct {
             .{ "setItem", "call_setItem", 2 },
             .{ "clear", "call_clear", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "key",
@@ -47,20 +47,18 @@ pub const Storage = struct {
             "setItem",
             "clear",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,7 +72,6 @@ pub const Storage = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
 
         .call_clear = &call_clear,
@@ -85,7 +82,7 @@ pub const Storage = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -113,12 +110,10 @@ pub const Storage = struct {
     }
 
     pub fn call_getItem(instance: *runtime.Instance, key: DOMString) anyerror!?DOMString {
-        
         return try StorageImpl.call_getItem(instance, key);
     }
 
     pub fn call_removeItem(instance: *runtime.Instance, key: DOMString) anyerror!void {
-        
         return try StorageImpl.call_removeItem(instance, key);
     }
 
@@ -127,12 +122,10 @@ pub const Storage = struct {
     }
 
     pub fn call_setItem(instance: *runtime.Instance, key: DOMString, value: DOMString) anyerror!void {
-        
         return try StorageImpl.call_setItem(instance, key, value);
     }
 
     pub fn call_key(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
-        
         return try StorageImpl.call_key(instance, index);
     }
 
@@ -141,5 +134,4 @@ pub const Storage = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return StorageImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

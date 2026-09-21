@@ -25,7 +25,7 @@ pub const ParentNode = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "children", "get_children", null },
@@ -33,7 +33,7 @@ pub const ParentNode = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "prepend", "call_prepend", 1 },
@@ -43,7 +43,7 @@ pub const ParentNode = struct {
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "prepend",
@@ -53,11 +53,10 @@ pub const ParentNode = struct {
             "querySelector",
             "querySelectorAll",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "children", "get_children", null },
@@ -65,13 +64,12 @@ pub const ParentNode = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
-        
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "prepend",
@@ -94,7 +92,6 @@ pub const ParentNode = struct {
     );
 
     const delegates = .{
-
         .get_childElementCount = &get_childElementCount,
         .get_children = &get_children,
         .get_firstElementChild = &get_firstElementChild,
@@ -109,7 +106,7 @@ pub const ParentNode = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -157,14 +154,13 @@ pub const ParentNode = struct {
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try ParentNodeImpl.call_querySelector(instance, selectors);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ParentNodeImpl.call_querySelectorAll(instance, selectors);
     }
 
@@ -173,8 +169,7 @@ pub const ParentNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ParentNodeImpl.call_prepend(instance, nodes);
     }
 
@@ -183,8 +178,7 @@ pub const ParentNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ParentNodeImpl.call_moveBefore(instance, node, child);
     }
 
@@ -193,8 +187,7 @@ pub const ParentNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ParentNodeImpl.call_append(instance, nodes);
     }
 
@@ -203,9 +196,7 @@ pub const ParentNode = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ParentNodeImpl.call_replaceChildren(instance, nodes);
     }
-
 };

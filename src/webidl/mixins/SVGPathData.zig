@@ -21,4 +21,3 @@ pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) 
 pub fn call_getPathData(instance: *runtime.Instance, settings: dictionaries.SVGPathDataSettings) anyerror!void {
     return SVGPathDataImpl.call_getPathData(instance, settings);
 }
-

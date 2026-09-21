@@ -28,13 +28,13 @@ pub const ImageDecoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -42,19 +42,19 @@ pub const ImageDecoder = struct {
             .{ "completed", "get_completed", null },
             .{ "tracks", "get_tracks", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "decode", "call_decode", 0 },
             .{ "reset", "call_reset", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "decode",
@@ -62,11 +62,10 @@ pub const ImageDecoder = struct {
             "close",
             "isTypeSupported",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -74,11 +73,10 @@ pub const ImageDecoder = struct {
             .{ "completed", "get_completed", null },
             .{ "tracks", "get_tracks", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -86,7 +84,7 @@ pub const ImageDecoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             complete: bool = undefined,
             completed: runtime.JSValue = undefined,
             tracks: *runtime.Instance = undefined,
@@ -95,7 +93,6 @@ pub const ImageDecoder = struct {
     );
 
     const delegates = .{
-
         .get_complete = &get_complete,
         .get_completed = &get_completed,
         .get_tracks = &get_tracks,
@@ -107,7 +104,7 @@ pub const ImageDecoder = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -159,17 +156,14 @@ pub const ImageDecoder = struct {
     }
 
     pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!runtime.JSValue {
-        
         return try ImageDecoderImpl.call_decode(instance, options);
     }
 
     pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
-        
         return try ImageDecoderImpl.call_static_isTypeSupported(instance, @"type");
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try ImageDecoderImpl.call_close(instance);
     }
-
 };

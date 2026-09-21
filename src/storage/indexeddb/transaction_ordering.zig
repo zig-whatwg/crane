@@ -34,6 +34,7 @@
 //! - Request processing: https://w3c.github.io/IndexedDB/#request-api
 
 const std = @import("std");
+const clock = @import("clock");
 
 // ============================================================================
 // Transaction Request
@@ -76,7 +77,7 @@ pub const TransactionRequest = struct {
             .transaction_id = transaction_id,
             .state = .pending,
             .operation = operation,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
             .processed_at = null,
             .error_message = null,
         };
@@ -88,12 +89,12 @@ pub const TransactionRequest = struct {
 
     pub fn markDone(self: *Self) void {
         self.state = .done;
-        self.processed_at = std.time.milliTimestamp();
+        self.processed_at = clock.monotonicMillis();
     }
 
     pub fn markFailed(self: *Self, err: []const u8) void {
         self.state = .failed;
-        self.processed_at = std.time.milliTimestamp();
+        self.processed_at = clock.monotonicMillis();
         self.error_message = err;
     }
 
@@ -126,7 +127,7 @@ pub const TransactionRequestQueue = struct {
     pub fn init(allocator: std.mem.Allocator, transaction_id: u64) Self {
         return Self{
             .transaction_id = transaction_id,
-            .requests = .{},
+            .requests = .empty,
             .next_index = 0,
             .is_active = true,
             .is_committing = false,
@@ -261,7 +262,7 @@ pub const IDBTask = struct {
             .request_id = req_id,
             .data = null,
             .priority = 10,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -272,7 +273,7 @@ pub const IDBTask = struct {
             .request_id = req_id,
             .data = null,
             .priority = 10,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -283,7 +284,7 @@ pub const IDBTask = struct {
             .request_id = req_id,
             .data = null,
             .priority = 10,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -294,7 +295,7 @@ pub const IDBTask = struct {
             .request_id = null,
             .data = null,
             .priority = 5, // Higher priority than regular events
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -305,7 +306,7 @@ pub const IDBTask = struct {
             .request_id = null,
             .data = null,
             .priority = 5,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -316,7 +317,7 @@ pub const IDBTask = struct {
             .request_id = null,
             .data = null,
             .priority = 1, // Highest priority
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -327,7 +328,7 @@ pub const IDBTask = struct {
             .request_id = null,
             .data = null,
             .priority = 2,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 
@@ -338,7 +339,7 @@ pub const IDBTask = struct {
             .request_id = null,
             .data = null,
             .priority = 20, // Lower priority - check after other events
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
         };
     }
 };
@@ -362,7 +363,7 @@ pub const TransactionScheduler = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .tasks = .{},
+            .tasks = .empty,
             .transaction_queues = .{},
             .next_task_id = 1,
             .allocator = allocator,
@@ -476,8 +477,8 @@ pub const VersionchangeCoordinator = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .active_versionchange = null,
-            .blocked_transactions = .{},
-            .pending_closes = .{},
+            .blocked_transactions = .empty,
+            .pending_closes = .empty,
             .allocator = allocator,
         };
     }

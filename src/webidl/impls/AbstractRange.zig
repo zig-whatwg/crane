@@ -68,7 +68,15 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Release the internal block. `init` allocates one from the state arena, and
+    // with no deinit body at all it was held for the life of the process.
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Getter for startContainer

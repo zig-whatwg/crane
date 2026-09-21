@@ -38,6 +38,7 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// DOMHighResTimeStamp - high resolution timestamp in milliseconds
@@ -93,7 +94,7 @@ pub const StubFrameTimingBackend = struct {
     /// Initialize
     pub fn init() StubFrameTimingBackend {
         return .{
-            .base_timestamp = std.time.milliTimestamp(),
+            .base_timestamp = clock.monotonicMillis(),
             .target_fps = 60,
         };
     }
@@ -101,7 +102,7 @@ pub const StubFrameTimingBackend = struct {
     /// Initialize with custom FPS
     pub fn initWithFps(fps: u32) StubFrameTimingBackend {
         return .{
-            .base_timestamp = std.time.milliTimestamp(),
+            .base_timestamp = clock.monotonicMillis(),
             .target_fps = fps,
         };
     }
@@ -122,7 +123,7 @@ pub const StubFrameTimingBackend = struct {
 
     fn nowImpl(ptr: *anyopaque) DOMHighResTimeStamp {
         const self: *StubFrameTimingBackend = @ptrCast(@alignCast(ptr));
-        const current = std.time.milliTimestamp();
+        const current = clock.monotonicMillis();
         return @floatFromInt(current - self.base_timestamp);
     }
 
@@ -229,7 +230,7 @@ pub const AnimationFrameScheduler = struct {
             .allocator = allocator,
             .timing = timing,
             .callbacks = std.AutoHashMap(u32, CallbackEntry).init(allocator),
-            .pending_handles = .{},
+            .pending_handles = .empty,
             .next_handle = 1,
             .running_callbacks = false,
         };
@@ -469,7 +470,7 @@ test "StubFrameTimingBackend - basic operations" {
     var timing = StubFrameTimingBackend.init();
 
     const t1 = timing.backend().now();
-    std.Thread.sleep(1_000_000); // 1ms
+    clock.sleep(1_000_000); // 1ms
     const t2 = timing.backend().now();
 
     try std.testing.expect(t2 >= t1);

@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const VideoFrameMetadata = struct {
-};
+pub const VideoFrameMetadata = struct {};

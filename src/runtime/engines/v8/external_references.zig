@@ -423,3 +423,46 @@ test "external references - hash determinism" {
 
     clearRuntimeReferences();
 }
+
+test "registerPointer dedups and preserves registration order" {
+    // Order is load-bearing: snapshot creation and snapshot load must agree entry for
+    // entry, so a dedup that reordered the array would corrupt the snapshot rather
+    // than fail loudly. Nothing covered this before.
+    clearRuntimeReferences();
+    defer clearRuntimeReferences();
+
+    const a: usize = 0x1000;
+    const b: usize = 0x2000;
+    const c: usize = 0x3000;
+
+    registerPointer(a);
+    registerPointer(b);
+    registerPointer(a); // duplicate
+    registerPointer(c);
+    registerPointer(b); // duplicate
+
+    try std.testing.expectEqual(@as(usize, 3), runtime_ref_count);
+    try std.testing.expectEqual(@as(isize, @intCast(a)), runtime_refs[0]);
+    try std.testing.expectEqual(@as(isize, @intCast(b)), runtime_refs[1]);
+    try std.testing.expectEqual(@as(isize, @intCast(c)), runtime_refs[2]);
+}
+
+test "clearRuntimeReferences lets a previously-seen pointer register again" {
+    clearRuntimeReferences();
+    defer clearRuntimeReferences();
+
+    const a: usize = 0x4000;
+    registerPointer(a);
+    try std.testing.expectEqual(@as(usize, 1), runtime_ref_count);
+
+    clearRuntimeReferences();
+    try std.testing.expectEqual(@as(usize, 0), runtime_ref_count);
+
+    // Guards any future dedup index: if one is added and not cleared here, this
+    // registration is silently dropped, and a missing external reference corrupts
+    // snapshot load instead of failing loudly. An O(1) index was tried and reverted
+    // (it was not faster) - this test is what would catch the mistake next time.
+    registerPointer(a);
+    try std.testing.expectEqual(@as(usize, 1), runtime_ref_count);
+    try std.testing.expectEqual(@as(isize, @intCast(a)), runtime_refs[0]);
+}

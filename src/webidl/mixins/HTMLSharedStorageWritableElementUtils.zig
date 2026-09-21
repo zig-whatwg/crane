@@ -21,4 +21,3 @@ pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
 pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: runtime.JSValue) !void {
     return HTMLSharedStorageWritableElementUtilsImpl.set_sharedStorageWritable(instance, value);
 }
-

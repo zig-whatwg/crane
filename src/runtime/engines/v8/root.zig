@@ -127,12 +127,12 @@ pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 pub const wrapper_cache_mod = @import("wrapper_cache.zig");
 pub const WrapperCache = wrapper_cache_mod.WrapperCache;
 
-/// libuv FFI bindings for timer support
-pub const libuv = @import("libuv.zig");
+/// Isolate ownership checking (Phase 5 groundwork) - see isolate_ownership.zig.
+pub const isolate_ownership = @import("isolate_ownership.zig");
 
-/// libuv-based timer manager for V8 isolates
-pub const libuv_timer = @import("libuv_timer.zig");
-pub const LibuvTimerManager = libuv_timer.LibuvTimerManager;
+/// Timer manager for V8 isolates. libuv-free since Phase 7 - see native_timer.zig.
+pub const native_timer = @import("native_timer.zig");
+pub const NativeTimerManager = native_timer.NativeTimerManager;
 
 /// Template registry for wrapping Zig instances as V8 objects
 pub const template_registry = @import("template_registry.zig");
@@ -238,6 +238,7 @@ pub const SnapshotInitOptions = snapshot_loader.InitOptions;
 /// Initialize V8 platform with proper flags for snapshot support
 /// MUST be used instead of ffi.v8_Platform_Initialize() when using snapshots
 pub const initializePlatformForSnapshots = snapshot_loader.initializePlatformForSnapshots;
+pub const initializePlatformForRuntime = snapshot_loader.initializePlatformForRuntime;
 /// Standard V8 flags for snapshot creation/loading (--hash-seed=0 --predictable --no-random-gc)
 pub const SNAPSHOT_V8_FLAGS = snapshot_loader.SNAPSHOT_V8_FLAGS;
 

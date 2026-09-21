@@ -7,7 +7,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const check = @import("check.zig");
+const clock = @import("clock");
 const CredentialsMode = check.CredentialsMode;
+
+const log = std.log.scoped(.preflight);
 
 /// Preflight request information.
 ///
@@ -252,7 +255,7 @@ pub fn validatePreflightResponse(
 
     // Step 12: Parse max-age and create cache entry
     const max_age = parseMaxAge(response_headers);
-    const expiry_time = std.time.timestamp() + @as(i64, @intCast(max_age));
+    const expiry_time = clock.wallSeconds() + @as(i64, @intCast(max_age));
 
     return .{
         .success = .{
@@ -278,7 +281,7 @@ fn parseAllowedValues(
     headers: anytype,
     header_name: []const u8,
 ) !ParsedValues {
-    var values: std.ArrayListUnmanaged([]const u8) = .{};
+    var values: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer {
         for (values.items) |v| {
             allocator.free(v);
@@ -408,7 +411,7 @@ pub fn getCorsUnsafeHeaderNames(
     header_names: []const []const u8,
     header_values: []const []const u8,
 ) ![]const []const u8 {
-    var result: std.ArrayListUnmanaged([]const u8) = .{};
+    var result: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (header_names, header_values) |name, value| {
@@ -527,7 +530,7 @@ test "validatePreflightResponse success" {
             try std.testing.expect(cache.methods.items.len >= 1);
         },
         .failure => |err| {
-            std.debug.print("Unexpected failure: {}\n", .{err});
+            log.err("Unexpected failure: {}", .{err});
             return error.TestFailed;
         },
     }

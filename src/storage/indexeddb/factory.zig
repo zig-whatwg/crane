@@ -160,7 +160,7 @@ pub const IDBFactory = struct {
             const metadata = DatabaseMetadata{
                 .name = name_copy,
                 .version = target_version,
-                .connections = .{},
+                .connections = .empty,
             };
 
             try self.databases_map.put(db_key, metadata);

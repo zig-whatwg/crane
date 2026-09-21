@@ -462,8 +462,8 @@ const BenchmarkResult = struct {
         return (self.iterations * std.time.ns_per_s) / self.total_ns;
     }
 
-    fn print(self: BenchmarkResult) void {
-        const stdout = std.fs.File.stdout();
+    fn print(self: BenchmarkResult, io: std.Io) void {
+        const stdout = std.Io.File.stdout();
         var buffer: [4096]u8 = undefined;
         const ops = self.ops_per_sec();
         const ns = self.ns_per_op();
@@ -475,15 +475,25 @@ const BenchmarkResult = struct {
             self.min_ns,
             self.max_ns,
         }) catch return;
-        stdout.writeAll(output) catch {};
+        stdout.writeStreamingAll(io, output) catch {};
     }
 };
+
+/// Nanoseconds elapsed on the monotonic clock since `start`.
+///
+/// Replaces `std.time.Timer`, removed in 0.16. These are durations, so the
+/// reading comes from the monotonic clock (`.awake`) and never the wall clock:
+/// an NTP step would otherwise make an interval negative or enormous.
+fn elapsedNanos(io: std.Io, start: std.Io.Timestamp) u64 {
+    const d = start.untilNow(io, .awake).toNanoseconds();
+    return if (d < 0) 0 else @intCast(d);
+}
 
 // ============================================================================
 // Benchmarks
 // ============================================================================
 
-fn benchmarkDateTimeFormat() BenchmarkResult {
+fn benchmarkDateTimeFormat(io: std.Io) BenchmarkResult {
     const timestamp: i64 = 1699964445000; // 2023-11-14 12:30:45 UTC
     var buf: [256]u8 = undefined;
 
@@ -503,14 +513,14 @@ fn benchmarkDateTimeFormat() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             const dt = DateTime.fromTimestampMillis(timestamp);
             _ = formatWithPattern(&buf, pattern, dt, locale_data);
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const ns_per_iter = elapsed / BENCH_ITERATIONS;
         if (ns_per_iter < min_ns) min_ns = ns_per_iter;
@@ -526,7 +536,7 @@ fn benchmarkDateTimeFormat() BenchmarkResult {
     };
 }
 
-fn benchmarkDateTimeFormatFull() BenchmarkResult {
+fn benchmarkDateTimeFormatFull(io: std.Io) BenchmarkResult {
     const timestamp: i64 = 1699964445000;
     var buf: [256]u8 = undefined;
 
@@ -544,14 +554,14 @@ fn benchmarkDateTimeFormatFull() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             const dt = DateTime.fromTimestampMillis(timestamp);
             _ = formatWithPattern(&buf, pattern, dt, locale_data);
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const ns_per_iter = elapsed / BENCH_ITERATIONS;
         if (ns_per_iter < min_ns) min_ns = ns_per_iter;
@@ -567,7 +577,7 @@ fn benchmarkDateTimeFormatFull() BenchmarkResult {
     };
 }
 
-fn benchmarkDateTimeFormatWithTime() BenchmarkResult {
+fn benchmarkDateTimeFormatWithTime(io: std.Io) BenchmarkResult {
     const timestamp: i64 = 1699964445000;
     var buf: [256]u8 = undefined;
 
@@ -588,7 +598,7 @@ fn benchmarkDateTimeFormatWithTime() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             const dt = DateTime.fromTimestampMillis(timestamp);
@@ -599,7 +609,7 @@ fn benchmarkDateTimeFormatWithTime() BenchmarkResult {
             _ = date_str.len + time_str.len;
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const ns_per_iter = elapsed / BENCH_ITERATIONS;
         if (ns_per_iter < min_ns) min_ns = ns_per_iter;
@@ -615,7 +625,7 @@ fn benchmarkDateTimeFormatWithTime() BenchmarkResult {
     };
 }
 
-fn benchmarkDateTimeLocales() BenchmarkResult {
+fn benchmarkDateTimeLocales(io: std.Io) BenchmarkResult {
     const timestamp: i64 = 1699964445000;
     var buf: [256]u8 = undefined;
 
@@ -637,7 +647,7 @@ fn benchmarkDateTimeLocales() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             for (locales) |locale_tag| {
@@ -648,7 +658,7 @@ fn benchmarkDateTimeLocales() BenchmarkResult {
             }
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const iterations_per_run = BENCH_ITERATIONS * locales.len;
         const ns_per_iter = elapsed / iterations_per_run;
@@ -665,7 +675,7 @@ fn benchmarkDateTimeLocales() BenchmarkResult {
     };
 }
 
-fn benchmarkNumberFormat() BenchmarkResult {
+fn benchmarkNumberFormat(io: std.Io) BenchmarkResult {
     var buf: [128]u8 = undefined;
 
     const locale_data = cldr_embedded.getLocale("en") orelse unreachable;
@@ -682,13 +692,13 @@ fn benchmarkNumberFormat() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             _ = formatDecimalNumber(&buf, value, 0, 2, true, symbols.decimal, symbols.group);
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const ns_per_iter = elapsed / BENCH_ITERATIONS;
         if (ns_per_iter < min_ns) min_ns = ns_per_iter;
@@ -704,7 +714,7 @@ fn benchmarkNumberFormat() BenchmarkResult {
     };
 }
 
-fn benchmarkNumberFormatCurrency() BenchmarkResult {
+fn benchmarkNumberFormatCurrency(io: std.Io) BenchmarkResult {
     var buf: [128]u8 = undefined;
 
     const locale_data = cldr_embedded.getLocale("en") orelse unreachable;
@@ -724,7 +734,7 @@ fn benchmarkNumberFormatCurrency() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             var idx: usize = 0;
@@ -733,7 +743,7 @@ fn benchmarkNumberFormatCurrency() BenchmarkResult {
             _ = formatDecimalNumber(buf[idx..], value, 2, 2, true, symbols.decimal, symbols.group);
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const ns_per_iter = elapsed / BENCH_ITERATIONS;
         if (ns_per_iter < min_ns) min_ns = ns_per_iter;
@@ -749,7 +759,7 @@ fn benchmarkNumberFormatCurrency() BenchmarkResult {
     };
 }
 
-fn benchmarkCollatorCompare() BenchmarkResult {
+fn benchmarkCollatorCompare(io: std.Io) BenchmarkResult {
     const strings = [_][]const u8{
         "apple",
         "Apple",
@@ -775,7 +785,7 @@ fn benchmarkCollatorCompare() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             for (strings) |a| {
@@ -785,7 +795,7 @@ fn benchmarkCollatorCompare() BenchmarkResult {
             }
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const iterations_per_run = BENCH_ITERATIONS * strings.len * strings.len;
         const ns_per_iter = elapsed / iterations_per_run;
@@ -802,7 +812,7 @@ fn benchmarkCollatorCompare() BenchmarkResult {
     };
 }
 
-fn benchmarkLocaleResolution() BenchmarkResult {
+fn benchmarkLocaleResolution(io: std.Io) BenchmarkResult {
     const locales = [_][]const u8{
         "en",
         "en-US",
@@ -828,7 +838,7 @@ fn benchmarkLocaleResolution() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             for (locales) |tag| {
@@ -836,7 +846,7 @@ fn benchmarkLocaleResolution() BenchmarkResult {
             }
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const iterations_per_run = BENCH_ITERATIONS * locales.len;
         const ns_per_iter = elapsed / iterations_per_run;
@@ -853,7 +863,7 @@ fn benchmarkLocaleResolution() BenchmarkResult {
     };
 }
 
-fn benchmarkTimestampConversion() BenchmarkResult {
+fn benchmarkTimestampConversion(io: std.Io) BenchmarkResult {
     const timestamps = [_]i64{
         0, // 1970-01-01
         1699964445000, // 2023-11-14
@@ -874,7 +884,7 @@ fn benchmarkTimestampConversion() BenchmarkResult {
     var max_ns: u64 = 0;
 
     for (0..NUM_RUNS) |_| {
-        var timer = std.time.Timer.start() catch unreachable;
+        const timer_start = std.Io.Timestamp.now(io, .awake);
 
         for (0..BENCH_ITERATIONS) |_| {
             for (timestamps) |ts| {
@@ -882,7 +892,7 @@ fn benchmarkTimestampConversion() BenchmarkResult {
             }
         }
 
-        const elapsed = timer.read();
+        const elapsed = elapsedNanos(io, timer_start);
         total_ns += elapsed;
         const iterations_per_run = BENCH_ITERATIONS * timestamps.len;
         const ns_per_iter = elapsed / iterations_per_run;
@@ -903,8 +913,8 @@ fn benchmarkTimestampConversion() BenchmarkResult {
 // Memory Benchmarks
 // ============================================================================
 
-fn benchmarkMemoryUsage() void {
-    const stdout = std.fs.File.stdout();
+fn benchmarkMemoryUsage(io: std.Io) void {
+    const stdout = std.Io.File.stdout();
 
     // Calculate embedded data size
     var total_size: usize = 0;
@@ -966,22 +976,25 @@ fn benchmarkMemoryUsage() void {
         cldr_embedded.locale_tags.len,
         total_size / cldr_embedded.locale_tags.len,
     }) catch return;
-    stdout.writeAll(output) catch {};
+    stdout.writeStreamingAll(io, output) catch {};
 }
 
 // ============================================================================
 // Main
 // ============================================================================
 
-pub fn main() !void {
-    const stdout = std.fs.File.stdout();
+// Zig 0.16 moved stdio and the clocks onto std.Io; std.process.Init supplies the
+// process Io.
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const stdout = std.Io.File.stdout();
 
     // Header
-    try stdout.writeAll("\n");
-    try stdout.writeAll("================================================================================\n");
-    try stdout.writeAll("                    Pure Zig Intl Performance Benchmarks\n");
-    try stdout.writeAll("================================================================================\n");
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
+    try stdout.writeStreamingAll(io, "================================================================================\n");
+    try stdout.writeStreamingAll(io, "                    Pure Zig Intl Performance Benchmarks\n");
+    try stdout.writeStreamingAll(io, "================================================================================\n");
+    try stdout.writeStreamingAll(io, "\n");
 
     var config_buf: [256]u8 = undefined;
     const config = std.fmt.bufPrint(&config_buf, "Configuration: {d} warmup, {d} iterations, {d} runs\n\n", .{
@@ -989,41 +1002,41 @@ pub fn main() !void {
         BENCH_ITERATIONS,
         NUM_RUNS,
     }) catch "Configuration error\n";
-    try stdout.writeAll(config);
+    try stdout.writeStreamingAll(io, config);
 
     // DateTimeFormat benchmarks
-    try stdout.writeAll("--- DateTimeFormat Benchmarks ---\n\n");
-    benchmarkDateTimeFormat().print();
-    benchmarkDateTimeFormatFull().print();
-    benchmarkDateTimeFormatWithTime().print();
-    benchmarkDateTimeLocales().print();
+    try stdout.writeStreamingAll(io, "--- DateTimeFormat Benchmarks ---\n\n");
+    benchmarkDateTimeFormat(io).print(io);
+    benchmarkDateTimeFormatFull(io).print(io);
+    benchmarkDateTimeFormatWithTime(io).print(io);
+    benchmarkDateTimeLocales(io).print(io);
 
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
 
     // NumberFormat benchmarks
-    try stdout.writeAll("--- NumberFormat Benchmarks ---\n\n");
-    benchmarkNumberFormat().print();
-    benchmarkNumberFormatCurrency().print();
+    try stdout.writeStreamingAll(io, "--- NumberFormat Benchmarks ---\n\n");
+    benchmarkNumberFormat(io).print(io);
+    benchmarkNumberFormatCurrency(io).print(io);
 
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
 
     // Collator benchmarks
-    try stdout.writeAll("--- Collator Benchmarks ---\n\n");
-    benchmarkCollatorCompare().print();
+    try stdout.writeStreamingAll(io, "--- Collator Benchmarks ---\n\n");
+    benchmarkCollatorCompare(io).print(io);
 
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
 
     // Infrastructure benchmarks
-    try stdout.writeAll("--- Infrastructure Benchmarks ---\n\n");
-    benchmarkLocaleResolution().print();
-    benchmarkTimestampConversion().print();
+    try stdout.writeStreamingAll(io, "--- Infrastructure Benchmarks ---\n\n");
+    benchmarkLocaleResolution(io).print(io);
+    benchmarkTimestampConversion(io).print(io);
 
     // Memory statistics
-    benchmarkMemoryUsage();
+    benchmarkMemoryUsage(io);
 
-    try stdout.writeAll("\n");
-    try stdout.writeAll("================================================================================\n");
-    try stdout.writeAll("                            Benchmark Complete\n");
-    try stdout.writeAll("================================================================================\n");
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
+    try stdout.writeStreamingAll(io, "================================================================================\n");
+    try stdout.writeStreamingAll(io, "                            Benchmark Complete\n");
+    try stdout.writeStreamingAll(io, "================================================================================\n");
+    try stdout.writeStreamingAll(io, "\n");
 }

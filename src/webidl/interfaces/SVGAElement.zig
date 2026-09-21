@@ -96,10 +96,10 @@ pub const SVGAElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "target", "get_target", null },
@@ -122,21 +122,19 @@ pub const SVGAElement = struct {
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "relList", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -230,7 +228,7 @@ pub const SVGAElement = struct {
             "getCTM",
             "getScreenCTM",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "target", "get_target", null },
@@ -253,11 +251,10 @@ pub const SVGAElement = struct {
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -271,7 +268,7 @@ pub const SVGAElement = struct {
             rel: typedefs.DOMString = undefined,
             relList: *runtime.Instance = undefined,
             hreflang: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             referrerPolicy: typedefs.DOMString = undefined,
             href: *runtime.Instance = undefined,
             origin: runtime.USVString = undefined,
@@ -292,7 +289,6 @@ pub const SVGAElement = struct {
     );
 
     const delegates = .{
-
         .get_download = &get_download,
         .get_hash = &get_hash,
         .get_host = &get_host,
@@ -332,7 +328,7 @@ pub const SVGAElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -408,7 +404,7 @@ pub const SVGAElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
         const target = try get_relList(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -464,7 +460,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_protocol(instance, value);
     }
 
@@ -478,7 +474,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_username(instance, value);
     }
 
@@ -492,7 +488,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_password(instance, value);
     }
 
@@ -506,7 +502,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_host(instance, value);
     }
 
@@ -520,7 +516,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_hostname(instance, value);
     }
 
@@ -534,7 +530,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_port(instance, value);
     }
 
@@ -548,7 +544,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_pathname(instance, value);
     }
 
@@ -562,7 +558,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_search(instance, value);
     }
 
@@ -576,8 +572,7 @@ pub const SVGAElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGAElementImpl.set_hash(instance, value);
     }
-
 };

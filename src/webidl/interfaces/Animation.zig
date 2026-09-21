@@ -41,10 +41,10 @@ pub const Animation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", "set_id" },
@@ -66,7 +66,7 @@ pub const Animation = struct {
             .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
             .{ "overallProgress", "get_overallProgress", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "cancel", "call_cancel", 0 },
@@ -78,7 +78,7 @@ pub const Animation = struct {
             .{ "persist", "call_persist", 0 },
             .{ "commitStyles", "call_commitStyles", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "cancel",
@@ -90,7 +90,7 @@ pub const Animation = struct {
             "persist",
             "commitStyles",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -98,7 +98,7 @@ pub const Animation = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", "set_id" },
@@ -120,11 +120,10 @@ pub const Animation = struct {
             .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
             .{ "overallProgress", "get_overallProgress", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -165,7 +164,6 @@ pub const Animation = struct {
     );
 
     const delegates = .{
-
         .get_currentTime = &get_currentTime,
         .get_effect = &get_effect,
         .get_finished = &get_finished,
@@ -209,7 +207,7 @@ pub const Animation = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -381,7 +379,6 @@ pub const Animation = struct {
     }
 
     pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) anyerror!void {
-        
         return try AnimationImpl.call_updatePlaybackRate(instance, playbackRate);
     }
 
@@ -390,12 +387,11 @@ pub const Animation = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try AnimationImpl.call_commitStyles(instance);
     }
 
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try AnimationImpl.call_cancel(instance);
     }
-
 };

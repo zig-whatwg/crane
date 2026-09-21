@@ -24,13 +24,13 @@ pub const DOMRectReadOnly = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -42,27 +42,26 @@ pub const DOMRectReadOnly = struct {
             .{ "bottom", "get_bottom", null },
             .{ "left", "get_left", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "fromRect", "call_static_fromRect", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fromRect",
             "toJSON",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -74,11 +73,10 @@ pub const DOMRectReadOnly = struct {
             .{ "bottom", "get_bottom", null },
             .{ "left", "get_left", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -116,7 +114,6 @@ pub const DOMRectReadOnly = struct {
     };
 
     const delegates = .{
-
         .get_bottom = &get_bottom,
         .get_height = &get_height,
         .get_left = &get_left,
@@ -130,7 +127,7 @@ pub const DOMRectReadOnly = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -201,8 +198,7 @@ pub const DOMRectReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DOMRectReadOnlyImpl.call_static_fromRect(instance, other);
     }
-
 };

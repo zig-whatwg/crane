@@ -53,4 +53,3 @@ pub fn call_lineTo(instance: *runtime.Instance, x: runtime.JSValue, y: runtime.J
 pub fn call_arcTo(instance: *runtime.Instance, x1: runtime.JSValue, y1: runtime.JSValue, x2: runtime.JSValue, y2: runtime.JSValue, radius: runtime.JSValue) anyerror!void {
     return CanvasPathImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
 }
-

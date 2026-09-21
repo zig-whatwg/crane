@@ -11,6 +11,7 @@ const ir_mod = @import("ir.zig");
 const generator = @import("generator.zig");
 const types = @import("types.zig");
 const config_mod = @import("config.zig");
+const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
 /// Process a directory of IDL files through the complete pipeline
@@ -34,13 +35,14 @@ pub fn processDirectory(
         parsed_files.deinit(allocator);
     }
 
-    var dir = try std.fs.cwd().openDir(input_dir, .{ .iterate = true });
-    defer dir.close();
+    const io = host.io();
+    var dir = try host.cwd().openDir(io, input_dir, .{ .iterate = true });
+    defer dir.close(io);
 
     var iter = dir.iterate();
     var file_count: usize = 0;
 
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
 
@@ -99,17 +101,17 @@ pub fn processDirectory(
         const supplementary_dir = "supplementary";
         var supplementary_count: usize = 0;
 
-        var supp_dir = std.fs.cwd().openDir(supplementary_dir, .{ .iterate = true }) catch |err| {
+        var supp_dir = host.cwd().openDir(io, supplementary_dir, .{ .iterate = true }) catch |err| {
             // supplementary/ directory doesn't exist, that's OK - skip supplementary parsing
             if (err == error.FileNotFound) {
                 break :blk;
             }
             return err;
         };
-        defer supp_dir.close();
+        defer supp_dir.close(io);
 
         var supp_iter = supp_dir.iterate();
-        while (try supp_iter.next()) |entry| {
+        while (try supp_iter.next(io)) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
 

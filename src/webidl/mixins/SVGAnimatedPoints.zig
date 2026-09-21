@@ -21,4 +21,3 @@ pub fn get_points(instance: *runtime.Instance) !*runtime.Instance {
 pub fn get_animatedPoints(instance: *runtime.Instance) !*runtime.Instance {
     return SVGAnimatedPointsImpl.get_animatedPoints(instance);
 }
-

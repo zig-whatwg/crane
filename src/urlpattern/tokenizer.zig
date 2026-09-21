@@ -75,7 +75,7 @@ pub const Tokenizer = struct {
         return Self{
             .input = input,
             .policy = policy,
-            .token_list = .{},
+            .token_list = .empty,
             .index = 0,
             .next_index = 0,
             .code_point = 0,
@@ -333,7 +333,7 @@ pub fn tokenize(allocator: Allocator, input: []const u8, policy: TokenizePolicy)
 
     // Transfer ownership of the underlying slice
     const tokens = try tok.token_list.toOwnedSlice(allocator);
-    tok.token_list = .{}; // Reset to empty so deinit doesn't double-free
+    tok.token_list = .empty; // Reset to empty so deinit doesn't double-free
 
     return TokenizeResult{
         .tokens = tokens,

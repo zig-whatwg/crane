@@ -37,35 +37,35 @@ pub const MessagePort = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "AudioWorklet" } } },
             .{ .name = "Transferable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
             .AudioWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onclose", "get_onclose", "set_onclose" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 2 },
             .{ "start", "call_start", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "postMessage",
             "start",
             "close",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -73,18 +73,17 @@ pub const MessagePort = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onclose", "get_onclose", "set_onclose" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -100,7 +99,6 @@ pub const MessagePort = struct {
     );
 
     const delegates = .{
-
         .get_onclose = &get_onclose,
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
@@ -115,7 +113,7 @@ pub const MessagePort = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -163,7 +161,6 @@ pub const MessagePort = struct {
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-        
         return try MessagePortImpl.call_postMessage(instance, message, transfer);
     }
 
@@ -174,5 +171,4 @@ pub const MessagePort = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try MessagePortImpl.call_close(instance);
     }
-
 };

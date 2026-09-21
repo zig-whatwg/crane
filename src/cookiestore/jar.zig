@@ -11,6 +11,7 @@ const Cookie = @import("cookie.zig").Cookie;
 const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
 const domain_matching = @import("domain_matching.zig");
+const clock = @import("clock");
 
 /// Maximum cookies per domain (per RFC 6265bis recommendations)
 pub const MAX_COOKIES_PER_DOMAIN: usize = 50;
@@ -59,7 +60,7 @@ pub const CookieJar = struct {
     /// Create a new cookie jar
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .cookies = .{},
+            .cookies = .empty,
             .allocator = allocator,
         };
     }
@@ -104,7 +105,7 @@ pub const CookieJar = struct {
     /// Retrieve cookies matching the given options
     /// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.6
     pub fn retrieve(self: *Self, options: RetrieveOptions) !std.ArrayListUnmanaged(Cookie) {
-        var result = std.ArrayListUnmanaged(Cookie){};
+        var result: std.ArrayListUnmanaged(Cookie) = .empty;
         errdefer {
             for (result.items) |*c| c.deinit();
             result.deinit(self.allocator);
@@ -690,7 +691,7 @@ test "CookieJar - expired cookies" {
     var expired = try Cookie.init(allocator, "old", "data");
     defer expired.deinit();
     try expired.setDomain("example.com");
-    expired.expiry_time = std.time.milliTimestamp() - 1000; // In the past
+    expired.expiry_time = clock.wallMillis() - 1000; // In the past
     try jar.store(expired);
 
     // Should not be stored

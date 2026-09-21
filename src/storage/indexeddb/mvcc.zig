@@ -37,6 +37,7 @@
 
 const std = @import("std");
 const backend = @import("../backend.zig");
+const clock = @import("clock");
 const TransactionMode = backend.TransactionMode;
 
 // ============================================================================
@@ -52,7 +53,8 @@ pub const Snapshot = struct {
     id: SnapshotId,
     /// Transaction that owns this snapshot
     transaction_id: u64,
-    /// When the snapshot was created
+    /// When the snapshot was created, on the monotonic clock (see `ageMs` and
+    /// `VersionInfo.isVisibleTo`; both sides of those comparisons must use it).
     created_at: i64,
     /// Whether the first read has occurred (snapshot is active)
     is_active: bool,
@@ -65,7 +67,7 @@ pub const Snapshot = struct {
         return Self{
             .id = id,
             .transaction_id = transaction_id,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.monotonicMillis(),
             .is_active = false,
             .ref_count = 1,
         };
@@ -91,7 +93,7 @@ pub const Snapshot = struct {
 
     /// Get age in milliseconds
     pub fn ageMs(self: Self) i64 {
-        return std.time.milliTimestamp() - self.created_at;
+        return clock.monotonicMillis() - self.created_at;
     }
 };
 
@@ -105,7 +107,8 @@ pub const VersionInfo = struct {
     version: u64,
     /// Transaction that created this version
     created_by_txn: u64,
-    /// Timestamp of creation
+    /// Timestamp of creation, on the monotonic clock - it is compared against
+    /// `Snapshot.created_at` in `isVisibleTo`, so it must use the same clock.
     created_at: i64,
     /// Whether this version is visible to a given snapshot
     pub fn isVisibleTo(self: VersionInfo, snapshot: Snapshot) bool {
@@ -218,7 +221,7 @@ pub const MVCCManager = struct {
 
     /// Clean up stale snapshots (force release)
     pub fn cleanupStaleSnapshots(self: *Self) usize {
-        var to_remove: std.ArrayListUnmanaged(SnapshotId) = .{};
+        var to_remove: std.ArrayListUnmanaged(SnapshotId) = .empty;
         defer to_remove.deinit(self.allocator);
 
         var iter = self.snapshots.iterator();
@@ -348,8 +351,8 @@ pub const ConcurrentReadTracker = struct {
     pub fn registerReader(self: *Self, transaction_id: u64) !void {
         const info = ReaderInfo{
             .transaction_id = transaction_id,
-            .started_at = std.time.milliTimestamp(),
-            .store_names = .{},
+            .started_at = clock.monotonicMillis(),
+            .store_names = .empty,
             .allocator = self.allocator,
         };
 

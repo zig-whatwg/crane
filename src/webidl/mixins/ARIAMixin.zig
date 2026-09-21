@@ -429,4 +429,3 @@ pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!typedefs.DOMStrin
 pub fn set_ariaValueText(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return ARIAMixinImpl.set_ariaValueText(instance, value);
 }
-

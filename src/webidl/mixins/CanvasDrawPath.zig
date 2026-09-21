@@ -99,4 +99,3 @@ pub const ClipArgs = union(enum) {
 pub fn call_clip(instance: *runtime.Instance, args: ClipArgs) anyerror!void {
     return CanvasDrawPathImpl.call_clip(instance, args);
 }
-

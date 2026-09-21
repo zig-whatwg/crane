@@ -19,6 +19,7 @@ const config = @import("config.zig");
 const selection = @import("selection.zig");
 const wpt_manifest = @import("manifest.zig");
 const Options = @import("options.zig").Options;
+const host = @import("host");
 
 /// Discovered test file
 pub const TestFile = struct {
@@ -71,10 +72,10 @@ pub const DiscoveryResult = struct {
     pub fn init(allocator: std.mem.Allocator) DiscoveryResult {
         return DiscoveryResult{
             .allocator = allocator,
-            .test_files = .{},
+            .test_files = .empty,
             .by_type = std.AutoHashMap(config.FileType, usize).init(allocator),
             .by_category = std.StringHashMap(usize).init(allocator),
-            .skipped = .{},
+            .skipped = .empty,
         };
     }
 
@@ -175,7 +176,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
             defer allocator.free(full_path);
 
             // First, check if the file exists directly (source file or real HTML)
-            if (std.fs.cwd().access(full_path, .{})) |_| {
+            if (host.cwd().access(host.io(), full_path, .{})) |_| {
                 const file_type = config.FileType.fromPath(file_path);
                 if (file_type == .unknown) {
                     print("Warning: Unknown test file type: {s}\n", .{file_path});
@@ -190,7 +191,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
                     const source_full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
                     defer allocator.free(source_full_path);
 
-                    std.fs.cwd().access(source_full_path, .{}) catch {
+                    host.cwd().access(host.io(), source_full_path, .{}) catch {
                         print("Warning: Source file not found: {s} (for test URL: {s})\n", .{ source_path, file_path });
                         continue;
                     };
@@ -242,7 +243,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
             // sparse, so a listed source is not guaranteed to be on disk.
             const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
             defer allocator.free(full_path);
-            std.fs.cwd().access(full_path, .{}) catch {
+            host.cwd().access(host.io(), full_path, .{}) catch {
                 result.missing_sources += 1;
                 continue;
             };
@@ -257,7 +258,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
 
     // Determine which directories to scan
     var owns_dirs = false;
-    var default_dirs: std.ArrayList([]const u8) = .{};
+    var default_dirs: std.ArrayList([]const u8) = .empty;
     defer if (owns_dirs) default_dirs.deinit(allocator);
 
     const dirs_to_scan = if (options.filters.items.len > 0)
@@ -273,11 +274,11 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
 
     // Validate directories exist before scanning
     for (dirs_to_scan) |dir| {
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
+        const clean_dir = std.mem.trimEnd(u8, dir, "/");
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
-        std.fs.cwd().access(full_path, .{}) catch {
+        host.cwd().access(host.io(), full_path, .{}) catch {
             print("Warning: Directory not found: {s}\n", .{clean_dir});
             print("  Available categories: ", .{});
             for (config.in_scope_categories, 0..) |cat, i| {
@@ -292,7 +293,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
     // Scan each directory
     for (dirs_to_scan) |dir| {
         // Handle both "url/" and "url" formats
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
+        const clean_dir = std.mem.trimEnd(u8, dir, "/");
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
@@ -325,19 +326,20 @@ fn scanDirectory(
     relative_path: []const u8,
     pattern: ?[]const u8,
 ) !void {
-    var dir = std.fs.cwd().openDir(full_path, .{ .iterate = true }) catch |err| {
+    const io = host.io();
+    var dir = host.cwd().openDir(io, full_path, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) {
             // Directory doesn't exist, skip silently
             return;
         }
         return err;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     result.directories_scanned += 1;
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const entry_path = try std.fs.path.join(allocator, &.{ relative_path, entry.name });
         defer allocator.free(entry_path);
 
@@ -454,11 +456,11 @@ test "a worklist is taken verbatim from start_index" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "worklist.txt",
         .data = "a/one.any.js\nb/two.html\nc/three.window.js\nd/four.html\n",
     });
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const worklist_path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
     defer allocator.free(worklist_path);
@@ -486,8 +488,8 @@ test "a worklist past its end yields no work" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{ .sub_path = "worklist.txt", .data = "a/one.html\n" });
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "worklist.txt", .data = "a/one.html\n" });
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const worklist_path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
     defer allocator.free(worklist_path);
@@ -510,11 +512,11 @@ test "a worklist honours the limit" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "worklist.txt",
         .data = "a.html\nb.html\nc.html\nd.html\n",
     });
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const worklist_path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
     defer allocator.free(worklist_path);
@@ -539,17 +541,17 @@ test "the legacy scan walks the filesystem and honours exclusions" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.makePath("url/resources");
-    try tmp.dir.writeFile(.{ .sub_path = "url/a.any.js", .data = "" });
-    try tmp.dir.writeFile(.{ .sub_path = "url/b.html", .data = "" });
-    try tmp.dir.writeFile(.{ .sub_path = "url/notes.md", .data = "" });
+    try tmp.dir.createDirPath(std.testing.io, "url/resources");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/a.any.js", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/b.html", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/notes.md", .data = "" });
     // Named like a test but living under resources/, so only the path-based
     // exclusion can catch it. The exclusion pattern is "/resources/" with both
     // slashes, which the directory entry "url/resources" does not match - the
     // walk descends and rejects the file on its full path instead.
-    try tmp.dir.writeFile(.{ .sub_path = "url/resources/helper.any.js", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/resources/helper.any.js", .data = "" });
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
     var options = testOptions(allocator);

@@ -34,29 +34,29 @@ pub const ScreenOrientation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
             .{ "angle", "get_angle", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "lock", "call_lock", 1 },
             .{ "unlock", "call_unlock", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "lock",
             "unlock",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -64,18 +64,17 @@ pub const ScreenOrientation = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "angle", "get_angle", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -83,7 +82,7 @@ pub const ScreenOrientation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": enums.OrientationType = undefined,
+            type: enums.OrientationType = undefined,
             angle: u16 = undefined,
             onchange: typedefs.EventHandler = undefined,
             _internal: ?*ScreenOrientationImpl.InternalState = null,
@@ -91,7 +90,6 @@ pub const ScreenOrientation = struct {
     );
 
     const delegates = .{
-
         .get_angle = &get_angle,
         .get_onchange = &get_onchange,
         .get_type = &get_type,
@@ -103,7 +101,7 @@ pub const ScreenOrientation = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -147,8 +145,6 @@ pub const ScreenOrientation = struct {
     }
 
     pub fn call_lock(instance: *runtime.Instance, orientation: OrientationLockType) anyerror!runtime.JSValue {
-        
         return try ScreenOrientationImpl.call_lock(instance, orientation);
     }
-
 };

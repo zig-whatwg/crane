@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -108,4 +107,3 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
     _ = e;
     return error.NotImplemented;
 }
-

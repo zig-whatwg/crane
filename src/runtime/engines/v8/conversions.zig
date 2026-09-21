@@ -1238,13 +1238,22 @@ pub fn fromV8Value(
             // 2. Consumers must untag before using
             // 3. The underlying GlobalHandle maintains proper alignment
             //
-            // We use a packed struct to bypass Zig's alignment checks completely.
-            // This is necessary because tagged pointers have intentionally misaligned
-            // addresses (low bits used for the tag).
+            // Zig 0.16: `packed struct { ptr: T }` is rejected ("pointers cannot be
+            // directly bitpacked"), so the old @bitCast pun is gone. The replacements
+            // that look obvious do NOT work here:
+            //   - @ptrFromInt(tagged_addr) asserts the address is aligned for T and
+            //     panics ("incorrect alignment") in Debug/ReleaseSafe, which is exactly
+            //     the invariant a tagged pointer deliberately breaks.
+            //   - extern struct / extern union reject `*const fn` fields that do not
+            //     specify a C calling convention, and T here is usually a plain Zig
+            //     callback type (e.g. EventHandler), so they fail to compile.
+            // Copying the raw address bytes into an undefined T is the one pun that is
+            // layout-guaranteed, alignment-check-free, and generic over any pointer T.
             const tagged_addr: usize = @intFromPtr(tagged_ptr);
-            const PackedPtr = packed struct { ptr: T };
-            const packed_val: PackedPtr = @bitCast(tagged_addr);
-            return packed_val.ptr;
+            comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
+            var punned_ptr: T = undefined;
+            @memcpy(std.mem.asBytes(&punned_ptr), std.mem.asBytes(&tagged_addr));
+            return punned_ptr;
         }
     }
 
@@ -1788,9 +1797,14 @@ pub fn toV8Record(
         const key_str = if (K == runtime.DOMString)
             toV8String(isolate, entry.key)
         else
-            // For ByteString/USVString, convert to string
+            // For ByteString/USVString, convert to string.
+            //
+            // `interned`, not `owned`: entry.key is borrowed from rec.entries and
+            // outlives nothing here. Claiming ownership of it made this DOMString
+            // responsible for freeing the record's own key - the exact confusion
+            // that `owned: []const u8` used to permit silently.
             // TODO: Proper conversion for different string types
-            toV8String(isolate, runtime.DOMString.initOwned(entry.key));
+            toV8String(isolate, runtime.DOMString.initInterned(entry.key));
 
         const value_v8 = try toV8Value(V, isolate, context, entry.value);
         _ = v8.v8_Object_Set(object, context, @ptrCast(key_str), value_v8);
@@ -2252,6 +2266,7 @@ pub fn setReturnValue(
 ) ConversionError!void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate).?;
+    defer v8.v8_Context_Dispose(context);
     const v8_value = try toV8Value(T, isolate, context, value);
     info.setReturnValue(v8_value);
 }
@@ -2280,6 +2295,7 @@ pub fn throwTypeError(
     message: []const u8,
 ) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     // Log error through context if available
     if (namespace.getGlobalContext()) |ctx| {
@@ -2397,6 +2413,7 @@ fn throwDOMExceptionFallback(
         throwError(isolate, message);
         return;
     };
+    defer v8.v8_Context_Dispose(context);
 
     // Create the error message string
     const msg_str = v8.v8_String_NewFromUtf8(
@@ -2484,10 +2501,17 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Context_Dispose(context);
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Object_Dispose(global);
 
     // Get the DOMException constructor from global
     const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
@@ -2567,11 +2591,17 @@ pub fn throwDOMExceptionFromContext(
     message: []const u8,
 ) void {
     log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
+    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
+    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
+    // handle; the global object itself stays rooted by the context.
+    // Not applied in context_manager.zig, which hands its global to
+    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse {
         log.debug("[throwDOMExceptionFromContext] fallback - no global\n", .{});
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Object_Dispose(global);
 
     // Get the DOMException constructor from the specified context's global
     const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
@@ -2690,6 +2720,7 @@ pub fn throwWebIDLError(
     error_name: []const u8,
 ) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    defer if (context) |c| v8.v8_Context_Dispose(c);
     throwWebIDLErrorFromContext(isolate, context.?, error_name);
 }
 
@@ -2900,6 +2931,7 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
             return v8.v8_Undefined(isolate) orelse unreachable;
         }
     };
+    defer v8.v8_Context_Dispose(context);
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(
@@ -3310,7 +3342,7 @@ pub fn iterateAsSequencePairs(
     const next_fn: *v8.Function = @ptrCast(next_method);
 
     // Collect pairs by iterating
-    var pairs: std.ArrayList(SequencePair) = .{};
+    var pairs: std.ArrayList(SequencePair) = .empty;
     errdefer {
         for (pairs.items) |pair| {
             if (pair.name.len > 0) allocator.free(pair.name);
@@ -3488,7 +3520,7 @@ pub fn iterateAsRecordPairs(
         return &[_]SequencePair{};
     }
 
-    var pairs: std.ArrayList(SequencePair) = .{};
+    var pairs: std.ArrayList(SequencePair) = .empty;
     errdefer {
         for (pairs.items) |pair| {
             if (pair.name.len > 0) allocator.free(pair.name);

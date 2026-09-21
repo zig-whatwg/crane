@@ -211,7 +211,7 @@ pub const XMLHttpRequestState = struct {
 
             // Response state (response is initially a network error per spec)
             .response = null, // Will be set to network error on first access if needed
-            .received_bytes = .{},
+            .received_bytes = .empty,
             .response_object = .null_value,
             .fetch_controller = null,
             .override_mime_type = null,

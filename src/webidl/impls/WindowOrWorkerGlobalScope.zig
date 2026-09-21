@@ -190,6 +190,10 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
     ctx.* = .{
         .js_function = js_function,
         .v8_context = v8_context,
+        .context_addr = @intFromPtr(v8_ffi.v8_Context_GetRawAddress(v8_context) orelse {
+            instance.ctx.allocator.destroy(ctx);
+            return error.NotImplemented;
+        }),
         .isolate = isolate,
         .allocator = instance.ctx.allocator,
     };
@@ -203,6 +207,14 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 const MicrotaskContext = struct {
     js_function: *@import("v8").ffi.Function,
     v8_context: *@import("v8").ffi.Context,
+    /// Raw address of the context, captured while it was alive.
+    ///
+    /// A queued microtask can outlive its context - the page tears down with
+    /// microtasks still on V8's queue - and using `v8_context` then dereferences a
+    /// freed Global<Context> inside v8_Function_CallWithReceiver_Safe
+    /// (v8_wrapper.cpp:1321). The address is captured up front so liveness can be
+    /// checked WITHOUT touching the handle.
+    context_addr: usize,
     isolate: *@import("v8").ffi.Isolate,
     allocator: std.mem.Allocator,
 };
@@ -213,6 +225,21 @@ fn microtaskCallback(data: ?*anyopaque) callconv(.c) void {
 
     const ctx: *MicrotaskContext = @ptrCast(@alignCast(data orelse return));
     defer ctx.allocator.destroy(ctx);
+
+    // The context may have been torn down since this microtask was queued - a page
+    // can unload with microtasks still on V8's queue. Checking by ADDRESS rather
+    // than by handle is deliberate: any query that takes the Global<Context>* has
+    // to dereference it, which is the use-after-free being guarded against.
+    const context_manager = @import("v8").context_manager;
+    if (!context_manager.isContextAddressAlive(ctx.context_addr)) {
+        // Still dispose the function handle we own, then drop the task.
+        v8_ffi.v8_Function_Dispose(ctx.js_function);
+        return;
+    }
+
+    // Phase 5 instrumentation: microtasks run from V8's own drain, so this should
+    // always be owned - a report here would be a strong signal.
+    @import("v8").isolate_ownership.assertOwned(ctx.isolate, "WindowOrWorkerGlobalScope.microtaskCallback");
 
     // Create a HandleScope for V8 operations
     const handle_scope = v8_ffi.v8_HandleScope_New(ctx.isolate);

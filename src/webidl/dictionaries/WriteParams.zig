@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const WriteParams = struct {
-    @"type": enums.WriteCommandType,
+    type: enums.WriteCommandType,
     size: ?u64 = null,
     position: ?u64 = null,
     data: ?runtime.JSValue = null,

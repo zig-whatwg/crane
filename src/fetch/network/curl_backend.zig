@@ -25,6 +25,7 @@ const NetworkError = backend.NetworkError;
 const HttpVersion = backend.HttpVersion;
 const curl = @import("curl_ffi.zig");
 const curl_error = @import("curl_error.zig");
+const clock = @import("clock");
 const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 
 // =============================================================================
@@ -33,7 +34,10 @@ const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 
 /// Global initialization state (reference counted, thread-safe)
 var global_init_count: usize = 0;
-var global_init_mutex: std.Thread.Mutex = .{};
+// 0.16 removed std.Thread.Mutex. std.Io.Mutex is the replacement; the free
+// functions std.Io.Threaded.mutexLock/mutexUnlock drive it where no Io value is
+// in scope, which is the case in these libcurl C callbacks.
+var global_init_mutex: std.Io.Mutex = .init;
 
 /// Global curl share handle for connection pooling across easy handles.
 /// This enables connection reuse when creating new easy handles for each request.
@@ -44,7 +48,7 @@ var global_share: ?*curl.CURLSH = null;
 /// Mutexes for curl share locking (one per data type)
 /// CURL_LOCK_DATA_CONNECT = 5, CURL_LOCK_DATA_DNS = 2
 /// We allocate enough slots for all lock data types (up to 8)
-var share_mutexes: [8]std.Thread.Mutex = [_]std.Thread.Mutex{.{}} ** 8;
+var share_mutexes: [8]std.Io.Mutex = @splat(.init);
 
 /// Track lock/unlock calls for debugging
 var lock_call_count: usize = 0;
@@ -68,7 +72,7 @@ fn shareLockCallback(
         log.debug("[CURL SHARE] Lock #{}: data={} ({s}), access={}\n", .{ lock_call_count, data, data_type_name, access });
     }
     if (data >= 0 and data < share_mutexes.len) {
-        share_mutexes[@intCast(data)].lock();
+        std.Io.Threaded.mutexLock(&share_mutexes[@intCast(data)]);
     }
 }
 
@@ -88,7 +92,7 @@ fn shareUnlockCallback(
         log.debug("[CURL SHARE] Unlock #{}: data={} ({s})\n", .{ unlock_call_count, data, data_type_name });
     }
     if (data >= 0 and data < share_mutexes.len) {
-        share_mutexes[@intCast(data)].unlock();
+        std.Io.Threaded.mutexUnlock(&share_mutexes[@intCast(data)]);
     }
 }
 
@@ -96,8 +100,8 @@ fn shareUnlockCallback(
 /// Thread-safe and reference counted - can be called multiple times.
 /// Must call globalCleanup() the same number of times.
 pub fn globalInit() !void {
-    global_init_mutex.lock();
-    defer global_init_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
 
     log.debug("[CURL] globalInit called, current count: {}\n", .{global_init_count});
 
@@ -133,8 +137,8 @@ pub fn globalInit() !void {
 /// Decrement global init reference count.
 /// When count reaches zero, libcurl global cleanup is performed.
 pub fn globalCleanup() void {
-    global_init_mutex.lock();
-    defer global_init_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
 
     log.debug("[CURL] globalCleanup called, current count: {}\n", .{global_init_count});
 
@@ -160,8 +164,8 @@ pub fn globalCleanup() void {
 /// Get the global share handle for connection pooling.
 /// Returns null if globalInit() hasn't been called.
 pub fn getGlobalShare() ?*curl.CURLSH {
-    global_init_mutex.lock();
-    defer global_init_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
     return global_share;
 }
 
@@ -419,7 +423,7 @@ pub const LibcurlBackend = struct {
             if (result == curl.CURLE_COULDNT_CONNECT) {
                 log.debug("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
                 // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
-                std.Thread.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
+                clock.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
                 continue;
             }
             log.debug("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});

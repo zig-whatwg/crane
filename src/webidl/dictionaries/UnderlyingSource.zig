@@ -10,6 +10,6 @@ pub const UnderlyingSource = struct {
     start: ?callbacks.UnderlyingSourceStartCallback = null,
     pull: ?callbacks.UnderlyingSourcePullCallback = null,
     cancel: ?callbacks.UnderlyingSourceCancelCallback = null,
-    @"type": ?enums.ReadableStreamType = null,
+    type: ?enums.ReadableStreamType = null,
     autoAllocateChunkSize: ?u64 = null,
 };

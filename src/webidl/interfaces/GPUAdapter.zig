@@ -28,45 +28,43 @@ pub const GPUAdapter = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "features", "get_features", null },
             .{ "limits", "get_limits", null },
             .{ "info", "get_info", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestDevice", "call_requestDevice", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestDevice",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "features", "get_features", null },
             .{ "limits", "get_limits", null },
             .{ "info", "get_info", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -85,7 +83,6 @@ pub const GPUAdapter = struct {
     );
 
     const delegates = .{
-
         .get_features = &get_features,
         .get_info = &get_info,
         .get_limits = &get_limits,
@@ -94,7 +91,7 @@ pub const GPUAdapter = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -154,8 +151,6 @@ pub const GPUAdapter = struct {
     }
 
     pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(GPUDeviceDescriptor)) anyerror!runtime.JSValue {
-        
         return try GPUAdapterImpl.call_requestDevice(instance, descriptor);
     }
-
 };

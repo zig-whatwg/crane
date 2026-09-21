@@ -22,6 +22,12 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
+/// getentropy(2). POSIX-ish: Linux 3.17+/glibc 2.25+, macOS 10.12+, the BSDs.
+/// Returns 0 on success. Declared here because Zig 0.16's std.c does not expose it
+/// and std.Io.random requires an Io value that is not available at these call sites.
+extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
+
 const Allocator = std.mem.Allocator;
 
 // NOTE: This module is part of html_core which cannot import runtime.
@@ -334,7 +340,7 @@ pub const DocumentState = struct {
             .initiator_origin = null,
             .origin = null,
             .about_base_url = null,
-            .nested_histories = .{},
+            .nested_histories = .empty,
             .resource = null,
             .reload_pending = false,
             .ever_populated = false,
@@ -456,7 +462,7 @@ pub const NestedHistory = struct {
         return .{
             .allocator = allocator,
             .id = @atomicRmw(u64, &next_id, .Add, 1, .monotonic),
-            .entries = .{},
+            .entries = .empty,
         };
     }
 
@@ -625,9 +631,11 @@ pub const SessionHistoryEntry = struct {
 fn generateUUID(buffer: *[36]u8) void {
     var prng = std.Random.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
-        std.posix.getrandom(std.mem.asBytes(&seed)) catch {
-            seed = @intCast(std.time.timestamp());
-        };
+        // std.posix.getrandom was removed in Zig 0.16; std.Io.random needs an Io
+        // value this call site does not have. getentropy(2) needs none.
+        if (getentropy(std.mem.asBytes(&seed).ptr, @sizeOf(u64)) != 0) {
+            seed = @intCast(clock.wallSeconds());
+        }
         break :blk seed;
     });
     const random = prng.random();
@@ -672,7 +680,7 @@ pub const SessionHistoryList = struct {
     pub fn init(allocator: Allocator) SessionHistoryList {
         return .{
             .allocator = allocator,
-            .entries = .{},
+            .entries = .empty,
             .current_step = 0,
         };
     }
@@ -750,7 +758,7 @@ pub const SessionHistoryList = struct {
 
     /// Get all used history steps, sorted
     pub fn getAllUsedSteps(self: *const SessionHistoryList, allocator: Allocator) ![]u64 {
-        var steps = std.ArrayListUnmanaged(u64){};
+        var steps: std.ArrayListUnmanaged(u64) = .empty;
         defer steps.deinit(allocator);
 
         for (self.entries.items) |entry| {

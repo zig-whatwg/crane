@@ -64,7 +64,7 @@ pub const Cache = struct {
         self.* = .{
             .allocator = allocator,
             .name = name_copy,
-            .entries = .{},
+            .entries = .empty,
         };
 
         return self;

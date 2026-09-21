@@ -318,6 +318,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot abort a locked stream");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -636,6 +637,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot close a locked stream");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -647,6 +649,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is already closing");
         const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
@@ -833,7 +836,7 @@ fn setUpWritableStreamDefaultController(
         .isolate = isolate,
         .v8_context = stream_instance.ctx.engine_ctx,
         .started = false,
-        .queue = .{},
+        .queue = .empty,
         .queue_total_size = 0.0,
         .abort_controller = abort_controller,
         .allocator = allocator,
@@ -894,6 +897,7 @@ fn writableStreamAbort(
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
@@ -918,6 +922,7 @@ fn writableStreamAbort(
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
@@ -939,6 +944,7 @@ fn writableStreamAbort(
         // Get V8 isolate and context for creating a proper V8 Promise
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer v8_engine.ffi.v8_Context_Dispose(context);
 
         const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
         return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
@@ -996,6 +1002,7 @@ fn writableStreamClose(
     // Get V8 isolate and context for creating a proper V8 Promise
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
     const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Simplified: Check state
     if (internal.state != .writable) {

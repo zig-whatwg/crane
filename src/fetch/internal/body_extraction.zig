@@ -9,6 +9,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const body_mod = @import("body.zig");
+const clock = @import("clock");
 const Body = body_mod.Body;
 const BodySource = body_mod.BodySource;
 const BodyWithType = body_mod.BodyWithType;
@@ -271,7 +272,7 @@ const MultipartResult = struct {
 fn generateBoundary(allocator: Allocator) ![]const u8 {
     // Generate a pseudo-random boundary using timestamp and counter.
     // In production, use a proper random source.
-    const timestamp = @as(u64, @intCast(std.time.milliTimestamp()));
+    const timestamp = @as(u64, @intCast(clock.wallMillis()));
 
     return try std.fmt.allocPrint(
         allocator,
@@ -299,7 +300,7 @@ fn mockMultipartEncode(allocator: Allocator, _: *anyopaque) !MultipartResult {
     errdefer allocator.free(boundary);
 
     // For the mock, return an empty multipart body.
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     // Write closing boundary.

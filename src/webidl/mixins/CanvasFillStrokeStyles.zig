@@ -45,4 +45,3 @@ pub fn call_createLinearGradient(instance: *runtime.Instance, x0: runtime.JSValu
 pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: typedefs.DOMString) !?*runtime.Instance {
     return CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
 }
-

@@ -24,17 +24,16 @@ pub const Headers = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "append", "call_append", 2 },
@@ -46,7 +45,7 @@ pub const Headers = struct {
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
@@ -57,21 +56,18 @@ pub const Headers = struct {
             "set",
             "forEach",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.ByteString",
@@ -88,7 +84,6 @@ pub const Headers = struct {
     );
 
     const delegates = .{
-
         .call_append = &call_append,
         .call_delete = &call_delete,
         .call_forEach = &call_forEach,
@@ -99,7 +94,7 @@ pub const Headers = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -131,12 +126,10 @@ pub const Headers = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerror!void {
-        
         return try HeadersImpl.call_delete(instance, name);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
-        
         return try HeadersImpl.call_get(instance, name);
     }
 
@@ -145,22 +138,18 @@ pub const Headers = struct {
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
         return try HeadersImpl.call_forEach(instance, callback);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {
-        
         return try HeadersImpl.call_has(instance, name);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
         return try HeadersImpl.call_set(instance, name, value);
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
         return try HeadersImpl.call_append(instance, name, value);
     }
 
@@ -169,5 +158,4 @@ pub const Headers = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const HeadersImpl.IterableEntry {
         return HeadersImpl.getEntriesInternal(instance);
     }
-
 };

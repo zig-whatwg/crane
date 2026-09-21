@@ -111,4 +111,3 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: runtime.JSValue) anye
 pub fn call_clearTimeout(instance: *runtime.Instance, id: runtime.JSValue) anyerror!void {
     return WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
 }
-

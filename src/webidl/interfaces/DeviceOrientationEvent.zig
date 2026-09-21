@@ -31,10 +31,10 @@ pub const DeviceOrientationEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "alpha", "get_alpha", null },
@@ -42,21 +42,20 @@ pub const DeviceOrientationEvent = struct {
             .{ "gamma", "get_gamma", null },
             .{ "absolute", "get_absolute", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_static_requestPermission", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -65,7 +64,7 @@ pub const DeviceOrientationEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "alpha", "get_alpha", null },
@@ -73,11 +72,10 @@ pub const DeviceOrientationEvent = struct {
             .{ "gamma", "get_gamma", null },
             .{ "absolute", "get_absolute", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -94,7 +92,6 @@ pub const DeviceOrientationEvent = struct {
     );
 
     const delegates = .{
-
         .get_absolute = &get_absolute,
         .get_alpha = &get_alpha,
         .get_beta = &get_beta,
@@ -102,7 +99,7 @@ pub const DeviceOrientationEvent = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -150,8 +147,6 @@ pub const DeviceOrientationEvent = struct {
     }
 
     pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
-        
         return try DeviceOrientationEventImpl.call_static_requestPermission(instance, absolute);
     }
-
 };

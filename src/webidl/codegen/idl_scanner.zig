@@ -5,6 +5,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const types = @import("types.zig");
+const host = @import("host");
 
 /// Scan all IDL files in a directory and save metadata to JSON
 pub fn scanAndSave(
@@ -14,8 +15,9 @@ pub fn scanAndSave(
 ) !void {
     std.debug.print("Scanning IDL directory: {s}\n", .{idl_dir});
 
-    var dir = try std.fs.cwd().openDir(idl_dir, .{ .iterate = true });
-    defer dir.close();
+    const io = host.io();
+    var dir = try host.cwd().openDir(io, idl_dir, .{ .iterate = true });
+    defer dir.close(io);
 
     var iter = dir.iterate();
     var file_count: usize = 0;
@@ -26,7 +28,7 @@ pub fn scanAndSave(
     var total_callbacks: usize = 0;
     var total_namespaces: usize = 0;
 
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
 
@@ -68,7 +70,7 @@ pub fn scanAndSave(
     defer allocator.free(json);
 
     // Write to file
-    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = json });
+    try host.cwd().writeFile(host.io(), .{ .sub_path = output_path, .data = json });
 
     std.debug.print("✓ Scanned {d} IDL files\n", .{file_count});
     std.debug.print("  - {d} interfaces\n", .{total_interfaces});

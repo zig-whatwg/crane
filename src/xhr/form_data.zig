@@ -102,7 +102,7 @@ pub const FormData = struct {
     pub fn init(allocator: Allocator) !*FormData {
         const self = try allocator.create(FormData);
         self.* = .{
-            .entries = .{},
+            .entries = .empty,
             .allocator = allocator,
         };
         return self;
@@ -262,7 +262,7 @@ pub const FormData = struct {
     ///
     /// Spec: Return list of all matching entry values
     pub fn getAll(self: *FormData, allocator: Allocator, name: []const u8) ![]FormDataEntryValue {
-        var results: std.ArrayListUnmanaged(FormDataEntryValue) = .{};
+        var results: std.ArrayListUnmanaged(FormDataEntryValue) = .empty;
         errdefer results.deinit(allocator);
 
         for (self.entries.items) |entry| {

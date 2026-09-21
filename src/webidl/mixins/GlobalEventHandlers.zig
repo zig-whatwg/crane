@@ -853,4 +853,3 @@ pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!typedefs.EventHa
 pub fn set_onsnapchanging(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return GlobalEventHandlersImpl.set_onsnapchanging(instance, value);
 }
-

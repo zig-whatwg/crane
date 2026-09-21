@@ -41,9 +41,12 @@
 //! external_references.zig module to provide these references.
 
 const std = @import("std");
+const build_options = @import("build_options");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
+const host = @import("host");
 const intl_binding = @import("intl_binding.zig");
+const clock = @import("clock");
 
 /// Tracked snapshot data for cleanup
 /// V8 requires snapshot data to remain valid for the isolate's lifetime,
@@ -60,7 +63,42 @@ var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 ///
 /// --harmony-shadow-realm enables the TC39 Stage 3 ShadowRealm proposal which provides
 /// isolated JavaScript execution environments with their own global objects.
-pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable --harmony-shadow-realm";
+/// V8 flags applied before platform init.
+///
+/// `--jitless` is appended when built for a target that cannot JIT. iOS gives
+/// third-party apps no W^X exception, so V8 generating code there gets the process
+/// killed; interpreter-only is the only way to run at all. It is a build-time
+/// decision rather than runtime because it must be set before V8 initializes.
+pub const SNAPSHOT_V8_FLAGS = snapshot_only_flags ++ " " ++ RUNTIME_V8_FLAGS;
+
+/// Flags that belong to snapshot GENERATION only.
+///
+/// `--predictable` is the important one. In this V8 checkout
+/// (`flag-definitions.h:3866-3881`) it implies `single_threaded_gc` and negates
+/// `concurrent_recompilation`, `lazy_compile_dispatcher`,
+/// `parallel_compile_tasks_for_{eager_toplevel,lazy}`,
+/// `maglev_{deopt_data,build_code}_on_background`, `concurrent_sparkplug` and
+/// `memory_reducer`, and pins `random_seed` to 12347. Applying it at RUNTIME, as
+/// this code did, has three costs: V8's own parallelism is off, so every
+/// "single-threaded Crane" measurement was against a hobbled engine; `Math.random()`
+/// is deterministic across runs, which is observable to content; and `--hash-seed=0`
+/// removes hash-flooding protection.
+///
+/// Both are still needed while BUILDING the snapshot, where determinism is the
+/// point. They are not needed to load one: `v8_Snapshot_CanBeRehashed` reports
+/// true for the snapshot this build produces, which is precisely V8 saying the
+/// blob tolerates a different hash seed at load time.
+const snapshot_only_flags = "--hash-seed=0 --predictable";
+
+/// Flags that apply wherever V8 runs, snapshot generation included.
+///
+/// `--harmony-shadow-realm` enables the TC39 Stage 3 ShadowRealm proposal.
+///
+/// `--jitless` is appended when built for a target that cannot JIT. iOS gives
+/// third-party apps no W^X exception, so V8 generating code there gets the process
+/// killed; interpreter-only is the only way to run at all. It is a build-time
+/// decision rather than runtime because it must be set before V8 initializes.
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++ if (build_options.jitless) " --jitless" else "";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.
@@ -76,6 +114,20 @@ pub fn initializePlatformForSnapshots() void {
     ffi.v8_SetFlagsFromString(SNAPSHOT_V8_FLAGS);
 
     // Now initialize the platform
+    ffi.v8_Platform_Initialize();
+}
+
+/// Initialize the V8 platform for RUNNING, including loading a snapshot.
+///
+/// Differs from `initializePlatformForSnapshots` by leaving out `--predictable`
+/// and `--hash-seed=0`, which are generation-time determinism knobs. See
+/// `snapshot_only_flags` for what applying them at runtime costs.
+///
+/// If a snapshot ever turns out NOT to be rehashable, loading fails loudly with
+/// V8's rehashability assertion rather than misbehaving quietly - which is why
+/// this is safe to change: the failure mode is immediate and named.
+pub fn initializePlatformForRuntime() void {
+    ffi.v8_SetFlagsFromString(RUNTIME_V8_FLAGS);
     ffi.v8_Platform_Initialize();
 }
 
@@ -126,12 +178,12 @@ pub const SnapshotError = error{
 ///
 /// The caller is responsible for disposing the isolate and context.
 pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitResult {
-    const start_time = std.time.milliTimestamp();
+    const start_time = clock.monotonicMillis();
 
     // Try embedded snapshot first
     if (options.embedded_snapshot) |snapshot_data| {
         if (try initFromSnapshotData(snapshot_data, options.log_performance)) |result| {
-            const elapsed = std.time.milliTimestamp() - start_time;
+            const elapsed = clock.monotonicMillis() - start_time;
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -144,7 +196,7 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     // Try loading from file
     if (options.snapshot_path) |path| {
         if (try initFromSnapshotFile(allocator, path, options.log_performance)) |result| {
-            const elapsed = std.time.milliTimestamp() - start_time;
+            const elapsed = clock.monotonicMillis() - start_time;
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -167,7 +219,7 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
         return error.ContextCreationFailed;
     };
 
-    const elapsed = std.time.milliTimestamp() - start_time;
+    const elapsed = clock.monotonicMillis() - start_time;
 
     return .{
         .isolate = isolate,
@@ -282,13 +334,14 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
 fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool) !?SnapshotResult {
 
     // Try to open and read the snapshot file
-    const file = std.fs.cwd().openFile(path, .{}) catch {
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch {
         return null;
     };
-    defer file.close();
+    defer file.close(io);
 
     // Get file size and read data
-    const stat = file.stat() catch {
+    const stat = file.stat(io) catch {
         return null;
     };
 
@@ -302,7 +355,7 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool)
     tracked_snapshot_data = snapshot_data;
     tracked_snapshot_allocator = allocator;
 
-    const bytes_read = file.readAll(snapshot_data) catch {
+    const bytes_read = file.readPositionalAll(io, snapshot_data, 0) catch {
         return null;
     };
 
@@ -377,16 +430,17 @@ pub fn validateSnapshotData(data: []const u8) SnapshotValidation {
 
 /// Check if a valid snapshot file exists at the given path
 pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
-    const file = std.fs.cwd().openFile(path, .{}) catch return false;
-    defer file.close();
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch return false;
+    defer file.close(io);
 
-    const stat = file.stat() catch return false;
+    const stat = file.stat(io) catch return false;
     if (stat.size < 8) return false; // Too small to be valid
 
     const data = allocator.alloc(u8, stat.size) catch return false;
     defer allocator.free(data);
 
-    const bytes_read = file.readAll(data) catch return false;
+    const bytes_read = file.readPositionalAll(io, data, 0) catch return false;
     if (bytes_read != stat.size) return false;
 
     return ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));

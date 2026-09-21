@@ -21,4 +21,3 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_iconURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     return CredentialUserDataImpl.get_iconURL(instance);
 }
-

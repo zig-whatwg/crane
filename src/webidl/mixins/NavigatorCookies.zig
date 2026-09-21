@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorCookies;
 pub fn get_cookieEnabled(instance: *runtime.Instance) anyerror!bool {
     return NavigatorCookiesImpl.get_cookieEnabled(instance);
 }
-

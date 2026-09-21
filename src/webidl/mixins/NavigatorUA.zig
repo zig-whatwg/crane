@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorUA;
 pub fn get_userAgentData(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorUAImpl.get_userAgentData(instance);
 }
-

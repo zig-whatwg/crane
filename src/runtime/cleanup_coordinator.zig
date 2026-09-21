@@ -114,7 +114,7 @@ pub const CleanupCoordinator = struct {
     allocator: std.mem.Allocator,
 
     /// Registered cleanup handlers (called in phase order)
-    handlers: std.ArrayListUnmanaged(CleanupHandler) = .{},
+    handlers: std.ArrayListUnmanaged(CleanupHandler) = .empty,
 
     /// Debug: count of instances cleaned up per phase
     phase_cleanup_counts: [8]usize = .{0} ** 8,

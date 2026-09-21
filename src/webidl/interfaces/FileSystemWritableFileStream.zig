@@ -28,46 +28,43 @@ pub const FileSystemWritableFileStream = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "write", "call_write", 1 },
             .{ "seek", "call_seek", 1 },
             .{ "truncate", "call_truncate", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "write",
             "seek",
             "truncate",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "abort",
             "close",
             "getWriter",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -80,14 +77,13 @@ pub const FileSystemWritableFileStream = struct {
     );
 
     const delegates = .{
-
         .call_seek = &call_seek,
         .call_truncate = &call_truncate,
         .call_write = &call_write,
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -111,18 +107,14 @@ pub const FileSystemWritableFileStream = struct {
     }
 
     pub fn call_write(instance: *runtime.Instance, data: FileSystemWriteChunkType) anyerror!runtime.JSValue {
-        
         return try FileSystemWritableFileStreamImpl.call_write(instance, data);
     }
 
     pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!runtime.JSValue {
-        
         return try FileSystemWritableFileStreamImpl.call_seek(instance, position);
     }
 
     pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!runtime.JSValue {
-        
         return try FileSystemWritableFileStreamImpl.call_truncate(instance, size);
     }
-
 };

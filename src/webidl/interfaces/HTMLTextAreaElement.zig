@@ -90,10 +90,10 @@ pub const HTMLTextAreaElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "autocomplete", "get_autocomplete", "set_autocomplete" },
@@ -121,7 +121,7 @@ pub const HTMLTextAreaElement = struct {
             .{ "selectionEnd", "get_selectionEnd", "set_selectionEnd" },
             .{ "selectionDirection", "get_selectionDirection", "set_selectionDirection" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "checkValidity", "call_checkValidity", 0 },
@@ -131,7 +131,7 @@ pub const HTMLTextAreaElement = struct {
             .{ "setRangeText", "call_setRangeText", 1 },
             .{ "setSelectionRange", "call_setSelectionRange", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "checkValidity",
@@ -141,7 +141,7 @@ pub const HTMLTextAreaElement = struct {
             "setRangeText",
             "setSelectionRange",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -237,7 +237,7 @@ pub const HTMLTextAreaElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "autocomplete", "get_autocomplete", "set_autocomplete" },
@@ -265,11 +265,10 @@ pub const HTMLTextAreaElement = struct {
             .{ "selectionEnd", "get_selectionEnd", "set_selectionEnd" },
             .{ "selectionDirection", "get_selectionDirection", "set_selectionDirection" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -290,7 +289,7 @@ pub const HTMLTextAreaElement = struct {
             required: bool = undefined,
             rows: u32 = undefined,
             wrap: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             defaultValue: typedefs.DOMString = undefined,
             value: typedefs.DOMString = undefined,
             textLength: u32 = undefined,
@@ -306,7 +305,6 @@ pub const HTMLTextAreaElement = struct {
     );
 
     const delegates = .{
-
         .get_autocomplete = &get_autocomplete,
         .get_cols = &get_cols,
         .get_defaultValue = &get_defaultValue,
@@ -359,7 +357,7 @@ pub const HTMLTextAreaElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -400,7 +398,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_autocomplete(instance, value);
     }
 
@@ -414,7 +412,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_cols(instance, value);
     }
 
@@ -428,7 +426,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_dirName(instance, value);
     }
 
@@ -442,7 +440,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_disabled(instance, value);
     }
 
@@ -460,7 +458,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_maxLength(instance, value);
     }
 
@@ -474,7 +472,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_minLength(instance, value);
     }
 
@@ -488,7 +486,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_name(instance, value);
     }
 
@@ -502,7 +500,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_placeholder(instance, value);
     }
 
@@ -516,7 +514,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_readOnly(instance, value);
     }
 
@@ -530,7 +528,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_required(instance, value);
     }
 
@@ -544,7 +542,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_rows(instance, value);
     }
 
@@ -558,7 +556,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_wrap(instance, value);
     }
 
@@ -576,7 +574,7 @@ pub const HTMLTextAreaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTextAreaElementImpl.set_defaultValue(instance, value);
     }
 
@@ -635,7 +633,6 @@ pub const HTMLTextAreaElement = struct {
     }
 
     pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
-        
         return try HTMLTextAreaElementImpl.call_setRangeText(instance, replacement);
     }
 
@@ -644,7 +641,6 @@ pub const HTMLTextAreaElement = struct {
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLTextAreaElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -653,12 +649,10 @@ pub const HTMLTextAreaElement = struct {
     }
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
-        
         return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
 
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLTextAreaElementImpl.call_checkValidity(instance);
     }
-
 };

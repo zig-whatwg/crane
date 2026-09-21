@@ -29,6 +29,8 @@ const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
 const encoding_mod = @import("encoding");
 const html_parser = @import("../parser/root.zig");
+const clock = @import("clock");
+const platform_host = @import("host");
 
 /// Error types for iframe integration
 pub const IFrameError = error{
@@ -623,7 +625,7 @@ pub const IFrameIntegration = struct {
     /// parent document's parsing (which normalizes to UTF-8).
     fn navigateToSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
         // Debug: trace what content is being parsed
-        const time_ns = std.time.nanoTimestamp();
+        const time_ns = clock.wallNanos();
         const preview_len = @min(150, content.len);
         log.debug("[navigateToSrcdoc] time={d}ns content_len={d} content={s}...\n", .{ time_ns, content.len, content[0..preview_len] });
 
@@ -822,14 +824,16 @@ pub const IFrameIntegration = struct {
         }
 
         // Read the file
-        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+        const io = platform_host.io();
+        const file = platform_host.cwd().openFile(io, file_path, .{}) catch {
             return error.FileReadError;
         };
-        defer file.close();
+        defer file.close(io);
 
         // Read up to 10MB (reasonable limit for iframe content)
         const max_size = 10 * 1024 * 1024;
-        const bytes = file.readToEndAlloc(self.allocator, max_size) catch {
+        var file_reader = file.reader(io, &.{});
+        const bytes = file_reader.interface.allocRemaining(self.allocator, .limited(max_size)) catch {
             return error.FileReadError;
         };
 
@@ -851,12 +855,13 @@ pub const IFrameIntegration = struct {
     /// Read Content-Type from a .headers file (WPT convention)
     /// Format: "Content-Type: text/html; charset=big5"
     fn readContentTypeFromHeadersFile(self: *IFrameIntegration, headers_path: []const u8) ?[]u8 {
-        const file = std.fs.cwd().openFile(headers_path, .{}) catch return null;
-        defer file.close();
+        const io = platform_host.io();
+        const file = platform_host.cwd().openFile(io, headers_path, .{}) catch return null;
+        defer file.close(io);
 
         // Read headers file (usually small)
         var buf: [4096]u8 = undefined;
-        const bytes_read = file.read(&buf) catch return null;
+        const bytes_read = file.readPositional(io, &.{&buf}, 0) catch return null;
         const content = buf[0..bytes_read];
 
         // Parse Content-Type header

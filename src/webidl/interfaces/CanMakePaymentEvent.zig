@@ -29,24 +29,23 @@ pub const CanMakePaymentEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "respondWith", "call_respondWith", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "respondWith",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -56,15 +55,13 @@ pub const CanMakePaymentEvent = struct {
             "initEvent",
             "waitUntil",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -77,12 +74,11 @@ pub const CanMakePaymentEvent = struct {
     );
 
     const delegates = .{
-
         .call_respondWith = &call_respondWith,
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -114,8 +110,6 @@ pub const CanMakePaymentEvent = struct {
     }
 
     pub fn call_respondWith(instance: *runtime.Instance, canMakePaymentResponse: runtime.JSValue) anyerror!void {
-        
         return try CanMakePaymentEventImpl.call_respondWith(instance, canMakePaymentResponse);
     }
-
 };

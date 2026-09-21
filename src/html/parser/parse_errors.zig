@@ -11,6 +11,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 
+const log = std.log.scoped(.parse_errors);
+
 /// Parse error codes as defined in the HTML specification.
 ///
 /// HTML Standard §13.2.2:
@@ -263,9 +265,9 @@ pub const ParseErrorCollector = struct {
         var buffer = std.ArrayList(u8).init(out_allocator);
         errdefer buffer.deinit();
 
-        const writer = buffer.writer();
+        var writer = buffer.writer();
         for (self.errors.toSlice()) |err| {
-            try writer.print("{d}:{d}: {s}\n", .{
+            try writer.interface.print("{d}:{d}: {s}\n", .{
                 err.line,
                 err.column,
                 getErrorDescription(err.code),
@@ -320,7 +322,7 @@ pub const ParseErrorLogger = struct {
             logger.logError(error_info);
         } else {
             // Default: log to stderr
-            std.debug.print("Parse error: {s}\n", .{getErrorDescription(error_info.code)});
+            log.warn("Parse error: {s}", .{getErrorDescription(error_info.code)});
         }
     }
 
@@ -328,20 +330,20 @@ pub const ParseErrorLogger = struct {
     fn logError(self: *ParseErrorLogger, err: ParseError) void {
         const desc = getErrorDescription(err.code);
 
-        if (self.log_callback) |log| {
+        if (self.log_callback) |log_cb| {
             // Custom logging - build message
             var buf: [256]u8 = undefined;
             const msg = if (self.include_location)
                 std.fmt.bufPrint(&buf, "{d}:{d}: {s}", .{ err.line, err.column, desc }) catch desc
             else
                 desc;
-            log(msg);
+            log_cb(msg);
         } else {
             // Default: stderr
             if (self.include_location) {
-                std.debug.print("{d}:{d}: Parse error: {s}\n", .{ err.line, err.column, desc });
+                log.warn("{d}:{d}: Parse error: {s}", .{ err.line, err.column, desc });
             } else {
-                std.debug.print("Parse error: {s}\n", .{desc});
+                log.warn("Parse error: {s}", .{desc});
             }
         }
     }

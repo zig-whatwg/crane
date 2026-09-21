@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const PublicKeyCredentialParameters = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     alg: typedefs.COSEAlgorithmIdentifier,
 };

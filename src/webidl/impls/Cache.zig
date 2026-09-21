@@ -84,7 +84,7 @@ pub fn initWithName(
     internal.* = .{
         .allocator = allocator,
         .name = name_copy,
-        .entries = .{},
+        .entries = .empty,
         .owns_name = true,
     };
 
@@ -282,7 +282,7 @@ pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.Reque
     const opts = if (options.wasPassed()) options.value else dictionaries.CacheQueryOptions{};
 
     // Collect all matching request keys
-    var results = std.ArrayListUnmanaged(*runtime.Instance){};
+    var results = std.ArrayListUnmanaged(*runtime.Instance).empty;
     defer results.deinit(internal.allocator);
 
     // Get URL filter if request parameter is provided
@@ -334,7 +334,7 @@ pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.R
     const opts = if (options.wasPassed()) options.value else dictionaries.CacheQueryOptions{};
 
     // Collect all matching responses
-    var results = std.ArrayListUnmanaged(*runtime.Instance){};
+    var results = std.ArrayListUnmanaged(*runtime.Instance).empty;
     defer results.deinit(internal.allocator);
 
     // Get URL filter if request parameter is provided

@@ -49,4 +49,3 @@ pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOption
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     return HTMLOrSVGElementImpl.call_blur(instance);
 }
-

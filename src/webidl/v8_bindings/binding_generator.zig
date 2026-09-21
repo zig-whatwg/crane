@@ -211,6 +211,9 @@ fn writeInstallTemplate(writer: anytype, config: BindingConfig) !void {
 
     // Set internal field count
     try writer.writeAll("    const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);\n");
+    // The generated code owns this handle - `InstanceTemplate` allocates one per
+    // call in this wrapper, unlike V8's own API which returns a borrowed Local.
+    try writer.writeAll("    defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);\n");
     try writer.writeAll("    v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, wrapper.INTERNAL_FIELD_COUNT);\n");
 
     // Set up inheritance

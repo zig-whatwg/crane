@@ -76,7 +76,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     const ElementImpl = @import("Element.zig");
     const elem_internal = ElementImpl.getInternalState(internal.element) orelse return &[_]runtime.DOMString{};
 
-    var names: std.ArrayListUnmanaged(runtime.DOMString) = .{};
+    var names: std.ArrayListUnmanaged(runtime.DOMString) = .empty;
     errdefer {
         for (names.items) |*n| n.deinit(allocator);
         names.deinit(allocator);
@@ -112,7 +112,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
 }
 
 fn toCamelCase(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
     var i: usize = 0;
@@ -130,7 +130,7 @@ fn toCamelCase(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
 
 /// Convert camelCase name to hyphenated attribute name (data-*)
 fn toHyphenated(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
     // Prefix with "data-"

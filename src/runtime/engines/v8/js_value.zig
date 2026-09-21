@@ -358,7 +358,7 @@ pub const JSValue = union(enum) {
                 // setReturnValue expects Global pointers
                 break :blk @ptrCast(g.ptr);
             },
-            .instance => |_| {
+            .instance => {
                 // Instance needs proper wrapping via template registry
                 // For now return undefined - caller should use instanceToV8()
                 return v8.v8_Undefined(isolate) orelse unreachable;

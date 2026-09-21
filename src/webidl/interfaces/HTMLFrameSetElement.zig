@@ -91,10 +91,10 @@ pub const HTMLFrameSetElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "cols", "get_cols", "set_cols" },
@@ -121,15 +121,13 @@ pub const HTMLFrameSetElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -225,7 +223,7 @@ pub const HTMLFrameSetElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "cols", "get_cols", "set_cols" },
@@ -252,11 +250,10 @@ pub const HTMLFrameSetElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -266,33 +263,12 @@ pub const HTMLFrameSetElement = struct {
         struct {
             cols: typedefs.DOMString = undefined,
             rows: typedefs.DOMString = undefined,
-            onafterprint: typedefs.EventHandler = undefined,
-            onbeforeprint: typedefs.EventHandler = undefined,
             onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
-            onhashchange: typedefs.EventHandler = undefined,
-            onlanguagechange: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
-            onoffline: typedefs.EventHandler = undefined,
-            ononline: typedefs.EventHandler = undefined,
-            onpagehide: typedefs.EventHandler = undefined,
-            onpagereveal: typedefs.EventHandler = undefined,
-            onpageshow: typedefs.EventHandler = undefined,
-            onpageswap: typedefs.EventHandler = undefined,
-            onpopstate: typedefs.EventHandler = undefined,
-            onrejectionhandled: typedefs.EventHandler = undefined,
-            onstorage: typedefs.EventHandler = undefined,
-            onunhandledrejection: typedefs.EventHandler = undefined,
-            onunload: typedefs.EventHandler = undefined,
-            ongamepadconnected: typedefs.EventHandler = undefined,
-            ongamepaddisconnected: typedefs.EventHandler = undefined,
-            onportalactivate: typedefs.EventHandler = undefined,
             _internal: ?*HTMLFrameSetElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_cols = &get_cols,
         .get_onafterprint = &get_onafterprint,
         .get_onbeforeprint = &get_onbeforeprint,
@@ -343,7 +319,7 @@ pub const HTMLFrameSetElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -384,7 +360,7 @@ pub const HTMLFrameSetElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFrameSetElementImpl.set_cols(instance, value);
     }
 
@@ -398,7 +374,7 @@ pub const HTMLFrameSetElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFrameSetElementImpl.set_rows(instance, value);
     }
 
@@ -569,5 +545,4 @@ pub const HTMLFrameSetElement = struct {
     pub fn set_onportalactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try HTMLFrameSetElementImpl.set_onportalactivate(instance, value);
     }
-
 };

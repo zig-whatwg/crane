@@ -23,35 +23,31 @@ pub const BluetoothDeviceEventHandlers = struct {
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onadvertisementreceived", "get_onadvertisementreceived", "set_onadvertisementreceived" },
             .{ "ongattserverdisconnected", "get_ongattserverdisconnected", "set_ongattserverdisconnected" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onadvertisementreceived", "get_onadvertisementreceived", "set_onadvertisementreceived" },
             .{ "ongattserverdisconnected", "get_ongattserverdisconnected", "set_ongattserverdisconnected" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -66,7 +62,6 @@ pub const BluetoothDeviceEventHandlers = struct {
     );
 
     const delegates = .{
-
         .get_onadvertisementreceived = &get_onadvertisementreceived,
         .get_ongattserverdisconnected = &get_ongattserverdisconnected,
 
@@ -75,7 +70,7 @@ pub const BluetoothDeviceEventHandlers = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -113,5 +108,4 @@ pub const BluetoothDeviceEventHandlers = struct {
     pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try BluetoothDeviceEventHandlersImpl.set_ongattserverdisconnected(instance, value);
     }
-
 };

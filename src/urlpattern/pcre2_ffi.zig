@@ -131,7 +131,7 @@ pub const Regex = struct {
             .allocator = allocator,
             .pattern = undefined,
             ._pattern_copy = undefined,
-            .group_names = .{},
+            .group_names = .empty,
             .capture_count = 0,
         };
 

@@ -33,10 +33,10 @@ pub const PointerEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "pointerId", "get_pointerId", null },
@@ -53,19 +53,19 @@ pub const PointerEvent = struct {
             .{ "isPrimary", "get_isPrimary", null },
             .{ "persistentDeviceId", "get_persistentDeviceId", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getCoalescedEvents", "call_getCoalescedEvents", 0 },
             .{ "getPredictedEvents", "call_getPredictedEvents", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCoalescedEvents",
             "getPredictedEvents",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -77,7 +77,7 @@ pub const PointerEvent = struct {
             "getModifierState",
             "initMouseEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "pointerId", "get_pointerId", null },
@@ -94,11 +94,10 @@ pub const PointerEvent = struct {
             .{ "isPrimary", "get_isPrimary", null },
             .{ "persistentDeviceId", "get_persistentDeviceId", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -124,7 +123,6 @@ pub const PointerEvent = struct {
     );
 
     const delegates = .{
-
         .get_altitudeAngle = &get_altitudeAngle,
         .get_azimuthAngle = &get_azimuthAngle,
         .get_height = &get_height,
@@ -144,7 +142,7 @@ pub const PointerEvent = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -235,5 +233,4 @@ pub const PointerEvent = struct {
     pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PointerEventImpl.call_getPredictedEvents(instance);
     }
-
 };

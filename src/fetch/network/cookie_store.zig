@@ -240,7 +240,7 @@ pub const CookieStore = struct {
             .cookie_manager = cookie_manager,
             .context_url = if (context_url) |u| try allocator.dupe(u8, u) else null,
             .allocator = allocator,
-            .change_listeners = .{},
+            .change_listeners = .empty,
             .onchange_handler = null,
             .registered_with_manager = false,
         };
@@ -415,7 +415,7 @@ pub const CookieStore = struct {
         deleted_cookies: []const Cookie,
     ) void {
         // Convert cookies to CookieListItems
-        var changed_items = std.ArrayListUnmanaged(CookieListItem){};
+        var changed_items: std.ArrayListUnmanaged(CookieListItem) = .empty;
         defer {
             for (changed_items.items) |*item| {
                 item.deinit();
@@ -428,7 +428,7 @@ pub const CookieStore = struct {
             changed_items.append(self.allocator, item) catch continue;
         }
 
-        var deleted_items = std.ArrayListUnmanaged(CookieListItem){};
+        var deleted_items: std.ArrayListUnmanaged(CookieListItem) = .empty;
         defer {
             for (deleted_items.items) |*item| {
                 item.deinit();

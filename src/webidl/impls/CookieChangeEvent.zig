@@ -39,8 +39,8 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) !*InternalState {
         const internal = try allocator.create(InternalState);
         internal.* = InternalState{
-            .changed = .{},
-            .deleted = .{},
+            .changed = .empty,
+            .deleted = .empty,
             .allocator = allocator,
         };
         return internal;

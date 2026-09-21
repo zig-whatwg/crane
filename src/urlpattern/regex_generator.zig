@@ -86,7 +86,7 @@ fn convertModifierToString(modifier: PartModifier) []const u8 {
 
 /// Generate the segment wildcard regexp for given options
 pub fn generateSegmentWildcardRegexp(allocator: Allocator, options: Options) ![]u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     try result.appendSlice(allocator, "[^");
@@ -131,10 +131,10 @@ pub fn generateRegexAndNameList(
     part_list: []const Part,
     options: Options,
 ) !RegexGenerationResult {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
-    var name_list: std.ArrayListUnmanaged([]u8) = .{};
+    var name_list: std.ArrayListUnmanaged([]u8) = .empty;
     errdefer {
         for (name_list.items) |name| {
             allocator.free(name);
@@ -306,7 +306,7 @@ test "generateSegmentWildcardRegexp - hostname" {
 test "generateRegexAndNameList - fixed text" {
     const allocator = std.testing.allocator;
 
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "hello", .none);
@@ -322,7 +322,7 @@ test "generateRegexAndNameList - fixed text" {
 test "generateRegexAndNameList - named group" {
     const allocator = std.testing.allocator;
 
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .none);
@@ -341,7 +341,7 @@ test "generateRegexAndNameList - named group" {
 test "generateRegexAndNameList - full wildcard" {
     const allocator = std.testing.allocator;
 
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     var part = Part.init(.full_wildcard, "", .none);
@@ -361,7 +361,7 @@ test "generateRegexAndNameList - full wildcard" {
 test "generateRegexAndNameList - optional modifier" {
     const allocator = std.testing.allocator;
 
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .optional);
@@ -378,7 +378,7 @@ test "generateRegexAndNameList - optional modifier" {
 test "generateRegexAndNameList - with prefix" {
     const allocator = std.testing.allocator;
 
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .none);
@@ -392,4 +392,3 @@ test "generateRegexAndNameList - with prefix" {
     // Should include escaped prefix
     try std.testing.expect(std.mem.indexOf(u8, gen_result.regex, "\\/") != null);
 }
-

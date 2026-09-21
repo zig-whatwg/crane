@@ -5,6 +5,7 @@
 //! Spec: https://w3c.github.io/ServiceWorker/#soft-update
 
 const std = @import("std");
+const clock = @import("clock");
 
 const Registration = @import("../registration.zig").Registration;
 const Job = @import("../job.zig").Job;
@@ -125,7 +126,7 @@ test "softUpdate - schedules when stale" {
     reg.setActiveWorker(sw);
 
     // Make it stale
-    reg.last_update_check_time = std.time.timestamp() - (Registration.STALE_THRESHOLD_SECONDS + 1);
+    reg.last_update_check_time = clock.wallSeconds() - (Registration.STALE_THRESHOLD_SECONDS + 1);
 
     var job_queue_map = ScopeToJobQueueMap.init(allocator);
     defer {
@@ -168,6 +169,6 @@ test "shouldSoftUpdate" {
     try std.testing.expect(!shouldSoftUpdate(reg));
 
     // Stale = should update
-    reg.last_update_check_time = std.time.timestamp() - (Registration.STALE_THRESHOLD_SECONDS + 1);
+    reg.last_update_check_time = clock.wallSeconds() - (Registration.STALE_THRESHOLD_SECONDS + 1);
     try std.testing.expect(shouldSoftUpdate(reg));
 }

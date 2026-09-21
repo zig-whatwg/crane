@@ -37,6 +37,7 @@ const Allocator = std.mem.Allocator;
 
 // V8 FFI through runtime module
 const v8 = @import("v8");
+const native_timer = @import("v8").native_timer;
 const context_manager = v8.context_manager;
 const runtime = @import("runtime");
 
@@ -126,10 +127,20 @@ const WorkerTimerContext = struct {
     is_interval: bool,
     /// Interval delay in milliseconds (for rescheduling)
     interval_delay_ms: u64,
+    /// The timer nesting level this timer was created at. HTML §8.6 records it so
+    /// timers created INSIDE the callback nest one deeper and get clamped.
+    nesting_level: u32,
     /// Allocator for cleanup
     allocator: Allocator,
     /// Whether this timer has been cancelled
     cancelled: bool,
+    /// True while this timer's callback is on the stack.
+    ///
+    /// A callback may cancel ITSELF - clearTimeout(id) from inside the timer is
+    /// ordinary JS. While this is set the running trampoline owns the context and is
+    /// the only thing allowed to free it; freeing underneath it disposes the V8
+    /// Global the callback is still using.
+    executing: bool = false,
     /// Pointer to the WorkerV8Context for setting current_worker_context
     worker_v8_context: *WorkerV8Context,
 };
@@ -150,9 +161,11 @@ fn cleanupWorkerTimerContexts() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const ctx = entry.value_ptr.*;
-            // Cancel the timer at the libuv level
+            // Cancel the timer at the libuv level.
+            // Result discarded: this is teardown, so everything must be freed here
+            // or leak - there is no later callback to hand ownership to.
             if (WorkerV8Context.getTimerInterface()) |timer| {
-                timer.clearTimeout(ctx.current_timer_id);
+                _ = timer.clearTimeout(ctx.current_timer_id);
             }
             // Dispose the V8 Global handle
             v8.ffi.v8_Global_Dispose(ctx.callback_global);
@@ -173,17 +186,36 @@ fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContex
 /// Unregister a timer context (marks as cancelled, cleanup happens in callback)
 fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
     if (worker_timer_contexts) |*map| {
+        // Free ONLY when the timer is confirmed dead and no callback is running.
+        //
+        // This used to fetchRemove, dispose the Global and destroy the ctx
+        // unconditionally. If the libuv timer was still armed it then fired into
+        // workerTimerTrampoline, which read ctx.cancelled from freed memory and went
+        // on to use a disposed Global - surfacing as UBSan trapping inside
+        // v8_Global_Dispose (v8_wrapper.cpp:8434, `Reset()` on a non-null dangling
+        // pointer). In ReleaseSafe that is a bare SIGTRAP with no message.
+        //
+        // Ownership rule, matching the window path in src/browser/Context.zig:
+        //   confirmed cancel + not executing -> free here
+        //   otherwise                        -> leave it registered and marked
+        //                                       cancelled; the trampoline frees it.
+        // The trampoline's cancelled branch MUST free, or this leaks - that omission
+        // is why the first attempt at this was reverted.
+        var confirmed = false;
+        var executing = false;
         if (map.get(timer_id)) |ctx| {
             ctx.cancelled = true;
-            // Cancel the timer at the libuv level
+            executing = ctx.executing;
             if (WorkerV8Context.getTimerInterface()) |timer| {
-                timer.clearTimeout(timer_id);
+                confirmed = timer.clearTimeout(timer_id);
             }
         }
-        if (map.fetchRemove(timer_id)) |kv| {
-            const ctx = kv.value;
-            v8.ffi.v8_Global_Dispose(ctx.callback_global);
-            ctx.allocator.destroy(ctx);
+        if (confirmed and !executing) {
+            if (map.fetchRemove(timer_id)) |kv| {
+                const ctx = kv.value;
+                v8.ffi.v8_Global_Dispose(ctx.callback_global);
+                ctx.allocator.destroy(ctx);
+            }
         }
     }
 }
@@ -216,6 +248,9 @@ fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     const prev_context = current_worker_context;
     current_worker_context = ctx.worker_v8_context;
     defer current_worker_context = prev_context;
+
+    // Phase 5 instrumentation - see worker.timerTrampoline above.
+    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.microtaskTrampoline");
 
     // Create HandleScope for V8 operations
     const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
@@ -294,8 +329,30 @@ fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
 fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
 
-    // Check if the timer was cancelled
-    if (ctx.cancelled) return;
+    // Cancelled while armed: unregisterWorkerTimerContext could not confirm the
+    // cancellation, so it left ownership to us. Free here - this is the last time the
+    // timer system will reference this context.
+    if (ctx.cancelled) {
+        if (worker_timer_contexts) |*map| {
+            _ = map.remove(ctx.current_timer_id);
+        }
+        v8.ffi.v8_Global_Dispose(ctx.callback_global);
+        ctx.allocator.destroy(ctx);
+        return;
+    }
+
+    // This trampoline owns the context for the duration of the callback, so a
+    // clearTimeout from inside it defers the free to us rather than pulling the
+    // Global out from under the running callback.
+    ctx.executing = true;
+    defer ctx.executing = false;
+
+    // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
+    // so a setTimeout called from inside it nests one deeper. Restored afterwards
+    // because the same thread goes on to run other tasks.
+    const saved_nesting = native_timer.nesting_level;
+    native_timer.nesting_level = ctx.nesting_level;
+    defer native_timer.nesting_level = saved_nesting;
 
     // CRITICAL: Set current_worker_context so that callbacks like postMessage
     // can access the correct worker context. Save and restore the previous context.
@@ -305,6 +362,13 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // Enter the worker's isolate and context
     v8.ffi.v8_Isolate_Enter(ctx.isolate);
+
+    // Phase 5 instrumentation, placed AFTER the Enter above on purpose: this
+    // trampoline enters the isolate itself, so asserting beforehand just reports
+    // that it has not happened yet. Workers spawn threads
+    // (worker_threading.zig:406), so what is worth checking is whether the Enter
+    // actually took effect on THIS thread.
+    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.timerTrampoline");
     v8.ffi.v8_Context_Enter(ctx.context);
     defer {
         v8.ffi.v8_Context_Exit(ctx.context);
@@ -360,12 +424,29 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
                 _ = map.remove(ctx.current_timer_id);
             }
 
+            // HTML §8.6: each repeat nests one deeper, and the clamp is re-applied.
+            // Without this a `setInterval(f, 0)` stays at 0ms forever and spins the
+            // loop as fast as it can reschedule - the spec's answer is that by the
+            // sixth repeat it is clamped to 4ms, exactly like nested setTimeout.
+            ctx.nesting_level +|= 1;
+            const repeat_ms = native_timer.clampTimeout(
+                @intCast(@min(ctx.interval_delay_ms, @as(u64, std.math.maxInt(i32)))),
+                ctx.nesting_level,
+            );
+            ctx.interval_delay_ms = if (repeat_ms >= 0) @intCast(repeat_ms) else 0;
+
             // Schedule the next interval
             const new_timer_id = timer.setTimeout(ctx.interval_delay_ms, workerTimerTrampoline, ctx);
             if (new_timer_id != 0) {
                 ctx.current_timer_id = new_timer_id;
                 // Re-register with the new timer ID
                 registerWorkerTimerContext(new_timer_id, ctx);
+            } else {
+                // Reschedule failed. The ctx was just removed from the map above, so
+                // without this it is neither tracked nor freed - a leak of both the
+                // context and its V8 Global.
+                v8.ffi.v8_Global_Dispose(ctx.callback_global);
+                ctx.allocator.destroy(ctx);
             }
         }
     } else {
@@ -629,7 +710,24 @@ pub const WorkerV8Context = struct {
             self.allocator.destroy(ctx_data);
         }
 
-        // Free Zig allocations only
+        // NOTE: the object itself is deliberately NOT freed here - see destroy().
+    }
+
+    /// Release the WorkerV8Context's own storage. Call exactly once, and only
+    /// after every teardown path that might still call deinit() has run.
+    ///
+    /// deinit() used to end in `allocator.destroy(self)`. That made its
+    /// `is_deinitialized` guard useless, because the guard lives INSIDE the object
+    /// it protects: the second of the two documented teardown paths
+    /// (Worker.deinit, and WorkerContext.deinit -> disposeContextCallback) read the
+    /// flag out of freed memory and destroyed the object again. Clearing each
+    /// owner's pointer could not fix it either - the two owners are independent and
+    /// both hold the same context.
+    ///
+    /// Splitting the two makes deinit genuinely idempotent (the flag is read from
+    /// live memory no matter how many paths call it) and gives the free a single
+    /// caller.
+    pub fn destroy(self: *Self) void {
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
     }
@@ -2002,13 +2100,24 @@ fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = false,
         .interval_delay_ms = 0,
+        .nesting_level = native_timer.nesting_level +| 1,
         .allocator = worker_ctx.allocator,
         .cancelled = false,
         .worker_v8_context = worker_ctx,
     };
 
-    // Schedule the timer using the browser's libuv-backed timer interface
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // Apply HTML §8.6's clamp. This was missing entirely on the worker path: a
+    // nested `setTimeout(f, 0)` in a worker ran unclamped while the identical code
+    // in a window was clamped to 4ms, because the clamp lived in the window's
+    // binding layer rather than anywhere both could reach.
+    //
+    // Clamped against the CURRENT level, not the new timer's. The spec reads the
+    // current nesting level in step 4, clamps in step 6, and only then increments
+    // for the timer it is creating - so clamping with `timer_ctx.nesting_level`
+    // (which is already current + 1) would start clamping one level too early and
+    // disagree with the window path.
+    const clamped_ms = native_timer.clampTimeout(delay_ms, native_timer.nesting_level);
+    const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
     const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
 
     if (timer_id == 0) {
@@ -2093,7 +2202,11 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         return;
     };
 
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // setInterval takes the same clamp - §8.6's steps are shared by both, and the
+    // repeat delay is the clamped one, or a nested `setInterval(f, 0)` would spin
+    // the loop as fast as it can schedule.
+    const clamped_interval_ms = native_timer.clampTimeout(delay_ms, native_timer.nesting_level);
+    const delay_u64: u64 = if (clamped_interval_ms >= 0) @intCast(clamped_interval_ms) else 0;
 
     timer_ctx.* = .{
         .callback_global = callback_global,
@@ -2101,6 +2214,7 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         .context = v8_context,
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = true,
+        .nesting_level = native_timer.nesting_level +| 1,
         .interval_delay_ms = delay_u64,
         .allocator = worker_ctx.allocator,
         .cancelled = false,

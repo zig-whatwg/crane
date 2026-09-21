@@ -34,13 +34,13 @@ pub const FileReader = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "readyState", "get_readyState", null },
@@ -53,7 +53,7 @@ pub const FileReader = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onloadend", "get_onloadend", "set_onloadend" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "readAsArrayBuffer", "call_readAsArrayBuffer", 1 },
@@ -62,14 +62,14 @@ pub const FileReader = struct {
             .{ "readAsDataURL", "call_readAsDataURL", 1 },
             .{ "abort", "call_abort", 0 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "EMPTY", "get_EMPTY" },
             .{ "LOADING", "get_LOADING" },
             .{ "DONE", "get_DONE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "readAsArrayBuffer",
@@ -78,7 +78,7 @@ pub const FileReader = struct {
             "readAsDataURL",
             "abort",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -86,7 +86,7 @@ pub const FileReader = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "readyState", "get_readyState", null },
@@ -99,11 +99,10 @@ pub const FileReader = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onloadend", "get_onloadend", "set_onloadend" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -147,7 +146,6 @@ pub const FileReader = struct {
     }
 
     const delegates = .{
-
         .get_DONE = &get_DONE,
         .get_EMPTY = &get_EMPTY,
         .get_LOADING = &get_LOADING,
@@ -176,7 +174,7 @@ pub const FileReader = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -268,7 +266,6 @@ pub const FileReader = struct {
     }
 
     pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
-        
         return try FileReaderImpl.call_readAsDataURL(instance, blob);
     }
 
@@ -277,18 +274,14 @@ pub const FileReader = struct {
     }
 
     pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
-        
         return try FileReaderImpl.call_readAsArrayBuffer(instance, blob);
     }
 
     pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
-        
         return try FileReaderImpl.call_readAsBinaryString(instance, blob);
     }
 
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!void {
-        
         return try FileReaderImpl.call_readAsText(instance, blob, encoding);
     }
-
 };

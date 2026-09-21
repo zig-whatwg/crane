@@ -8,5 +8,4 @@ const SensorOptions = @import("SensorOptions.zig").SensorOptions;
 pub const GeolocationSensorOptions = struct {
     // Inherited from SensorOptions
     base: SensorOptions,
-
 };

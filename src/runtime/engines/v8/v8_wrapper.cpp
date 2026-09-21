@@ -8,6 +8,7 @@
 // - REPL (persistent handles for context, isolate, etc.)
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
+#include <atomic>
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
@@ -55,13 +56,107 @@ static void resetGlobalHandle(void* ptr) {
 }
 
 // Track a handle for snapshot cleanup
-template<typename T>
+//
+// Every `Global<T>` this wrapper hands to Zig, CUMULATIVE creations.
+//
+// Not a live count: there are 54 separate `delete` sites and no choke point, and
+// adding a decrement to each for a diagnostic risks a real bug for a nicer number.
+// The creation RATE is what identifies the leak anyway - on a create-and-discard
+// loop, a site creating N handles per element is creating N too many. Pair it with
+// `mstats()` for what is actually still held.
+//
+// 139 of the 158 `new Global<...>` sites funnel through here, so one counter
+// covers nearly all of them. Each is a C++ heap allocation AND a slot in V8's
+// global handle table - and the table is not part of `used_heap_size`, which is
+// why a leak here reads as flat V8 heap and climbing RSS.
+std::atomic<int64_t> g_live_globals{0};
+
+// extern "C" explicitly: this sits above the file's main extern "C" block, so
+// without it the symbol is C++-mangled and Zig cannot find it.
+extern "C" int64_t v8_Debug_CreatedGlobals() {
+    return g_live_globals.load(std::memory_order_relaxed);
+}
+
+// Where the live handles were created, so the leak can be named rather than
+// counted. Keyed on the caller's return address; a fixed table because this runs
+// on every handle creation and must not allocate.
+static constexpr int kGlobalSiteSlots = 512;
+static std::atomic<uintptr_t> g_site_pc[kGlobalSiteSlots];
+static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
+
+// OFF unless -DCRANE_TRACK_GLOBALS=1. This runs on EVERY handle creation, and an
+// atomic increment plus a hash probe on that path is a real cost to pay in a
+// browser for a number only the memory benchmark reads.
+#ifndef CRANE_TRACK_GLOBALS
+#define CRANE_TRACK_GLOBALS 0
+#endif
+
+static void recordGlobalSite(uintptr_t pc) {
+#if !CRANE_TRACK_GLOBALS
+    (void)pc;
+    return;
+#else
+    size_t h = (pc >> 4) % kGlobalSiteSlots;
+    for (int probe = 0; probe < 16; ++probe) {
+        size_t i = (h + probe) % kGlobalSiteSlots;
+        uintptr_t cur = g_site_pc[i].load(std::memory_order_relaxed);
+        if (cur == pc) { g_site_count[i].fetch_add(1, std::memory_order_relaxed); return; }
+        if (cur == 0) {
+            uintptr_t expected = 0;
+            if (g_site_pc[i].compare_exchange_strong(expected, pc)) {
+                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+            if (g_site_pc[i].load(std::memory_order_relaxed) == pc) {
+                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+        }
+    }
+    // Table full or heavily contended: drop the sample rather than block.
+#endif
+}
+
+/// Read back the Nth busiest creation site. Returns false when `rank` is past the
+/// end. Sorting happens on the caller's side; this just exposes the raw table.
+extern "C" bool v8_Debug_GlobalSite(int index, uintptr_t* pc, int64_t* count) {
+    if (index < 0 || index >= kGlobalSiteSlots) return false;
+    if (pc) *pc = g_site_pc[index].load(std::memory_order_relaxed);
+    if (count) *count = g_site_count[index].load(std::memory_order_relaxed);
+    return true;
+}
+
+template <typename T>
 static Global<T>* trackHandle(Global<T>* handle) {
+    if (handle) {
+#if CRANE_TRACK_GLOBALS
+        g_live_globals.fetch_add(1, std::memory_order_relaxed);
+        // Frame 0 - inside the `v8_*` wrapper, so this attributes by WHICH V8 entry
+        // point allocated. Frame 1 would name the Zig caller instead, but there are
+        // more distinct Zig call sites than the 512-slot table holds, and the counts
+        // spread too thin to rank. Entry-point attribution plus a targeted read of
+        // the hot path has been the more useful pair.
+        recordGlobalSite(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+#endif
+    }
     if (g_snapshot_mode && handle) {
         g_snapshot_handles.push_back({handle, resetGlobalHandle<T>});
     }
     return handle;
 }
+
+// `v8_GetGlobalPrototype` returning null is an EXPECTED outcome, not an error:
+// the caller (template_registry.zig) falls back to the template's own prototype
+// for interfaces that are not exposed on the global object. Reporting it ran
+// `fprintf(stderr)` once per wrapped element, so it is off unless asked for.
+#ifndef CRANE_PROTO_MISS_LOG
+#define CRANE_PROTO_MISS_LOG 0
+#endif
+#if CRANE_PROTO_MISS_LOG
+#define CRANE_PROTO_MISS(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define CRANE_PROTO_MISS(...) ((void)0)
+#endif
 
 // ============================================================================
 // Debug Alignment Checks
@@ -157,7 +252,6 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
-#include <atomic>
 
 class CallbackManager {
 public:
@@ -1649,9 +1743,41 @@ void v8_Isolate_Exit(Isolate* isolate) {
     isolate->Exit();
 }
 
+// Live Global<Context> handles: created minus disposed.
+//
+// The same instrument that settled the string question. Cumulative creations
+// cannot distinguish "created 6 per element and released 6" from "created 6 and
+// released none" - and for strings the cumulative number turned out to be almost
+// entirely startup, which made a 4-per-element leak look real when there was none.
+static std::atomic<int64_t> g_live_context_globals{0};
+
+// Live Global<Object> handles. Counted at the entry points that mint one on the
+// per-element path - `This`, `Context::Global`, the prototype getters - and
+// decremented in v8_Object_Dispose. Same reason as the context counter: cumulative
+// creations cannot tell a released handle from a leaked one.
+static std::atomic<int64_t> g_live_object_globals{0};
+
+extern "C" int64_t v8_Debug_LiveObjectGlobals() {
+    return g_live_object_globals.load(std::memory_order_relaxed);
+}
+
+// Per-entry-point creation counts. The aggregate says one Global<Object> leaks
+// per element but not WHICH of the six mints it, and they all allocate at about
+// the same rate, so the aggregate alone cannot separate them.
+static std::atomic<int64_t> g_obj_src[6];
+
+extern "C" int64_t v8_Debug_ObjSrc(int i) {
+    return (i >= 0 && i < 6) ? g_obj_src[i].load(std::memory_order_relaxed) : -1;
+}
+
+extern "C" int64_t v8_Debug_LiveContextGlobals() {
+    return g_live_context_globals.load(std::memory_order_relaxed);
+}
+
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -1670,6 +1796,21 @@ Global<Context>* v8_Isolate_GetEnteredOrMicrotaskContext(Isolate* isolate) {
 
 Isolate* v8_Isolate_GetCurrent() {
     return Isolate::GetCurrent();
+}
+
+// V8's own accounting of its heap, for telling a LEAK apart from a RESERVATION.
+//
+// Resident memory alone cannot: a JS engine that collects everything correctly
+// still holds on to the pages it has already taken. `used` falling while RSS stays
+// put means the heap is fine and V8 is simply not returning memory; `used` rising
+// with RSS means objects really are being retained.
+void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
+                             size_t* external) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    if (used) *used = stats.used_heap_size();
+    if (total) *total = stats.total_heap_size();
+    if (external) *external = stats.external_memory();
 }
 
 // Get the raw internal address of a context (for stable identity)
@@ -1739,10 +1880,13 @@ Global<Context>* v8_Context_NewWithGlobalConstructor(Isolate* isolate, Global<Fu
 }
 
 void v8_Context_Dispose(Global<Context>* context) {
-    if (context) {
-        context->Reset();
-        delete context;
-    }
+    if (!context) return;
+    // Snapshot-mode guarded like the other disposals: trackHandle registers these
+    // for bulk cleanup while the snapshot is built.
+    if (g_snapshot_mode) return;
+    g_live_context_globals.fetch_sub(1, std::memory_order_relaxed);
+    context->Reset();
+    delete context;
 }
 
 void v8_Context_Enter(Global<Context>* context) {
@@ -1831,6 +1975,8 @@ Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[2].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> local_context = context->Get(isolate);
@@ -1880,6 +2026,19 @@ void v8_Context_AllowCodeGenerationFromStrings(Global<Context>* context, bool al
 // String Functions
 // ============================================================================
 
+// Live Global<String> handles: created minus disposed.
+//
+// Every one of these is a C++ heap allocation AND a slot in V8's global handle
+// table, which lives outside `used_heap_size` - so a leak here is invisible to
+// GetHeapStatistics while being perfectly visible in RSS. That is exactly the
+// shape the Phase 6 measurements show: V8's heap flat at 7.0 MB across 20,000
+// cycles while resident memory climbs 78 MB.
+static std::atomic<int64_t> g_live_string_globals{0};
+
+int64_t v8_Debug_LiveStringGlobals() {
+    return g_live_string_globals.load(std::memory_order_relaxed);
+}
+
 Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int length) {
     HandleScope handle_scope(isolate);
     MaybeLocal<String> maybe_str = String::NewFromUtf8(
@@ -1892,11 +2051,19 @@ Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int
         return nullptr;
     }
     Local<String> str = maybe_str.ToLocalChecked();
+    g_live_string_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<String>(isolate, str));
 }
 
 void v8_String_Dispose(Global<String>* str) {
     if (str) {
+        // See v8_ObjectTemplate_Dispose. Without this the handle is deleted here
+        // AND again by v8_Snapshot_ClearGlobalHandles, which walks
+        // g_snapshot_handles. tools/minimal_snapshot_test.zig:330 disposes a string
+        // created inside snapshot mode and then clears the handles - a live
+        // use-after-free that this guard fixes, independent of any new disposal.
+        if (g_snapshot_mode) return;
+        g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
         str->Reset();
         delete str;
     }
@@ -2220,9 +2387,34 @@ V8ToStringResult* v8_Value_ToString_Safe(Global<Value>* value, Global<Context>* 
 }
 
 void v8_FreeToStringResult(V8ToStringResult* result) {
-    if (result) {
-        delete result;
+    if (!result) return;
+
+    // Release the HANDLES, not just the struct that points at them.
+    //
+    // `v8_Value_ToString_Safe` fills both fields with `trackHandle(new Global<...>)`
+    // - a C++ allocation plus a slot in V8's global handle table - and deleting the
+    // struct alone leaked both. Every caller already does
+    // `defer v8_FreeToStringResult(result)`, so this fixes them all at once, and it
+    // measured at 1.2 handles per DOM object on the createElement path.
+    //
+    // Callers copy the string out before this runs (`v8_String_Utf8Length` +
+    // `WriteUtf8`, or `fromV8String`), and `v8_Isolate_ThrowException` converts the
+    // exception to a Local and hands it to V8, which roots it independently.
+    //
+    // Snapshot-mode guarded like every other disposal here: `trackHandle` registers
+    // these for bulk cleanup while the snapshot is built, and freeing them twice
+    // aborts inside `resetGlobalHandle`.
+    if (!g_snapshot_mode) {
+        if (result->value) {
+            result->value->Reset();
+            delete result->value;
+        }
+        if (result->exception) {
+            result->exception->Reset();
+            delete result->exception;
+        }
     }
+    delete result;
 }
 
 bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
@@ -3130,10 +3322,14 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
-    if (obj) {
-        obj->Reset();
-        delete obj;
-    }
+    if (!obj) return;
+    g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);
+    // See v8_ObjectTemplate_Dispose: while the snapshot is being built every
+    // handle is registered for bulk cleanup, so disposing one here as well is a
+    // double free.
+    if (g_snapshot_mode) return;
+    obj->Reset();
+    delete obj;
 }
 
 // ============================================================================
@@ -4086,6 +4282,28 @@ void v8_FunctionTemplate_SetClassName(Global<FunctionTemplate>* tpl, Global<Stri
     local_tpl->SetClassName(local_name);
 }
 
+// Release a Global<ObjectTemplate>.
+//
+// Typed rather than routing through v8_Global_Dispose: every `Global<T>` happens
+// to have the same layout, but casting between them to pick a destructor is UB
+// that works by accident, and this file has enough of those already.
+//
+// NO-OP IN SNAPSHOT MODE, and this is not optional. `trackHandle` pushes every
+// handle it sees into `g_snapshot_handles` while the snapshot is being built, and
+// `v8_Snapshot_ClearGlobalHandles` resets and deletes all of them at the end. A
+// caller that also disposes gets a double free - which is exactly what happened
+// the first time this function was added, and the snapshot generator aborted
+// inside `resetGlobalHandle`. During generation the snapshot cleanup owns the
+// handle; leaking for the lifetime of a one-shot build tool is the cheap side.
+//
+// ANY disposal added to this wrapper needs the same guard.
+void v8_ObjectTemplate_Dispose(Global<ObjectTemplate>* tpl) {
+    if (!tpl) return;
+    if (g_snapshot_mode) return;
+    tpl->Reset();
+    delete tpl;
+}
+
 Global<ObjectTemplate>* v8_FunctionTemplate_InstanceTemplate(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) {
@@ -4145,6 +4363,8 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
 // Used when wrapping Zig instances as V8 objects - we need to manually set the prototype
 // because ObjectTemplate::NewInstance() doesn't automatically link to the FunctionTemplate's prototype.
 Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[4].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
 
@@ -4179,6 +4399,8 @@ Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>*
 // This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
 // This is necessary for `instanceof` to work correctly.
 Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* constructor_name) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[3].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
 
@@ -4189,13 +4411,13 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> name_str = String::NewFromUtf8(isolate, constructor_name).ToLocalChecked();
     MaybeLocal<Value> maybe_constructor = global->Get(ctx, name_str);
     if (maybe_constructor.IsEmpty()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> constructor_val = maybe_constructor.ToLocalChecked();
     if (!constructor_val->IsFunction()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
         return nullptr;
     }
 
@@ -4205,55 +4427,17 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
     MaybeLocal<Value> maybe_proto = constructor->Get(ctx, prototype_str);
     if (maybe_proto.IsEmpty()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> proto_val = maybe_proto.ToLocalChecked();
     if (!proto_val->IsObject()) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
+        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
         return nullptr;
     }
 
     Local<Object> proto_obj = proto_val.As<Object>();
-
-    // Debug: trace the prototype chain
-    if (strcmp(constructor_name, "HTMLDivElement") == 0) {
-        fprintf(stderr, "[v8_GetGlobalPrototype] HTMLDivElement prototype chain:\n");
-        Local<Value> current = proto_obj;
-        int depth = 0;
-        while (!current->IsNull() && current->IsObject() && depth < 10) {
-            Local<Object> obj = current.As<Object>();
-            // Try to get constructor name
-            MaybeLocal<Value> ctor = obj->Get(ctx, String::NewFromUtf8Literal(isolate, "constructor"));
-            if (!ctor.IsEmpty() && ctor.ToLocalChecked()->IsFunction()) {
-                Local<Function> ctor_fn = ctor.ToLocalChecked().As<Function>();
-                Local<Value> name = ctor_fn->GetName();
-                String::Utf8Value name_utf8(isolate, name);
-                fprintf(stderr, "  [%d] %s.prototype\n", depth, *name_utf8);
-
-                // Check if this prototype === globalThis.ConstructorName.prototype
-                if (depth > 0) { // Skip HTMLDivElement itself
-                    MaybeLocal<Value> maybe_global_ctor = global->Get(ctx, name);
-                    if (!maybe_global_ctor.IsEmpty() && maybe_global_ctor.ToLocalChecked()->IsFunction()) {
-                        Local<Function> global_ctor = maybe_global_ctor.ToLocalChecked().As<Function>();
-                        MaybeLocal<Value> maybe_global_proto = global_ctor->Get(ctx, prototype_str);
-                        if (!maybe_global_proto.IsEmpty() && maybe_global_proto.ToLocalChecked()->IsObject()) {
-                            Local<Object> global_proto = maybe_global_proto.ToLocalChecked().As<Object>();
-                            bool same = obj->SameValue(global_proto);
-                            fprintf(stderr, "      [same as globalThis.%s.prototype: %s]\n", *name_utf8, same ? "YES" : "NO");
-                        }
-                    }
-                }
-            } else {
-                fprintf(stderr, "  [%d] (unknown)\n", depth);
-            }
-            MaybeLocal<Value> maybe_next = obj->GetPrototype();
-            if (maybe_next.IsEmpty()) break;
-            current = maybe_next.ToLocalChecked();
-            depth++;
-        }
-    }
 
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
@@ -4740,6 +4924,8 @@ void v8_Function_SetName(Global<Function>* func, Global<String>* name) {
 
 // FunctionCallbackInfo - get 'this' object
 Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* info) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[0].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> self = info->This();
@@ -5401,6 +5587,8 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
 
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
@@ -5426,6 +5614,8 @@ Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void
 
 // PropertyCallbackInfo - get this
 Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     return trackHandle(new Global<Object>(isolate, info->This()));

@@ -33,10 +33,10 @@ pub const DeviceMotionEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "acceleration", "get_acceleration", null },
@@ -44,21 +44,20 @@ pub const DeviceMotionEvent = struct {
             .{ "rotationRate", "get_rotationRate", null },
             .{ "interval", "get_interval", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_static_requestPermission", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -67,7 +66,7 @@ pub const DeviceMotionEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "acceleration", "get_acceleration", null },
@@ -75,11 +74,10 @@ pub const DeviceMotionEvent = struct {
             .{ "rotationRate", "get_rotationRate", null },
             .{ "interval", "get_interval", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -96,7 +94,6 @@ pub const DeviceMotionEvent = struct {
     );
 
     const delegates = .{
-
         .get_acceleration = &get_acceleration,
         .get_accelerationIncludingGravity = &get_accelerationIncludingGravity,
         .get_interval = &get_interval,
@@ -104,7 +101,7 @@ pub const DeviceMotionEvent = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -154,5 +151,4 @@ pub const DeviceMotionEvent = struct {
     pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DeviceMotionEventImpl.call_static_requestPermission(instance);
     }
-
 };

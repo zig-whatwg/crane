@@ -24,8 +24,17 @@ pub const DOMString = union(enum) {
     /// The string cache is managed separately
     interned: []const u8,
 
-    /// Owned string (must be freed)
-    owned: []const u8,
+    /// Owned string (must be freed).
+    ///
+    /// MUTABLE on purpose. As `[]const u8` this variant was indistinguishable from
+    /// `interned`, so `initOwned(some_borrowed_slice)` compiled silently and the
+    /// borrowed memory was then freed by `deinit` - a double free whose first
+    /// symptom is a corrupted heap far from the call site. `[]u8` makes every such
+    /// site a compile error ("cast discards const qualifier") instead.
+    ///
+    /// A string literal or any borrowed slice therefore belongs in `interned`, or
+    /// must be copied with `initDupe`.
+    owned: []u8,
 
     /// Initialize an empty DOMString
     pub fn initEmpty() DOMString {
@@ -37,8 +46,12 @@ pub const DOMString = union(enum) {
         return .{ .interned = s };
     }
 
-    /// Initialize by taking ownership of allocated string
-    pub fn initOwned(s: []const u8) DOMString {
+    /// Initialize by taking ownership of an allocated string.
+    ///
+    /// Takes `[]u8`: passing a borrowed or literal slice is a compile error by
+    /// design. Use `initInterned` for memory this DOMString must not free, or
+    /// `initDupe` to copy.
+    pub fn initOwned(s: []u8) DOMString {
         return .{ .owned = s };
     }
 
@@ -159,4 +172,19 @@ test "DOMString.deinit is safe to call multiple times" {
     str.deinit(test_allocator); // Second deinit (should be safe)
 
     try testing.expect(str.isEmpty());
+}
+
+test "owned is mutable, so borrowed memory cannot be adopted by mistake" {
+    // REGRESSION GUARD. The protection this variant provides is a compile error -
+    // `initOwned(some_const_slice)` must not build - and a compile error cannot be
+    // expressed as a test. So assert the property that produces it.
+    //
+    // Widening `owned` back to []const u8 makes the union unable to distinguish
+    // borrowed from owned again, which is the V8-getter double free: the string is
+    // adopted, then freed by deinit, while its real owner still holds it.
+    try std.testing.expect(@FieldType(DOMString, "owned") == []u8);
+    try std.testing.expect(!@typeInfo(@FieldType(DOMString, "owned")).pointer.is_const);
+
+    // interned stays const - it is the correct home for anything borrowed.
+    try std.testing.expect(@typeInfo(@FieldType(DOMString, "interned")).pointer.is_const);
 }

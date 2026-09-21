@@ -161,7 +161,7 @@ pub const IndexPersistence = struct {
             var seen = std.AutoHashMap(u64, void).init(allocator);
             defer seen.deinit();
 
-            var entries: std.ArrayListUnmanaged(IndexEntry) = .{};
+            var entries: std.ArrayListUnmanaged(IndexEntry) = .empty;
             errdefer {
                 for (entries.items) |*e| e.deinit();
                 entries.deinit(allocator);
@@ -277,7 +277,7 @@ pub const IndexManager = struct {
         primary_key: IDBKey,
         index_keys: std.StringHashMap(IDBKey),
     ) !std.ArrayListUnmanaged(IndexEntryItem) {
-        var all_entries: std.ArrayListUnmanaged(IndexEntryItem) = .{};
+        var all_entries: std.ArrayListUnmanaged(IndexEntryItem) = .empty;
         errdefer {
             for (all_entries.items) |*item| item.entry.deinit();
             all_entries.deinit(allocator);

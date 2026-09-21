@@ -99,7 +99,7 @@ pub const PermissionStatusRegistry = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .statuses = .{},
+            .statuses = .empty,
         };
     }
 

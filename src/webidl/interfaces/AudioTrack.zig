@@ -24,13 +24,13 @@ pub const AudioTrack = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -40,19 +40,16 @@ pub const AudioTrack = struct {
             .{ "enabled", "get_enabled", "set_enabled" },
             .{ "sourceBuffer", "get_sourceBuffer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -62,11 +59,10 @@ pub const AudioTrack = struct {
             .{ "enabled", "get_enabled", "set_enabled" },
             .{ "sourceBuffer", "get_sourceBuffer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -85,7 +81,6 @@ pub const AudioTrack = struct {
     );
 
     const delegates = .{
-
         .get_enabled = &get_enabled,
         .get_id = &get_id,
         .get_kind = &get_kind,
@@ -97,7 +92,7 @@ pub const AudioTrack = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -147,5 +142,4 @@ pub const AudioTrack = struct {
     pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AudioTrackImpl.get_sourceBuffer(instance);
     }
-
 };

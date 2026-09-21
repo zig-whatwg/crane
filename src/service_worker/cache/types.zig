@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 
 // Import shared types from parent module
 const sw_types = @import("../types.zig");
+const clock = @import("clock");
 pub const CacheQueryOptions = sw_types.CacheQueryOptions;
 pub const MultiCacheQueryOptions = sw_types.MultiCacheQueryOptions;
 
@@ -218,7 +219,7 @@ pub const CacheEntry = struct {
             .allocator = allocator,
             .request = request,
             .response = response,
-            .inserted_time = std.time.timestamp(),
+            .inserted_time = clock.wallSeconds(),
         };
         return self;
     }

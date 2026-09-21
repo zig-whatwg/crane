@@ -1,12 +1,13 @@
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsAlloc; command-line arguments are no longer
+// process-global. They arrive through std.process.Init, which also supplies the
+// gpa, a process-lifetime arena and an Io - so taking Init replaces the hand-rolled
+// allocator setup as well.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 3) {
         std.debug.print("Usage: test_runner <repl_path> <test_file>\n", .{});
@@ -17,33 +18,39 @@ pub fn main() !void {
     const test_file = args[2];
 
     // Read test file
-    const file = try std.fs.cwd().openFile(test_file, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(init.io, test_file, .{});
+    defer file.close(init.io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var file_reader = file.reader(init.io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     // Run REPL with test file as stdin
-    var child = std.process.Child.init(&.{repl_path}, allocator);
-    child.stdin_behavior = .Pipe;
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
+    // 0.16 replaced Child.init + child.spawn() with std.process.spawn(io, options):
+    // the stdio behaviours moved into the options struct and the allocator is gone
+    // (the child no longer owns one).
+    var child = try std.process.spawn(init.io, .{
+        .argv = &.{repl_path},
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
 
     // Write test file to stdin
-    try child.stdin.?.writeAll(content);
-    child.stdin.?.close();
+    try child.stdin.?.writeStreamingAll(init.io, content);
+    child.stdin.?.close(init.io);
     child.stdin = null;
 
     // Read output
-    const stdout = try child.stdout.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var stdout_reader = child.stdout.?.readerStreaming(init.io, &.{});
+    const stdout = try stdout_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stdout);
 
-    const stderr = try child.stderr.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var stderr_reader = child.stderr.?.readerStreaming(init.io, &.{});
+    const stderr = try stderr_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stderr);
 
-    _ = try child.wait();
+    _ = try child.wait(init.io);
 
     // Count results
     var total: usize = 0;

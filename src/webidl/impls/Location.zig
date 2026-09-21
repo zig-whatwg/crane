@@ -377,7 +377,7 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
         },
         .segments => |segs| {
             // Build path string with "/" separators
-            var result = std.ArrayListUnmanaged(u8){};
+            var result = std.ArrayListUnmanaged(u8).empty;
             errdefer result.deinit(allocator);
 
             var i: usize = 0;

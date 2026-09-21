@@ -27,7 +27,7 @@
 //! // Look up cached response
 //! if (memory_cache.match(key)) |entry| {
 //!     // Use cached response
-//!     if (entry.isFresh(false, std.time.timestamp())) {
+//!     if (entry.isFresh(false, clock.wallSeconds())) {
 //!         return entry;
 //!     }
 //! }
@@ -44,6 +44,7 @@
 //! - https://httpwg.org/specs/rfc5861.html (stale-while-revalidate, stale-if-error)
 
 const std = @import("std");
+const clock = @import("clock");
 
 pub const cache_control = @import("cache_control.zig");
 pub const freshness_mod = @import("freshness.zig");

@@ -56,6 +56,8 @@ const namespaces = @import("namespaces");
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
+const clock = @import("clock");
+const host = @import("host");
 const Storage = storage_mod.Storage;
 
 /// Default snapshot file paths to check (in order of priority)
@@ -113,12 +115,14 @@ pub const Browser = struct {
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // Initialize V8 platform with proper flags for snapshot support.
-        // This MUST use initializePlatformForSnapshots() to ensure flags are set
-        // BEFORE platform initialization, which is critical for snapshot loading.
-        // The flags (--hash-seed=0, --predictable) ensure deterministic behavior
-        // between snapshot creation and loading.
-        v8.initializePlatformForSnapshots();
+        // Initialize the V8 platform. Flags MUST be set before platform init.
+        //
+        // The RUNTIME set, not the snapshot set: `--predictable` and `--hash-seed=0`
+        // are generation-time determinism knobs, and applying them here turned off
+        // V8's own parallelism, pinned Math.random() to a fixed sequence and removed
+        // hash-flooding protection in every browser this code has ever started.
+        // Loading does not need them - the snapshot reports itself rehashable.
+        v8.initializePlatformForRuntime();
 
         // Determine snapshot path to use
         const snapshot_path = resolveSnapshotPath(config.snapshot_path);
@@ -191,7 +195,7 @@ pub const Browser = struct {
 
         // Register V8 lifecycle cleanup handlers
         v8.registerBuiltinHandlers() catch |err| {
-            std.debug.print("Warning: Failed to register lifecycle handlers: {}\n", .{err});
+            log.warn("Failed to register lifecycle handlers: {}", .{err});
         };
 
         // Initialize isolate-scoped allocator for template caching
@@ -199,7 +203,7 @@ pub const Browser = struct {
         v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
             // Already initialized is OK (e.g., from snapshot loading)
             if (err != error.AllocatorAlreadyInitialized) {
-                std.debug.print("Warning: Failed to init isolate allocator: {}\n", .{err});
+                log.warn("Failed to init isolate allocator: {}", .{err});
             }
         };
 
@@ -207,7 +211,7 @@ pub const Browser = struct {
         // This registers the HostCreateShadowRealmContextCallback with V8 so that
         // JavaScript `new ShadowRealm()` creates properly isolated execution contexts.
         v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
-            std.debug.print("Warning: Failed to initialize ShadowRealm support: {}\n", .{err});
+            log.warn("Failed to initialize ShadowRealm support: {}", .{err});
         };
 
         // Create storage subsystem
@@ -249,7 +253,7 @@ pub const Browser = struct {
             // Empty string means explicitly disabled
             if (path.len == 0) return null;
             // Check if the file exists
-            if (std.fs.cwd().access(path, .{})) |_| {
+            if (host.cwd().access(host.io(), path, .{})) |_| {
                 return path;
             } else |_| {
                 return null;
@@ -258,7 +262,7 @@ pub const Browser = struct {
 
         // Auto-detect: check default paths
         for (DEFAULT_SNAPSHOT_PATHS) |path| {
-            if (std.fs.cwd().access(path, .{})) |_| {
+            if (host.cwd().access(host.io(), path, .{})) |_| {
                 return path;
             } else |_| {
                 continue;
@@ -482,12 +486,12 @@ pub const Browser = struct {
         const event_loop = self.event_loop orelse return error.NotInitialized;
         // DEBUG: Log event loop pointer and task count
         log.debug("[Browser.runEventLoopBlocking] event_loop={*}, tasks.len={d}", .{ event_loop, event_loop.tasks.items.len });
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
         var did_work = false;
 
         while (true) {
-            const now = std.time.milliTimestamp();
+            const now = clock.monotonicMillis();
             if (now >= deadline) {
                 break;
             }

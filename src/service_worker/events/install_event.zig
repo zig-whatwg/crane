@@ -58,7 +58,7 @@ pub const InstallEvent = struct {
             .allocator = allocator,
             .base = base,
             .owns_base = true,
-            .added_routes = .{},
+            .added_routes = .empty,
         };
 
         return self;

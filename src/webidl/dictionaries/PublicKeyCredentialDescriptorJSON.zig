@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const PublicKeyCredentialDescriptorJSON = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     id: typedefs.Base64URLString,
     transports: ?[]const runtime.DOMString = null,
 };

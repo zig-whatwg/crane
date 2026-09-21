@@ -47,6 +47,7 @@ pub fn lazyConstructorGetter(
 ) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(property, &name_buf) orelse return;

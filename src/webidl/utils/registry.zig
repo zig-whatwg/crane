@@ -45,14 +45,38 @@ pub fn InstanceRegistry(comptime T: type) type {
     return struct {
         /// The underlying map storage - lazily initialized on first use.
         /// Uses usize as key since we store @intFromPtr(instance).
-        var map: ?std.AutoHashMap(usize, *T) = null;
+        /// What the map stores: the state plus who owns it.
+        ///
+        /// Ownership cannot be inferred from the pointer, and getting it wrong is
+        /// either a double free or a leak, so it is recorded at registration.
+        /// Named Slot rather than Entry because `Entry` is already this module's
+        /// public iteration type.
+        const Slot = struct {
+            ptr: *T,
+            /// The allocator that owns `ptr`, type-erased, or null when the caller
+            /// owns it (`set`).
+            ///
+            /// Type-erased with a thunk rather than imported: `webidl` cannot import
+            /// `runtime` - runtime imports webidl, so it would be a cycle - and
+            /// `remove` must be able to free without knowing the arena's type.
+            owner: ?*anyopaque = null,
+            free_fn: ?*const fn (*anyopaque, *T) void = null,
+
+            fn release(self: Slot) void {
+                const owner = self.owner orelse return;
+                const f = self.free_fn orelse return;
+                f(owner, self.ptr);
+            }
+        };
+
+        var map: ?std.AutoHashMap(usize, Slot) = null;
 
         /// Ensure the registry is initialized.
         /// This is called automatically by get/set/remove but can be called
         /// explicitly if needed.
-        pub fn ensure() *std.AutoHashMap(usize, *T) {
+        pub fn ensure() *std.AutoHashMap(usize, Slot) {
             if (map == null) {
-                map = std.AutoHashMap(usize, *T).init(std.heap.page_allocator);
+                map = std.AutoHashMap(usize, Slot).init(std.heap.page_allocator);
             }
             return &map.?;
         }
@@ -62,15 +86,55 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// Accepts any pointer type - uses the pointer address as the key.
         pub fn get(instance: anytype) ?*T {
             const m = ensure();
-            return m.get(@intFromPtr(instance));
+            const entry = m.get(@intFromPtr(instance)) orelse return null;
+            return entry.ptr;
         }
 
         /// Register internal state for an instance.
         /// Returns error.OutOfMemory if allocation fails.
         /// Accepts any pointer type - uses the pointer address as the key.
+        ///
+        /// The caller keeps ownership of `internal`; `remove` will not free it.
+        /// Use `create` instead to have the registry own the allocation - that is
+        /// the only way a discarded node's internal state comes back.
         pub fn set(instance: anytype, internal: *T) !void {
             const m = ensure();
-            try m.put(@intFromPtr(instance), internal);
+            try m.put(@intFromPtr(instance), .{ .ptr = internal });
+        }
+
+        /// Allocate internal state from `arena` and register it, with the registry
+        /// owning the block.
+        ///
+        /// Measured reason this exists: after state recycling landed, 904 bytes per
+        /// discarded element were still held, all of it InternalState blocks that
+        /// `remove` dropped from the map without returning to the arena. 17 of the
+        /// 21 users allocate from the arena and 4 do not, so ownership has to be
+        /// recorded rather than assumed - freeing a caller-owned block would be a
+        /// double free, and assuming caller-owned keeps the leak.
+        ///
+        /// `arena` is duck-typed (anything with `create`/`destroy`) to keep this
+        /// module free of a `runtime` import, which would be a dependency cycle.
+        /// The block is zeroed, matching `ArenaAllocator.createRaw`.
+        pub fn createIn(instance: anytype, arena: anytype) !*T {
+            const Arena = @typeInfo(@TypeOf(arena)).pointer.child;
+
+            const internal = try arena.create(T);
+            errdefer arena.destroy(T, internal);
+
+            const thunk = struct {
+                fn free(owner: *anyopaque, ptr: *T) void {
+                    const a: *Arena = @ptrCast(@alignCast(owner));
+                    a.destroy(T, ptr);
+                }
+            }.free;
+
+            const m = ensure();
+            try m.put(@intFromPtr(instance), .{
+                .ptr = internal,
+                .owner = @ptrCast(arena),
+                .free_fn = thunk,
+            });
+            return internal;
         }
 
         /// Remove the internal state registration for an instance.
@@ -78,7 +142,12 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// Accepts any pointer type - uses the pointer address as the key.
         pub fn remove(instance: anytype) void {
             const m = ensure();
-            _ = m.remove(@intFromPtr(instance));
+            if (m.fetchRemove(@intFromPtr(instance))) |kv| {
+                // Returns the block only if the registry allocated it. A
+                // caller-owned block freed here would be a double free; an owned
+                // block left here is the 904 bytes per element this exists to stop.
+                kv.value.release();
+            }
         }
 
         /// Check if an instance has registered state.
@@ -108,7 +177,9 @@ pub fn InstanceRegistry(comptime T: type) type {
 
         /// Iterate over all registered internal states.
         /// Useful for cleanup operations.
-        pub fn valueIterator() ?std.AutoHashMap(usize, *T).ValueIterator {
+        ///
+        /// Yields `*Slot`, so callers reach the state through `.ptr`.
+        pub fn valueIterator() ?std.AutoHashMap(usize, Slot).ValueIterator {
             if (map) |m| {
                 return m.valueIterator();
             }
@@ -131,11 +202,14 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub fn deinitAllAndClear() void {
             if (map) |*m| {
                 var iter = m.valueIterator();
-                while (iter.next()) |internal| {
-                    // internal is *T, need to dereference to call deinit
+                while (iter.next()) |slot| {
                     if (@hasDecl(T, "deinit")) {
-                        internal.*.deinit();
+                        slot.ptr.deinit();
                     }
+                    // The blocks themselves are NOT returned to the arena here.
+                    // This runs during final teardown, where the arena is about to
+                    // be torn down wholesale, and pushing thousands of blocks onto
+                    // free lists that are about to be discarded is pure cost.
                 }
                 m.clearRetainingCapacity();
             }
@@ -149,13 +223,13 @@ pub fn InstanceRegistry(comptime T: type) type {
 
         /// Iterator for the registry entries
         pub const Iterator = struct {
-            inner: std.AutoHashMap(usize, *T).Iterator,
+            inner: std.AutoHashMap(usize, Slot).Iterator,
 
             pub fn next(self: *Iterator) ?Entry {
                 if (self.inner.next()) |kv| {
                     return Entry{
                         .instance = @ptrFromInt(kv.key_ptr.*),
-                        .internal = kv.value_ptr.*,
+                        .internal = kv.value_ptr.ptr,
                     };
                 }
                 return null;

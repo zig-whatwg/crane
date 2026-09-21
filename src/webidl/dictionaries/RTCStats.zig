@@ -8,6 +8,6 @@ const enums = @import("enums");
 
 pub const RTCStats = struct {
     timestamp: typedefs.DOMHighResTimeStamp,
-    @"type": enums.RTCStatsType,
+    type: enums.RTCStatsType,
     id: runtime.DOMString,
 };

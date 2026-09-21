@@ -53,6 +53,7 @@ const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
+const host = @import("host");
 
 /// Context mapping entry
 pub const ContextEntry = struct {
@@ -534,7 +535,7 @@ pub fn getOrCreateWithExternalEventLoop(
         .event_loop = null, // We don't own the external event loop
         .realm = null,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
     };
 
@@ -727,7 +728,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .event_loop = event_loop_ptr,
         .realm = realm,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
     };
 
@@ -755,6 +756,21 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     }
 
     return null;
+}
+
+/// Is a context with this raw address still registered?
+///
+/// Takes the ADDRESS, not the Global<Context>*, on purpose. `get()` above has to
+/// call v8_Context_GetRawAddress to derive the key, which dereferences the handle -
+/// so it cannot be used to ask "is this handle still valid?", because doing so is
+/// the very use-after-free being tested for.
+///
+/// Callers that need to outlive a context (a queued microtask, say) must capture
+/// `v8_Context_GetRawAddress` while the context is still alive and pass that key
+/// here later.
+pub fn isContextAddressAlive(raw_addr: usize) bool {
+    const state = &(manager_state orelse return false);
+    return state.contexts.contains(raw_addr);
 }
 
 /// Hydrate a V8 context restored from snapshot with the appropriate interfaces for the given scope
@@ -882,7 +898,7 @@ pub fn createContext(
         .event_loop = null, // Will be set up separately if needed
         .realm = realm_instance,
         .parent_entry = parent,
-        .children = .{},
+        .children = .empty,
         .allocator = state.allocator,
     };
 
@@ -930,7 +946,7 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
         .event_loop = null, // Registered contexts don't have event loop
         .realm = null,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = state.allocator,
     };
 
@@ -981,9 +997,18 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // freeing their entries. Then our loop here would iterate over freed pointers.
             // By cleaning up children first, we ensure all child entries are freed before
             // any code tries to iterate over entry.children.items.
-            for (entry.children.items) |child| {
+            // Iterate a COPY: destroyChildContext detaches entries and removes them
+            // from their parent's `children` list, so walking entry.children.items
+            // directly mutates the slice mid-iteration and later elements are read
+            // after free - surfacing as a segfault on a 0xaa-poisoned entry.v8_ctx at
+            // the top of destroyChildContext. destroyChildContext already copies for
+            // exactly this reason; this loop was the one place that did not.
+            var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .empty;
+            children_copy.appendSlice(entry.allocator, entry.children.items) catch {};
+            for (children_copy.items) |child| {
                 destroyChildContext(child, entry.allocator);
             }
+            children_copy.deinit(entry.allocator);
             entry.children.deinit(entry.allocator);
 
             // Clean up Window and Document (DOM tree) before wrapper cache
@@ -1237,13 +1262,15 @@ fn handleDynamicImport(
         }
 
         // Read the file
-        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+        const io = host.io();
+        const file = host.cwd().openFile(io, file_path, .{}) catch {
             resolver.reject("Failed to open module file");
             return;
         };
-        defer file.close();
+        defer file.close(io);
 
-        source = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch { // 10MB max
+        var file_reader = file.reader(io, &.{});
+        source = file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch { // 10MB max
             resolver.reject("Failed to read module file");
             return;
         };
@@ -1862,7 +1889,7 @@ fn createWindowForExistingBrowsingContext(
         .event_loop = null,
         .realm = realm,
         .parent_entry = parent_entry,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
         .window_instance = window_instance,
     };
@@ -1918,6 +1945,7 @@ pub fn windowIndexedPropertyGetter(
 
     // Get the 'this' object (the global/Window object)
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
 
     // Also try getting the global from the context (might be different from this_obj)
     const global_obj = v8.v8_Context_Global(v8_context);
@@ -2054,6 +2082,7 @@ pub fn windowIndexedPropertyQuery(
     const WindowImpl = @import("impls").Window;
 
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     if (instance_ptr == null) return .kNo;
 
@@ -2084,6 +2113,7 @@ pub fn windowIndexedPropertyEnumerator(
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
 
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     if (instance_ptr == null) {
         // No instance - return empty array
@@ -2153,6 +2183,7 @@ pub fn windowNamedPropertyGetter(
 
     // Get the Window instance from the global object
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
     // If this_obj doesn't have internal fields, try the global object
@@ -2216,6 +2247,7 @@ pub fn windowNamedPropertyQuery(
 
     // Get Window instance
     const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
     if (instance_ptr == null) {
@@ -2547,7 +2579,7 @@ pub fn createChildContext(
         .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
         .realm = realm,
         .parent_entry = parent_entry, // Can set directly now - parent_entry is stable
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
         .window_instance = window_instance,
     };
@@ -2628,7 +2660,7 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
 
     // 1. Recursively destroy all children first
     // Make a copy of items since we're modifying while iterating
-    var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .{};
+    var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .empty;
     children_copy.appendSlice(allocator, entry.children.items) catch {};
 
     for (children_copy.items) |child| {

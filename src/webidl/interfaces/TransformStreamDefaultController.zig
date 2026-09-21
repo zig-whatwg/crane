@@ -22,42 +22,40 @@ pub const TransformStreamDefaultController = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "desiredSize", "get_desiredSize", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "enqueue", "call_enqueue", 0 },
             .{ "error", "call_error", 0 },
             .{ "terminate", "call_terminate", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "enqueue",
             "error",
             "terminate",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "desiredSize", "get_desiredSize", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -71,7 +69,6 @@ pub const TransformStreamDefaultController = struct {
     );
 
     const delegates = .{
-
         .get_desiredSize = &get_desiredSize,
 
         .call_enqueue = &call_enqueue,
@@ -80,7 +77,7 @@ pub const TransformStreamDefaultController = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -108,17 +105,14 @@ pub const TransformStreamDefaultController = struct {
     }
 
     pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
         return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
 
     pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
         return try TransformStreamDefaultControllerImpl.call_error(instance, reason);
     }
 
     pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         return try TransformStreamDefaultControllerImpl.call_terminate(instance);
     }
-
 };

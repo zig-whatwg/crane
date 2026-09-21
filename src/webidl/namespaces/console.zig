@@ -12,7 +12,7 @@ pub const console = struct {
         pub const is_namespace = true;
         pub const BaseType = null;
         pub const MixinTypes = &.{};
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
             .{ "clear", "call_clear" },
@@ -35,7 +35,7 @@ pub const console = struct {
             .{ "timeEnd", "call_timeEnd" },
             .{ "group", "call_group" },
         };
-        
+
         pub const has_constructor = false;
         pub const properties = .{};
     };
@@ -117,5 +117,4 @@ pub const console = struct {
     pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_group(ctx, data);
     }
-
 };

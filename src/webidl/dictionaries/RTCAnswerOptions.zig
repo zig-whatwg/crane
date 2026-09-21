@@ -8,5 +8,4 @@ const RTCOfferAnswerOptions = @import("RTCOfferAnswerOptions.zig").RTCOfferAnswe
 pub const RTCAnswerOptions = struct {
     // Inherited from RTCOfferAnswerOptions
     base: RTCOfferAnswerOptions,
-
 };

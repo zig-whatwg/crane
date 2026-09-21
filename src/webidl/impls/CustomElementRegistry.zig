@@ -67,7 +67,7 @@ pub const CustomElementDefinition = struct {
 
     /// The construction stack (for upgrade algorithm)
     /// Each entry is either an element or the already-constructed marker
-    construction_stack: std.ArrayListUnmanaged(ConstructionStackEntry) = .{},
+    construction_stack: std.ArrayListUnmanaged(ConstructionStackEntry) = .empty,
 
     allocator: Allocator,
 
@@ -145,10 +145,10 @@ pub const InternalState = struct {
     is_scoped: bool = false,
 
     /// Set of documents using this scoped registry
-    scoped_document_set: std.ArrayListUnmanaged(*runtime.Instance) = .{},
+    scoped_document_set: std.ArrayListUnmanaged(*runtime.Instance) = .empty,
 
     /// Custom element definitions (name -> definition)
-    definitions: std.StringHashMapUnmanaged(*CustomElementDefinition) = .{},
+    definitions: std.StringHashMapUnmanaged(*CustomElementDefinition) = .empty,
 
     /// Map of constructors to definitions (for getName())
     constructor_to_definition: std.AutoHashMapUnmanaged(usize, *CustomElementDefinition) = .{},

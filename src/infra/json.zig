@@ -136,7 +136,7 @@ fn jsonValueToInfra(allocator: Allocator, value: std.json.Value) !InfraValue {
         .bool => |b| .{ .boolean = b },
         .integer => |i| .{ .number = @floatFromInt(i) },
         .float => |f| .{ .number = f },
-        .number_string => |_| JsonError.InvalidJson,
+        .number_string => JsonError.InvalidJson,
         .string => |s| blk: {
             const string_module = @import("string.zig");
             const utf16_string = try string_module.utf8ToUtf16(allocator, s);

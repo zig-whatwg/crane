@@ -22,35 +22,31 @@ pub const NavigatorBadge = struct {
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setAppBadge", "call_setAppBadge", 0 },
             .{ "clearAppBadge", "call_clearAppBadge", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setAppBadge",
             "clearAppBadge",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -63,13 +59,12 @@ pub const NavigatorBadge = struct {
     );
 
     const delegates = .{
-
         .call_clearAppBadge = &call_clearAppBadge,
         .call_setAppBadge = &call_setAppBadge,
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -99,8 +94,7 @@ pub const NavigatorBadge = struct {
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
-        
+
         return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
     }
-
 };

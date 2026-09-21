@@ -6,12 +6,12 @@ const std = @import("std");
 const codegen = @import("codegen");
 const scanner = codegen.idl_scanner;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsWithAllocator; the argument vector arrives
+// through std.process.Init, which also supplies the gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip program name

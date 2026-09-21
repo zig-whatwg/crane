@@ -91,10 +91,10 @@ pub const SVGFEBlendElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "in1", "get_in1", null },
@@ -106,11 +106,10 @@ pub const SVGFEBlendElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_FEBLEND_MODE_UNKNOWN", "get_SVG_FEBLEND_MODE_UNKNOWN" },
@@ -131,11 +130,10 @@ pub const SVGFEBlendElement = struct {
             .{ "SVG_FEBLEND_MODE_COLOR", "get_SVG_FEBLEND_MODE_COLOR" },
             .{ "SVG_FEBLEND_MODE_LUMINOSITY", "get_SVG_FEBLEND_MODE_LUMINOSITY" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -226,7 +224,7 @@ pub const SVGFEBlendElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "in1", "get_in1", null },
@@ -238,11 +236,10 @@ pub const SVGFEBlendElement = struct {
             .{ "height", "get_height", null },
             .{ "result", "get_result", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -352,7 +349,6 @@ pub const SVGFEBlendElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_FEBLEND_MODE_COLOR = &get_SVG_FEBLEND_MODE_COLOR,
         .get_SVG_FEBLEND_MODE_COLOR_BURN = &get_SVG_FEBLEND_MODE_COLOR_BURN,
         .get_SVG_FEBLEND_MODE_COLOR_DODGE = &get_SVG_FEBLEND_MODE_COLOR_DODGE,
@@ -381,7 +377,7 @@ pub const SVGFEBlendElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -435,5 +431,4 @@ pub const SVGFEBlendElement = struct {
     pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEBlendElementImpl.get_result(instance);
     }
-
 };

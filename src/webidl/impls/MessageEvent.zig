@@ -24,6 +24,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const MessageEvent = interfaces.MessageEvent;
 
 pub const State = MessageEvent.State;
@@ -108,6 +109,14 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
     }
 
+    // Release MessageEvent's OWN internal block. The parent releases the Event-level
+    // one, which on a MessageEvent instance is a different allocation.
+    if (state.own._internal) |internal| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
     interfaces.Event.deinit(instance);
 }
@@ -122,7 +131,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // Initialize base Event attributes (Event fields in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = false;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -238,6 +247,7 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
             const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
             const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return runtime.JSValue.jsUndefined;
+            defer v8_engine.ffi.v8_Context_Dispose(v8_context);
 
             // Create array with correct size
             const ports_array = v8_engine.ffi.v8_Array_New(v8_isolate, @intCast(internal.transferred_port_count));
@@ -308,7 +318,7 @@ pub fn createTextMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -354,7 +364,7 @@ pub fn createBinaryMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -408,7 +418,7 @@ pub fn createPostMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = runtime.DOMString.initInterned("message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true; // Browser-initiated
     state.base.own.target = null;
     state.base.own.srcElement = null;

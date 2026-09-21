@@ -231,7 +231,7 @@ pub const TexImage3DArgs = union(enum) {
         depth: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pboOffset: typedefs.GLintptr,
     },
     /// texImage3D(target, level, internalformat, width, height, depth, border, format, type, source)
@@ -244,7 +244,7 @@ pub const TexImage3DArgs = union(enum) {
         depth: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texImage3D(target, level, internalformat, width, height, depth, border, format, type, srcData)
@@ -257,7 +257,7 @@ pub const TexImage3DArgs = union(enum) {
         depth: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         srcData: ?typedefs.ArrayBufferView,
     },
     /// texImage3D(target, level, internalformat, width, height, depth, border, format, type, srcData, srcOffset)
@@ -270,7 +270,7 @@ pub const TexImage3DArgs = union(enum) {
         depth: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         srcData: typedefs.ArrayBufferView,
         srcOffset: runtime.JSValue,
     },
@@ -378,7 +378,7 @@ pub const TexSubImage3DArgs = union(enum) {
         height: typedefs.GLsizei,
         depth: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pboOffset: typedefs.GLintptr,
     },
     /// texSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, source)
@@ -392,7 +392,7 @@ pub const TexSubImage3DArgs = union(enum) {
         height: typedefs.GLsizei,
         depth: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, srcData, srcOffset)
@@ -406,7 +406,7 @@ pub const TexSubImage3DArgs = union(enum) {
         height: typedefs.GLsizei,
         depth: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         srcData: ?typedefs.ArrayBufferView,
         srcOffset: webidl.Opt(runtime.JSValue),
     },
@@ -531,4 +531,3 @@ pub fn call_createQuery(instance: *runtime.Instance) !*runtime.Instance {
 pub fn call_uniform3ui(instance: *runtime.Instance, location: ?*runtime.Instance, v0: typedefs.GLuint, v1: typedefs.GLuint, v2: typedefs.GLuint) anyerror!void {
     return WebGL2RenderingContextBaseImpl.call_uniform3ui(instance, location, v0, v1, v2);
 }
-

@@ -17,6 +17,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const posix = std.posix;
 const test_parser = @import("test_parser.zig");
+const host = @import("host");
+const clock = @import("clock");
 
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
@@ -116,15 +118,16 @@ pub const WptServer = struct {
         const lockfile_path = try self.getLockfilePath();
         defer self.allocator.free(lockfile_path);
 
-        const file = std.fs.cwd().openFile(lockfile_path, .{}) catch |err| {
+        const io = host.io();
+        const file = host.cwd().openFile(io, lockfile_path, .{}) catch |err| {
             if (err == error.FileNotFound) return false;
             return err;
         };
-        defer file.close();
+        defer file.close(io);
 
         // Read lockfile: "pid:port"
         var buf: [64]u8 = undefined;
-        const bytes_read = try file.readAll(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         const content = buf[0..bytes_read];
 
         // Parse PID and port
@@ -136,15 +139,18 @@ pub const WptServer = struct {
         const port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return false;
 
         // Check if process is still alive (signal 0 just checks existence)
-        if (posix.kill(pid, 0)) {
+        // Signal 0 is the POSIX existence probe. 0.16 types posix.kill's signal
+        // as a SIG enum with no zero member, so the idiom no longer fits the typed
+        // wrapper; call libc directly, which is what it did underneath anyway.
+        if (std.c.kill(pid, @enumFromInt(0)) == 0) {
             // Process exists, use it
             self.pid = pid;
             self.port = port;
             self.we_spawned = false;
             return true;
-        } else |_| {
+        } else {
             // Process doesn't exist - stale lockfile, remove it
-            std.fs.cwd().deleteFile(lockfile_path) catch {};
+            host.cwd().deleteFile(io, lockfile_path) catch {};
             return false;
         }
     }
@@ -159,14 +165,16 @@ pub const WptServer = struct {
             "config.json",
         };
 
-        var child = std.process.Child.init(&argv, self.allocator);
-        child.cwd = self.wpt_root;
-
-        // Ignore output to avoid noise
-        child.stdout_behavior = .Ignore;
-        child.stderr_behavior = .Ignore;
-
-        try child.spawn();
+        // 0.16 replaced Child.init + child.spawn() with std.process.spawn(io, options):
+        // the stdio behaviours and cwd moved into the options struct, cwd became a
+        // tagged union, and the child no longer owns an allocator.
+        const child = try std.process.spawn(host.io(), .{
+            .argv = &argv,
+            .cwd = .{ .path = self.wpt_root },
+            // Ignore output to avoid noise
+            .stdout = .ignore,
+            .stderr = .ignore,
+        });
 
         self.pid = child.id;
         self.we_spawned = true;
@@ -183,19 +191,20 @@ pub const WptServer = struct {
         const lockfile_path = try self.getLockfilePath();
         defer self.allocator.free(lockfile_path);
 
-        const file = try std.fs.cwd().createFile(lockfile_path, .{});
-        defer file.close();
+        const io = host.io();
+        const file = try host.cwd().createFile(io, lockfile_path, .{});
+        defer file.close(io);
 
         const content = try std.fmt.allocPrint(self.allocator, "{d}:{d}\n", .{ self.pid.?, self.port });
         defer self.allocator.free(content);
-        try file.writeAll(content);
+        try file.writeStreamingAll(io, content);
     }
 
     /// Remove the lockfile
     fn removeLockfile(self: *WptServer) void {
         const lockfile_path = self.getLockfilePath() catch return;
         defer self.allocator.free(lockfile_path);
-        std.fs.cwd().deleteFile(lockfile_path) catch {};
+        host.cwd().deleteFile(host.io(), lockfile_path) catch {};
     }
 
     /// Wait for server to become ready
@@ -208,7 +217,7 @@ pub const WptServer = struct {
             if (self.isServerReady()) {
                 return;
             }
-            std.Thread.sleep(delay_ns);
+            clock.sleep(delay_ns);
         }
 
         return error.ServerStartTimeout;
@@ -216,9 +225,12 @@ pub const WptServer = struct {
 
     /// Check if server is ready by attempting TCP connect
     fn isServerReady(self: *WptServer) bool {
-        const address = std.net.Address.parseIp4("127.0.0.1", self.port) catch return false;
-        const stream = std.net.tcpConnectToAddress(address) catch return false;
-        stream.close();
+        // 0.16: std.net is gone. IpAddress.parse takes no Io; connect and close do,
+        // and ConnectOptions.mode has no default.
+        const io = host.io();
+        const address = std.Io.net.IpAddress.parseIp4("127.0.0.1", self.port) catch return false;
+        const stream = address.connect(io, .{ .mode = .stream }) catch return false;
+        stream.close(io);
         return true;
     }
 
@@ -229,12 +241,12 @@ pub const WptServer = struct {
             posix.kill(pid, posix.SIG.TERM) catch {};
 
             // Give it a moment to shutdown gracefully
-            std.Thread.sleep(100 * std.time.ns_per_ms);
+            clock.sleep(100 * std.time.ns_per_ms);
 
-            // Force kill if still alive
-            if (posix.kill(pid, 0)) {
+            // Force kill if still alive. Signal 0 is the existence probe; see above.
+            if (std.c.kill(pid, @enumFromInt(0)) == 0) {
                 posix.kill(pid, posix.SIG.KILL) catch {};
-            } else |_| {}
+            }
         }
 
         if (self.we_spawned) {
@@ -263,14 +275,25 @@ pub const WptServer = struct {
             std.fmt.allocPrint(allocator, "http://{s}:{d}", .{ WPT_HOST, self.port });
     }
 
-    /// Build a test URL from a test path and context type
+    /// Build a test URL from a test path, context type and variant.
     ///
     /// For .any.js tests, the WPT server generates different HTML wrappers:
     /// - Window context: test.any.html (runs test directly in window)
     /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
     ///
     /// A `.https.` test is routed to the TLS listener; see `isHttpsTest`.
-    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
+    ///
+    /// `variant` is one of the file's `<meta name="variant">` values, appended
+    /// verbatim after the wrapper suffix because it already carries its own `?`
+    /// or `#`. Empty means the file declares no variants, which is the common
+    /// case and leaves the URL exactly as it was before variants existed.
+    pub fn buildTestUrl(
+        self: *WptServer,
+        allocator: Allocator,
+        test_path: []const u8,
+        context: test_parser.GlobalType,
+        variant: []const u8,
+    ) ![]u8 {
         var url_path = test_path;
         var suffix: []const u8 = "";
 
@@ -292,22 +315,23 @@ pub const WptServer = struct {
         }
 
         const https = isHttpsTest(test_path);
-        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}", .{
+        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
             if (https) "https" else "http",
             WPT_HOST,
             if (https) self.https_port else self.port,
             url_path,
             suffix,
+            variant,
         });
     }
 };
 
 /// Write a lockfile naming `pid` into a scratch WPT root.
-fn writeTestLockfile(dir: std.fs.Dir, pid: posix.pid_t) !void {
-    var file = try dir.createFile(LOCKFILE_NAME, .{});
-    defer file.close();
+fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t) !void {
+    var file = try dir.createFile(io, LOCKFILE_NAME, .{});
+    defer file.close(io);
     var buf: [64]u8 = undefined;
-    try file.writeAll(try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
+    try file.writeStreamingAll(io, try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
 }
 
 test "a live lockfile is adopted, not owned" {
@@ -319,10 +343,10 @@ test "a live lockfile is adopted, not owned" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    try writeTestLockfile(tmp.dir, std.c.getpid());
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid());
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
@@ -333,7 +357,7 @@ test "a live lockfile is adopted, not owned" {
     try std.testing.expect(!server.we_spawned);
 
     // Still there: adopting must not consume the lockfile the owner wrote.
-    try tmp.dir.access(LOCKFILE_NAME, .{});
+    try tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{});
 }
 
 test "a lockfile naming a dead process is cleared" {
@@ -345,18 +369,18 @@ test "a lockfile naming a dead process is cleared" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
     // Above any pid_max, so kill() cannot find it and cannot ever be reused.
-    try writeTestLockfile(tmp.dir, 2147483646);
+    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
 
     try std.testing.expect(!try server.checkExistingServer());
     try std.testing.expect(server.pid == null);
-    try std.testing.expectError(error.FileNotFound, tmp.dir.access(LOCKFILE_NAME, .{}));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{}));
 }
 
 test "no lockfile means no server to adopt" {
@@ -365,7 +389,7 @@ test "no lockfile means no server to adopt" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
     const server = try WptServer.init(allocator, root);
@@ -383,31 +407,135 @@ test "WptServer.buildTestUrl" {
 
     // Window context (default for .any.js)
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.html", url);
     }
 
     // Worker context generates .any.worker.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
     }
 
     // Window context for another .any.js test
     {
-        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/encoding/api-basics.any.html", url);
     }
 
     // HTML files ignore context (always use raw path)
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
     }
+}
+
+test "buildTestUrl appends a variant verbatim" {
+    // A variant carries its own leading `?` or `#` - WPT writes them as
+    // `<meta name="variant" content="?include=file">` - so it is concatenated
+    // rather than joined. Anything that normalised it here would build a URL
+    // that is not the one MANIFEST.json lists.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const url = try server.buildTestUrl(allocator, "encoding/single-byte-decoder.html", .window, "?windows-1252");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/encoding/single-byte-decoder.html?windows-1252",
+            url,
+        );
+    }
+
+    // A fragment variant is passed through untouched, not turned into a query.
+    {
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "#target");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/dom/nodes/Element-matches.html#target",
+            url,
+        );
+    }
+}
+
+test "buildTestUrl puts the variant after the generated wrapper suffix" {
+    // The path `wpt serve` routes on is the wrapper - `x.any.worker.html` - and
+    // the query is what the test reads back out of `location.search`. Appending
+    // the variant before the suffix would ask for `x.any?q=1.worker.html` and
+    // 404 every variant of every .any.js in the corpus.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window, "?include=file");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/url/url-constructor.any.html?include=file",
+            url,
+        );
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, "?include=file");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/url/url-constructor.any.worker.html?include=file",
+            url,
+        );
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window, "?exclude=Node");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "https://web-platform.test:8443/html/dom/idlharness.https.window.html?exclude=Node",
+            url,
+        );
+    }
+}
+
+test "buildTestUrl with an empty variant is byte-identical to no variant" {
+    // Two thirds of the corpus declares no variant and is modelled as declaring
+    // one empty one, so this is the path almost every test takes. It has to
+    // produce exactly the URL it produced before variants existed.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    for ([_][]const u8{
+        "dom/nodes/Element-matches.html",
+        "url/url-constructor.any.js",
+        "fetch/api/basic/keepalive.https.any.js",
+    }) |path| {
+        for ([_]test_parser.GlobalType{ .window, .worker }) |ctx| {
+            const url = try server.buildTestUrl(allocator, path, ctx, "");
+            defer allocator.free(url);
+            try std.testing.expect(std.mem.indexOfScalar(u8, url, '?') == null);
+            try std.testing.expect(std.mem.endsWith(u8, url, ".html"));
+        }
+    }
+}
+
+test "a variant does not leak into the document origin" {
+    // Same-origin checks compare against `originFor`, which is derived from the
+    // path alone. If the query ever reached the origin string, every variant of
+    // every test would look cross-origin to its own blob URLs and workers.
+    const allocator = std.testing.allocator;
+
+    var server = WptServer{ .allocator = allocator, .wpt_root = "tests/wpt" };
+
+    const url = try server.buildTestUrl(allocator, "url/a-element.html", .window, "?include=file");
+    defer allocator.free(url);
+    const origin = try server.originFor(allocator, "url/a-element.html");
+    defer allocator.free(origin);
+    try std.testing.expectEqualStrings(origin, originOfUrl(url).?);
 }
 
 test "isHttpsTest keys off the filename, not the directory" {
@@ -435,7 +563,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
     defer server.deinit();
 
     {
-        const url = try server.buildTestUrl(allocator, "cookiestore/cookieStore_get_arguments.https.html", .window);
+        const url = try server.buildTestUrl(allocator, "cookiestore/cookieStore_get_arguments.https.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/cookiestore/cookieStore_get_arguments.https.html",
@@ -445,7 +573,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
 
     // The suffix rewrite for generated wrappers still applies under TLS.
     {
-        const url = try server.buildTestUrl(allocator, "fetch/api/basic/keepalive.https.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "fetch/api/basic/keepalive.https.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/fetch/api/basic/keepalive.https.any.html",
@@ -453,7 +581,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
         );
     }
     {
-        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window);
+        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/html/dom/idlharness.https.window.html",
@@ -494,12 +622,12 @@ test "a non-default port pair is carried into both schemes" {
     server.https_port = 8444;
 
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8001/dom/nodes/Element-matches.html", url);
     }
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.https.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.https.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("https://web-platform.test:8444/dom/nodes/Element-matches.https.html", url);
     }
@@ -541,13 +669,13 @@ test "the origin of a built test URL is the origin the test will report" {
 
     var server = WptServer{ .allocator = allocator, .wpt_root = "tests/wpt" };
 
-    const plain = try server.buildTestUrl(allocator, "url/a-element.html", .window);
+    const plain = try server.buildTestUrl(allocator, "url/a-element.html", .window, "");
     defer allocator.free(plain);
     const plain_origin = try server.originFor(allocator, "url/a-element.html");
     defer allocator.free(plain_origin);
     try std.testing.expectEqualStrings(plain_origin, originOfUrl(plain).?);
 
-    const tls = try server.buildTestUrl(allocator, "fetch/api/basic/x.https.html", .window);
+    const tls = try server.buildTestUrl(allocator, "fetch/api/basic/x.https.html", .window, "");
     defer allocator.free(tls);
     const tls_origin = try server.originFor(allocator, "fetch/api/basic/x.https.html");
     defer allocator.free(tls_origin);

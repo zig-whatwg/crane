@@ -28,13 +28,13 @@ pub const DOMQuad = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "p1", "get_p1", null },
@@ -42,19 +42,19 @@ pub const DOMQuad = struct {
             .{ "p3", "get_p3", null },
             .{ "p4", "get_p4", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getBounds", "call_getBounds", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "fromRect", "call_static_fromRect", 0 },
             .{ "fromQuad", "call_static_fromQuad", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fromRect",
@@ -62,11 +62,10 @@ pub const DOMQuad = struct {
             "getBounds",
             "toJSON",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "p1", "get_p1", null },
@@ -74,11 +73,10 @@ pub const DOMQuad = struct {
             .{ "p3", "get_p3", null },
             .{ "p4", "get_p4", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -112,7 +110,6 @@ pub const DOMQuad = struct {
     };
 
     const delegates = .{
-
         .get_p1 = &get_p1,
         .get_p2 = &get_p2,
         .get_p3 = &get_p3,
@@ -123,7 +120,7 @@ pub const DOMQuad = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -216,15 +213,14 @@ pub const DOMQuad = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DOMQuadImpl.call_static_fromRect(instance, other);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(DOMQuadInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DOMQuadImpl.call_static_fromQuad(instance, other);
     }
-
 };

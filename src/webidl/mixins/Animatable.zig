@@ -21,4 +21,3 @@ pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.Get
 pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: runtime.JSValue) !*runtime.Instance {
     return AnimatableImpl.call_animate(instance, keyframes, options);
 }
-

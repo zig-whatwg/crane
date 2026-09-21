@@ -47,8 +47,8 @@ pub const ProcessResult = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .changed = .{},
-            .deleted = .{},
+            .changed = .empty,
+            .deleted = .empty,
             .allocator = allocator,
         };
     }
@@ -166,7 +166,7 @@ pub fn filterChangesForSubscriptions(
     default_url_host: []const u8,
     default_url_path: []const u8,
 ) !std.ArrayListUnmanaged(CookieChange) {
-    var result = std.ArrayListUnmanaged(CookieChange){};
+    var result: std.ArrayListUnmanaged(CookieChange) = .empty;
     errdefer {
         for (result.items) |*c| c.deinit();
         result.deinit(allocator);

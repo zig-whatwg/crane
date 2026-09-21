@@ -27,42 +27,40 @@ pub const ReadableStreamDefaultReader = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "read", "call_read", 0 },
             .{ "releaseLock", "call_releaseLock", 0 },
             .{ "cancel", "call_cancel", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "read",
             "releaseLock",
             "cancel",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -76,7 +74,6 @@ pub const ReadableStreamDefaultReader = struct {
     );
 
     const delegates = .{
-
         .get_closed = &get_closed,
 
         .call_cancel = &call_cancel,
@@ -85,7 +82,7 @@ pub const ReadableStreamDefaultReader = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -121,7 +118,6 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try ReadableStreamDefaultReaderImpl.call_cancel(instance, reason);
     }
 
@@ -132,5 +128,4 @@ pub const ReadableStreamDefaultReader = struct {
     pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
         return try ReadableStreamDefaultReaderImpl.call_releaseLock(instance);
     }
-
 };

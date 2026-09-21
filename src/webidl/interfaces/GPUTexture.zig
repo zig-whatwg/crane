@@ -35,13 +35,13 @@ pub const GPUTexture = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", null },
@@ -55,23 +55,22 @@ pub const GPUTexture = struct {
             .{ "textureBindingViewDimension", "get_textureBindingViewDimension", null },
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createView", "call_createView", 0 },
             .{ "destroy", "call_destroy", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createView",
             "destroy",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", null },
@@ -85,11 +84,10 @@ pub const GPUTexture = struct {
             .{ "textureBindingViewDimension", "get_textureBindingViewDimension", null },
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -107,7 +105,7 @@ pub const GPUTexture = struct {
             usage: typedefs.GPUFlagsConstant = undefined,
             textureBindingViewDimension: union(enum) {
                 GPUTextureViewDimension: GPUTextureViewDimension,
-                @"undefined": void,
+                undefined: void,
             } = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUTextureImpl.InternalState = null,
@@ -115,7 +113,6 @@ pub const GPUTexture = struct {
     );
 
     const delegates = .{
-
         .get_depthOrArrayLayers = &get_depthOrArrayLayers,
         .get_dimension = &get_dimension,
         .get_format = &get_format,
@@ -134,7 +131,7 @@ pub const GPUTexture = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -202,12 +199,10 @@ pub const GPUTexture = struct {
     }
 
     pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(GPUTextureViewDescriptor)) anyerror!*runtime.Instance {
-        
         return try GPUTextureImpl.call_createView(instance, descriptor);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try GPUTextureImpl.call_destroy(instance);
     }
-
 };

@@ -22,20 +22,19 @@ pub const SVGPreserveAspectRatio = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "align", "get_align", "set_align" },
             .{ "meetOrSlice", "get_meetOrSlice", "set_meetOrSlice" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_PRESERVEASPECTRATIO_UNKNOWN", "get_SVG_PRESERVEASPECTRATIO_UNKNOWN" },
@@ -53,25 +52,22 @@ pub const SVGPreserveAspectRatio = struct {
             .{ "SVG_MEETORSLICE_MEET", "get_SVG_MEETORSLICE_MEET" },
             .{ "SVG_MEETORSLICE_SLICE", "get_SVG_MEETORSLICE_SLICE" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "align", "get_align", "set_align" },
             .{ "meetOrSlice", "get_meetOrSlice", "set_meetOrSlice" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -160,7 +156,6 @@ pub const SVGPreserveAspectRatio = struct {
     }
 
     const delegates = .{
-
         .get_SVG_MEETORSLICE_MEET = &get_SVG_MEETORSLICE_MEET,
         .get_SVG_MEETORSLICE_SLICE = &get_SVG_MEETORSLICE_SLICE,
         .get_SVG_MEETORSLICE_UNKNOWN = &get_SVG_MEETORSLICE_UNKNOWN,
@@ -183,7 +178,7 @@ pub const SVGPreserveAspectRatio = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -221,5 +216,4 @@ pub const SVGPreserveAspectRatio = struct {
     pub fn set_meetOrSlice(instance: *runtime.Instance, value: u16) anyerror!void {
         try SVGPreserveAspectRatioImpl.set_meetOrSlice(instance, value);
     }
-
 };

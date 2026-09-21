@@ -21,4 +21,3 @@ pub fn get_requiredExtensions(instance: *runtime.Instance) !*runtime.Instance {
 pub fn get_systemLanguage(instance: *runtime.Instance) !*runtime.Instance {
     return SVGTestsImpl.get_systemLanguage(instance);
 }
-

@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const build_options = @import("build_options");
 const log = std.log.scoped(.v8_bindings);
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
@@ -85,6 +86,87 @@ pub fn shouldSkipInterface(comptime name: []const u8) bool {
     return comptime blk: {
         for (interface_skip_list) |skip| {
             if (std.mem.eql(u8, name, skip)) break :blk true;
+        }
+        if (!interfaceAllowed(name)) break :blk true;
+        break :blk false;
+    };
+}
+
+/// Is `name` in the -Dinterfaces allow-list?
+///
+/// An empty allow-list means "everything", which is the default and is exactly the
+/// behaviour that existed before this hook - so an ordinary build is unaffected.
+///
+/// This is where dead-code elimination actually bites. The `inline for` loops over
+/// `@typeInfo(interfaces).decls` reference every interface, which is what forces all
+/// 1,263 of them to be analysed and emitted; `interfaces/root.zig`'s unconditional
+/// imports do not, because Zig analyses only referenced declarations. Narrowing the
+/// loops is therefore the lever, and this is the single place they all consult.
+pub fn interfaceAllowed(comptime name: []const u8) bool {
+    return comptime blk: {
+        const list = build_options.interface_allowlist;
+        if (list.len == 0) break :blk true;
+
+        // This runs once per interface, and there are 1,263 of them, each splitting
+        // and comparing the list. The default 1,000-branch budget is nowhere near
+        // enough - without this the build dies in std.mem with "evaluation exceeded
+        // 200000 backwards branches", pointing at the stdlib rather than here.
+        @setEvalBranchQuota(2_000_000);
+
+        var it = std.mem.splitScalar(u8, list, ',');
+        while (it.next()) |raw| {
+            const entry = std.mem.trim(u8, raw, " \t");
+            if (entry.len == 0) continue;
+            if (std.mem.eql(u8, entry, name)) break :blk true;
+            // An entry also admits everything it INHERITS FROM. Listing
+            // "HTMLDivElement" without HTMLElement, Element, Node and EventTarget
+            // would expose a constructor whose prototype chain is missing every
+            // link above it - `div.addEventListener` would not exist. build.zig has
+            // always documented the allow-list as covering "those names plus their
+            // ancestors"; until now it did not, and the difference only showed up
+            // at runtime as absent methods.
+            if (isAncestorOf(name, entry)) break :blk true;
+        }
+        break :blk false;
+    };
+}
+
+/// Is `name` an ancestor of the interface called `descendant_name`?
+///
+/// Walks `Meta.ParentInterface` from the descendant upwards. Returns false when the
+/// descendant is not a known interface, which is the right answer for a typo in the
+/// allow-list: an unknown entry admits nothing rather than everything.
+fn isAncestorOf(comptime name: []const u8, comptime descendant_name: []const u8) bool {
+    return comptime blk: {
+        @setEvalBranchQuota(2_000_000);
+        if (!@hasDecl(interfaces, descendant_name)) break :blk false;
+
+        const Start = @field(interfaces, descendant_name);
+        // `interfaces` also exposes non-container decls; `@hasDecl` on one is a
+        // compile error, not a false, so the shape has to be checked first.
+        if (@TypeOf(Start) != type) break :blk false;
+        switch (@typeInfo(Start)) {
+            .@"struct", .@"union", .@"enum", .@"opaque" => {},
+            else => break :blk false,
+        }
+
+        var Cur = Start;
+        // Bounded rather than `while (true)`: a cycle in generated Meta would
+        // otherwise hang the compiler with no diagnostic. No real chain is close
+        // to this deep.
+        var depth: usize = 0;
+        while (depth < 32) : (depth += 1) {
+            if (!@hasDecl(Cur, "Meta")) break;
+            if (!@hasDecl(Cur.Meta, "ParentInterface")) break;
+            const Parent = Cur.Meta.ParentInterface;
+            if (@TypeOf(Parent) != type) break;
+            switch (@typeInfo(Parent)) {
+                .@"struct", .@"union", .@"enum", .@"opaque" => {},
+                else => break,
+            }
+            if (!@hasDecl(Parent, "Meta") or !@hasDecl(Parent.Meta, "name")) break;
+            if (std.mem.eql(u8, Parent.Meta.name, name)) break :blk true;
+            Cur = Parent;
         }
         break :blk false;
     };

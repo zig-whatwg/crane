@@ -4,6 +4,7 @@
 //! after parsing all files and merging partial interfaces.
 
 const std = @import("std");
+const log = std.log.scoped(.ir);
 const types = @import("types.zig");
 const spec_priority_mod = @import("spec_priority.zig");
 const type_registry_mod = @import("type_registry.zig");
@@ -162,7 +163,7 @@ pub const IR = struct {
                 if (self.spec_priority.shouldPrefer(iface.name, source_file, existing_source)) {
                     // New spec has higher priority - replace existing
                     if (!same_file) {
-                        std.debug.print("  ⚠️  Duplicate '{s}': preferring {s} over {s}\n", .{ iface.name, source_file, existing_source });
+                        log.warn("  ⚠️  Duplicate '{s}': preferring {s} over {s}", .{ iface.name, source_file, existing_source });
                     }
 
                     // Replace the base definition
@@ -171,7 +172,7 @@ pub const IR = struct {
                 } else {
                     // Existing spec has higher priority - skip new one
                     if (!same_file) {
-                        std.debug.print("  ⚠️  Duplicate '{s}': keeping {s}, skipping {s}\n", .{ iface.name, existing_source, source_file });
+                        log.warn("  ⚠️  Duplicate '{s}': keeping {s}, skipping {s}", .{ iface.name, existing_source, source_file });
                     }
                     // Skip this duplicate (don't return error)
                 }
@@ -190,14 +191,14 @@ pub const IR = struct {
             // Find the target interface
             const target_iface = self.interfaces.getPtr(inc.target);
             if (target_iface == null) {
-                std.debug.print("  ⚠️  Warning: Interface '{s}' not found for includes statement\n", .{inc.target});
+                log.warn("  ⚠️  Warning: Interface '{s}' not found for includes statement", .{inc.target});
                 continue;
             }
 
             // Find the mixin interface
             const mixin_iface = self.interfaces.get(inc.mixin);
             if (mixin_iface == null) {
-                std.debug.print("  ⚠️  Warning: Mixin '{s}' not found for includes statement\n", .{inc.mixin});
+                log.warn("  ⚠️  Warning: Mixin '{s}' not found for includes statement", .{inc.mixin});
                 continue;
             }
 
@@ -305,13 +306,13 @@ pub const IR = struct {
                 if (self.spec_priority.shouldPrefer(dict.name, source_file, existing_source)) {
                     // New spec has higher priority - replace existing
                     if (!same_file) {
-                        std.debug.print("  ⚠️  Duplicate dictionary '{s}': preferring {s} over {s}\n", .{ dict.name, source_file, existing_source });
+                        log.warn("  ⚠️  Duplicate dictionary '{s}': preferring {s} over {s}", .{ dict.name, source_file, existing_source });
                     }
                     existing.* = dict;
                 } else {
                     // Existing spec has higher priority - skip new one
                     if (!same_file) {
-                        std.debug.print("  ⚠️  Duplicate dictionary '{s}': keeping {s}, skipping {s}\n", .{ dict.name, existing_source, source_file });
+                        log.warn("  ⚠️  Duplicate dictionary '{s}': keeping {s}, skipping {s}", .{ dict.name, existing_source, source_file });
                     }
                 }
             } else {
@@ -596,7 +597,7 @@ pub fn collectToJSONAttributes(
     interface_name: []const u8,
     ir: *const IR,
 ) ![]ToJSONAttribute {
-    var attrs: std.ArrayList(ToJSONAttribute) = .{};
+    var attrs: std.ArrayList(ToJSONAttribute) = .empty;
     errdefer attrs.deinit(allocator);
 
     // Track seen attribute names to handle overrides

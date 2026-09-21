@@ -387,20 +387,57 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             }
         }
 
-        /// Returns a writer for appending bytes to the list (only valid for List(u8))
-        /// This provides compatibility with code generation that expects a writer interface
+        /// A byte sink over this list. Only valid for `List(u8)`.
+        ///
+        /// Zig 0.16 removed `std.io.GenericWriter`, which was generic over the
+        /// context type. `std.Io.Writer` is a single non-generic struct instead,
+        /// so the implementation is recovered from the interface pointer with
+        /// `@fieldParentPtr` - which means the caller has to OWN the writer:
+        ///
+        ///     var w = list.writer();
+        ///     try w.interface.print("{d}", .{n});
+        ///
+        /// rather than using it as a temporary. Unbuffered (`buffer = &.{}`), so
+        /// every write lands in `drain` and reaches the list immediately; there
+        /// is nothing to flush.
+        pub const Writer = struct {
+            list: *Self,
+            interface: std.Io.Writer,
+
+            fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+                const self: *Writer = @alignCast(@fieldParentPtr("interface", w));
+                // Anything already buffered is consumed first. buffer is empty
+                // here, but honour the contract rather than assume.
+                if (w.end != 0) {
+                    self.list.appendSlice(w.buffer[0..w.end]) catch return error.WriteFailed;
+                    w.end = 0;
+                }
+                // The last slice of `data` is a pattern repeated `splat` times.
+                const head = data[0 .. data.len - 1];
+                const pattern = data[data.len - 1];
+                var written: usize = 0;
+                for (head) |bytes| {
+                    self.list.appendSlice(bytes) catch return error.WriteFailed;
+                    written += bytes.len;
+                }
+                for (0..splat) |_| {
+                    self.list.appendSlice(pattern) catch return error.WriteFailed;
+                    written += pattern.len;
+                }
+                return written;
+            }
+
+            const vtable: std.Io.Writer.VTable = .{ .drain = drain };
+        };
+
         pub fn writer(self: *Self) if (T == u8) Writer else void {
             if (T != u8) {
                 @compileError("writer() is only available for List(u8)");
             }
-            return Writer{ .context = self };
-        }
-
-        const Writer = if (T == u8) std.io.GenericWriter(*Self, error{OutOfMemory}, writeImpl) else void;
-
-        fn writeImpl(self: *Self, bytes: []const u8) error{OutOfMemory}!usize {
-            try self.appendSlice(bytes);
-            return bytes.len;
+            return .{
+                .list = self,
+                .interface = .{ .buffer = &.{}, .vtable = &Writer.vtable },
+            };
         }
 
         pub fn getIndices(self: *const Self, allocator: Allocator) ![]const usize {

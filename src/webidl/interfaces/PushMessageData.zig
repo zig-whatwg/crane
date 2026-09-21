@@ -25,14 +25,13 @@ pub const PushMessageData = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "arrayBuffer", "call_arrayBuffer", 0 },
@@ -41,7 +40,7 @@ pub const PushMessageData = struct {
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "arrayBuffer",
@@ -50,19 +49,16 @@ pub const PushMessageData = struct {
             "json",
             "text",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -75,7 +71,6 @@ pub const PushMessageData = struct {
     );
 
     const delegates = .{
-
         .call_arrayBuffer = &call_arrayBuffer,
         .call_blob = &call_blob,
         .call_bytes = &call_bytes,
@@ -84,7 +79,7 @@ pub const PushMessageData = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -126,5 +121,4 @@ pub const PushMessageData = struct {
     pub fn call_blob(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PushMessageDataImpl.call_blob(instance);
     }
-
 };

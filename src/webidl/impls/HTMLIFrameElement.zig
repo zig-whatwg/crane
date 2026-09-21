@@ -47,6 +47,7 @@ const NodeBase = dom_module.NodeBase;
 
 // HTML module for scripted parsing with DOM integration
 const html_module = @import("html");
+const clock = @import("clock");
 const scripted_parser = html_module.scripted_parser;
 const document_internals = dom_module.document_internals;
 
@@ -242,8 +243,14 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up integration
+        // Clean up integration, then return ITS block too - `init` takes a second
+        // arena allocation for it, and releasing only what it points to left the
+        // struct held for the life of the process.
         self.integration.deinit();
+        {
+            const Arena = runtime.ArenaAllocator;
+            if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, self.integration);
+        }
 
         // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
         // The [SameObject] DOMTokenList instances are managed by the V8 wrapper cache.
@@ -510,7 +517,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
 /// that JavaScript can access via DOM APIs like getElementById(), querySelector(), etc.
 /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
 fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext, html_content: []const u8) ?*anyopaque {
-    const time_start = std.time.nanoTimestamp();
+    const time_start = clock.monotonicNanos();
     log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}", .{ time_start, html_content.len });
 
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
@@ -536,7 +543,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // The BrowsingContext.allowsScripts() method encapsulates this check.
     const scripting_enabled = browsing_ctx_ptr.allowsScripts();
 
-    log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{std.time.nanoTimestamp()});
+    log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{clock.monotonicNanos()});
     const document_instance = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
@@ -546,7 +553,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         // Fall back to empty document on parse error
         return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
     };
-    log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{std.time.nanoTimestamp()});
+    log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{clock.monotonicNanos()});
 
     // Set document type to HTML
     document_internals.setDocumentType(document_instance, .html) catch {};

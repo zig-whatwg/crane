@@ -63,8 +63,10 @@ pub const ManagedCallback = struct {
         }
 
         fn unref(self: *Handle) void {
-            if (self.ref_count.fetchSub(1, .release) == 1) {
-                std.atomic.fence(.acquire);
+            // `.acq_rel` subsumes the release-on-decrement plus the acquire fence
+            // that the last owner needs before running the destructor.
+            // (`std.atomic.fence` does not exist; the builtin was removed.)
+            if (self.ref_count.fetchSub(1, .acq_rel) == 1) {
                 self.dispose();
                 self.allocator.destroy(self);
             }
@@ -166,7 +168,7 @@ pub const CallbackList = struct {
     pub fn init(allocator: Allocator) CallbackList {
         return .{
             .allocator = allocator,
-            .items = std.ArrayList(Entry).init(allocator),
+            .items = .empty,
         };
     }
 
@@ -177,7 +179,7 @@ pub const CallbackList = struct {
                 dispose_fn(entry.ptr);
             }
         }
-        self.items.deinit();
+        self.items.deinit(self.allocator);
     }
 
     /// Add a callback to the list.
@@ -189,7 +191,7 @@ pub const CallbackList = struct {
         dispose_fn: ?*const fn (*anyopaque) void,
     ) !usize {
         const index = self.items.items.len;
-        try self.items.append(.{
+        try self.items.append(self.allocator, .{
             .ptr = callback_ptr,
             .dispose_fn = dispose_fn,
         });

@@ -167,8 +167,8 @@ pub const PatternParser = struct {
             .encoding_callback = encoding_callback,
             .options = options,
             .segment_wildcard_regexp = generateSegmentWildcardRegexp(options),
-            .part_list = .{},
-            .pending_fixed_value = .{},
+            .part_list = .empty,
+            .pending_fixed_value = .empty,
             .index = 0,
             .next_numeric_name = 0,
             .allocator = allocator,
@@ -238,7 +238,7 @@ pub const PatternParser = struct {
 
     /// Consume text (char and escaped_char tokens)
     fn consumeText(self: *Self) ![]const u8 {
-        var result: std.ArrayListUnmanaged(u8) = .{};
+        var result: std.ArrayListUnmanaged(u8) = .empty;
         errdefer result.deinit(self.allocator);
 
         while (true) {
@@ -507,7 +507,7 @@ pub fn parsePatternString(
 
     // Transfer ownership of part list
     const parts = try pat_parser.part_list.toOwnedSlice(allocator);
-    pat_parser.part_list = .{};
+    pat_parser.part_list = .empty;
     pat_parser.deinit();
 
     return ParseResult{

@@ -26,14 +26,13 @@ pub const Clients = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
@@ -41,7 +40,7 @@ pub const Clients = struct {
             .{ "openWindow", "call_openWindow", 1 },
             .{ "claim", "call_claim", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
@@ -49,19 +48,16 @@ pub const Clients = struct {
             "openWindow",
             "claim",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,7 +70,6 @@ pub const Clients = struct {
     );
 
     const delegates = .{
-
         .call_claim = &call_claim,
         .call_get = &call_get,
         .call_matchAll = &call_matchAll,
@@ -82,7 +77,7 @@ pub const Clients = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -114,22 +109,21 @@ pub const Clients = struct {
     /// Extended attributes: [NewObject]
     pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(ClientQueryOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ClientsImpl.call_matchAll(instance, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ClientsImpl.call_get(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ClientsImpl.call_openWindow(instance, url);
     }
-
 };

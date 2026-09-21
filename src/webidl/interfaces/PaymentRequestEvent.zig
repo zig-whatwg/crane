@@ -37,10 +37,10 @@ pub const PaymentRequestEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "topOrigin", "get_topOrigin", null },
@@ -52,7 +52,7 @@ pub const PaymentRequestEvent = struct {
             .{ "paymentOptions", "get_paymentOptions", null },
             .{ "shippingOptions", "get_shippingOptions", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "openWindow", "call_openWindow", 1 },
@@ -61,7 +61,7 @@ pub const PaymentRequestEvent = struct {
             .{ "changeShippingOption", "call_changeShippingOption", 1 },
             .{ "respondWith", "call_respondWith", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "openWindow",
@@ -70,7 +70,7 @@ pub const PaymentRequestEvent = struct {
             "changeShippingOption",
             "respondWith",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -80,7 +80,7 @@ pub const PaymentRequestEvent = struct {
             "initEvent",
             "waitUntil",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "topOrigin", "get_topOrigin", null },
@@ -92,11 +92,10 @@ pub const PaymentRequestEvent = struct {
             .{ "paymentOptions", "get_paymentOptions", null },
             .{ "shippingOptions", "get_shippingOptions", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -117,7 +116,6 @@ pub const PaymentRequestEvent = struct {
     );
 
     const delegates = .{
-
         .get_methodData = &get_methodData,
         .get_modifiers = &get_modifiers,
         .get_paymentOptions = &get_paymentOptions,
@@ -135,7 +133,7 @@ pub const PaymentRequestEvent = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -199,28 +197,22 @@ pub const PaymentRequestEvent = struct {
     }
 
     pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: runtime.JSValue) anyerror!void {
-        
         return try PaymentRequestEventImpl.call_respondWith(instance, handlerResponsePromise);
     }
 
     pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try PaymentRequestEventImpl.call_openWindow(instance, url);
     }
 
     pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!runtime.JSValue {
-        
         return try PaymentRequestEventImpl.call_changeShippingOption(instance, shippingOption);
     }
 
     pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
     }
 
     pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
-
 };

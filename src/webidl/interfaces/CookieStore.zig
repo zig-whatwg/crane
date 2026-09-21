@@ -39,18 +39,18 @@ pub const CookieStore = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "ServiceWorker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .ServiceWorker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
@@ -58,7 +58,7 @@ pub const CookieStore = struct {
             .{ "set", "call_set", 2 },
             .{ "delete", "call_delete", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
@@ -66,7 +66,7 @@ pub const CookieStore = struct {
             "set",
             "delete",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -74,16 +74,15 @@ pub const CookieStore = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -97,7 +96,6 @@ pub const CookieStore = struct {
     );
 
     const delegates = .{
-
         .get_onchange = &get_onchange,
 
         .set_onchange = &set_onchange,
@@ -109,7 +107,7 @@ pub const CookieStore = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -143,23 +141,18 @@ pub const CookieStore = struct {
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try CookieStoreImpl.call_set(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try CookieStoreImpl.call_get(instance, name);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try CookieStoreImpl.call_getAll(instance, name);
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-        
         return try CookieStoreImpl.call_delete(instance, name);
     }
-
 };

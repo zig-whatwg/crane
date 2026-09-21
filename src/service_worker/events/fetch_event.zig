@@ -143,7 +143,7 @@ pub const FetchEvent = struct {
             .client_id = client_id_copy,
             .resulting_client_id = resulting_id_copy,
             .replaces_client_id = replaces_id_copy,
-            .added_routes = .{},
+            .added_routes = .empty,
             .handled_promise = VoidPromise.init(),
         };
 

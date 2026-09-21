@@ -13,4 +13,3 @@ const GPUCommandsMixinImpl = @import("impls").GPUCommandsMixin;
 
 // Re-export types from impl
 pub const impl = @import("impls").GPUCommandsMixin;
-

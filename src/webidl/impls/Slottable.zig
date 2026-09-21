@@ -86,8 +86,8 @@ pub fn findSlot(slottable: *runtime.Instance, open_flag: bool) ?*runtime.Instanc
 ///
 /// Returns a list of slottables assigned to the given slot.
 pub fn findSlottables(allocator: std.mem.Allocator, slot: *runtime.Instance) !std.ArrayList(*runtime.Instance) {
-    var result = std.ArrayList(*runtime.Instance).init(allocator);
-    errdefer result.deinit();
+    var result: std.ArrayList(*runtime.Instance) = .empty;
+    errdefer result.deinit(allocator);
 
     // TODO: Implement full algorithm
     // This requires shadow DOM tree traversal

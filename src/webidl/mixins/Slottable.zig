@@ -17,4 +17,3 @@ pub const impl = @import("impls").Slottable;
 pub fn get_assignedSlot(instance: *runtime.Instance) !?*runtime.Instance {
     return SlottableImpl.get_assignedSlot(instance);
 }
-

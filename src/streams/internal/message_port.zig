@@ -19,6 +19,8 @@ const infra = @import("infra");
 const common = @import("common");
 const JSValue = common.JSValue;
 
+const log = std.log.scoped(.message_port);
+
 /// Message sent through a MessagePort
 pub const Message = struct {
     /// Type of message: "chunk", "close", "error", or "pull"
@@ -307,7 +309,7 @@ pub fn packAndPostMessage(port: *MessagePort, msg_type: []const u8, value: JSVal
 pub fn packAndPostMessageHandlingError(port: *MessagePort, msg_type: []const u8, value: JSValue) void {
     port.postMessage(msg_type, value) catch |err| {
         // In a full implementation, this would dispatch a messageerror event
-        std.debug.print("Failed to post message: {}\n", .{err});
+        log.err("Failed to post message: {}", .{err});
         if (port.onmessageerror) |handler| {
             handler(port);
         }

@@ -88,7 +88,12 @@ fn setInternal(instance: *runtime.Instance, internal: *InternalState) !void {
 /// Remove internal state for an instance
 fn removeInternal(instance: *runtime.Instance) void {
     ensureStorageInit();
-    _ = internal_storage.remove(instance);
+    // Return the block, not just the map entry. StaticRange keeps its own storage
+    // map rather than using InstanceRegistry, so it needs its own release.
+    if (internal_storage.fetchRemove(instance)) |kv| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+    }
 }
 
 /// Initialize instance (creates the instance)

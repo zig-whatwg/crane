@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorStorageBuckets;
 pub fn get_storageBuckets(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorStorageBucketsImpl.get_storageBuckets(instance);
 }
-

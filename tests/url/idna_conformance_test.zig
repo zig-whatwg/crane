@@ -53,7 +53,7 @@ fn parseColumn(raw: []const u8, allocator: std.mem.Allocator) !?[]u8 {
     }
 
     // Handle Unicode escapes: \uXXXX or \x{XXXX}
-    var result = std.ArrayList(u8){};
+    var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
     var i: usize = 0;
@@ -117,7 +117,7 @@ fn parseTestLine(line: []const u8, allocator: std.mem.Allocator) !?TestCase {
     }
 
     // Split by semicolons
-    var columns = std.ArrayList([]const u8){};
+    var columns: std.ArrayList([]const u8) = .empty;
     defer columns.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, line, ';');
@@ -194,14 +194,16 @@ test "IDNA conformance - IdnaTestV2.txt" {
 
     // Read test file
     const file_path = "data/idna/IdnaTestV2.txt";
-    const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+    const io = std.testing.io;
+    const file = std.Io.Dir.cwd().openFile(io, file_path, .{}) catch |err| {
         std.debug.print("Warning: Could not open {s}: {}\n", .{ file_path, err });
         std.debug.print("Skipping IDNA conformance tests\n", .{});
         return;
     };
-    defer file.close();
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10MB max
+    var file_reader = file.reader(io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)); // 10MB max
     defer allocator.free(content);
 
     var line_iter = std.mem.splitScalar(u8, content, '\n');
@@ -211,7 +213,7 @@ test "IDNA conformance - IdnaTestV2.txt" {
     var failed_tests: usize = 0;
     var skipped_tests: usize = 0;
 
-    var failed_cases = std.ArrayList([]const u8){};
+    var failed_cases: std.ArrayList([]const u8) = .empty;
     defer {
         for (failed_cases.items) |msg| {
             allocator.free(msg);

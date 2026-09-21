@@ -25,7 +25,7 @@ pub const TexSubImage2DArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pixels: ?typedefs.ArrayBufferView,
     },
     /// texSubImage2D(target, level, xoffset, yoffset, format, type, source)
@@ -35,7 +35,7 @@ pub const TexSubImage2DArgs = union(enum) {
         xoffset: typedefs.GLint,
         yoffset: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pboOffset)
@@ -47,7 +47,7 @@ pub const TexSubImage2DArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pboOffset: typedefs.GLintptr,
     },
     /// texSubImage2D(target, level, xoffset, yoffset, width, height, format, type, source)
@@ -59,7 +59,7 @@ pub const TexSubImage2DArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texSubImage2D(target, level, xoffset, yoffset, width, height, format, type, srcData, srcOffset)
@@ -71,7 +71,7 @@ pub const TexSubImage2DArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         srcData: typedefs.ArrayBufferView,
         srcOffset: runtime.JSValue,
     },
@@ -131,7 +131,7 @@ pub const TexImage2DArgs = union(enum) {
         height: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pixels: ?typedefs.ArrayBufferView,
     },
     /// texImage2D(target, level, internalformat, format, type, source)
@@ -140,7 +140,7 @@ pub const TexImage2DArgs = union(enum) {
         level: typedefs.GLint,
         internalformat: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texImage2D(target, level, internalformat, width, height, border, format, type, pboOffset)
@@ -152,7 +152,7 @@ pub const TexImage2DArgs = union(enum) {
         height: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         pboOffset: typedefs.GLintptr,
     },
     /// texImage2D(target, level, internalformat, width, height, border, format, type, source)
@@ -164,7 +164,7 @@ pub const TexImage2DArgs = union(enum) {
         height: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         source: typedefs.TexImageSource,
     },
     /// texImage2D(target, level, internalformat, width, height, border, format, type, srcData, srcOffset)
@@ -176,7 +176,7 @@ pub const TexImage2DArgs = union(enum) {
         height: typedefs.GLsizei,
         border: typedefs.GLint,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         srcData: typedefs.ArrayBufferView,
         srcOffset: runtime.JSValue,
     },
@@ -286,7 +286,7 @@ pub const ReadPixelsArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         dstData: ?typedefs.ArrayBufferView,
     },
     /// readPixels(x, y, width, height, format, type, offset)
@@ -296,7 +296,7 @@ pub const ReadPixelsArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         offset: typedefs.GLintptr,
     },
     /// readPixels(x, y, width, height, format, type, dstData, dstOffset)
@@ -306,7 +306,7 @@ pub const ReadPixelsArgs = union(enum) {
         width: typedefs.GLsizei,
         height: typedefs.GLsizei,
         format: typedefs.GLenum,
-        @"type": typedefs.GLenum,
+        type: typedefs.GLenum,
         dstData: typedefs.ArrayBufferView,
         dstOffset: runtime.JSValue,
     },
@@ -343,4 +343,3 @@ pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance
 pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: typedefs.Float32List, srcOffset: runtime.JSValue, srcLength: typedefs.GLuint) anyerror!void {
     return WebGL2RenderingContextOverloadsImpl.call_uniform1fv(instance, location, data, srcOffset, srcLength);
 }
-

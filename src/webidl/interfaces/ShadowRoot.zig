@@ -79,16 +79,11 @@ pub const ShadowRoot = struct {
             "fullscreenElement",
         };
 
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity)
-        /// Note: Includes inherited Node methods because V8 prototype chain is not properly set up
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "getAnimations", "call_getAnimations", 0 },
-            // Inherited from Node - required for DOM tree manipulation
-            .{ "appendChild", "call_appendChild", 1 },
-            .{ "removeChild", "call_removeChild", 1 },
-            .{ "insertBefore", "call_insertBefore", 2 },
         };
 
         /// Methods defined/overridden by this interface
@@ -206,14 +201,9 @@ pub const ShadowRoot = struct {
         .call_getHTML = &call_getHTML,
         .call_setHTMLUnsafe = &call_setHTMLUnsafe,
 
-        // Inherited Node methods - required for DOM tree manipulation
-        .call_appendChild = &call_appendChild,
-        .call_removeChild = &call_removeChild,
-        .call_insertBefore = &call_insertBefore,
-
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -346,40 +336,5 @@ pub const ShadowRoot = struct {
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         return try ShadowRootImpl.call_getHTML(instance, options);
-    }
-
-    // =========================================================================
-    // Inherited Node methods for DOM tree manipulation
-    // These are required because ShadowRoot inherits from DocumentFragment->Node
-    // =========================================================================
-
-    /// Node.appendChild - adds a node to the end of the list of children
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_appendChild(instance, node);
-    }
-
-    /// Node.removeChild - removes a child node from the DOM
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_removeChild(instance, child);
-    }
-
-    /// Node.insertBefore - inserts a node before a reference child
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_insertBefore(instance, node, child);
     }
 };

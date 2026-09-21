@@ -29,6 +29,7 @@
 
 const std = @import("std");
 const fetch = @import("fetch");
+const clock = @import("clock");
 
 const Headers = fetch.Headers;
 const Request = fetch.Request;
@@ -74,9 +75,9 @@ fn runBenchmark(
 
     // Benchmark
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
         benchFn(context);
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
 
         const elapsed: u64 = @intCast(end - start);
         total_ns += elapsed;
@@ -113,12 +114,12 @@ test "fetch benchmark - Headers create" {
     var created_count: u64 = 0;
 
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
 
         const headers = try Headers.init(allocator, .none);
         headers.deinit();
 
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
         _ = end - start;
         created_count += 1;
     }

@@ -25,4 +25,3 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) !v
 pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: typedefs.CryptoKeyID) anyerror!void {
     return SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
 }
-

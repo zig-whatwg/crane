@@ -95,7 +95,7 @@ pub const ReactionQueue = struct {
 
     pub fn init(allocator: Allocator) ReactionQueue {
         return .{
-            .reactions = std.ArrayListUnmanaged(Reaction){},
+            .reactions = .empty,
             .allocator = allocator,
         };
     }
@@ -141,8 +141,8 @@ pub const ReactionsStack = struct {
 
     pub fn init(allocator: Allocator) ReactionsStack {
         return .{
-            .stack = ElementQueueStack{},
-            .backup_queue = ElementQueue{},
+            .stack = .empty,
+            .backup_queue = .empty,
             .allocator = allocator,
         };
     }
@@ -156,7 +156,7 @@ pub const ReactionsStack = struct {
     }
 
     pub fn push(self: *ReactionsStack) !void {
-        const queue = ElementQueue{};
+        const queue: ElementQueue = .empty;
         try self.stack.append(self.allocator, queue);
     }
 
@@ -634,6 +634,7 @@ test "element reaction queue management" {
     // For testing, we create a minimal struct that can be used as a key
     var mock_state: u8 = 0;
     const mock_vtable = runtime.VTable{
+        .name = "<mock-element>",
         .deinit = null,
         .methods_ptr = &.{},
     };

@@ -61,4 +61,3 @@ pub fn call_getLineDash(instance: *runtime.Instance) anyerror!void {
 pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
     return CanvasPathDrawingStylesImpl.call_setLineDash(instance, segments);
 }
-

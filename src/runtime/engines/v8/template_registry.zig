@@ -37,11 +37,16 @@ const runtime = @import("runtime");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const instance_bridge = @import("dom").instance_bridge;
+const ownership = @import("isolate_ownership.zig");
 
 const log = std.log.scoped(.template_registry);
 
 /// Maximum number of interface templates that can be registered
-const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
+// Capacity is per-PROCESS, not per-isolate, and every isolate registers its own
+// entry for every interface it uses. With ~1,263 generated interfaces a single
+// isolate already approaches 2048; a worker would have exhausted it and silently
+// dropped registrations, because the add below is a bounds check with no error.
+const MAX_TEMPLATES = 8192;
 
 /// Entry in the template registry
 const TemplateEntry = struct {
@@ -95,6 +100,43 @@ fn ensureInitialized() void {
     }
 }
 
+/// Dispose and remove only the templates belonging to `isolate`.
+///
+/// `clear()` below wipes EVERY entry. That was harmless while the registry could
+/// only ever hold one isolate's templates, but register() is now per-(interface,
+/// isolate) - so disposing one isolate with clear() would dispose a still-live
+/// worker isolate's FunctionTemplates too, and the next use of those would be a
+/// use-after-free.
+///
+/// The cache generation is still bumped: per-interface caches in V8Interface(T)
+/// compare against a cached isolate pointer, and V8 may hand the same address to a
+/// new isolate, so they must be invalidated whenever any isolate goes away.
+///
+/// The process-wide C++ caches that clear() also resets - async iterator
+/// templates, module resolve/dynamic-import callbacks, the namespace context -
+/// are deliberately NOT touched here. They are not per-isolate, and tearing them
+/// down while another isolate is still running would break it. Full teardown
+/// still goes through clear().
+pub fn clearForIsolate(isolate: *v8.Isolate) void {
+    var write: usize = 0;
+    for (templates[0..template_count]) |maybe_entry| {
+        if (maybe_entry) |e| {
+            if (e.isolate == isolate) {
+                v8.v8_FunctionTemplate_Dispose(e.template);
+                continue; // drop it
+            }
+            templates[write] = e;
+            write += 1;
+        }
+    }
+    // Null out the vacated tail so stale entries cannot be read back.
+    var i = write;
+    while (i < template_count) : (i += 1) templates[i] = null;
+    template_count = write;
+
+    cache_generation +%= 1;
+}
+
 /// Clear all registered templates
 ///
 /// MUST be called before disposing an isolate and creating a new one.
@@ -143,6 +185,30 @@ pub fn clear() void {
     // Don't reset initialized - the registry can be reused
 }
 
+/// How many (interface, isolate) entries are currently registered.
+///
+/// Exposed for tests and diagnostics: the count is what distinguishes a genuine
+/// re-registration (updates in place) from an append, and unbounded growth here is
+/// how the registry would silently fill and start dropping templates.
+pub fn registeredCount() usize {
+    return template_count;
+}
+
+/// Capacity, so a test can assert two full interface sets fit rather than
+/// hard-coding a number that drifts.
+pub const capacity = MAX_TEMPLATES;
+
+/// Remove every entry WITHOUT disposing any V8 handle.
+///
+/// `clear()` calls `v8_FunctionTemplate_Dispose` on each entry, which is correct
+/// for real templates and fatal for a test using synthetic pointers. This exists
+/// so a test can borrow the registry and put it back.
+pub fn resetForTest() void {
+    for (&templates) |*entry| entry.* = null;
+    template_count = 0;
+    cache_generation +%= 1;
+}
+
 /// Register a FunctionTemplate for an interface
 ///
 /// Called by V8Interface.registerGlobal after creating the template.
@@ -162,13 +228,23 @@ pub fn register(
 
     ensureInitialized();
 
-    // Check if already registered (avoid duplicates on re-registration)
-    for (&templates) |*entry| {
+    // Check if already registered (avoid duplicates on re-registration).
+    //
+    // Match on name AND isolate. Matching on name alone made this registry
+    // single-isolate by construction: a second isolate registering "Element"
+    // reassigned the FIRST isolate's entry to itself, and since lookup requires
+    // both name and isolate to match (getTemplateForIsolate), the first isolate
+    // then found NO template for an interface it had already registered.
+    //
+    // V8 Global<FunctionTemplate> handles are isolate-scoped and cannot be shared,
+    // so one entry per (interface, isolate) is the only correct shape. This is the
+    // structural half of Phase 5's exit criterion: two isolates each holding a full
+    // interface template set at the same time.
+    for (templates[0..template_count]) |*entry| {
         if (entry.*) |*e| {
-            if (std.mem.eql(u8, e.name, interface_name)) {
-                // Update existing entry
+            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate) {
+                // Same interface, same isolate: genuine re-registration.
                 e.template = template;
-                e.isolate = isolate;
                 return;
             }
         }
@@ -182,6 +258,14 @@ pub fn register(
             .isolate = isolate,
         };
         template_count += 1;
+    } else {
+        // Previously a silent no-op. A dropped template does not fail here - it
+        // fails much later, as a lookup miss that looks like a missing interface.
+        log.err(
+            "template registry full ({d} entries): dropping '{s}'. Raise MAX_TEMPLATES - " ++
+                "capacity is per-process and every isolate registers its own entries.",
+            .{ MAX_TEMPLATES, interface_name },
+        );
     }
 }
 
@@ -241,6 +325,11 @@ pub fn wrapInstanceAsV8Object(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !*v8.Object {
+    // Reached both from inside V8 callbacks (where the isolate is current by
+    // construction) and from Crane's own code creating wrappers eagerly, which is
+    // the half worth checking.
+    ownership.assertOwned(isolate, "template_registry.wrapInstanceAsV8Object");
+
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
@@ -308,7 +397,12 @@ pub fn wrapInstanceAsV8Object(
                     cached_name_buf[interface_name.len] = 0;
                     break :cached_blk @as([*:0]const u8, @ptrCast(&cached_name_buf));
                 };
+                // Same allocation as the fresh-wrap path below, and this branch is
+                // the CACHE HIT - the one taken every time an already-wrapped node
+                // is handed back to JS, so it runs more often than the other.
                 const cached_global_proto = if (cached_name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+                defer if (cached_global_proto) |p| v8.v8_Object_Dispose(p);
+
                 if (cached_global_proto) |prototype| {
                     _ = v8.v8_Object_SetPrototype(cached_wrapper, context, @ptrCast(prototype));
                 }
@@ -343,6 +437,9 @@ pub fn wrapInstanceAsV8Object(
     // for non-constructible interfaces like HTMLCollection and Navigator.
     // See AGENTS.md Golden Rule #16 for details.
     const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
+    // Owned handle. This is the per-element wrapper path, so leaking it here is
+    // one leaked handle for every DOM object the page creates.
+    defer v8.v8_ObjectTemplate_Dispose(instance_template);
     const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         return error.ObjectCreationFailed;
     };
@@ -364,12 +461,19 @@ pub fn wrapInstanceAsV8Object(
     };
 
     // Get the prototype from the global object - this is the SAME prototype that JavaScript sees
+    // Both prototype getters allocate a fresh Global<Object> - V8's own APIs return
+    // a borrowed Local - and this runs once per wrapped DOM object, so leaking them
+    // leaks per element. `SetPrototype` converts Global to Local and stores nothing
+    // (v8_wrapper.cpp:5984-5988), so releasing straight after is correct.
     const global_proto = if (name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+    defer if (global_proto) |p| v8.v8_Object_Dispose(p);
+
     if (global_proto) |prototype| {
         _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
     } else {
         // Fall back to GetPrototypeObject for interfaces not exposed on global
         if (v8.v8_FunctionTemplate_GetPrototypeObject(template, context)) |prototype| {
+            defer v8.v8_Object_Dispose(prototype);
             _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
         }
     }
@@ -449,406 +553,24 @@ pub fn wrapInstanceAsV8Object(
 /// This looks at the instance's vtable to determine which interface it belongs to.
 /// Compares vtable addresses against known vtables to identify the interface.
 pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
-    // Import generated interfaces to get their vtables
-    const interfaces = @import("interfaces");
-
     // Safety check: validate instance pointer before dereferencing vtable
     if (@intFromPtr(instance) < 0x1000) {
         // Invalid pointer - return generic name
         return "Object";
     }
 
-    // Get the instance's vtable address
-    const inst_vtable = instance.vtable;
-
-    // Compare against known vtable addresses
-    // NOTE: This compares pointer addresses, which works because vtables are comptime constants
-
-    // Check NodeList first (most common for querySelectorAll)
-    if (inst_vtable == &interfaces.NodeList.vtable) {
-        return "NodeList";
-    }
-
-    // Check specific HTML element types (before generic Element check)
-    // These must be checked BEFORE HTMLElement and Element since subclasses
-    // have different vtables than their parents
-    if (inst_vtable == &interfaces.HTMLDivElement.vtable) return "HTMLDivElement";
-    if (inst_vtable == &interfaces.HTMLSpanElement.vtable) return "HTMLSpanElement";
-    if (inst_vtable == &interfaces.HTMLParagraphElement.vtable) return "HTMLParagraphElement";
-    if (inst_vtable == &interfaces.HTMLAnchorElement.vtable) return "HTMLAnchorElement";
-    if (inst_vtable == &interfaces.HTMLImageElement.vtable) return "HTMLImageElement";
-    if (inst_vtable == &interfaces.HTMLInputElement.vtable) return "HTMLInputElement";
-    if (inst_vtable == &interfaces.HTMLButtonElement.vtable) return "HTMLButtonElement";
-    if (inst_vtable == &interfaces.HTMLFormElement.vtable) return "HTMLFormElement";
-    if (inst_vtable == &interfaces.HTMLScriptElement.vtable) return "HTMLScriptElement";
-    if (inst_vtable == &interfaces.HTMLStyleElement.vtable) return "HTMLStyleElement";
-    if (inst_vtable == &interfaces.HTMLLinkElement.vtable) return "HTMLLinkElement";
-    if (inst_vtable == &interfaces.HTMLIFrameElement.vtable) return "HTMLIFrameElement";
-    if (inst_vtable == &interfaces.HTMLHtmlElement.vtable) return "HTMLHtmlElement";
-    if (inst_vtable == &interfaces.HTMLHeadElement.vtable) return "HTMLHeadElement";
-    if (inst_vtable == &interfaces.HTMLBodyElement.vtable) return "HTMLBodyElement";
-    if (inst_vtable == &interfaces.HTMLTitleElement.vtable) return "HTMLTitleElement";
-    if (inst_vtable == &interfaces.HTMLMetaElement.vtable) return "HTMLMetaElement";
-    if (inst_vtable == &interfaces.HTMLBaseElement.vtable) return "HTMLBaseElement";
-    if (inst_vtable == &interfaces.HTMLHeadingElement.vtable) return "HTMLHeadingElement";
-    if (inst_vtable == &interfaces.HTMLBRElement.vtable) return "HTMLBRElement";
-    if (inst_vtable == &interfaces.HTMLHRElement.vtable) return "HTMLHRElement";
-    if (inst_vtable == &interfaces.HTMLPreElement.vtable) return "HTMLPreElement";
-    if (inst_vtable == &interfaces.HTMLQuoteElement.vtable) return "HTMLQuoteElement";
-    if (inst_vtable == &interfaces.HTMLOListElement.vtable) return "HTMLOListElement";
-    if (inst_vtable == &interfaces.HTMLUListElement.vtable) return "HTMLUListElement";
-    if (inst_vtable == &interfaces.HTMLLIElement.vtable) return "HTMLLIElement";
-    if (inst_vtable == &interfaces.HTMLDListElement.vtable) return "HTMLDListElement";
-    if (inst_vtable == &interfaces.HTMLMenuElement.vtable) return "HTMLMenuElement";
-    if (inst_vtable == &interfaces.HTMLTableElement.vtable) return "HTMLTableElement";
-    if (inst_vtable == &interfaces.HTMLTableCaptionElement.vtable) return "HTMLTableCaptionElement";
-    if (inst_vtable == &interfaces.HTMLTableColElement.vtable) return "HTMLTableColElement";
-    if (inst_vtable == &interfaces.HTMLTableSectionElement.vtable) return "HTMLTableSectionElement";
-    if (inst_vtable == &interfaces.HTMLTableRowElement.vtable) return "HTMLTableRowElement";
-    if (inst_vtable == &interfaces.HTMLTableCellElement.vtable) return "HTMLTableCellElement";
-    if (inst_vtable == &interfaces.HTMLLabelElement.vtable) return "HTMLLabelElement";
-    if (inst_vtable == &interfaces.HTMLSelectElement.vtable) return "HTMLSelectElement";
-    if (inst_vtable == &interfaces.HTMLDataListElement.vtable) return "HTMLDataListElement";
-    if (inst_vtable == &interfaces.HTMLOptGroupElement.vtable) return "HTMLOptGroupElement";
-    if (inst_vtable == &interfaces.HTMLOptionElement.vtable) return "HTMLOptionElement";
-    if (inst_vtable == &interfaces.HTMLTextAreaElement.vtable) return "HTMLTextAreaElement";
-    if (inst_vtable == &interfaces.HTMLOutputElement.vtable) return "HTMLOutputElement";
-    if (inst_vtable == &interfaces.HTMLProgressElement.vtable) return "HTMLProgressElement";
-    if (inst_vtable == &interfaces.HTMLMeterElement.vtable) return "HTMLMeterElement";
-    if (inst_vtable == &interfaces.HTMLFieldSetElement.vtable) return "HTMLFieldSetElement";
-    if (inst_vtable == &interfaces.HTMLLegendElement.vtable) return "HTMLLegendElement";
-    if (inst_vtable == &interfaces.HTMLEmbedElement.vtable) return "HTMLEmbedElement";
-    if (inst_vtable == &interfaces.HTMLObjectElement.vtable) return "HTMLObjectElement";
-    if (inst_vtable == &interfaces.HTMLParamElement.vtable) return "HTMLParamElement";
-    if (inst_vtable == &interfaces.HTMLVideoElement.vtable) return "HTMLVideoElement";
-    if (inst_vtable == &interfaces.HTMLAudioElement.vtable) return "HTMLAudioElement";
-    if (inst_vtable == &interfaces.HTMLSourceElement.vtable) return "HTMLSourceElement";
-    if (inst_vtable == &interfaces.HTMLTrackElement.vtable) return "HTMLTrackElement";
-    if (inst_vtable == &interfaces.HTMLCanvasElement.vtable) return "HTMLCanvasElement";
-    if (inst_vtable == &interfaces.CanvasRenderingContext2D.vtable) return "CanvasRenderingContext2D";
-    if (inst_vtable == &interfaces.HTMLMapElement.vtable) return "HTMLMapElement";
-    if (inst_vtable == &interfaces.HTMLAreaElement.vtable) return "HTMLAreaElement";
-    if (inst_vtable == &interfaces.HTMLTemplateElement.vtable) return "HTMLTemplateElement";
-    if (inst_vtable == &interfaces.HTMLSlotElement.vtable) return "HTMLSlotElement";
-    if (inst_vtable == &interfaces.HTMLDialogElement.vtable) return "HTMLDialogElement";
-    if (inst_vtable == &interfaces.HTMLDetailsElement.vtable) return "HTMLDetailsElement";
-    if (inst_vtable == &interfaces.HTMLDataElement.vtable) return "HTMLDataElement";
-    if (inst_vtable == &interfaces.HTMLTimeElement.vtable) return "HTMLTimeElement";
-    if (inst_vtable == &interfaces.HTMLModElement.vtable) return "HTMLModElement";
-    if (inst_vtable == &interfaces.HTMLPictureElement.vtable) return "HTMLPictureElement";
-    if (inst_vtable == &interfaces.HTMLMediaElement.vtable) return "HTMLMediaElement";
-    if (inst_vtable == &interfaces.HTMLUnknownElement.vtable) return "HTMLUnknownElement";
-
-    // Check Element and subclasses (generic fallbacks)
-    if (inst_vtable == &interfaces.Element.vtable) {
-        return "Element";
-    }
-
-    if (inst_vtable == &interfaces.HTMLElement.vtable) {
-        return "HTMLElement";
-    }
-
-    // Check Document
-    if (inst_vtable == &interfaces.Document.vtable) {
-        return "Document";
-    }
-
-    // Check other common types
-    if (inst_vtable == &interfaces.Text.vtable) {
-        return "Text";
-    }
-
-    if (inst_vtable == &interfaces.Comment.vtable) {
-        return "Comment";
-    }
-
-    if (inst_vtable == &interfaces.DocumentFragment.vtable) {
-        return "DocumentFragment";
-    }
-
-    if (inst_vtable == &interfaces.Attr.vtable) {
-        return "Attr";
-    }
-
-    if (inst_vtable == &interfaces.CharacterData.vtable) {
-        return "CharacterData";
-    }
-
-    if (inst_vtable == &interfaces.ProcessingInstruction.vtable) {
-        return "ProcessingInstruction";
-    }
-
-    if (inst_vtable == &interfaces.CDATASection.vtable) {
-        return "CDATASection";
-    }
-
-    if (inst_vtable == &interfaces.DocumentType.vtable) {
-        return "DocumentType";
-    }
-
-    if (inst_vtable == &interfaces.ShadowRoot.vtable) {
-        return "ShadowRoot";
-    }
-
-    if (inst_vtable == &interfaces.Range.vtable) {
-        return "Range";
-    }
-
-    if (inst_vtable == &interfaces.StaticRange.vtable) {
-        return "StaticRange";
-    }
-
-    if (inst_vtable == &interfaces.TreeWalker.vtable) {
-        return "TreeWalker";
-    }
-
-    if (inst_vtable == &interfaces.NodeIterator.vtable) {
-        return "NodeIterator";
-    }
-
-    if (inst_vtable == &interfaces.DOMTokenList.vtable) {
-        return "DOMTokenList";
-    }
-
-    if (inst_vtable == &interfaces.HTMLCollection.vtable) {
-        return "HTMLCollection";
-    }
-
-    if (inst_vtable == &interfaces.NamedNodeMap.vtable) {
-        return "NamedNodeMap";
-    }
-
-    if (inst_vtable == &interfaces.DOMImplementation.vtable) {
-        return "DOMImplementation";
-    }
-
-    // MutationObserver API
-    if (inst_vtable == &interfaces.MutationObserver.vtable) {
-        return "MutationObserver";
-    }
-
-    if (inst_vtable == &interfaces.MutationRecord.vtable) {
-        return "MutationRecord";
-    }
-
-    // IntersectionObserver API
-    if (inst_vtable == &interfaces.IntersectionObserver.vtable) {
-        return "IntersectionObserver";
-    }
-
-    if (inst_vtable == &interfaces.IntersectionObserverEntry.vtable) {
-        return "IntersectionObserverEntry";
-    }
-
-    // DOM Events and AbortController/AbortSignal
-    if (inst_vtable == &interfaces.AbortController.vtable) {
-        return "AbortController";
-    }
-
-    if (inst_vtable == &interfaces.AbortSignal.vtable) {
-        return "AbortSignal";
-    }
-
-    // Check MessageEvent BEFORE Event (since it inherits from Event)
-    if (inst_vtable == &interfaces.MessageEvent.vtable) {
-        return "MessageEvent";
-    }
-
-    if (inst_vtable == &interfaces.Event.vtable) {
-        return "Event";
-    }
-
-    if (inst_vtable == &interfaces.EventTarget.vtable) {
-        return "EventTarget";
-    }
-
-    // Web Storage types
-    if (inst_vtable == &interfaces.Storage.vtable) {
-        return "Storage";
-    }
-
-    // IndexedDB types
-    if (inst_vtable == &interfaces.IDBKeyRange.vtable) {
-        return "IDBKeyRange";
-    }
-
-    if (inst_vtable == &interfaces.IDBFactory.vtable) {
-        return "IDBFactory";
-    }
-
-    if (inst_vtable == &interfaces.IDBDatabase.vtable) {
-        return "IDBDatabase";
-    }
-
-    if (inst_vtable == &interfaces.IDBObjectStore.vtable) {
-        return "IDBObjectStore";
-    }
-
-    if (inst_vtable == &interfaces.IDBIndex.vtable) {
-        return "IDBIndex";
-    }
-
-    if (inst_vtable == &interfaces.IDBRequest.vtable) {
-        return "IDBRequest";
-    }
-
-    if (inst_vtable == &interfaces.IDBOpenDBRequest.vtable) {
-        return "IDBOpenDBRequest";
-    }
-
-    if (inst_vtable == &interfaces.IDBTransaction.vtable) {
-        return "IDBTransaction";
-    }
-
-    if (inst_vtable == &interfaces.IDBCursor.vtable) {
-        return "IDBCursor";
-    }
-
-    if (inst_vtable == &interfaces.IDBCursorWithValue.vtable) {
-        return "IDBCursorWithValue";
-    }
-
-    // Fetch types
-    if (inst_vtable == &interfaces.Headers.vtable) {
-        return "Headers";
-    }
-
-    if (inst_vtable == &interfaces.Request.vtable) {
-        return "Request";
-    }
-
-    if (inst_vtable == &interfaces.Response.vtable) {
-        return "Response";
-    }
-
-    if (inst_vtable == &interfaces.Blob.vtable) {
-        return "Blob";
-    }
-
-    if (inst_vtable == &interfaces.File.vtable) {
-        return "File";
-    }
-
-    if (inst_vtable == &interfaces.FormData.vtable) {
-        return "FormData";
-    }
-
-    // Message passing types
-    if (inst_vtable == &interfaces.MessageChannel.vtable) {
-        return "MessageChannel";
-    }
-
-    if (inst_vtable == &interfaces.MessagePort.vtable) {
-        return "MessagePort";
-    }
-
-    // Streams types
-    if (inst_vtable == &interfaces.ReadableStream.vtable) {
-        return "ReadableStream";
-    }
-
-    if (inst_vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        return "ReadableStreamDefaultReader";
-    }
-
-    if (inst_vtable == &interfaces.ReadableStreamDefaultController.vtable) {
-        return "ReadableStreamDefaultController";
-    }
-
-    if (inst_vtable == &interfaces.WritableStream.vtable) {
-        return "WritableStream";
-    }
-
-    if (inst_vtable == &interfaces.WritableStreamDefaultWriter.vtable) {
-        return "WritableStreamDefaultWriter";
-    }
-
-    if (inst_vtable == &interfaces.WritableStreamDefaultController.vtable) {
-        return "WritableStreamDefaultController";
-    }
-
-    if (inst_vtable == &interfaces.TransformStream.vtable) {
-        return "TransformStream";
-    }
-
-    if (inst_vtable == &interfaces.TransformStreamDefaultController.vtable) {
-        return "TransformStreamDefaultController";
-    }
-
-    // XHR types
-    if (inst_vtable == &interfaces.XMLHttpRequest.vtable) {
-        return "XMLHttpRequest";
-    }
-
-    if (inst_vtable == &interfaces.XMLHttpRequestUpload.vtable) {
-        return "XMLHttpRequestUpload";
-    }
-
-    if (inst_vtable == &interfaces.XMLHttpRequestEventTarget.vtable) {
-        return "XMLHttpRequestEventTarget";
-    }
-
-    // Progress events
-    if (inst_vtable == &interfaces.ProgressEvent.vtable) {
-        return "ProgressEvent";
-    }
-
-    // URL types
-    if (inst_vtable == &interfaces.URL.vtable) {
-        return "URL";
-    }
-
-    if (inst_vtable == &interfaces.URLSearchParams.vtable) {
-        return "URLSearchParams";
-    }
-
-    // CSSOM types
-    if (inst_vtable == &interfaces.CSSStyleDeclaration.vtable) {
-        return "CSSStyleDeclaration";
-    }
-
-    // Geometry types (CSSOM View)
-    if (inst_vtable == &interfaces.DOMRect.vtable) {
-        return "DOMRect";
-    }
-
-    if (inst_vtable == &interfaces.DOMRectReadOnly.vtable) {
-        return "DOMRectReadOnly";
-    }
-
-    if (inst_vtable == &interfaces.DOMRectList.vtable) {
-        return "DOMRectList";
-    }
-
-    if (inst_vtable == &interfaces.DOMPoint.vtable) {
-        return "DOMPoint";
-    }
-
-    if (inst_vtable == &interfaces.DOMPointReadOnly.vtable) {
-        return "DOMPointReadOnly";
-    }
-
-    if (inst_vtable == &interfaces.DOMQuad.vtable) {
-        return "DOMQuad";
-    }
-
-    // Window - critical for cross-realm support
-    if (inst_vtable == &interfaces.Window.vtable) {
-        return "Window";
-    }
-
-    // Location - critical for window.location support
-    if (inst_vtable == &interfaces.Location.vtable) {
-        return "Location";
-    }
-
-    // History - for window.history support
-    if (inst_vtable == &interfaces.History.vtable) {
-        return "History";
-    }
-
-    // Default to "Element" for unknown types (backwards compat)
-    return "Element";
+    // The interface knows its own name; the vtable carries it (runtime.VTable.name,
+    // set from Meta.name by buildVTable).
+    //
+    // This replaced ~400 lines of hand-maintained
+    //     if (inst_vtable == &interfaces.X.vtable) return "X";
+    // branches ending in `return "Element"` for anything unlisted. That chain
+    // covered 139 of 1,263 interfaces, so the other 1,124 were wrapped with
+    // Element's template: window.performance was `[object Element]` with no
+    // now(), and so were navigator and screen. A lookup table parallel to the
+    // generated interfaces could only ever drift; the name travels with the
+    // vtable instead.
+    return instance.vtable.name;
 }
 
 // ============================================================================

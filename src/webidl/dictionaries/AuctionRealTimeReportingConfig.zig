@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const AuctionRealTimeReportingConfig = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
 };

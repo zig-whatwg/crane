@@ -19,7 +19,7 @@ jobs:
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       # The module list is DERIVED from build.zig's `harness_sources`
       # (build.zig:2792, the source of truth) instead of being re-typed here.
@@ -91,7 +91,7 @@ jobs:
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       # libuv is real: build.zig links /opt/homebrew/opt/libuv (build.zig:265).
       # Homebrew's v8 is theatre - nothing in build.zig reads it. The install is

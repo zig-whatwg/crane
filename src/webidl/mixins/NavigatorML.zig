@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorML;
 pub fn get_ml(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorMLImpl.get_ml(instance);
 }
-

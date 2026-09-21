@@ -10,6 +10,7 @@
 //! - Cancelling scheduled wake-ups
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// Abstract timer backend interface.
 ///
@@ -24,14 +25,22 @@ pub const TimerBackend = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        /// Get the current time in milliseconds since epoch.
+        /// Get the current time in milliseconds on a monotonic clock.
+        ///
+        /// This is a scheduling clock, not civil time: the origin is arbitrary and
+        /// the only meaningful operation is subtracting two readings. It must not
+        /// jump when the system clock is stepped, because timer fire times are
+        /// computed as `getCurrentTime() + delay` and compared against later
+        /// readings - an NTP step would otherwise fire every pending timer at once
+        /// or stall them indefinitely.
         getCurrentTime: *const fn (ptr: *anyopaque) i64,
 
         /// Get the current high-resolution time in nanoseconds.
         /// Used for performance timing.
         getHighResTime: *const fn (ptr: *anyopaque) i64,
 
-        /// Schedule a wake-up at the specified time (milliseconds since epoch).
+        /// Schedule a wake-up at the specified time (on the same monotonic
+        /// millisecond scale as `getCurrentTime`).
         /// The wake-up callback will be invoked when the time is reached.
         scheduleWakeup: *const fn (ptr: *anyopaque, time_ms: i64) void,
 
@@ -46,7 +55,7 @@ pub const TimerBackend = struct {
         deinit: *const fn (ptr: *anyopaque) void,
     };
 
-    /// Get the current time in milliseconds since epoch.
+    /// Get the current time in milliseconds on a monotonic clock.
     pub fn getCurrentTime(self: TimerBackend) i64 {
         return self.vtable.getCurrentTime(self.ptr);
     }
@@ -253,11 +262,11 @@ pub const RealTimerBackend = struct {
     };
 
     fn getCurrentTimeImpl(_: *anyopaque) i64 {
-        return std.time.milliTimestamp();
+        return clock.monotonicMillis();
     }
 
     fn getHighResTimeImpl(_: *anyopaque) i64 {
-        const ns: i128 = std.time.nanoTimestamp();
+        const ns: i128 = clock.monotonicNanos();
         return @intCast(@mod(ns, std.math.maxInt(i64)));
     }
 
@@ -280,7 +289,7 @@ pub const RealTimerBackend = struct {
     fn sleepUntilWakeupImpl(ptr: *anyopaque, timeout_ms: ?i64) i64 {
         const self: *RealTimerBackend = @ptrCast(@alignCast(ptr));
 
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
         var sleep_time: i64 = 0;
 
         if (self.scheduled_wakeup) |wakeup| {
@@ -297,10 +306,10 @@ pub const RealTimerBackend = struct {
         }
 
         if (sleep_time > 0) {
-            std.Thread.sleep(@intCast(sleep_time * 1_000_000));
+            clock.sleep(@intCast(sleep_time * 1_000_000));
         }
 
-        return std.time.milliTimestamp() - start_time;
+        return clock.monotonicMillis() - start_time;
     }
 
     fn deinitImpl(ptr: *anyopaque) void {

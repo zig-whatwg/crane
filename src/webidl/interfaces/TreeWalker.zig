@@ -24,10 +24,10 @@ pub const TreeWalker = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "root", "get_root", null },
@@ -35,7 +35,7 @@ pub const TreeWalker = struct {
             .{ "filter", "get_filter", null },
             .{ "currentNode", "get_currentNode", "set_currentNode" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "parentNode", "call_parentNode", 0 },
@@ -46,7 +46,7 @@ pub const TreeWalker = struct {
             .{ "previousNode", "call_previousNode", 0 },
             .{ "nextNode", "call_nextNode", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "parentNode",
@@ -57,11 +57,10 @@ pub const TreeWalker = struct {
             "previousNode",
             "nextNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "root", "get_root", null },
@@ -69,11 +68,10 @@ pub const TreeWalker = struct {
             .{ "filter", "get_filter", null },
             .{ "currentNode", "get_currentNode", "set_currentNode" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -91,7 +89,6 @@ pub const TreeWalker = struct {
     );
 
     const delegates = .{
-
         .get_currentNode = &get_currentNode,
         .get_filter = &get_filter,
         .get_root = &get_root,
@@ -109,7 +106,7 @@ pub const TreeWalker = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -187,5 +184,4 @@ pub const TreeWalker = struct {
     pub fn call_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TreeWalkerImpl.call_parentNode(instance);
     }
-
 };

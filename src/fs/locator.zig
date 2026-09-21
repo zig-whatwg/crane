@@ -39,7 +39,7 @@ pub const FileSystemPath = struct {
     /// Create a new empty path (with root component)
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .components = .{},
+            .components = .empty,
             .allocator = allocator,
             .owns_strings = true,
         };

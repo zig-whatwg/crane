@@ -39,6 +39,7 @@ const test_delegates = TestDelegates{};
 
 /// Test VTable for TestState
 const test_vtable = runtime.VTable{
+    .name = "<test-instance>",
     .deinit = null,
     .methods_ptr = &test_delegates,
 };

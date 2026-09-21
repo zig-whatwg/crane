@@ -31,10 +31,10 @@ pub const UIEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "view", "get_view", null },
@@ -42,17 +42,17 @@ pub const UIEvent = struct {
             .{ "which", "get_which", null },
             .{ "sourceCapabilities", "get_sourceCapabilities", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "initUIEvent", "call_initUIEvent", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "initUIEvent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -61,7 +61,7 @@ pub const UIEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "view", "get_view", null },
@@ -69,11 +69,10 @@ pub const UIEvent = struct {
             .{ "which", "get_which", null },
             .{ "sourceCapabilities", "get_sourceCapabilities", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -90,7 +89,6 @@ pub const UIEvent = struct {
     );
 
     const delegates = .{
-
         .get_detail = &get_detail,
         .get_sourceCapabilities = &get_sourceCapabilities,
         .get_view = &get_view,
@@ -100,7 +98,7 @@ pub const UIEvent = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -148,8 +146,6 @@ pub const UIEvent = struct {
     }
 
     pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
-        
         return try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
     }
-
 };

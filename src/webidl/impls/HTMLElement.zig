@@ -244,9 +244,11 @@ pub fn init(
 
     // Initialize HTMLElement's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the
+    // arena. With `set` it was dropped from the map and held to process
+    // exit - 904 bytes per discarded element, measured.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -661,15 +663,28 @@ fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.Event
     // The stored pointer may have tag bits set (for V8 GlobalHandle identification),
     // which is intentional - the interface layer will untag before using.
     //
-    // We use a packed struct to bypass Zig's alignment checks.
-    // This is the same technique used in conversions.zig for similar conversions.
-    // This is safe because the tagged pointer will be untagged in interface.zig
-    // before any actual dereferencing occurs.
+    // Materialise the handler pointer from a DELIBERATELY MISALIGNED address (the
+    // low bits carry a tag), which rules out every obvious construct:
+    //
+    //   @ptrFromInt(addr)          compiles, then panics "incorrect alignment"
+    //                              in Debug and ReleaseSafe. Verified.
+    //   packed struct { ptr: T }   Zig 0.16 forbids pointer fields in packed structs.
+    //   extern struct { ptr: T }   rejects this T - EventHandler is a plain Zig fn
+    //                              pointer, and extern requires callconv(.c).
+    //   @ptrCast to *align(1)      "@ptrCast increases pointer alignment"; the
+    //                              @alignCast needed to undo it panics as above.
+    //
+    // A byte copy has none of those constraints: it is generic over T, performs no
+    // alignment check, and preserves the bits exactly. Same approach as
+    // src/runtime/engines/v8/conversions.zig, which hit the identical problem.
+    //
+    // Safe because interface.zig untags before any dereference.
     const addr: usize = @intFromPtr(raw_ptr);
     const NonNullHandler = @typeInfo(typedefs.EventHandler).optional.child;
-    const PackedPtr = packed struct { ptr: NonNullHandler };
-    const packed_val: PackedPtr = @bitCast(addr);
-    return packed_val.ptr;
+    comptime std.debug.assert(@sizeOf(NonNullHandler) == @sizeOf(usize));
+    var handler: NonNullHandler = undefined;
+    @memcpy(std.mem.asBytes(&handler), std.mem.asBytes(&addr));
+    return handler;
 }
 
 /// Helper to set an event handler in internal state

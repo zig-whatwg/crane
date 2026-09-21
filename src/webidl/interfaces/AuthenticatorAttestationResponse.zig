@@ -27,15 +27,15 @@ pub const AuthenticatorAttestationResponse = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "attestationObject", "get_attestationObject", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTransports", "call_getTransports", 0 },
@@ -43,7 +43,7 @@ pub const AuthenticatorAttestationResponse = struct {
             .{ "getPublicKey", "call_getPublicKey", 0 },
             .{ "getPublicKeyAlgorithm", "call_getPublicKeyAlgorithm", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getTransports",
@@ -51,20 +51,18 @@ pub const AuthenticatorAttestationResponse = struct {
             "getPublicKey",
             "getPublicKeyAlgorithm",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "attestationObject", "get_attestationObject", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -79,7 +77,6 @@ pub const AuthenticatorAttestationResponse = struct {
     );
 
     const delegates = .{
-
         .get_attestationObject = &get_attestationObject,
 
         .call_getAuthenticatorData = &call_getAuthenticatorData,
@@ -89,7 +86,7 @@ pub const AuthenticatorAttestationResponse = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -139,5 +136,4 @@ pub const AuthenticatorAttestationResponse = struct {
     pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try AuthenticatorAttestationResponseImpl.call_getAuthenticatorData(instance);
     }
-
 };

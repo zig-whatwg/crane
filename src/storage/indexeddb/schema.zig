@@ -28,6 +28,7 @@
 //! - Index Creation: https://w3c.github.io/IndexedDB/#create-index
 
 const std = @import("std");
+const clock = @import("clock");
 
 // ============================================================================
 // Schema Version
@@ -47,7 +48,7 @@ pub const SchemaVersion = struct {
     pub fn init(version: u64) Self {
         return Self{
             .version = version,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.wallMillis(),
             .previous_version = null,
         };
     }
@@ -55,7 +56,7 @@ pub const SchemaVersion = struct {
     pub fn upgrade(self: Self, new_version: u64) Self {
         return Self{
             .version = new_version,
-            .created_at = std.time.milliTimestamp(),
+            .created_at = clock.wallMillis(),
             .previous_version = self.version,
         };
     }
@@ -181,7 +182,7 @@ pub const SchemaMigration = struct {
         return Self{
             .from_version = from_version,
             .to_version = to_version,
-            .changes = .{},
+            .changes = .empty,
             .allocator = allocator,
         };
     }

@@ -37,6 +37,7 @@
 //! ```
 
 const std = @import("std");
+const host = @import("host");
 
 /// Default storage root directory
 const DEFAULT_STORAGE_ROOT = "~/.whatwg/";
@@ -94,7 +95,7 @@ pub const Storage = struct {
         if (self.initialized) return;
 
         // Create root directory
-        std.fs.cwd().makePath(self.root_path) catch |err| {
+        host.cwd().createDirPath(host.io(), self.root_path) catch |err| {
             if (err != error.PathAlreadyExists) return err;
         };
 
@@ -110,7 +111,7 @@ pub const Storage = struct {
             const path = try std.fs.path.join(self.allocator, &.{ self.root_path, subdir });
             defer self.allocator.free(path);
 
-            std.fs.cwd().makePath(path) catch |err| {
+            host.cwd().createDirPath(host.io(), path) catch |err| {
                 if (err != error.PathAlreadyExists) return err;
             };
         }
@@ -425,7 +426,12 @@ pub const SessionStorage = struct {
 /// Expand ~ to home directory
 fn expandPath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     if (path.len > 0 and path[0] == '~') {
-        const home = std.posix.getenv("HOME") orelse "/tmp";
+        // 0.16 made environment variables non-global: std.posix.getenv is gone and
+        // the replacement, Environ, must be threaded from std.process.Init. This is a
+        // leaf path helper with no environ in scope, so it reads libc directly - the
+        // same call the old std.posix.getenv made underneath.
+        const home_z = std.c.getenv("HOME");
+        const home: []const u8 = if (home_z) |h| std.mem.span(h) else "/tmp";
         return std.fs.path.join(allocator, &.{ home, path[1..] });
     }
     return allocator.dupe(u8, path);
@@ -433,7 +439,7 @@ fn expandPath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
 
 /// Escape origin for use as directory name
 fn escapeOrigin(allocator: std.mem.Allocator, origin: []const u8) ![]const u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (origin) |c| {

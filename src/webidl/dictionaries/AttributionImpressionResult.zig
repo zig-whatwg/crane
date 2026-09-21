@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const AttributionImpressionResult = struct {
-};
+pub const AttributionImpressionResult = struct {};

@@ -396,7 +396,7 @@ pub const InternalRequest = struct {
             .allocator = allocator,
             .method = owned_method,
             .header_list = HeaderList.init(allocator),
-            .url_list = .{},
+            .url_list = .empty,
         };
 
         try request.url_list.append(allocator, owned_url);
@@ -545,7 +545,7 @@ pub const InternalRequest = struct {
             .render_blocking = self.render_blocking,
             .local_urls_only = self.local_urls_only,
             .unsafe_request = self.unsafe_request,
-            .url_list = .{},
+            .url_list = .empty,
             .redirect_count = self.redirect_count,
             .response_tainting = self.response_tainting,
             .prevent_no_cache_cache_control_header_modification = self.prevent_no_cache_cache_control_header_modification,

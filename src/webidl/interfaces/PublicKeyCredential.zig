@@ -38,23 +38,23 @@ pub const PublicKeyCredential = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "rawId", "get_rawId", null },
             .{ "response", "get_response", null },
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getClientExtensionResults", "call_getClientExtensionResults", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
@@ -66,7 +66,7 @@ pub const PublicKeyCredential = struct {
             .{ "signalAllAcceptedCredentials", "call_static_signalAllAcceptedCredentials", 1 },
             .{ "signalCurrentUserDetails", "call_static_signalCurrentUserDetails", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getClientExtensionResults",
@@ -80,23 +80,22 @@ pub const PublicKeyCredential = struct {
             "signalAllAcceptedCredentials",
             "signalCurrentUserDetails",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "willRequestConditionalCreation",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "rawId", "get_rawId", null },
             .{ "response", "get_response", null },
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -114,7 +113,6 @@ pub const PublicKeyCredential = struct {
     );
 
     const delegates = .{
-
         .get_authenticatorAttachment = &get_authenticatorAttachment,
         .get_rawId = &get_rawId,
         .get_response = &get_response,
@@ -124,7 +122,7 @@ pub const PublicKeyCredential = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -180,7 +178,6 @@ pub const PublicKeyCredential = struct {
     }
 
     pub fn call_static_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialCreationOptionsJSON) anyerror!PublicKeyCredentialCreationOptions {
-        
         return try PublicKeyCredentialImpl.call_static_parseCreationOptionsFromJSON(instance, options);
     }
 
@@ -189,17 +186,14 @@ pub const PublicKeyCredential = struct {
     }
 
     pub fn call_static_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!runtime.JSValue {
-        
         return try PublicKeyCredentialImpl.call_static_signalAllAcceptedCredentials(instance, options);
     }
 
     pub fn call_static_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!runtime.JSValue {
-        
         return try PublicKeyCredentialImpl.call_static_signalUnknownCredential(instance, options);
     }
 
     pub fn call_static_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!runtime.JSValue {
-        
         return try PublicKeyCredentialImpl.call_static_signalCurrentUserDetails(instance, options);
     }
 
@@ -212,12 +206,10 @@ pub const PublicKeyCredential = struct {
     }
 
     pub fn call_static_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialRequestOptionsJSON) anyerror!PublicKeyCredentialRequestOptions {
-        
         return try PublicKeyCredentialImpl.call_static_parseRequestOptionsFromJSON(instance, options);
     }
 
     pub fn call_static_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.call_static_getClientCapabilities(instance);
     }
-
 };

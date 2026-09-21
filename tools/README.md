@@ -59,16 +59,19 @@ Example tool structure:
 // tools/url/generate_idna_tables.zig
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 delivers the argument vector, a gpa, a process arena and the process
+// `std.Io` through `std.process.Init`. Taking it is what gives a tool an `Io`,
+// which every filesystem call now needs.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
     // Read data file
-    const data = try std.fs.cwd().readFileAlloc(
-        allocator,
+    const data = try std.Io.Dir.cwd().readFileAlloc(
+        io,
         "data/url/idna/UnicodeData.txt",
-        10 * 1024 * 1024,
+        allocator,
+        .limited(10 * 1024 * 1024),
     );
     defer allocator.free(data);
 
@@ -77,10 +80,10 @@ pub fn main() !void {
     defer allocator.free(output);
 
     // Write to src/
-    try std.fs.cwd().writeFile(
-        "src/url/idna/unicode_data.zig",
-        output,
-    );
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = "src/url/idna/unicode_data.zig",
+        .data = output,
+    });
 }
 ```
 

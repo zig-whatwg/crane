@@ -34,7 +34,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
-const Mutex = std.Thread.Mutex;
+const Mutex = std.Io.Mutex;
 const Condition = std.Thread.Condition;
 
 const types = @import("types.zig");
@@ -45,6 +45,7 @@ const WorkerOptions = types.WorkerOptions;
 
 // Message channel types for serialized messages
 const message_channel = @import("message_channel.zig");
+const clock = @import("clock");
 const SerializedValue = message_channel.SerializedValue;
 const JSValue = message_channel.JSValue;
 
@@ -109,7 +110,7 @@ pub const ThreadSafeMessageQueue = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .queue = std.ArrayList(*SerializedMessage).init(allocator),
-            .mutex = .{},
+            .mutex = .init,
             .condition = .{},
             .closed = false,
             .allocator = allocator,
@@ -117,8 +118,8 @@ pub const ThreadSafeMessageQueue = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         // Clean up remaining messages
         for (self.queue.items) |msg| {
@@ -131,8 +132,8 @@ pub const ThreadSafeMessageQueue = struct {
     ///
     /// Returns error if the queue is closed or out of memory.
     pub fn enqueue(self: *Self, message: *SerializedMessage) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.closed) {
             return WorkerError.WorkerClosing;
@@ -148,8 +149,8 @@ pub const ThreadSafeMessageQueue = struct {
     ///
     /// Returns null if no messages are available.
     pub fn tryDequeue(self: *Self) ?*SerializedMessage {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.queue.items.len == 0) {
             return null;
@@ -163,8 +164,8 @@ pub const ThreadSafeMessageQueue = struct {
     /// Blocks until a message is available or the queue is closed.
     /// Returns null if the queue is closed with no remaining messages.
     pub fn dequeue(self: *Self) ?*SerializedMessage {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         while (self.queue.items.len == 0 and !self.closed) {
             self.condition.wait(&self.mutex);
@@ -179,8 +180,8 @@ pub const ThreadSafeMessageQueue = struct {
 
     /// Close the queue (no more messages will be accepted)
     pub fn close(self: *Self) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         self.closed = true;
 
@@ -190,8 +191,8 @@ pub const ThreadSafeMessageQueue = struct {
 
     /// Check if the queue has pending messages
     pub fn hasPending(self: *Self) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         return self.queue.items.len > 0;
     }
@@ -470,7 +471,7 @@ pub const WorkerThreadRunner = struct {
 
             // Small sleep to avoid busy-waiting
             // In a production system, this would use proper event notification
-            std.time.sleep(1_000_000); // 1ms
+            clock.sleep(1_000_000); // 1ms
         }
     }
 

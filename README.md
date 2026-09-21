@@ -5,7 +5,7 @@
 Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://whatwg.org/) web platform standards written in [Zig](https://ziglang.org/). Built for performance, safety, and correctness, Crane provides the foundational building blocks for web-compatible applications and runtimes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Zig Version](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/download/)
+[![Zig Version](https://img.shields.io/badge/Zig-0.16.0-orange.svg)](https://ziglang.org/download/)
 [![CI](https://github.com/bcardarella/whatwg/actions/workflows/test.yml/badge.svg)](https://github.com/bcardarella/whatwg/actions/workflows/test.yml)
 
 ## 🎯 Why Crane?
@@ -353,7 +353,7 @@ See [docs/capability-implementation.md](docs/capability-implementation.md) for d
 
 ### Prerequisites
 
-- **Zig 0.15.1** or later ([download](https://ziglang.org/download/))
+- **Zig 0.16.0** or later ([download](https://ziglang.org/download/))
 
 ### Build Commands
 

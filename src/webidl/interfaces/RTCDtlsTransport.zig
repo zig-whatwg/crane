@@ -34,10 +34,10 @@ pub const RTCDtlsTransport = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "iceTransport", "get_iceTransport", null },
@@ -45,17 +45,17 @@ pub const RTCDtlsTransport = struct {
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRemoteCertificates", "call_getRemoteCertificates", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRemoteCertificates",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -63,7 +63,7 @@ pub const RTCDtlsTransport = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "iceTransport", "get_iceTransport", null },
@@ -71,11 +71,10 @@ pub const RTCDtlsTransport = struct {
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -93,7 +92,6 @@ pub const RTCDtlsTransport = struct {
     );
 
     const delegates = .{
-
         .get_iceTransport = &get_iceTransport,
         .get_onerror = &get_onerror,
         .get_onstatechange = &get_onstatechange,
@@ -106,7 +104,7 @@ pub const RTCDtlsTransport = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -164,5 +162,4 @@ pub const RTCDtlsTransport = struct {
     pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCDtlsTransportImpl.call_getRemoteCertificates(instance);
     }
-
 };

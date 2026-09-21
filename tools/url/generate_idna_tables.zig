@@ -104,15 +104,18 @@ fn parseBidiClass(s: []const u8) !BidiClass {
     return std.meta.stringToEnum(BidiClass, trimmed) orelse return error.InvalidBidiClass;
 }
 
-fn readUnicodeData(allocator: std.mem.Allocator, path: []const u8) !struct {
+fn readUnicodeData(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !struct {
     decompositions: []DecompositionMapping,
     compositions: []CompositionPair,
     combining_classes: []CombiningClass,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    // 0.16: File.readToEndAlloc became a Reader operation with an Io.Limit cap;
+    // overrun reports error.StreamTooLong rather than error.FileTooBig.
+    var file_reader = file.reader(io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     var decomp_list = std.ArrayList(DecompositionMapping).empty;
@@ -216,11 +219,14 @@ fn parseIdnaStatus(s: []const u8) !IdnaStatus {
     return error.InvalidIdnaStatus;
 }
 
-fn readIdnaMappingTable(allocator: std.mem.Allocator, path: []const u8) ![]IdnaMapping {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+fn readIdnaMappingTable(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]IdnaMapping {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    // 0.16: File.readToEndAlloc became a Reader operation with an Io.Limit cap;
+    // overrun reports error.StreamTooLong rather than error.FileTooBig.
+    var file_reader = file.reader(io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     var mappings = std.ArrayList(IdnaMapping).empty;
@@ -288,11 +294,14 @@ fn readIdnaMappingTable(allocator: std.mem.Allocator, path: []const u8) ![]IdnaM
     return mappings.toOwnedSlice(allocator);
 }
 
-fn readCompositionExclusions(allocator: std.mem.Allocator, path: []const u8) ![]CompositionExclusion {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+fn readCompositionExclusions(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]CompositionExclusion {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    // 0.16: File.readToEndAlloc became a Reader operation with an Io.Limit cap;
+    // overrun reports error.StreamTooLong rather than error.FileTooBig.
+    var file_reader = file.reader(io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     var exclusions = std.ArrayList(CompositionExclusion).empty;
@@ -317,11 +326,14 @@ fn readCompositionExclusions(allocator: std.mem.Allocator, path: []const u8) ![]
     return exclusions.toOwnedSlice(allocator);
 }
 
-fn readBidiClasses(allocator: std.mem.Allocator, path: []const u8) ![]BidiRange {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+fn readBidiClasses(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]BidiRange {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    // 0.16: File.readToEndAlloc became a Reader operation with an Io.Limit cap;
+    // overrun reports error.StreamTooLong rather than error.FileTooBig.
+    var file_reader = file.reader(io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     var ranges = std.ArrayList(BidiRange).empty;
@@ -349,16 +361,17 @@ fn readBidiClasses(allocator: std.mem.Allocator, path: []const u8) ![]BidiRange 
     return ranges.toOwnedSlice(allocator);
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 moved the filesystem onto std.Io; std.process.Init supplies it along
+// with a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
     std.debug.print("[IDNA Tables Generator] Starting...\n", .{});
 
     // Read IDNA mapping table
     std.debug.print("[IDNA Tables Generator] Reading IdnaMappingTable.txt...\n", .{});
-    const idna_mappings = try readIdnaMappingTable(allocator, "data/unicode/IdnaMappingTable.txt");
+    const idna_mappings = try readIdnaMappingTable(allocator, io, "data/unicode/IdnaMappingTable.txt");
     defer {
         for (idna_mappings) |m| {
             if (m.mapping) |map| allocator.free(map);
@@ -369,13 +382,13 @@ pub fn main() !void {
 
     // Read bidi classes
     std.debug.print("[IDNA Tables Generator] Reading DerivedBidiClass.txt...\n", .{});
-    const bidi_ranges = try readBidiClasses(allocator, "data/unicode/DerivedBidiClass.txt");
+    const bidi_ranges = try readBidiClasses(allocator, io, "data/unicode/DerivedBidiClass.txt");
     defer allocator.free(bidi_ranges);
     std.debug.print("[IDNA Tables Generator] Loaded {} bidi ranges\n", .{bidi_ranges.len});
 
     // Read Unicode decomposition/composition data
     std.debug.print("[IDNA Tables Generator] Reading UnicodeData.txt...\n", .{});
-    const unicode_data = try readUnicodeData(allocator, "data/unicode/UnicodeData.txt");
+    const unicode_data = try readUnicodeData(allocator, io, "data/unicode/UnicodeData.txt");
     defer {
         for (unicode_data.decompositions) |d| allocator.free(d.decomposition);
         allocator.free(unicode_data.decompositions);
@@ -390,7 +403,7 @@ pub fn main() !void {
 
     // Read composition exclusions
     std.debug.print("[IDNA Tables Generator] Reading DerivedNormalizationProps.txt...\n", .{});
-    const exclusions = try readCompositionExclusions(allocator, "data/unicode/DerivedNormalizationProps.txt");
+    const exclusions = try readCompositionExclusions(allocator, io, "data/unicode/DerivedNormalizationProps.txt");
     defer allocator.free(exclusions);
     std.debug.print("[IDNA Tables Generator] Loaded {} composition exclusions\n", .{exclusions.len});
 
@@ -398,10 +411,12 @@ pub fn main() !void {
     std.debug.print("[IDNA Tables Generator] Generating src/idna/unicode_data.zig...\n", .{});
 
     // Build output in memory
-    var output = std.ArrayList(u8).empty;
-    defer output.deinit(allocator);
+    // 0.16 removed ArrayList.writer; std.Io.Writer.Allocating is the growable
+    // in-memory Writer.
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
 
-    const writer = output.writer(allocator);
+    const writer = &output.writer;
 
     // Generate Zig source code
     try writer.writeAll(
@@ -628,9 +643,9 @@ pub fn main() !void {
     );
 
     // Write output to file
-    try std.fs.cwd().writeFile(.{
+    try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = "src/idna/unicode_data.zig",
-        .data = output.items,
+        .data = output.written(),
     });
 
     std.debug.print("[IDNA Tables Generator] ✅ Complete!\n", .{});

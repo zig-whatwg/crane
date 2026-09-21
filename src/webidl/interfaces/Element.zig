@@ -92,10 +92,10 @@ pub const Element = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "namespaceURI", "get_namespaceURI", null },
@@ -186,14 +186,14 @@ pub const Element = struct {
             .{ "nextElementSibling", "get_nextElementSibling", null },
             .{ "assignedSlot", "get_assignedSlot", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "classList", "value" },
             .{ "part", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "hasAttributes", "call_hasAttributes", 0 },
@@ -260,7 +260,7 @@ pub const Element = struct {
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "hasAttributes",
@@ -327,7 +327,7 @@ pub const Element = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -350,7 +350,7 @@ pub const Element = struct {
             "replaceChild",
             "removeChild",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "tagName", "get_tagName", null },
@@ -426,7 +426,7 @@ pub const Element = struct {
             .{ "previousElementSibling", "get_previousElementSibling", null },
             .{ "nextElementSibling", "get_nextElementSibling", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "namespaceURI", "get_namespaceURI", null },
@@ -445,9 +445,9 @@ pub const Element = struct {
             .{ "clientHeight", "get_clientHeight", null },
             .{ "assignedSlot", "get_assignedSlot", null },
         };
-        
+
         pub const has_constructor = false;
-        
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "slot",
@@ -465,20 +465,12 @@ pub const Element = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            namespaceURI: ?typedefs.DOMString = null,
-            prefix: ?typedefs.DOMString = null,
-            localName: typedefs.DOMString = undefined,
-            tagName: typedefs.DOMString = undefined,
-            id: typedefs.DOMString = undefined,
-            className: typedefs.DOMString = undefined,
             classList: *runtime.Instance = undefined,
-            slot: typedefs.DOMString = undefined,
             attributes: *runtime.Instance = undefined,
             shadowRoot: ?*runtime.Instance = null,
             customElementRegistry: ?*runtime.Instance = null,
             onfullscreenchange: typedefs.EventHandler = undefined,
             onfullscreenerror: typedefs.EventHandler = undefined,
-            elementTiming: typedefs.DOMString = undefined,
             part: *runtime.Instance = undefined,
             activeViewTransition: ?*runtime.Instance = null,
             innerHTML: union(enum) {
@@ -498,58 +490,14 @@ pub const Element = struct {
             clientWidth: i32 = undefined,
             clientHeight: i32 = undefined,
             currentCSSZoom: f64 = undefined,
-            role: ?typedefs.DOMString = null,
             ariaActiveDescendantElement: ?*runtime.Instance = null,
-            ariaAtomic: ?typedefs.DOMString = null,
-            ariaAutoComplete: ?typedefs.DOMString = null,
-            ariaBrailleLabel: ?typedefs.DOMString = null,
-            ariaBrailleRoleDescription: ?typedefs.DOMString = null,
-            ariaBusy: ?typedefs.DOMString = null,
-            ariaChecked: ?typedefs.DOMString = null,
-            ariaColCount: ?typedefs.DOMString = null,
-            ariaColIndex: ?typedefs.DOMString = null,
-            ariaColIndexText: ?typedefs.DOMString = null,
-            ariaColSpan: ?typedefs.DOMString = null,
             ariaControlsElements: ?runtime.JSValue = null,
-            ariaCurrent: ?typedefs.DOMString = null,
             ariaDescribedByElements: ?runtime.JSValue = null,
-            ariaDescription: ?typedefs.DOMString = null,
             ariaDetailsElements: ?runtime.JSValue = null,
-            ariaDisabled: ?typedefs.DOMString = null,
             ariaErrorMessageElements: ?runtime.JSValue = null,
-            ariaExpanded: ?typedefs.DOMString = null,
             ariaFlowToElements: ?runtime.JSValue = null,
-            ariaHasPopup: ?typedefs.DOMString = null,
-            ariaHidden: ?typedefs.DOMString = null,
-            ariaInvalid: ?typedefs.DOMString = null,
-            ariaKeyShortcuts: ?typedefs.DOMString = null,
-            ariaLabel: ?typedefs.DOMString = null,
             ariaLabelledByElements: ?runtime.JSValue = null,
-            ariaLevel: ?typedefs.DOMString = null,
-            ariaLive: ?typedefs.DOMString = null,
-            ariaModal: ?typedefs.DOMString = null,
-            ariaMultiLine: ?typedefs.DOMString = null,
-            ariaMultiSelectable: ?typedefs.DOMString = null,
-            ariaOrientation: ?typedefs.DOMString = null,
             ariaOwnsElements: ?runtime.JSValue = null,
-            ariaPlaceholder: ?typedefs.DOMString = null,
-            ariaPosInSet: ?typedefs.DOMString = null,
-            ariaPressed: ?typedefs.DOMString = null,
-            ariaReadOnly: ?typedefs.DOMString = null,
-            ariaRelevant: ?typedefs.DOMString = null,
-            ariaRequired: ?typedefs.DOMString = null,
-            ariaRoleDescription: ?typedefs.DOMString = null,
-            ariaRowCount: ?typedefs.DOMString = null,
-            ariaRowIndex: ?typedefs.DOMString = null,
-            ariaRowIndexText: ?typedefs.DOMString = null,
-            ariaRowSpan: ?typedefs.DOMString = null,
-            ariaSelected: ?typedefs.DOMString = null,
-            ariaSetSize: ?typedefs.DOMString = null,
-            ariaSort: ?typedefs.DOMString = null,
-            ariaValueMax: ?typedefs.DOMString = null,
-            ariaValueMin: ?typedefs.DOMString = null,
-            ariaValueNow: ?typedefs.DOMString = null,
-            ariaValueText: ?typedefs.DOMString = null,
             regionOverset: typedefs.CSSOMString = undefined,
             children: *runtime.Instance = undefined,
             firstElementChild: ?*runtime.Instance = null,
@@ -567,7 +515,6 @@ pub const Element = struct {
     );
 
     const delegates = .{
-
         .get_activeViewTransition = &get_activeViewTransition,
         .get_ariaActiveDescendantElement = &get_ariaActiveDescendantElement,
         .get_ariaAtomic = &get_ariaAtomic,
@@ -787,7 +734,7 @@ pub const Element = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -836,7 +783,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_id(instance, value);
     }
 
@@ -850,7 +797,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_className(instance, value);
     }
 
@@ -871,7 +818,7 @@ pub const Element = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'classList' forwards to 'value' on the attribute's value
         const target = try get_classList(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -887,7 +834,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_slot(instance, value);
     }
 
@@ -937,7 +884,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_elementTiming(instance, value);
     }
 
@@ -958,7 +905,7 @@ pub const Element = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'part' forwards to 'value' on the attribute's value
         const target = try get_part(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -978,7 +925,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_innerHTML(instance, value);
     }
 
@@ -992,7 +939,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_outerHTML(instance, value);
     }
 
@@ -1050,7 +997,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_role(instance, value);
     }
 
@@ -1064,7 +1011,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaActiveDescendantElement(instance, value);
     }
 
@@ -1078,7 +1025,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaAtomic(instance, value);
     }
 
@@ -1092,7 +1039,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaAutoComplete(instance, value);
     }
 
@@ -1106,7 +1053,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaBrailleLabel(instance, value);
     }
 
@@ -1120,7 +1067,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaBrailleRoleDescription(instance, value);
     }
 
@@ -1134,7 +1081,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaBusy(instance, value);
     }
 
@@ -1148,7 +1095,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaChecked(instance, value);
     }
 
@@ -1162,7 +1109,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaColCount(instance, value);
     }
 
@@ -1176,7 +1123,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaColIndex(instance, value);
     }
 
@@ -1190,7 +1137,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaColIndexText(instance, value);
     }
 
@@ -1204,7 +1151,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaColSpan(instance, value);
     }
 
@@ -1218,7 +1165,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaControlsElements(instance, value);
     }
 
@@ -1232,7 +1179,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaCurrent(instance, value);
     }
 
@@ -1246,7 +1193,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaDescribedByElements(instance, value);
     }
 
@@ -1260,7 +1207,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaDescription(instance, value);
     }
 
@@ -1274,7 +1221,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaDetailsElements(instance, value);
     }
 
@@ -1288,7 +1235,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaDisabled(instance, value);
     }
 
@@ -1302,7 +1249,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaErrorMessageElements(instance, value);
     }
 
@@ -1316,7 +1263,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaExpanded(instance, value);
     }
 
@@ -1330,7 +1277,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaFlowToElements(instance, value);
     }
 
@@ -1344,7 +1291,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaHasPopup(instance, value);
     }
 
@@ -1358,7 +1305,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaHidden(instance, value);
     }
 
@@ -1372,7 +1319,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaInvalid(instance, value);
     }
 
@@ -1386,7 +1333,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaKeyShortcuts(instance, value);
     }
 
@@ -1400,7 +1347,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaLabel(instance, value);
     }
 
@@ -1414,7 +1361,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaLabelledByElements(instance, value);
     }
 
@@ -1428,7 +1375,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaLevel(instance, value);
     }
 
@@ -1442,7 +1389,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaLive(instance, value);
     }
 
@@ -1456,7 +1403,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaModal(instance, value);
     }
 
@@ -1470,7 +1417,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaMultiLine(instance, value);
     }
 
@@ -1484,7 +1431,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaMultiSelectable(instance, value);
     }
 
@@ -1498,7 +1445,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaOrientation(instance, value);
     }
 
@@ -1512,7 +1459,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaOwnsElements(instance, value);
     }
 
@@ -1526,7 +1473,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaPlaceholder(instance, value);
     }
 
@@ -1540,7 +1487,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaPosInSet(instance, value);
     }
 
@@ -1554,7 +1501,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaPressed(instance, value);
     }
 
@@ -1568,7 +1515,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaReadOnly(instance, value);
     }
 
@@ -1582,7 +1529,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRelevant(instance, value);
     }
 
@@ -1596,7 +1543,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRequired(instance, value);
     }
 
@@ -1610,7 +1557,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRoleDescription(instance, value);
     }
 
@@ -1624,7 +1571,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRowCount(instance, value);
     }
 
@@ -1638,7 +1585,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRowIndex(instance, value);
     }
 
@@ -1652,7 +1599,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRowIndexText(instance, value);
     }
 
@@ -1666,7 +1613,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaRowSpan(instance, value);
     }
 
@@ -1680,7 +1627,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaSelected(instance, value);
     }
 
@@ -1694,7 +1641,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaSetSize(instance, value);
     }
 
@@ -1708,7 +1655,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaSort(instance, value);
     }
 
@@ -1722,7 +1669,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaValueMax(instance, value);
     }
 
@@ -1736,7 +1683,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaValueMin(instance, value);
     }
 
@@ -1750,7 +1697,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaValueNow(instance, value);
     }
 
@@ -1764,7 +1711,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementImpl.set_ariaValueText(instance, value);
     }
 
@@ -1817,7 +1764,6 @@ pub const Element = struct {
     }
 
     pub fn call_insertAdjacentText(instance: *runtime.Instance, where: DOMString, data: DOMString) anyerror!void {
-        
         return try ElementImpl.call_insertAdjacentText(instance, where, data);
     }
 
@@ -1826,8 +1772,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_moveBefore(instance, node, child);
     }
 
@@ -1836,8 +1781,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_insertAdjacentElement(instance, where, element);
     }
 
@@ -1846,33 +1790,27 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_append(instance, nodes);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-        
         return try ElementImpl.call_setPointerCapture(instance, pointerId);
     }
 
     pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!bool {
-        
         return try ElementImpl.call_hasAttributeNS(instance, namespace, localName);
     }
 
     pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!bool {
-        
         return try ElementImpl.call_hasPointerCapture(instance, pointerId);
     }
 
     pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_focusableAreas(instance, option);
     }
 
@@ -1881,8 +1819,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_before(instance, nodes);
     }
 
@@ -1891,13 +1828,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_setAttributeNS(instance, namespace, qualifiedName, value);
     }
 
     pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_closest(instance, selectors);
     }
 
@@ -1912,13 +1847,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_after(instance, nodes);
     }
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_getElementsByClassName(instance, classNames);
     }
 
@@ -1927,8 +1860,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_setAttributeNode(instance, attr);
     }
 
@@ -1937,17 +1869,15 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try ElementImpl.call_remove(instance);
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_requestPointerLock(instance, options);
     }
 
@@ -1956,48 +1886,39 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_setAttributeNodeNS(instance, attr);
     }
 
     pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_animate(instance, keyframes, options);
     }
 
     pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
-        
         return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
 
     pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?DOMString {
-        
         return try ElementImpl.call_getAttribute(instance, qualifiedName);
     }
 
     pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_scroll(instance, options);
     }
 
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
     pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_spatialNavigationSearch(instance, dir, options);
     }
 
@@ -2006,13 +1927,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_setAttribute(instance, qualifiedName, value);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_querySelector(instance, selectors);
     }
 
@@ -2021,15 +1940,14 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try ElementImpl.call_querySelectorAll(instance, selectors);
     }
 
@@ -2043,28 +1961,23 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_setHTMLUnsafe(instance, html);
     }
 
     pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
     }
 
     pub fn call_matches(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
-        
         return try ElementImpl.call_matches(instance, selectors);
     }
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
-        
         return try ElementImpl.call_getHTML(instance, options);
     }
 
     pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_scrollBy(instance, options);
     }
 
@@ -2077,33 +1990,27 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_replaceWith(instance, nodes);
     }
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
 
     pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
-        
         return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_scrollTo(instance, options);
     }
 
@@ -2112,13 +2019,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_replaceChildren(instance, nodes);
     }
 
     pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_requestFullscreen(instance, options);
     }
 
@@ -2127,8 +2032,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_removeAttribute(instance, qualifiedName);
     }
 
@@ -2141,8 +2045,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_prepend(instance, nodes);
     }
 
@@ -2151,13 +2054,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_removeAttributeNode(instance, attr);
     }
 
     pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!bool {
-        
         return try ElementImpl.call_hasAttribute(instance, qualifiedName);
     }
 
@@ -2166,8 +2067,7 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_insertAdjacentHTML(instance, position, string);
     }
 
@@ -2176,27 +2076,22 @@ pub const Element = struct {
     }
 
     pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_scrollIntoView(instance, arg);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
-        
         return try ElementImpl.call_getAnimations(instance, options);
     }
 
     pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!*runtime.Instance {
-        
         return try ElementImpl.call_attachShadow(instance, init_data);
     }
 
     pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-        
         return try ElementImpl.call_releasePointerCapture(instance, pointerId);
     }
 
     pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
-        
         return try ElementImpl.call_pseudo(instance, @"type");
     }
 
@@ -2205,14 +2100,11 @@ pub const Element = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ElementImpl.call_removeAttributeNS(instance, namespace, localName);
     }
 
     pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(CheckVisibilityOptions)) anyerror!bool {
-        
         return try ElementImpl.call_checkVisibility(instance, options);
     }
-
 };

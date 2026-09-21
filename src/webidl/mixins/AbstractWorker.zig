@@ -21,4 +21,3 @@ pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return AbstractWorkerImpl.set_onerror(instance, value);
 }
-

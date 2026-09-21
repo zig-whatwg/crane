@@ -51,16 +51,16 @@ pub const Text = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "wholeText", "get_wholeText", null },
             .{ "assignedSlot", "get_assignedSlot", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "splitText", "call_splitText", 1 },
@@ -69,7 +69,7 @@ pub const Text = struct {
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "splitText",
@@ -78,7 +78,7 @@ pub const Text = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -110,17 +110,17 @@ pub const Text = struct {
             "replaceWith",
             "remove",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "wholeText", "get_wholeText", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "assignedSlot", "get_assignedSlot", null },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -135,7 +135,6 @@ pub const Text = struct {
     );
 
     const delegates = .{
-
         .get_assignedSlot = &get_assignedSlot,
         .get_wholeText = &get_wholeText,
 
@@ -147,7 +146,7 @@ pub const Text = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -187,30 +186,25 @@ pub const Text = struct {
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try TextImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try TextImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try TextImpl.call_splitText(instance, offset);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        
         return try TextImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try TextImpl.call_convertPointFromNode(instance, point, from, options);
     }
-
 };

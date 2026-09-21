@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorNetworkInformation;
 pub fn get_connection(instance: *runtime.Instance) !*runtime.Instance {
     return NavigatorNetworkInformationImpl.get_connection(instance);
 }
-

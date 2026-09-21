@@ -21,13 +21,16 @@ const Context = @import("browser").Context;
 /// REPL state - wraps Browser with REPL-specific UI features
 const Repl = struct {
     allocator: std.mem.Allocator,
+    /// The process `std.Io`. Zig 0.16 moved stdio, tty queries and sleeping onto
+    /// `Io`, so the REPL carries one rather than reaching for a global.
+    io: std.Io,
     browser: *Browser,
     input_buffer: std.ArrayListUnmanaged(u8),
     history: std.ArrayListUnmanaged([]const u8),
 
     const Self = @This();
 
-    pub fn init(allocator: std.mem.Allocator) !Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io) !Self {
         // Create browser with default config
         const browser = try Browser.init(allocator, .{});
         errdefer browser.deinit();
@@ -37,9 +40,11 @@ const Repl = struct {
 
         return Self{
             .allocator = allocator,
+            .io = io,
             .browser = browser,
-            .input_buffer = .{},
-            .history = .{},
+            // 0.16: ArrayList has no default field values; `.empty` replaces `.{}`.
+            .input_buffer = .empty,
+            .history = .empty,
         };
     }
 
@@ -51,9 +56,10 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
-        // Browser handles all V8 and runtime cleanup
+        // Browser handles all V8 and runtime cleanup - including destroying itself
+        // (Browser.zig:352). Destroying it here as well was a double free; it never
+        // fired only because the REPL exits the process before this path runs.
         self.browser.deinit();
-        self.allocator.destroy(self.browser);
     }
 
     /// Get V8 isolate from browser
@@ -188,7 +194,9 @@ const Repl = struct {
 
                 // Small delay to prevent busy-waiting
                 if (iterations > 100) {
-                    std.Thread.sleep(1_000_000); // 1ms
+                    // std.Thread.sleep was removed in 0.16; Io.sleep replaces it.
+                    // Swallow cancellation so the poll loop stays infallible, as before.
+                    self.io.sleep(.fromNanoseconds(1_000_000), .awake) catch {}; // 1ms
                 }
             }
 
@@ -578,65 +586,69 @@ const Repl = struct {
     }
 
     /// Read a single byte from stdin
-    fn readByte(stdin: std.fs.File) !u8 {
+    fn readByte(io: std.Io, stdin: std.Io.File) !u8 {
         var buf: [1]u8 = undefined;
-        const n = try stdin.read(&buf);
+        // 0.16: File.read became File.readStreaming, which takes an Io and a
+        // vector of buffers. End-of-stream is now error.EndOfStream, which `try`
+        // propagates - the same error the 0 case returned before.
+        const n = try stdin.readStreaming(io, &.{&buf});
         if (n == 0) return error.EndOfStream;
         return buf[0];
     }
 
     /// Write a single byte to file
-    fn writeByte(file: std.fs.File, byte: u8) !void {
+    fn writeByte(io: std.Io, file: std.Io.File, byte: u8) !void {
         const buf = [_]u8{byte};
-        try file.writeAll(&buf);
+        try file.writeStreamingAll(io, &buf);
     }
 
     /// Print formatted output to file
-    fn print(allocator: std.mem.Allocator, file: std.fs.File, comptime format: []const u8, args: anytype) !void {
+    fn print(allocator: std.mem.Allocator, io: std.Io, file: std.Io.File, comptime format: []const u8, args: anytype) !void {
         const str = try std.fmt.allocPrint(allocator, format, args);
         defer allocator.free(str);
-        try file.writeAll(str);
+        try file.writeStreamingAll(io, str);
     }
 
     /// Clear current line and redraw with new content, cursor at end
-    fn clearAndRedraw(self: *Self, stdout: std.fs.File, new_content: []const u8, cursor_pos: *usize) !void {
+    fn clearAndRedraw(self: *Self, stdout: std.Io.File, new_content: []const u8, cursor_pos: *usize) !void {
         const current_len = self.input_buffer.items.len;
         // Move cursor to start of input
         if (cursor_pos.* > 0) {
-            try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos.*});
+            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos.*});
         }
         // Clear from cursor to end of line
-        try stdout.writeAll("\x1b[K");
+        try stdout.writeStreamingAll(self.io, "\x1b[K");
         // Update buffer
         self.input_buffer.clearRetainingCapacity();
         try self.input_buffer.appendSlice(self.allocator, new_content);
         // Write new content
-        try stdout.writeAll(new_content);
+        try stdout.writeStreamingAll(self.io, new_content);
         // Set cursor to end
         cursor_pos.* = new_content.len;
         _ = current_len;
     }
 
     /// Redraw the line from cursor position to end, then restore cursor
-    fn redrawFromCursor(self: *Self, stdout: std.fs.File, cursor_pos: usize) !void {
+    fn redrawFromCursor(self: *Self, stdout: std.Io.File, cursor_pos: usize) !void {
         // Save cursor, clear to end, write rest of buffer, restore cursor
         const rest = self.input_buffer.items[cursor_pos..];
-        try stdout.writeAll(rest);
-        try stdout.writeAll(" "); // Clear any leftover character
+        try stdout.writeStreamingAll(self.io, rest);
+        try stdout.writeStreamingAll(self.io, " "); // Clear any leftover character
         // Move back to cursor position
         const move_back = rest.len + 1;
         if (move_back > 0) {
-            try print(self.allocator, stdout, "\x1b[{d}D", .{move_back});
+            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{move_back});
         }
     }
 
     /// Read line with tab completion, history navigation, and cursor movement
     pub fn readLine(self: *Self) !?[]const u8 {
-        const stdout = std.fs.File.stdout();
-        const stdin = std.fs.File.stdin();
+        const stdout = std.Io.File.stdout();
+        const stdin = std.Io.File.stdin();
 
         var original_termios: std.posix.termios = undefined;
-        const is_tty = std.posix.isatty(stdin.handle);
+        // std.posix.isatty was removed in 0.16; File.isTty(io) replaces it.
+        const is_tty = try stdin.isTty(self.io);
         if (is_tty) {
             original_termios = try std.posix.tcgetattr(stdin.handle);
             var raw = original_termios;
@@ -658,14 +670,14 @@ const Repl = struct {
         defer if (saved_input) |s| self.allocator.free(s);
 
         while (true) {
-            const byte = readByte(stdin) catch |err| {
+            const byte = readByte(self.io, stdin) catch |err| {
                 if (err == error.EndOfStream) return null;
                 return err;
             };
 
             switch (byte) {
                 '\n' => {
-                    try writeByte(stdout, '\n');
+                    try writeByte(self.io, stdout, '\n');
                     const result = try self.allocator.dupe(u8, self.input_buffer.items);
                     return result;
                 },
@@ -676,21 +688,21 @@ const Repl = struct {
                         _ = self.input_buffer.orderedRemove(cursor_pos - 1);
                         cursor_pos -= 1;
                         // Move cursor back
-                        try stdout.writeAll("\x08");
+                        try stdout.writeStreamingAll(self.io, "\x08");
                         // Redraw from cursor position
                         try self.redrawFromCursor(stdout, cursor_pos);
                     }
                 },
                 1 => { // Ctrl+A - move to beginning
                     if (cursor_pos > 0) {
-                        try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                        try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
                         cursor_pos = 0;
                     }
                 },
                 5 => { // Ctrl+E - move to end
                     if (cursor_pos < self.input_buffer.items.len) {
                         const move = self.input_buffer.items.len - cursor_pos;
-                        try print(self.allocator, stdout, "\x1b[{d}C", .{move});
+                        try print(self.allocator, self.io, stdout, "\x1b[{d}C", .{move});
                         cursor_pos = self.input_buffer.items.len;
                     }
                 },
@@ -698,10 +710,10 @@ const Repl = struct {
                     if (self.input_buffer.items.len > 0) {
                         // Move to start
                         if (cursor_pos > 0) {
-                            try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
                         }
                         // Clear line
-                        try stdout.writeAll("\x1b[K");
+                        try stdout.writeStreamingAll(self.io, "\x1b[K");
                         self.input_buffer.clearRetainingCapacity();
                         cursor_pos = 0;
                     }
@@ -709,7 +721,7 @@ const Repl = struct {
                 11 => { // Ctrl+K - clear from cursor to end
                     if (cursor_pos < self.input_buffer.items.len) {
                         self.input_buffer.shrinkRetainingCapacity(cursor_pos);
-                        try stdout.writeAll("\x1b[K");
+                        try stdout.writeStreamingAll(self.io, "\x1b[K");
                     }
                 },
                 '\t' => { // Tab - trigger completion
@@ -725,24 +737,24 @@ const Repl = struct {
                             const completion = result.completions[0];
                             const suffix = completion[result.prefix_len..];
                             try self.input_buffer.appendSlice(self.allocator, suffix);
-                            try stdout.writeAll(suffix);
+                            try stdout.writeStreamingAll(self.io, suffix);
                             cursor_pos = self.input_buffer.items.len;
                         } else if (result.completions.len > 1) {
                             // Multiple matches - show them
-                            try stdout.writeAll("\n");
+                            try stdout.writeStreamingAll(self.io, "\n");
                             for (result.completions) |c| {
-                                try print(self.allocator, stdout, "{s}  ", .{c});
+                                try print(self.allocator, self.io, stdout, "{s}  ", .{c});
                             }
-                            try stdout.writeAll("\n>>> ");
-                            try stdout.writeAll(self.input_buffer.items);
+                            try stdout.writeStreamingAll(self.io, "\n>>> ");
+                            try stdout.writeStreamingAll(self.io, self.input_buffer.items);
                             cursor_pos = self.input_buffer.items.len;
                         }
                     }
                 },
                 27 => { // Escape sequence
-                    const next1 = readByte(stdin) catch continue;
+                    const next1 = readByte(self.io, stdin) catch continue;
                     if (next1 != '[') continue;
-                    const next2 = readByte(stdin) catch continue;
+                    const next2 = readByte(self.io, stdin) catch continue;
 
                     switch (next2) {
                         'A' => { // Up arrow - history previous
@@ -768,30 +780,30 @@ const Repl = struct {
                         'C' => { // Right arrow - move cursor right
                             if (cursor_pos < self.input_buffer.items.len) {
                                 cursor_pos += 1;
-                                try stdout.writeAll("\x1b[C");
+                                try stdout.writeStreamingAll(self.io, "\x1b[C");
                             }
                         },
                         'D' => { // Left arrow - move cursor left
                             if (cursor_pos > 0) {
                                 cursor_pos -= 1;
-                                try stdout.writeAll("\x1b[D");
+                                try stdout.writeStreamingAll(self.io, "\x1b[D");
                             }
                         },
                         'H' => { // Home key
                             if (cursor_pos > 0) {
-                                try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                                try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
                                 cursor_pos = 0;
                             }
                         },
                         'F' => { // End key
                             if (cursor_pos < self.input_buffer.items.len) {
                                 const move = self.input_buffer.items.len - cursor_pos;
-                                try print(self.allocator, stdout, "\x1b[{d}C", .{move});
+                                try print(self.allocator, self.io, stdout, "\x1b[{d}C", .{move});
                                 cursor_pos = self.input_buffer.items.len;
                             }
                         },
                         '3' => { // Delete key (ESC [ 3 ~)
-                            const next3 = readByte(stdin) catch continue;
+                            const next3 = readByte(self.io, stdin) catch continue;
                             if (next3 == '~') {
                                 if (cursor_pos < self.input_buffer.items.len) {
                                     _ = self.input_buffer.orderedRemove(cursor_pos);
@@ -808,11 +820,11 @@ const Repl = struct {
                         if (cursor_pos == self.input_buffer.items.len) {
                             // Append at end (common case)
                             try self.input_buffer.append(self.allocator, byte);
-                            try writeByte(stdout, byte);
+                            try writeByte(self.io, stdout, byte);
                         } else {
                             // Insert in middle
                             try self.input_buffer.insert(self.allocator, cursor_pos, byte);
-                            try writeByte(stdout, byte);
+                            try writeByte(self.io, stdout, byte);
                             try self.redrawFromCursor(stdout, cursor_pos + 1);
                         }
                         cursor_pos += 1;
@@ -824,21 +836,21 @@ const Repl = struct {
 
     /// Run the REPL loop
     pub fn run(self: *Self) !void {
-        const stdout = std.fs.File.stdout();
+        const stdout = std.Io.File.stdout();
 
-        try stdout.writeAll("JavaScript REPL - Headless Browser\n");
-        try stdout.writeAll("Same environment as WPT tests (window, document, etc.)\n");
-        try stdout.writeAll("Type JavaScript code and press Enter\n");
-        try stdout.writeAll("Press Tab for completions, Ctrl+D to exit\n\n");
+        try stdout.writeStreamingAll(self.io, "JavaScript REPL - Headless Browser\n");
+        try stdout.writeStreamingAll(self.io, "Same environment as WPT tests (window, document, etc.)\n");
+        try stdout.writeStreamingAll(self.io, "Type JavaScript code and press Enter\n");
+        try stdout.writeStreamingAll(self.io, "Press Tab for completions, Ctrl+D to exit\n\n");
 
-        var multiline_buffer = std.ArrayListUnmanaged(u8){};
+        var multiline_buffer: std.ArrayListUnmanaged(u8) = .empty;
         defer multiline_buffer.deinit(self.allocator);
 
         while (true) {
             if (multiline_buffer.items.len == 0) {
-                try stdout.writeAll(">>> ");
+                try stdout.writeStreamingAll(self.io, ">>> ");
             } else {
-                try stdout.writeAll("... ");
+                try stdout.writeStreamingAll(self.io, "... ");
             }
 
             const line = try self.readLine() orelse break;
@@ -866,24 +878,24 @@ const Repl = struct {
             try self.addHistory(code);
 
             const result = self.eval(code) catch |err| {
-                try print(self.allocator, stdout, "Error: {}\n", .{err});
+                try print(self.allocator, self.io, stdout, "Error: {}\n", .{err});
                 continue;
             };
             defer self.allocator.free(result);
 
-            try print(self.allocator, stdout, "{s}\n", .{result});
+            try print(self.allocator, self.io, stdout, "{s}\n", .{result});
         }
 
-        try stdout.writeAll("\nGoodbye!\n");
+        try stdout.writeStreamingAll(self.io, "\nGoodbye!\n");
     }
 };
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 moved stdio and sleeping onto std.Io; std.process.Init supplies the
+// process Io along with a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var repl = try Repl.init(allocator);
+    var repl = try Repl.init(allocator, init.io);
     errdefer repl.deinit();
 
     try repl.run();

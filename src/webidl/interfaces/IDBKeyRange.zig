@@ -22,13 +22,13 @@ pub const IDBKeyRange = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "lower", "get_lower", null },
@@ -36,12 +36,12 @@ pub const IDBKeyRange = struct {
             .{ "lowerOpen", "get_lowerOpen", null },
             .{ "upperOpen", "get_upperOpen", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "includes", "call_includes", 1 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "only", "call_static_only", 1 },
@@ -49,7 +49,7 @@ pub const IDBKeyRange = struct {
             .{ "upperBound", "call_static_upperBound", 1 },
             .{ "bound", "call_static_bound", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "only",
@@ -58,11 +58,10 @@ pub const IDBKeyRange = struct {
             "bound",
             "includes",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "lower", "get_lower", null },
@@ -70,11 +69,10 @@ pub const IDBKeyRange = struct {
             .{ "lowerOpen", "get_lowerOpen", null },
             .{ "upperOpen", "get_upperOpen", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -91,7 +89,6 @@ pub const IDBKeyRange = struct {
     );
 
     const delegates = .{
-
         .get_lower = &get_lower,
         .get_lowerOpen = &get_lowerOpen,
         .get_upper = &get_upper,
@@ -101,7 +98,7 @@ pub const IDBKeyRange = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -143,34 +140,32 @@ pub const IDBKeyRange = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_static_only(instance, value);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_static_lowerBound(instance, lower, open);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_static_upperBound(instance, upper, open);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_static_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     pub fn call_includes(instance: *runtime.Instance, key: runtime.JSValue) anyerror!bool {
-        
         return try IDBKeyRangeImpl.call_includes(instance, key);
     }
-
 };

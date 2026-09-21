@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorDeviceMemory;
 pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
     return NavigatorDeviceMemoryImpl.get_deviceMemory(instance);
 }
-

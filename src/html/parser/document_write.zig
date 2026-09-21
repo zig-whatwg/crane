@@ -97,7 +97,7 @@ pub const DocumentWriteState = struct {
             .active_parser_was_aborted = false,
             .unload_counter = 0,
             .insertion_point = null,
-            .write_buffer = .{},
+            .write_buffer = .empty,
             .script_nesting_level = 0,
             .parser_pause_flag = false,
         };
@@ -334,7 +334,7 @@ pub const InputStreamManager = struct {
             .original_input = input,
             .original_position = 0,
             .logical_position = 0,
-            .pending_insertions = .{},
+            .pending_insertions = .empty,
             .active_insertion_index = null,
             .insertion_point = 0, // Start at beginning
             .line = 1,

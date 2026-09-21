@@ -111,28 +111,34 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
         total_fields += mixin_info.@"struct".fields.len;
     }
 
-    // Build field array
-    var fields: [total_fields]std.builtin.Type.StructField = undefined;
+    // Build the three parallel arrays @Struct takes. Zig 0.16 removed @Type in
+    // favour of @Int/@Struct/@Enum/@Tuple/@Pointer/@Fn, and @Struct does not
+    // accept a []const StructField - it takes names, types and attributes
+    // separately, so the single field array has to be split.
+    var names: [total_fields][:0]const u8 = undefined;
+    var types: [total_fields]type = undefined;
+    var attrs: [total_fields]std.builtin.Type.StructField.Attributes = undefined;
     comptime var field_index: usize = 0;
 
     // Collect fields from all mixins
     inline for (MixinTypes) |MixinType| {
         const mixin_info = @typeInfo(MixinType).@"struct";
         inline for (mixin_info.fields) |field| {
-            fields[field_index] = field;
+            names[field_index] = field.name;
+            types[field_index] = field.type;
+            attrs[field_index] = .{
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+                .default_value_ptr = field.default_value_ptr,
+            };
             field_index += 1;
         }
     }
 
-    // Create merged struct type
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    // Create merged struct type. `.auto` layout, no backing integer - the same
+    // shape the old @Type call produced. Reified types cannot carry decls in
+    // 0.16 either, so nothing is lost by the empty decls list going away.
+    return @Struct(.auto, null, &names, &types, &attrs);
 }
 
 /// Merge multiple struct types into one (alternative approach)

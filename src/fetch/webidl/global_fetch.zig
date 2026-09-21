@@ -19,6 +19,8 @@ const fetch_algorithm = @import("../algorithms/fetch.zig");
 const internal_request = @import("../internal/request.zig");
 const InternalRequest = internal_request.InternalRequest;
 
+const log = std.log.scoped(.global_fetch);
+
 /// Error types from fetch() global function.
 pub const FetchError = error{
     OutOfMemory,
@@ -148,7 +150,7 @@ test "globalFetch - about:blank" {
             try std.testing.expectEqual(@as(u16, 200), response.status());
         },
         .err => |err| {
-            std.debug.print("Unexpected error: {}\n", .{err});
+            log.err("Unexpected error: {}", .{err});
             try std.testing.expect(false);
         },
     }
@@ -165,7 +167,7 @@ test "globalFetch - data URL" {
             try std.testing.expectEqual(@as(u16, 200), response.status());
         },
         .err => |err| {
-            std.debug.print("Unexpected error: {}\n", .{err});
+            log.err("Unexpected error: {}", .{err});
             try std.testing.expect(false);
         },
     }

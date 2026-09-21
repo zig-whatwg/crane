@@ -59,26 +59,27 @@ fn dummyCallback10(_: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {}
 // Main Test Runner
 // ============================================================================
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 moved the filesystem onto std.Io; std.process.Init supplies both the
+// process Io and a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    const stdout = std.fs.File.stdout();
+    const stdout = std.Io.File.stdout();
 
-    try stdout.writeAll("=================================================\n");
-    try stdout.writeAll("Minimal V8 Snapshot Test - Isolating Failure Point\n");
-    try stdout.writeAll("=================================================\n\n");
+    try stdout.writeStreamingAll(io, "=================================================\n");
+    try stdout.writeStreamingAll(io, "Minimal V8 Snapshot Test - Isolating Failure Point\n");
+    try stdout.writeStreamingAll(io, "=================================================\n\n");
 
     // Initialize V8 platform with proper flags for snapshots
     // CRITICAL: Flags MUST be set BEFORE platform initialization
-    try stdout.writeAll("Setting V8 flags for deterministic snapshots...\n");
+    try stdout.writeStreamingAll(io, "Setting V8 flags for deterministic snapshots...\n");
     v8.ffi.v8_SetFlagsFromString(v8.snapshot_loader.SNAPSHOT_V8_FLAGS);
 
-    try stdout.writeAll("Initializing V8 platform...\n");
+    try stdout.writeStreamingAll(io, "Initializing V8 platform...\n");
     v8.ffi.v8_Platform_Initialize();
     defer v8.ffi.v8_Platform_Dispose();
-    try stdout.writeAll("V8 platform initialized.\n\n");
+    try stdout.writeStreamingAll(io, "V8 platform initialized.\n\n");
 
     // Run tests at each level
     var results: [5]TestResult = undefined;
@@ -86,16 +87,16 @@ pub fn main() !void {
 
     inline for (std.meta.fields(TestLevel)) |field| {
         const level: TestLevel = @enumFromInt(field.value);
-        results[field.value] = testSnapshotLevel(allocator, level, stdout);
+        results[field.value] = testSnapshotLevel(allocator, io, level, stdout);
         if (!results[field.value].create_success or !results[field.value].load_success) {
             all_passed = false;
         }
     }
 
     // Print summary
-    try stdout.writeAll("\n=================================================\n");
-    try stdout.writeAll("SUMMARY\n");
-    try stdout.writeAll("=================================================\n");
+    try stdout.writeStreamingAll(io, "\n=================================================\n");
+    try stdout.writeStreamingAll(io, "SUMMARY\n");
+    try stdout.writeStreamingAll(io, "=================================================\n");
 
     for (results) |r| {
         var buf: [256]u8 = undefined;
@@ -107,26 +108,26 @@ pub fn main() !void {
             r.load_success,
             r.blob_size,
         }) catch continue;
-        try stdout.writeAll(formatted);
+        try stdout.writeStreamingAll(io, formatted);
         if (r.error_message) |msg| {
             const err_formatted = std.fmt.bufPrint(&buf, "  Error: {s}\n", .{msg}) catch continue;
-            try stdout.writeAll(err_formatted);
+            try stdout.writeStreamingAll(io, err_formatted);
         }
     }
 
-    try stdout.writeAll("\n");
+    try stdout.writeStreamingAll(io, "\n");
     if (all_passed) {
-        try stdout.writeAll("All tests PASSED!\n");
+        try stdout.writeStreamingAll(io, "All tests PASSED!\n");
     } else {
-        try stdout.writeAll("Some tests FAILED - see above for details.\n");
+        try stdout.writeStreamingAll(io, "Some tests FAILED - see above for details.\n");
     }
 }
 
-fn testSnapshotLevel(allocator: std.mem.Allocator, level: TestLevel, stdout: std.fs.File) TestResult {
+fn testSnapshotLevel(allocator: std.mem.Allocator, io: std.Io, level: TestLevel, stdout: std.Io.File) TestResult {
     var buf: [512]u8 = undefined;
 
     const header = std.fmt.bufPrint(&buf, "\n--- Testing Level: {s} ---\n", .{@tagName(level)}) catch "";
-    stdout.writeAll(header) catch {};
+    stdout.writeStreamingAll(io, header) catch {};
 
     var result = TestResult{
         .level = level,
@@ -207,15 +208,15 @@ fn testSnapshotLevel(allocator: std.mem.Allocator, level: TestLevel, stdout: std
     refs[ref_count] = 0;
 
     const info = std.fmt.bufPrint(&buf, "Using {d} external references\n", .{ref_count}) catch "";
-    stdout.writeAll(info) catch {};
+    stdout.writeStreamingAll(io, info) catch {};
 
     // Step 1: Create snapshot
-    stdout.writeAll("Creating snapshot...\n") catch {};
+    stdout.writeStreamingAll(io, "Creating snapshot...\n") catch {};
 
     const create_result = createMinimalSnapshot(&refs, level);
     if (create_result.err) |err| {
         result.error_message = err;
-        stdout.writeAll("  FAILED to create snapshot\n") catch {};
+        stdout.writeStreamingAll(io, "  FAILED to create snapshot\n") catch {};
         return result;
     }
 
@@ -223,25 +224,25 @@ fn testSnapshotLevel(allocator: std.mem.Allocator, level: TestLevel, stdout: std
     result.blob_size = create_result.size;
 
     const size_info = std.fmt.bufPrint(&buf, "  Created snapshot: {d} bytes\n", .{create_result.size}) catch "";
-    stdout.writeAll(size_info) catch {};
+    stdout.writeStreamingAll(io, size_info) catch {};
 
     // Step 2: Load snapshot
-    stdout.writeAll("Loading snapshot...\n") catch {};
+    stdout.writeStreamingAll(io, "Loading snapshot...\n") catch {};
 
     const load_result = loadMinimalSnapshot(allocator, create_result.data.?, create_result.size, &refs);
     if (load_result.err) |err| {
         result.error_message = err;
-        stdout.writeAll("  FAILED to load snapshot\n") catch {};
+        stdout.writeStreamingAll(io, "  FAILED to load snapshot\n") catch {};
         // Free snapshot data
         v8.ffi.v8_Snapshot_FreeData(create_result.data);
         return result;
     }
 
     result.load_success = true;
-    stdout.writeAll("  Successfully loaded snapshot!\n") catch {};
+    stdout.writeStreamingAll(io, "  Successfully loaded snapshot!\n") catch {};
 
     // Step 3: Try to evaluate JavaScript in loaded context
-    stdout.writeAll("Evaluating JS in loaded context...\n") catch {};
+    stdout.writeStreamingAll(io, "Evaluating JS in loaded context...\n") catch {};
 
     const isolate = load_result.isolate.?;
     const context = load_result.context.?;
@@ -256,17 +257,17 @@ fn testSnapshotLevel(allocator: std.mem.Allocator, level: TestLevel, stdout: std
         if (script) |s| {
             const eval_result = v8.ffi.v8_Script_Run(context, s);
             if (eval_result) |_| {
-                stdout.writeAll("  JS evaluation: OK (1+1 works)\n") catch {};
+                stdout.writeStreamingAll(io, "  JS evaluation: OK (1+1 works)\n") catch {};
             } else {
-                stdout.writeAll("  JS evaluation: FAILED (run error)\n") catch {};
+                stdout.writeStreamingAll(io, "  JS evaluation: FAILED (run error)\n") catch {};
             }
             v8.ffi.v8_Script_Dispose(s);
         } else {
-            stdout.writeAll("  JS evaluation: FAILED (compile error)\n") catch {};
+            stdout.writeStreamingAll(io, "  JS evaluation: FAILED (compile error)\n") catch {};
         }
         v8.ffi.v8_String_Dispose(src);
     } else {
-        stdout.writeAll("  JS evaluation: FAILED (string creation)\n") catch {};
+        stdout.writeStreamingAll(io, "  JS evaluation: FAILED (string creation)\n") catch {};
     }
 
     // Cleanup

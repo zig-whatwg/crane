@@ -33,4 +33,3 @@ pub fn get_height(instance: *runtime.Instance) !*runtime.Instance {
 pub fn get_result(instance: *runtime.Instance) !*runtime.Instance {
     return SVGFilterPrimitiveStandardAttributesImpl.get_result(instance);
 }
-

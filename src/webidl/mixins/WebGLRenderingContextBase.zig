@@ -525,4 +525,3 @@ pub fn call_getError(instance: *runtime.Instance) anyerror!typedefs.GLenum {
 pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     return WebGLRenderingContextBaseImpl.call_getFramebufferAttachmentParameter(instance, target, attachment, pname);
 }
-

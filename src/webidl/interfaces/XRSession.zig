@@ -54,10 +54,10 @@ pub const XRSession = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "visibilityState", "get_visibilityState", null },
@@ -88,7 +88,7 @@ pub const XRSession = struct {
             .{ "environmentBlendMode", "get_environmentBlendMode", null },
             .{ "interactionMode", "get_interactionMode", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateRenderState", "call_updateRenderState", 0 },
@@ -106,7 +106,7 @@ pub const XRSession = struct {
             .{ "requestLightProbe", "call_requestLightProbe", 0 },
             .{ "initiateRoomCapture", "call_initiateRoomCapture", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "updateRenderState",
@@ -124,7 +124,7 @@ pub const XRSession = struct {
             "requestLightProbe",
             "initiateRoomCapture",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -132,7 +132,7 @@ pub const XRSession = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "visibilityState", "get_visibilityState", null },
@@ -163,11 +163,10 @@ pub const XRSession = struct {
             .{ "environmentBlendMode", "get_environmentBlendMode", null },
             .{ "interactionMode", "get_interactionMode", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -210,7 +209,6 @@ pub const XRSession = struct {
     );
 
     const delegates = .{
-
         .get_depthActive = &get_depthActive,
         .get_depthDataFormat = &get_depthDataFormat,
         .get_depthType = &get_depthType,
@@ -267,7 +265,7 @@ pub const XRSession = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -463,12 +461,10 @@ pub const XRSession = struct {
     }
 
     pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
     }
 
     pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
-        
         return try XRSessionImpl.call_updateRenderState(instance, state);
     }
 
@@ -477,17 +473,14 @@ pub const XRSession = struct {
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: XRFrameRequestCallback) anyerror!u32 {
-        
         return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
     }
 
     pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
     }
 
     pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_deletePersistentAnchor(instance, uuid);
     }
 
@@ -500,34 +493,29 @@ pub const XRSession = struct {
     }
 
     pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: XRTransientInputHitTestOptionsInit) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_requestHitTestSourceForTransientInput(instance, options);
     }
 
     pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_requestLightProbe(instance, options);
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try XRSessionImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": XRReferenceSpaceType) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try XRSessionImpl.call_requestReferenceSpace(instance, @"type");
     }
 
     pub fn call_requestHitTestSource(instance: *runtime.Instance, options: XRHitTestOptionsInit) anyerror!runtime.JSValue {
-        
         return try XRSessionImpl.call_requestHitTestSource(instance, options);
     }
 
     pub fn call_end(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_end(instance);
     }
-
 };

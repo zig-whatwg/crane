@@ -27,19 +27,19 @@ pub const PressureObserver = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "SharedWorker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .SharedWorker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "knownSources", "get_knownSources", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "observe", "call_observe", 1 },
@@ -47,7 +47,7 @@ pub const PressureObserver = struct {
             .{ "disconnect", "call_disconnect", 0 },
             .{ "takeRecords", "call_takeRecords", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "observe",
@@ -55,20 +55,18 @@ pub const PressureObserver = struct {
             "disconnect",
             "takeRecords",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "knownSources", "get_knownSources", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -81,7 +79,6 @@ pub const PressureObserver = struct {
     );
 
     const delegates = .{
-
         .get_knownSources = &get_knownSources,
 
         .call_disconnect = &call_disconnect,
@@ -91,7 +88,7 @@ pub const PressureObserver = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -128,12 +125,10 @@ pub const PressureObserver = struct {
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, source: PressureSource) anyerror!void {
-        
         return try PressureObserverImpl.call_unobserve(instance, source);
     }
 
     pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: webidl.Opt(PressureObserverOptions)) anyerror!runtime.JSValue {
-        
         return try PressureObserverImpl.call_observe(instance, source, options);
     }
 
@@ -144,5 +139,4 @@ pub const PressureObserver = struct {
     pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PressureObserverImpl.call_takeRecords(instance);
     }
-
 };

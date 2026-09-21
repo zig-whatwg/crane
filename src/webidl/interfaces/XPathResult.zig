@@ -24,10 +24,10 @@ pub const XPathResult = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "resultType", "get_resultType", null },
@@ -38,13 +38,13 @@ pub const XPathResult = struct {
             .{ "invalidIteratorState", "get_invalidIteratorState", null },
             .{ "snapshotLength", "get_snapshotLength", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "iterateNext", "call_iterateNext", 0 },
             .{ "snapshotItem", "call_snapshotItem", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "ANY_TYPE", "get_ANY_TYPE" },
@@ -58,17 +58,16 @@ pub const XPathResult = struct {
             .{ "ANY_UNORDERED_NODE_TYPE", "get_ANY_UNORDERED_NODE_TYPE" },
             .{ "FIRST_ORDERED_NODE_TYPE", "get_FIRST_ORDERED_NODE_TYPE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "iterateNext",
             "snapshotItem",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "resultType", "get_resultType", null },
@@ -79,11 +78,10 @@ pub const XPathResult = struct {
             .{ "invalidIteratorState", "get_invalidIteratorState", null },
             .{ "snapshotLength", "get_snapshotLength", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -157,7 +155,6 @@ pub const XPathResult = struct {
     }
 
     const delegates = .{
-
         .get_ANY_TYPE = &get_ANY_TYPE,
         .get_ANY_UNORDERED_NODE_TYPE = &get_ANY_UNORDERED_NODE_TYPE,
         .get_BOOLEAN_TYPE = &get_BOOLEAN_TYPE,
@@ -181,7 +178,7 @@ pub const XPathResult = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -237,8 +234,6 @@ pub const XPathResult = struct {
     }
 
     pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
         return try XPathResultImpl.call_snapshotItem(instance, index);
     }
-
 };

@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const ReportBody = struct {
-};
+pub const ReportBody = struct {};

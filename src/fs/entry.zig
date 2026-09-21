@@ -8,6 +8,7 @@
 const std = @import("std");
 const errors = @import("errors.zig");
 const locator = @import("locator.zig");
+const clock = @import("clock");
 
 const FileSystemAccessResult = errors.FileSystemAccessResult;
 const FileSystemLocator = locator.FileSystemLocator;
@@ -73,8 +74,8 @@ pub const FileEntry = struct {
         const owned_name = try allocator.dupe(u8, entry_name);
         return .{
             .entry_name = owned_name,
-            .binary_data = .{},
-            .modification_timestamp = std.time.milliTimestamp(),
+            .binary_data = .empty,
+            .modification_timestamp = clock.wallMillis(),
             .lock = .open,
             .shared_lock_count = 0,
             .query_access = null,
@@ -110,7 +111,7 @@ pub const FileEntry = struct {
     pub fn setData(self: *Self, new_data: []const u8) !void {
         self.binary_data.clearRetainingCapacity();
         try self.binary_data.appendSlice(self.allocator, new_data);
-        self.modification_timestamp = std.time.milliTimestamp();
+        self.modification_timestamp = clock.wallMillis();
     }
 
     /// Get the size in bytes

@@ -17,6 +17,7 @@ const webidl = @import("webidl");
 const v8_engine = @import("v8");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
+const clock = @import("clock");
 
 pub const State = IntersectionObserver.State;
 
@@ -80,9 +81,9 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .observations = .{},
-            .queued_entries = .{},
-            .thresholds = .{},
+            .observations = .empty,
+            .queued_entries = .empty,
+            .thresholds = .empty,
         };
     }
 
@@ -141,6 +142,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
+        // Return the block itself, not just what it points to. The comment this
+        // replaces said the arena manages it; the arena had no way to, so the
+        // struct stayed allocated for the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
@@ -268,6 +275,7 @@ pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
     const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a V8 array with the thresholds
     const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(internal.thresholds.items.len));
@@ -366,6 +374,7 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
     const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a V8 array with the entries
     const entries = internal.queued_entries.toOwnedSlice(internal.allocator) catch return runtime.JSValue.jsUndefined;
@@ -450,7 +459,7 @@ fn scheduleIntersectionUpdate(internal: *InternalState) !void {
 /// Compute intersections for all observed targets
 fn computeIntersections(internal: *InternalState) !void {
     std.log.debug("[IntersectionObserver] computeIntersections: {} observations", .{internal.observations.items.len});
-    const time: typedefs.DOMHighResTimeStamp = @as(f64, @floatFromInt(std.time.milliTimestamp()));
+    const time: typedefs.DOMHighResTimeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
 
     for (internal.observations.items, 0..) |*obs, idx| {
         std.log.debug("[IntersectionObserver] Processing observation {}", .{idx});
@@ -592,6 +601,7 @@ fn invokeCallback(internal: *InternalState) !void {
         std.log.debug("[IntersectionObserver] No current context!", .{});
         return;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(context);
     std.log.debug("[IntersectionObserver] Got callback={*}, isolate={*}, context={*}", .{ callback_global.ptr, isolate, context });
 
     // Create a HandleScope for V8 operations

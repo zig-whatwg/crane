@@ -981,7 +981,7 @@ test "LevelDBBackend - open, write, read, close" {
     defer {
         backend_inst.close();
         // Clean up test directory
-        std.fs.cwd().deleteTree("test_leveldb_backend.leveldb") catch {};
+        std.Io.Dir.cwd().deleteTree(std.testing.io, "test_leveldb_backend.leveldb") catch {};
     }
 
     try std.testing.expect(backend_inst.isOpen());
@@ -1024,7 +1024,7 @@ test "LevelDBBackend - exists and delete" {
     try backend_inst.open("test_leveldb_exists", .{ .create_if_missing = true });
     defer {
         backend_inst.close();
-        std.fs.cwd().deleteTree("test_leveldb_exists.leveldb") catch {};
+        std.Io.Dir.cwd().deleteTree(std.testing.io, "test_leveldb_exists.leveldb") catch {};
     }
 
     const txn = try backend_inst.beginTransaction(.readwrite);
@@ -1058,7 +1058,7 @@ test "LevelDBBackend - cursor iteration" {
     try backend_inst.open("test_leveldb_cursor", .{ .create_if_missing = true });
     defer {
         backend_inst.close();
-        std.fs.cwd().deleteTree("test_leveldb_cursor.leveldb") catch {};
+        std.Io.Dir.cwd().deleteTree(std.testing.io, "test_leveldb_cursor.leveldb") catch {};
     }
 
     // Write some data

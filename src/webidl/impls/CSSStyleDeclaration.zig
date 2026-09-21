@@ -154,9 +154,11 @@ pub fn init(
 
     // Initialize internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the
+    // arena. With `set` it was dropped from the map and held to process
+    // exit - 904 bytes per discarded element, measured.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -704,7 +706,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
                 const count = html_internal.inline_style_properties.count();
                 if (count == 0) return &[_]runtime.DOMString{};
 
-                var names: std.ArrayList(runtime.DOMString) = .{};
+                var names: std.ArrayList(runtime.DOMString) = .empty;
                 var iter = html_internal.inline_style_properties.iterator();
                 while (iter.next()) |entry| {
                     const camel_name = try kebabToCamel(allocator, entry.key_ptr.*);
@@ -719,7 +721,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     const count = internal.properties.count();
     if (count == 0) return &[_]runtime.DOMString{};
 
-    var names: std.ArrayList(runtime.DOMString) = .{};
+    var names: std.ArrayList(runtime.DOMString) = .empty;
 
     var iter = internal.properties.iterator();
     while (iter.next()) |entry| {
@@ -923,8 +925,8 @@ fn parseBorderShorthand(value: []const u8) BorderShorthandParsed {
 
     // Border style keywords
     const style_keywords = [_][]const u8{
-        "none", "hidden", "dotted", "dashed", "solid",
-        "double", "groove", "ridge", "inset", "outset",
+        "none",   "hidden", "dotted", "dashed", "solid",
+        "double", "groove", "ridge",  "inset",  "outset",
     };
 
     // Border width keywords
@@ -998,7 +1000,7 @@ fn rebuildCssText(internal: *InternalState) !void {
         return;
     }
 
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
 
     var iter = internal.properties.iterator();
     var first = true;
@@ -1045,7 +1047,7 @@ fn camelToKebab(name: []const u8, buf: []u8) ?[]const u8 {
 fn kebabToCamel(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     if (name.len == 0) return try allocator.alloc(u8, 0);
 
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     var capitalize_next = false;
 
     for (name) |c| {

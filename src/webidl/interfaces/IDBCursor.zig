@@ -26,13 +26,13 @@ pub const IDBCursor = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "source", "get_source", null },
@@ -41,7 +41,7 @@ pub const IDBCursor = struct {
             .{ "primaryKey", "get_primaryKey", null },
             .{ "request", "get_request", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "advance", "call_advance", 1 },
@@ -50,7 +50,7 @@ pub const IDBCursor = struct {
             .{ "update", "call_update", 1 },
             .{ "delete", "call_delete", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "advance",
@@ -59,11 +59,10 @@ pub const IDBCursor = struct {
             "update",
             "delete",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "source", "get_source", null },
@@ -72,11 +71,10 @@ pub const IDBCursor = struct {
             .{ "primaryKey", "get_primaryKey", null },
             .{ "request", "get_request", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -98,7 +96,6 @@ pub const IDBCursor = struct {
     );
 
     const delegates = .{
-
         .get_direction = &get_direction,
         .get_key = &get_key,
         .get_primaryKey = &get_primaryKey,
@@ -113,7 +110,7 @@ pub const IDBCursor = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -167,12 +164,11 @@ pub const IDBCursor = struct {
     pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
-        
+
         return try IDBCursorImpl.call_advance(instance, count);
     }
 
     pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
         return try IDBCursorImpl.call_continue(instance, key);
     }
 
@@ -183,15 +179,13 @@ pub const IDBCursor = struct {
     }
 
     pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: runtime.JSValue, primaryKey: runtime.JSValue) anyerror!void {
-        
         return try IDBCursorImpl.call_continuePrimaryKey(instance, key, primaryKey);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_update(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBCursorImpl.call_update(instance, value);
     }
-
 };

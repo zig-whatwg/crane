@@ -24,38 +24,34 @@ pub const Highlight = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "priority", "get_priority", "set_priority" },
             .{ "type", "get_type", "set_type" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "priority", "get_priority", "set_priority" },
             .{ "type", "get_type", "set_type" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -64,7 +60,7 @@ pub const Highlight = struct {
         Meta.MixinTypes,
         struct {
             priority: i32 = undefined,
-            @"type": enums.HighlightType = undefined,
+            type: enums.HighlightType = undefined,
             _internal: ?*HighlightImpl.InternalState = null,
         },
     );
@@ -74,7 +70,6 @@ pub const Highlight = struct {
     // ========================================
 
     const delegates = .{
-
         .get_priority = &get_priority,
         .get_type = &get_type,
 
@@ -83,7 +78,7 @@ pub const Highlight = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -129,5 +124,4 @@ pub const Highlight = struct {
     pub fn set_type(instance: *runtime.Instance, value: HighlightType) anyerror!void {
         try HighlightImpl.set_type(instance, value);
     }
-
 };

@@ -104,6 +104,7 @@ pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
     // 2. Get the current V8 context from the isolate
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse
         return TestUtilsError.NoEngineContext;
+    defer v8.ffi.v8_Context_Dispose(v8_context);
 
     // 3. Create a new Promise (Step 1 of spec)
     const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse

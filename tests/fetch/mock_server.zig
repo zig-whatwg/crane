@@ -23,6 +23,7 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// Mock HTTP request.
@@ -124,8 +125,8 @@ pub const MockServer = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .routes = .{},
-            .requests = .{},
+            .routes = .empty,
+            .requests = .empty,
             .default_response = .{
                 .status = 404,
                 .status_text = "Not Found",
@@ -255,7 +256,7 @@ pub const MockServer = struct {
             .url = try self.allocator.dupe(u8, request.url),
             .headers = headers,
             .body = if (request.body) |b| try self.allocator.dupe(u8, b) else null,
-            .timestamp = std.time.timestamp(),
+            .timestamp = clock.wallSeconds(),
         };
 
         try self.requests.append(self.allocator, recorded);

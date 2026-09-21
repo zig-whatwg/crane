@@ -85,7 +85,7 @@ pub const IDBIndex = struct {
             .key_path = null,
             .unique = false,
             .multi_entry = false,
-            .entries = .{},
+            .entries = .empty,
         };
     }
 

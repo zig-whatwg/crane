@@ -29,6 +29,13 @@ pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;
 
+// State ancestry: the machinery behind Instance.stateAs, which replaces the
+// derived-to-base @ptrCast in getState. See tests/runtime/state_brand_test.zig.
+pub const TypeId = @import("instance.zig").TypeId;
+pub const typeId = @import("instance.zig").typeId;
+pub const Ancestor = @import("instance.zig").Ancestor;
+pub const ancestorsOf = @import("instance.zig").ancestorsOf;
+
 // Runtime context and logging
 pub const Context = @import("context.zig").Context;
 pub const ContextData = @import("context.zig").ContextData;
@@ -298,7 +305,7 @@ pub fn isInRange(comptime T: type, value: anytype) bool {
 /// const runtime = @import("runtime");
 ///
 /// pub fn main() !void {
-///     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+///     var gpa: std.heap.DebugAllocator(.{}) = .init;
 ///     defer _ = gpa.deinit();
 ///     const allocator = gpa.allocator();
 ///

@@ -277,13 +277,13 @@ fn isSimpleRangeHeader(value: []const u8) bool {
 ///
 /// Spec: https://fetch.spec.whatwg.org/#cors-unsafe-request-header-names
 pub fn getCORSUnsafeRequestHeaderNames(allocator: Allocator, headers: *const HeaderList) ![]const []const u8 {
-    var unsafe_names = std.ArrayListUnmanaged([]const u8){};
+    var unsafe_names: std.ArrayListUnmanaged([]const u8) = .empty;
     defer unsafe_names.deinit(allocator);
     errdefer {
         for (unsafe_names.items) |n| allocator.free(n);
     }
 
-    var potentially_unsafe_names = std.ArrayListUnmanaged([]const u8){};
+    var potentially_unsafe_names: std.ArrayListUnmanaged([]const u8) = .empty;
     defer {
         for (potentially_unsafe_names.items) |n| allocator.free(n);
         potentially_unsafe_names.deinit(allocator);
@@ -325,7 +325,7 @@ fn convertToSortedLowercaseSet(allocator: Allocator, names: []const []const u8) 
     var set = std.StringHashMap(void).init(allocator);
     defer set.deinit();
 
-    var result = std.ArrayListUnmanaged([]const u8){};
+    var result: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer {
         for (result.items) |n| allocator.free(n);
         result.deinit(allocator);

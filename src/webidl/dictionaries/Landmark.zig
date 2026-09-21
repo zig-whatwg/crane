@@ -8,5 +8,5 @@ const Point2D = @import("Point2D.zig").Point2D;
 
 pub const Landmark = struct {
     locations: []const Point2D,
-    @"type": ?enums.LandmarkType = null,
+    type: ?enums.LandmarkType = null,
 };

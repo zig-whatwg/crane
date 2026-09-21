@@ -38,7 +38,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "origin", "get_origin", "set_origin" },
@@ -51,7 +51,7 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "reportError", "call_reportError", 1 },
@@ -66,7 +66,7 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "structuredClone", "call_structuredClone", 1 },
             .{ "fetch", "call_fetch", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "reportError",
@@ -81,11 +81,10 @@ pub const WindowOrWorkerGlobalScope = struct {
             "structuredClone",
             "fetch",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "origin", "get_origin", "set_origin" },
@@ -98,11 +97,10 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -127,7 +125,6 @@ pub const WindowOrWorkerGlobalScope = struct {
     );
 
     const delegates = .{
-
         .get_caches = &get_caches,
         .get_crossOriginIsolated = &get_crossOriginIsolated,
         .get_crypto = &get_crypto,
@@ -156,7 +153,7 @@ pub const WindowOrWorkerGlobalScope = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -267,60 +264,49 @@ pub const WindowOrWorkerGlobalScope = struct {
     }
 
     pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_atob(instance, data);
     }
 
     pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
     pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_reportError(instance, e);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
-
 };

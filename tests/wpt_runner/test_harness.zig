@@ -179,7 +179,7 @@ pub const TestResult = struct {
         return TestResult{
             .test_path = try allocator.dupe(u8, test_path),
             .status = .ok,
-            .subtests = .{},
+            .subtests = .empty,
             .allocator = allocator,
         };
     }
@@ -190,7 +190,7 @@ pub const TestResult = struct {
             .test_path = try allocator.dupe(u8, test_path),
             .context = if (context) |ctx| try allocator.dupe(u8, ctx) else null,
             .status = .ok,
-            .subtests = .{},
+            .subtests = .empty,
             .allocator = allocator,
         };
     }
@@ -250,7 +250,7 @@ pub const ResultCollector = struct {
     pub fn init(allocator: std.mem.Allocator) ResultCollector {
         return ResultCollector{
             .allocator = allocator,
-            .results = .{},
+            .results = .empty,
         };
     }
 
@@ -298,7 +298,7 @@ pub const ResultCollector = struct {
             var result = TestResult{
                 .test_path = try allocator.dupe(u8, test_path),
                 .status = current.status,
-                .subtests = .{},
+                .subtests = .empty,
                 .allocator = allocator,
                 .message = if (current.message) |msg| try allocator.dupe(u8, msg) else null,
                 .duration_ms = current.duration_ms,

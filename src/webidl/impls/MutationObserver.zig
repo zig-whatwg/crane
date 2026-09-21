@@ -71,8 +71,8 @@ pub const InternalState = struct {
             .allocator = undefined,
             .callback = null,
             .isolate = null,
-            .node_list = .{},
-            .record_queue = .{},
+            .node_list = .empty,
+            .record_queue = .empty,
         };
     }
 
@@ -81,8 +81,8 @@ pub const InternalState = struct {
             .allocator = allocator,
             .callback = null,
             .isolate = null,
-            .node_list = .{},
-            .record_queue = .{},
+            .node_list = .empty,
+            .record_queue = .empty,
         };
     }
 
@@ -138,6 +138,12 @@ pub fn deinit(instance: *runtime.Instance) void {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
+        // Return the block itself, not just what it points to. The comment this
+        // replaces said the arena manages it; the arena had no way to, so the
+        // struct stayed allocated for the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
@@ -498,6 +504,7 @@ pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Ins
         }
         return;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(context);
 
     // Create a HandleScope for V8 operations - all Local handles must be within a scope
     const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {

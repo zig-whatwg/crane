@@ -34,46 +34,43 @@ pub const FileSystemFileHandle = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getFile", "call_getFile", 0 },
             .{ "createWritable", "call_createWritable", 0 },
             .{ "createSyncAccessHandle", "call_createSyncAccessHandle", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getFile",
             "createWritable",
             "createSyncAccessHandle",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isSameEntry",
             "queryPermission",
             "requestPermission",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -86,14 +83,13 @@ pub const FileSystemFileHandle = struct {
     );
 
     const delegates = .{
-
         .call_createSyncAccessHandle = &call_createSyncAccessHandle,
         .call_createWritable = &call_createWritable,
         .call_getFile = &call_getFile,
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -126,8 +122,6 @@ pub const FileSystemFileHandle = struct {
     }
 
     pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(FileSystemCreateWritableOptions)) anyerror!runtime.JSValue {
-        
         return try FileSystemFileHandleImpl.call_createWritable(instance, options);
     }
-
 };

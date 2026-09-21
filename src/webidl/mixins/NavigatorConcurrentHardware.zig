@@ -17,4 +17,3 @@ pub const impl = @import("impls").NavigatorConcurrentHardware;
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     return NavigatorConcurrentHardwareImpl.get_hardwareConcurrency(instance);
 }
-

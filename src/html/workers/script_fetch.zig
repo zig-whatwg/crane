@@ -545,7 +545,7 @@ fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const 
     }
 
     // Handle ../ prefix (parent directory) - may be repeated
-    var dir_components: std.ArrayList([]const u8) = .{};
+    var dir_components: std.ArrayList([]const u8) = .empty;
     defer dir_components.deinit(allocator);
 
     // Split base_dir into components
@@ -565,7 +565,7 @@ fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const 
     }
 
     // Build the resolved path
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     // Add origin

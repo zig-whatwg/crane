@@ -25,43 +25,39 @@ pub const WebGLActiveInfo = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "size", "get_size", null },
             .{ "type", "get_type", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "size", "get_size", null },
             .{ "type", "get_type", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -70,21 +66,20 @@ pub const WebGLActiveInfo = struct {
         Meta.MixinTypes,
         struct {
             size: typedefs.GLint = undefined,
-            @"type": typedefs.GLenum = undefined,
+            type: typedefs.GLenum = undefined,
             name: typedefs.DOMString = undefined,
             _internal: ?*WebGLActiveInfoImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_name = &get_name,
         .get_size = &get_size,
         .get_type = &get_type,
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -118,5 +113,4 @@ pub const WebGLActiveInfo = struct {
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try WebGLActiveInfoImpl.get_name(instance);
     }
-
 };

@@ -162,7 +162,10 @@ pub fn init(
 
     // Initialize Node internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the arena.
+    // Node is the hottest path here - every element is a Node - and with `set` the
+    // block was dropped from the map and held to process exit.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
 
     // Create NodeBase - the unified tree structure
@@ -187,8 +190,6 @@ pub fn init(
 
     // Register the Instance <-> NodeBase mapping
     try instance_bridge.register(instance, node_base);
-
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -768,7 +769,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
             const allocator = instance.ctx.allocator;
 
             // Returns concatenation of descendant text content
-            var result = std.ArrayListUnmanaged(u8){};
+            var result = std.ArrayListUnmanaged(u8).empty;
             errdefer result.deinit(allocator);
 
             // Recursively collect text from all descendants
@@ -1155,9 +1156,11 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
 
     // Initialize internal state for copy in the global registry
     // (getInternal() uses the registry, not state._internal)
-    const copy_internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to
+    // the arena. With `set` it was dropped from the map and held to
+    // process exit - measured at 904 bytes per discarded element.
+    const copy_internal = try Registry.createIn(copy, ArenaAllocator.get());
     copy_internal.* = InternalState.init(allocator);
-    try Registry.set(copy, copy_internal);
 
     // Copy node properties
     copy_internal.node_type = node_internal.node_type;

@@ -21,4 +21,3 @@ pub fn get_correspondingElement(instance: *runtime.Instance) !?*runtime.Instance
 pub fn get_correspondingUseElement(instance: *runtime.Instance) !?*runtime.Instance {
     return SVGElementInstanceImpl.get_correspondingUseElement(instance);
 }
-

@@ -21,4 +21,3 @@ pub fn get_previousElementSibling(instance: *runtime.Instance) !?*runtime.Instan
 pub fn get_nextElementSibling(instance: *runtime.Instance) !?*runtime.Instance {
     return NonDocumentTypeChildNodeImpl.get_nextElementSibling(instance);
 }
-

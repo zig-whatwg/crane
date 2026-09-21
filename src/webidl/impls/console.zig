@@ -24,6 +24,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const clock = @import("clock");
 
 /// Get indentation string for current group level
 fn getIndent(ctx: runtime.Context) []const u8 {
@@ -197,7 +198,7 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
         // Allocate owned copy of label
         const owned_label = ctx.allocator.dupe(u8, label_str) catch return;
         gop.key_ptr.* = owned_label;
-        gop.value_ptr.* = std.time.milliTimestamp();
+        gop.value_ptr.* = clock.monotonicMillis();
     } else {
         const indent = getIndent(ctx);
         if (indent.len > 0) std.debug.print("{s}", .{indent});
@@ -212,7 +213,7 @@ pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), 
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     if (ctx.console_state.timer_table.get(label_str)) |start_time| {
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const elapsed = now - start_time;
         const indent = getIndent(ctx);
         if (indent.len > 0) std.debug.print("{s}", .{indent});
@@ -245,7 +246,7 @@ pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) 
 
     if (ctx.console_state.timer_table.fetchRemove(label_str)) |entry| {
         const start_time = entry.value;
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const elapsed = now - start_time;
         printIndented(ctx, "{s}: {d}ms - timer ended", .{ label_str, elapsed });
         ctx.allocator.free(entry.key); // Free the owned label string

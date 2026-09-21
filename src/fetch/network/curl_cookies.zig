@@ -108,7 +108,7 @@ pub const CurlCookieManager = struct {
     allocator: Allocator,
 
     /// Mutex for thread-safe cookie operations
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     /// Whether to persist cookies to disk
     persist_path: ?[]const u8,
@@ -155,9 +155,9 @@ pub const CurlCookieManager = struct {
             .share_handle = share,
             .cookie_handle = cookie_handle,
             .allocator = allocator,
-            .mutex = .{},
+            .mutex = .init,
             .persist_path = if (persist_path) |p| try allocator.dupe(u8, p) else null,
-            .change_listeners = .{},
+            .change_listeners = .empty,
         };
 
         return self;
@@ -234,23 +234,23 @@ pub const CurlCookieManager = struct {
     /// Flush cookies to disk (if persistence enabled)
     pub fn flush(self: *CurlCookieManager) void {
         if (self.persist_path != null) {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
             _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "FLUSH");
         }
     }
 
     /// Clear all session cookies (cookies without expiry)
     pub fn clearSessionCookies(self: *CurlCookieManager) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "SESS");
     }
 
     /// Clear all cookies
     pub fn clearAll(self: *CurlCookieManager) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "ALL");
     }
 
@@ -279,8 +279,8 @@ pub const CurlCookieManager = struct {
     pub fn getAll(self: *CurlCookieManager, url: ?[]const u8) ![]Cookie {
         _ = url; // TODO: Filter by URL domain/path matching
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var cookie_list: ?*curl.curl_slist = null;
         const result = curl.easy_getinfo(self.cookie_handle, curl.CURLINFO_COOKIELIST, &cookie_list);
@@ -325,8 +325,8 @@ pub const CurlCookieManager = struct {
         const is_change = existing == null or !cookiesEqual(existing.?, cookie);
 
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const cookie_str = try formatSetCookieString(self.allocator, cookie);
             defer self.allocator.free(cookie_str);
@@ -353,8 +353,8 @@ pub const CurlCookieManager = struct {
         defer if (existing_mut) |*e| e.deinit();
 
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const delete_str = try formatDeleteCookie(
                 self.allocator,
@@ -447,38 +447,38 @@ pub fn parseNetscapeCookie(allocator: Allocator, line: []const u8) !Cookie {
 
 /// Format a Cookie as Set-Cookie header string for CURLOPT_COOKIELIST
 pub fn formatSetCookieString(allocator: Allocator, cookie: Cookie) ![]u8 {
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
-    const writer = buf.writer(allocator);
+    // 0.16 removed ArrayList.writer(); print and appendSlice take the allocator.
 
-    try writer.print("Set-Cookie: {s}={s}", .{ cookie.name, cookie.value });
+    try buf.print(allocator, "Set-Cookie: {s}={s}", .{ cookie.name, cookie.value });
 
     if (cookie.domain.len > 0) {
-        try writer.print("; Domain={s}", .{cookie.domain});
+        try buf.print(allocator, "; Domain={s}", .{cookie.domain});
     }
 
     if (cookie.path.len > 0) {
-        try writer.print("; Path={s}", .{cookie.path});
+        try buf.print(allocator, "; Path={s}", .{cookie.path});
     }
 
     if (cookie.expires) |exp| {
         // Use Expires with HTTP date format
-        try writer.print("; Expires={d}", .{exp});
+        try buf.print(allocator, "; Expires={d}", .{exp});
     }
 
     if (cookie.secure) {
-        try writer.writeAll("; Secure");
+        try buf.appendSlice(allocator, "; Secure");
     }
 
     if (cookie.http_only) {
-        try writer.writeAll("; HttpOnly");
+        try buf.appendSlice(allocator, "; HttpOnly");
     }
 
     switch (cookie.same_site) {
-        .strict => try writer.writeAll("; SameSite=Strict"),
-        .lax => try writer.writeAll("; SameSite=Lax"),
-        .none => try writer.writeAll("; SameSite=None"),
+        .strict => try buf.appendSlice(allocator, "; SameSite=Strict"),
+        .lax => try buf.appendSlice(allocator, "; SameSite=Lax"),
+        .none => try buf.appendSlice(allocator, "; SameSite=None"),
     }
 
     return buf.toOwnedSlice(allocator);
@@ -489,13 +489,13 @@ pub fn formatSetCookieString(allocator: Allocator, cookie: Cookie) ![]u8 {
 pub fn formatDeleteCookie(allocator: Allocator, name: []const u8, domain: []const u8, path: []const u8) ![]u8 {
     // Netscape format: domain\tflag\tpath\tsecure\texpiry\tname\tvalue
     // Setting expiry to 1 (past) effectively deletes it
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
-    const writer = buf.writer(allocator);
+    // 0.16 removed ArrayList.writer(); print and appendSlice take the allocator.
     const flag = if (domain.len > 0 and domain[0] == '.') "TRUE" else "FALSE";
 
-    try writer.print("{s}\t{s}\t{s}\tFALSE\t1\t{s}\t", .{ domain, flag, path, name });
+    try buf.print(allocator, "{s}\t{s}\t{s}\tFALSE\t1\t{s}\t", .{ domain, flag, path, name });
 
     return buf.toOwnedSlice(allocator);
 }

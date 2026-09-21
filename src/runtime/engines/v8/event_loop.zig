@@ -93,7 +93,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8_ffi = @import("ffi.zig");
-const libuv_timer = @import("libuv_timer.zig");
+// Phase 7: libuv is gone. The timer backend is native - see native_timer.zig.
+const native_timer = @import("native_timer.zig");
+const TimerManagerImpl = native_timer.NativeTimerManager;
 const runtime = @import("runtime");
 
 // Import the EventLoop interface from streams
@@ -132,7 +134,7 @@ pub const V8EventLoop = struct {
     in_run_once: bool,
 
     /// libuv-based timer manager for setTimeout/clearTimeout
-    timer_manager: ?*libuv_timer.LibuvTimerManager,
+    timer_manager: ?*TimerManagerImpl,
 
     /// Whether this event loop is frozen (for bfcache)
     frozen: bool,
@@ -158,14 +160,14 @@ pub const V8EventLoop = struct {
     /// ```
     pub fn init(isolate: *v8_ffi.Isolate, allocator: Allocator) !Self {
         // Create timer manager
-        const timer_mgr = try libuv_timer.LibuvTimerManager.init(allocator);
+        const timer_mgr = try TimerManagerImpl.init(allocator);
         errdefer timer_mgr.deinit();
 
         return .{
             .isolate = isolate,
             .allocator = allocator,
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
-            .tasks = std.ArrayList(Task){},
+            .tasks = .empty,
             .in_run_once = false,
             .timer_manager = timer_mgr,
             .frozen = false,
@@ -180,7 +182,7 @@ pub const V8EventLoop = struct {
             .isolate = isolate,
             .allocator = allocator,
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
-            .tasks = std.ArrayList(Task){},
+            .tasks = .empty,
             .in_run_once = false,
             .timer_manager = null,
             .frozen = false,

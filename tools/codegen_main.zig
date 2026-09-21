@@ -14,12 +14,14 @@ const std = @import("std");
 const codegen = @import("codegen");
 const CodegenConfig = codegen.config.CodegenConfig;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsWithAllocator and moved the filesystem onto
+// std.Io. Both arrive through std.process.Init, which also supplies the gpa, so
+// taking Init replaces the hand-rolled allocator setup as well.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip program name
@@ -33,13 +35,13 @@ pub fn main() !void {
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--dest-root")) {
             dest_root = args.next() orelse {
-                try printUsage();
+                try printUsage(io);
                 return error.MissingDestRoot;
             };
         } else if (std.mem.eql(u8, arg, "--force")) {
             force_clean = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            try printUsage();
+            try printUsage(io);
             return;
         } else {
             // First positional argument is source path
@@ -47,7 +49,7 @@ pub fn main() !void {
                 source_path = arg;
             } else {
                 std.debug.print("Unknown argument: {s}\n", .{arg});
-                try printUsage();
+                try printUsage(io);
                 return error.UnknownArgument;
             }
         }
@@ -56,13 +58,13 @@ pub fn main() !void {
     // Validate required arguments
     if (source_path == null) {
         std.debug.print("Error: Missing source path\n\n", .{});
-        try printUsage();
+        try printUsage(io);
         return error.MissingSourcePath;
     }
 
     if (dest_root == null) {
         std.debug.print("Error: --dest-root must be specified\n\n", .{});
-        try printUsage();
+        try printUsage(io);
         return error.MissingDestRoot;
     }
 
@@ -71,13 +73,13 @@ pub fn main() !void {
 
     // Try to open as directory first, then fall back to file
     var is_directory = false;
-    if (std.fs.cwd().openDir(source, .{})) |dir_result| {
-        var dir = dir_result;
-        dir.close();
+    if (std.Io.Dir.cwd().openDir(io, source, .{})) |dir_result| {
+        const dir = dir_result;
+        dir.close(io);
         is_directory = true;
     } else |_| {
         // Not a directory, verify it's a valid file
-        const stat = std.fs.cwd().statFile(source) catch |err| {
+        const stat = std.Io.Dir.cwd().statFile(io, source, .{}) catch |err| {
             std.debug.print("Error: Cannot access source path '{s}': {}\n", .{ source, err });
             return err;
         };
@@ -100,7 +102,7 @@ pub fn main() !void {
         for (generated_dirs) |dir| {
             const path = try std.fs.path.join(allocator, &.{ dest_root.?, dir });
             defer allocator.free(path);
-            std.fs.cwd().deleteTree(path) catch |err| {
+            std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
                 if (err != error.FileNotFound) {
                     std.debug.print("Warning: Could not remove {s}: {}\n", .{ path, err });
                 }
@@ -141,10 +143,10 @@ pub fn main() !void {
     std.debug.print("\n✅ Code generation complete!\n", .{});
 }
 
-fn printUsage() !void {
+fn printUsage(io: std.Io) !void {
     var buffer: [4096]u8 = undefined;
-    const stdout_file = std.fs.File.stdout();
-    var stdout_writer = stdout_file.writer(&buffer);
+    const stdout_file = std.Io.File.stdout();
+    var stdout_writer = stdout_file.writer(io, &buffer);
     const stdout = &stdout_writer.interface;
 
     try stdout.print("WebIDL-to-Zig Code Generator\n\n", .{});

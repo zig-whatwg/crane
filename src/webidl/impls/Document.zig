@@ -16,6 +16,7 @@
 //! but may use impls for internal initialization (setNodeType, etc.).
 
 const std = @import("std");
+const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -335,8 +336,8 @@ pub const InternalState = struct {
             .ready_state = ._loading_,
             .document_element = null,
             .doctype = null,
-            .ranges = .{},
-            .node_iterators = .{},
+            .ranges = .empty,
+            .node_iterators = .empty,
             // HTML properties
             .title = runtime.DOMString.initEmpty(),
             .dir = runtime.DOMString.initEmpty(),
@@ -370,9 +371,9 @@ pub const InternalState = struct {
             .cookies = std.StringHashMap([]const u8).init(allocator),
             // Script execution state
             .pending_parsing_blocking_script = null,
-            .scripts_to_execute_asap = .{},
-            .scripts_to_execute_in_order_asap = .{},
-            .scripts_to_execute_when_parsing_finished = .{},
+            .scripts_to_execute_asap = .empty,
+            .scripts_to_execute_in_order_asap = .empty,
+            .scripts_to_execute_when_parsing_finished = .empty,
             .current_script = null,
             .ignore_destructive_writes_counter = 0,
             .throw_on_dynamic_markup_insertion_counter = 0,
@@ -380,7 +381,7 @@ pub const InternalState = struct {
             .insertion_point = null,
             .is_script_created_parser = false,
             .active_parser_was_aborted = false,
-            .write_buffer = .{},
+            .write_buffer = .empty,
             .input_stream_manager = null,
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
@@ -583,9 +584,11 @@ pub fn init(
 
     // Initialize Document's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the
+    // arena. With `set` it was dropped from the map and held to process
+    // exit - 904 bytes per discarded element, measured.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -1090,7 +1093,7 @@ fn stripAndCollapseWhitespace(allocator: std.mem.Allocator, input: []const u8) !
         return try allocator.dupe(u8, "");
     }
 
-    var result = std.ArrayListUnmanaged(u8){};
+    var result = std.ArrayListUnmanaged(u8).empty;
     errdefer result.deinit(allocator);
 
     var in_whitespace = true; // Skip leading whitespace
@@ -3494,7 +3497,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
         value_slice,
     ) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("execCommand error: {any}\n", .{err});
+            log.err("execCommand error: {any}", .{err});
         }
         return false;
     };
@@ -3524,7 +3527,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     // Step 5: Surround the selection with the element
     RangeImpl.call_surroundContents(range, element) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("surroundContents failed: {any}\n", .{err});
+            log.err("surroundContents failed: {any}", .{err});
         }
         // surroundContents can fail if range partially contains non-text nodes
         return false;
@@ -4830,7 +4833,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // Create new Selection for this document
     const selection = SelectionImpl.createSelection(internal.allocator, instance.ctx, instance) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("Failed to create Selection: {any}\n", .{err});
+            log.err("Failed to create Selection: {any}", .{err});
         }
         return null;
     };

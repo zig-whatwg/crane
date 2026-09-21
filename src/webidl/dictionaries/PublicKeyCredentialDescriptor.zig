@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const PublicKeyCredentialDescriptor = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     id: typedefs.BufferSource,
     transports: ?[]const runtime.DOMString = null,
 };

@@ -26,17 +26,17 @@ pub const CSSStyleDeclaration = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "cssText", "get_cssText", "set_cssText" },
             .{ "length", "get_length", null },
             .{ "parentRule", "get_parentRule", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
@@ -46,7 +46,7 @@ pub const CSSStyleDeclaration = struct {
             .{ "removeProperty", "call_removeProperty", 1 },
             .{ "getPropertyCSSValue", "call_getPropertyCSSValue", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
@@ -56,22 +56,20 @@ pub const CSSStyleDeclaration = struct {
             "removeProperty",
             "getPropertyCSSValue",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "cssText", "get_cssText", "set_cssText" },
             .{ "length", "get_length", null },
             .{ "parentRule", "get_parentRule", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -87,7 +85,6 @@ pub const CSSStyleDeclaration = struct {
     );
 
     const delegates = .{
-
         .get_cssText = &get_cssText,
         .get_length = &get_length,
         .get_parentRule = &get_parentRule,
@@ -106,7 +103,7 @@ pub const CSSStyleDeclaration = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -139,7 +136,7 @@ pub const CSSStyleDeclaration = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try CSSStyleDeclarationImpl.set_cssText(instance, value);
     }
 
@@ -152,12 +149,10 @@ pub const CSSStyleDeclaration = struct {
     }
 
     pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!*runtime.Instance {
-        
         return try CSSStyleDeclarationImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
     pub fn call_getPropertyPriority(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
-        
         return try CSSStyleDeclarationImpl.call_getPropertyPriority(instance, property);
     }
 
@@ -166,8 +161,7 @@ pub const CSSStyleDeclaration = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority);
     }
 
@@ -176,18 +170,15 @@ pub const CSSStyleDeclaration = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try CSSStyleDeclarationImpl.call_removeProperty(instance, property);
     }
 
     pub fn call_getPropertyValue(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
-        
         return try CSSStyleDeclarationImpl.call_getPropertyValue(instance, property);
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
-        
         return try CSSStyleDeclarationImpl.call_item(instance, index);
     }
 
@@ -210,5 +201,4 @@ pub const CSSStyleDeclaration = struct {
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return CSSStyleDeclarationImpl.getSupportedPropertyNames(instance, allocator);
     }
-
 };

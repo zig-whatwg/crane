@@ -26,10 +26,10 @@ pub const FileSystemEntry = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "isFile", "get_isFile", null },
@@ -38,21 +38,20 @@ pub const FileSystemEntry = struct {
             .{ "fullPath", "get_fullPath", null },
             .{ "filesystem", "get_filesystem", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getParent", "call_getParent", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getParent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "isFile", "get_isFile", null },
@@ -61,11 +60,10 @@ pub const FileSystemEntry = struct {
             .{ "fullPath", "get_fullPath", null },
             .{ "filesystem", "get_filesystem", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -83,7 +81,6 @@ pub const FileSystemEntry = struct {
     );
 
     const delegates = .{
-
         .get_filesystem = &get_filesystem,
         .get_fullPath = &get_fullPath,
         .get_isDirectory = &get_isDirectory,
@@ -94,7 +91,7 @@ pub const FileSystemEntry = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -138,8 +135,6 @@ pub const FileSystemEntry = struct {
     }
 
     pub fn call_getParent(instance: *runtime.Instance, successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
-        
         return try FileSystemEntryImpl.call_getParent(instance, successCallback, errorCallback);
     }
-
 };

@@ -39,7 +39,7 @@
 //! const std = @import("std");
 //! const types = @import("types.zig");
 //!
-//! const json_source = try std.fs.cwd().readFileAlloc(allocator, "dom.json", 1024 * 1024);
+//! const json_source = try std.Io.Dir.cwd().readFileAlloc(io, "dom.json", allocator, .limited(1024 * 1024));
 //! defer allocator.free(json_source);
 //!
 //! const parsed = try std.json.parseFromSlice(types.IDLFile, allocator, json_source, .{});

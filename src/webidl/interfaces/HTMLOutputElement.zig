@@ -89,10 +89,10 @@ pub const HTMLOutputElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
@@ -106,27 +106,27 @@ pub const HTMLOutputElement = struct {
             .{ "validationMessage", "get_validationMessage", null },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "htmlFor", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "checkValidity", "call_checkValidity", 0 },
             .{ "reportValidity", "call_reportValidity", 0 },
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "checkValidity",
             "reportValidity",
             "setCustomValidity",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -222,7 +222,7 @@ pub const HTMLOutputElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
@@ -236,11 +236,10 @@ pub const HTMLOutputElement = struct {
             .{ "validationMessage", "get_validationMessage", null },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -251,7 +250,7 @@ pub const HTMLOutputElement = struct {
             htmlFor: *runtime.Instance = undefined,
             form: ?*runtime.Instance = null,
             name: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             defaultValue: typedefs.DOMString = undefined,
             value: typedefs.DOMString = undefined,
             willValidate: bool = undefined,
@@ -264,7 +263,6 @@ pub const HTMLOutputElement = struct {
     );
 
     const delegates = .{
-
         .get_defaultValue = &get_defaultValue,
         .get_form = &get_form,
         .get_htmlFor = &get_htmlFor,
@@ -287,7 +285,7 @@ pub const HTMLOutputElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -335,7 +333,7 @@ pub const HTMLOutputElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'htmlFor' forwards to 'value' on the attribute's value
         const target = try get_htmlFor(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -355,7 +353,7 @@ pub const HTMLOutputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLOutputElementImpl.set_name(instance, value);
     }
 
@@ -373,7 +371,7 @@ pub const HTMLOutputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLOutputElementImpl.set_defaultValue(instance, value);
     }
 
@@ -387,7 +385,7 @@ pub const HTMLOutputElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLOutputElementImpl.set_value(instance, value);
     }
 
@@ -408,7 +406,6 @@ pub const HTMLOutputElement = struct {
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLOutputElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -419,5 +416,4 @@ pub const HTMLOutputElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLOutputElementImpl.call_checkValidity(instance);
     }
-
 };

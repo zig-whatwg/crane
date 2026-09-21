@@ -48,7 +48,7 @@ const HttpVersion = backend_mod.HttpVersion;
 pub const ConnectionPool = struct {
     allocator: Allocator,
     multi_handle: *curl.CURLM,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     /// Maximum connections to a single host (per HTTP spec: 6)
     max_connections_per_host: u32,
@@ -140,7 +140,7 @@ pub const ConnectionPool = struct {
         self.* = .{
             .allocator = allocator,
             .multi_handle = multi,
-            .mutex = .{},
+            .mutex = .init,
             .max_connections_per_host = options.max_connections_per_host,
             .max_total_connections = options.max_total_connections,
             .active_handles = std.AutoHashMap(*curl.CURL, *RequestContext).init(allocator),
@@ -152,7 +152,7 @@ pub const ConnectionPool = struct {
     /// Clean up pool and all connections.
     pub fn deinit(self: *Self) void {
         // Lock for cleanup operations (but don't defer unlock since we free self)
-        self.mutex.lock();
+        std.Io.Threaded.mutexLock(&self.mutex);
 
         // Remove and cleanup all active handles
         var it = self.active_handles.iterator();
@@ -173,7 +173,7 @@ pub const ConnectionPool = struct {
         const allocator = self.allocator;
 
         // Unlock before destroying (mutex is part of self)
-        self.mutex.unlock();
+        std.Io.Threaded.mutexUnlock(&self.mutex);
 
         // Now safe to destroy
         allocator.destroy(self);
@@ -199,8 +199,8 @@ pub const ConnectionPool = struct {
 
         // Add to multi handle
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const add_result = curl.multi_add_handle(self.multi_handle, easy_handle);
             if (add_result != curl.CURLM_OK) {
@@ -222,8 +222,8 @@ pub const ConnectionPool = struct {
 
         // Remove from multi (connection stays in pool for reuse)
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
             _ = curl.multi_remove_handle(self.multi_handle, easy_handle);
             _ = self.active_handles.remove(easy_handle);
         }
@@ -276,8 +276,8 @@ pub const ConnectionPool = struct {
     /// Poll for activity on all handles.
     /// Blocks up to timeout_ms milliseconds.
     pub fn pollOnce(self: *Self, timeout_ms: i32) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var numfds: c_int = 0;
         const poll_result = curl.multi_poll(self.multi_handle, @intCast(timeout_ms), &numfds);
@@ -313,8 +313,8 @@ pub const ConnectionPool = struct {
 
     /// Cancel an in-progress request.
     fn cancelRequest(self: *Self, easy_handle: *curl.CURL, ctx: *RequestContext, allocator: Allocator) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         _ = curl.multi_remove_handle(self.multi_handle, easy_handle);
         _ = self.active_handles.remove(easy_handle);
@@ -325,8 +325,8 @@ pub const ConnectionPool = struct {
 
     /// Get statistics about the pool.
     pub fn getStats(self: *Self) PoolStats {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         return .{
             .active_requests = self.active_handles.count(),
@@ -629,14 +629,14 @@ fn progressCallback(
 // =============================================================================
 
 var global_pool: ?*ConnectionPool = null;
-var global_pool_mutex: std.Thread.Mutex = .{};
+var global_pool_mutex: std.Io.Mutex = .init;
 
 /// Get or create the global connection pool.
 /// The global pool is shared across all requests and provides
 /// maximum connection reuse efficiency.
 pub fn getGlobalPool(allocator: Allocator) !*ConnectionPool {
-    global_pool_mutex.lock();
-    defer global_pool_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_pool_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 
     if (global_pool == null) {
         global_pool = try ConnectionPool.init(allocator);
@@ -646,8 +646,8 @@ pub fn getGlobalPool(allocator: Allocator) !*ConnectionPool {
 
 /// Cleanup the global pool. Call at program shutdown.
 pub fn cleanupGlobalPool() void {
-    global_pool_mutex.lock();
-    defer global_pool_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_pool_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 
     if (global_pool) |pool| {
         pool.deinit();
@@ -736,7 +736,7 @@ test "ConnectionPool - global pool singleton" {
     cleanupGlobalPool();
 
     // Ensure it was cleaned up
-    global_pool_mutex.lock();
+    std.Io.Threaded.mutexLock(&global_pool_mutex);
     try std.testing.expect(global_pool == null);
-    global_pool_mutex.unlock();
+    std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 }

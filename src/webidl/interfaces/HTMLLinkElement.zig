@@ -92,10 +92,10 @@ pub const HTMLLinkElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -119,7 +119,7 @@ pub const HTMLLinkElement = struct {
             .{ "target", "get_target", "set_target" },
             .{ "sheet", "get_sheet", null },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -127,15 +127,13 @@ pub const HTMLLinkElement = struct {
             .{ "sizes", "value" },
             .{ "blocking", "value" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -231,7 +229,7 @@ pub const HTMLLinkElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -255,11 +253,10 @@ pub const HTMLLinkElement = struct {
             .{ "target", "get_target", "set_target" },
             .{ "sheet", "get_sheet", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -275,7 +272,7 @@ pub const HTMLLinkElement = struct {
             media: typedefs.DOMString = undefined,
             integrity: typedefs.DOMString = undefined,
             hreflang: typedefs.DOMString = undefined,
-            @"type": typedefs.DOMString = undefined,
+            type: typedefs.DOMString = undefined,
             sizes: *runtime.Instance = undefined,
             imageSrcset: runtime.USVString = undefined,
             imageSizes: typedefs.DOMString = undefined,
@@ -295,7 +292,6 @@ pub const HTMLLinkElement = struct {
     );
 
     const delegates = .{
-
         .get_as = &get_as,
         .get_blocking = &get_blocking,
         .get_charset = &get_charset,
@@ -339,7 +335,7 @@ pub const HTMLLinkElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -380,7 +376,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_href(instance, value);
     }
 
@@ -394,7 +390,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -408,7 +404,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_rel(instance, value);
     }
 
@@ -422,7 +418,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_as(instance, value);
     }
 
@@ -443,7 +439,7 @@ pub const HTMLLinkElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
         const target = try get_relList(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -459,7 +455,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_media(instance, value);
     }
 
@@ -473,7 +469,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_integrity(instance, value);
     }
 
@@ -487,7 +483,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_hreflang(instance, value);
     }
 
@@ -501,7 +497,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_type(instance, value);
     }
 
@@ -522,7 +518,7 @@ pub const HTMLLinkElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'sizes' forwards to 'value' on the attribute's value
         const target = try get_sizes(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -538,7 +534,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_imageSrcset(instance, value);
     }
 
@@ -552,7 +548,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_imageSizes(instance, value);
     }
 
@@ -566,7 +562,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -587,7 +583,7 @@ pub const HTMLLinkElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'blocking' forwards to 'value' on the attribute's value
         const target = try get_blocking(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "value", value);
@@ -603,7 +599,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_disabled(instance, value);
     }
 
@@ -617,7 +613,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_fetchPriority(instance, value);
     }
 
@@ -631,7 +627,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_charset(instance, value);
     }
 
@@ -645,7 +641,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_rev(instance, value);
     }
 
@@ -659,12 +655,11 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLinkElementImpl.set_target(instance, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLinkElementImpl.get_sheet(instance);
     }
-
 };

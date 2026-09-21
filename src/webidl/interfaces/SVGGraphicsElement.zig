@@ -93,31 +93,31 @@ pub const SVGGraphicsElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "transform", "get_transform", null },
             .{ "requiredExtensions", "get_requiredExtensions", null },
             .{ "systemLanguage", "get_systemLanguage", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getBBox", "call_getBBox", 0 },
             .{ "getCTM", "call_getCTM", 0 },
             .{ "getScreenCTM", "call_getScreenCTM", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getBBox",
             "getCTM",
             "getScreenCTM",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -208,18 +208,17 @@ pub const SVGGraphicsElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "transform", "get_transform", null },
             .{ "requiredExtensions", "get_requiredExtensions", null },
             .{ "systemLanguage", "get_systemLanguage", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -238,7 +237,6 @@ pub const SVGGraphicsElement = struct {
     );
 
     const delegates = .{
-
         .get_requiredExtensions = &get_requiredExtensions,
         .get_systemLanguage = &get_systemLanguage,
         .get_transform = &get_transform,
@@ -249,7 +247,7 @@ pub const SVGGraphicsElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -317,8 +315,6 @@ pub const SVGGraphicsElement = struct {
     }
 
     pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!*runtime.Instance {
-        
         return try SVGGraphicsElementImpl.call_getBBox(instance, options);
     }
-
 };

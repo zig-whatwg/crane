@@ -9,7 +9,8 @@
 //! - `setTimeout` schedules a one-shot callback after N milliseconds
 //! - `clearTimeout` cancels a pending timer
 //!
-//! Each host provides its own implementation. For V8, this is libuv.
+//! Each host provides its own implementation. For V8 this is
+//! engines/v8/native_timer.zig, which needs only a monotonic clock.
 //! Future hosts can use their native timer facilities.
 //!
 //! ## Usage (Legacy anyopaque API)
@@ -83,7 +84,14 @@ pub const TimerVTable = struct {
     setTimeout: *const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId,
 
     /// Cancel a pending timer.
-    clearTimeout: *const fn (ctx: *anyopaque, id: TimerId) void,
+    ///
+    /// Returns true only if a live timer with this id was found and cancelled.
+    /// False means the callback may still fire - the id was unknown to THIS
+    /// implementation, which is the normal cross-realm case: the thread-local
+    /// TimerInterface belongs to the realm calling clearTimeout, not necessarily
+    /// the realm that scheduled the timer. A caller that frees the callback's
+    /// user_data on a false return frees memory the timer still points at.
+    clearTimeout: *const fn (ctx: *anyopaque, id: TimerId) bool,
 };
 
 /// Host-agnostic timer interface.
@@ -115,8 +123,10 @@ pub const TimerInterface = struct {
     ///
     /// If the timer has already fired or was already cancelled, this is a no-op.
     /// It is safe to call clearTimeout multiple times with the same id.
-    pub fn clearTimeout(self: Self, id: TimerId) void {
-        self.vtable.clearTimeout(self.ctx, id);
+    /// Cancel a pending timer. See `TimerVTable.clearTimeout` - the return value
+    /// must be honoured before freeing any user_data the timer holds.
+    pub fn clearTimeout(self: Self, id: TimerId) bool {
+        return self.vtable.clearTimeout(self.ctx, id);
     }
 };
 

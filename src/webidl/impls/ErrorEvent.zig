@@ -14,6 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const ErrorEvent = interfaces.ErrorEvent;
 
@@ -97,6 +98,12 @@ pub fn deinit(instance: *runtime.Instance) void {
             internal.allocator.free(internal.filename);
         }
         internal.deinit();
+        // Return the block itself, not just what it points to. `internal.deinit()`
+        // releases what the state OWNS; the state struct was staying allocated for
+        // the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
 
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
@@ -145,7 +152,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
     state.base.own.isTrusted = false;
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Initialize ErrorEvent-specific attributes from eventInitDict
     if (eventInitDict.was_passed) {

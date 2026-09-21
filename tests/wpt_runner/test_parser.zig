@@ -35,6 +35,7 @@
 
 const std = @import("std");
 const config = @import("config.zig");
+const host = @import("host");
 
 /// Error types for test parsing
 pub const ParseError = error{
@@ -273,11 +274,78 @@ pub const TestMetadata = struct {
     }
 
     /// Get the effective test count (considering variants)
+    ///
+    /// This is how many URLs MANIFEST.json lists for the file - what a complete
+    /// implementation would run. For how many this runner will actually run,
+    /// see `runCount`.
     pub fn getEffectiveTestCount(self: TestMetadata) usize {
         const variant_count = if (self.variants.items.len > 0) self.variants.items.len else 1;
         return variant_count * @max(1, self.globals.items.len);
     }
+
+    /// How many times this runner will execute the file: once per implemented
+    /// global, times once per variant.
+    ///
+    /// The progress denominator, so it has to predict exactly what the
+    /// execution loop does. Unimplemented globals are skipped rather than run,
+    /// and their variants are skipped with them - a file with none of its
+    /// globals implemented counts 1, matching the single skip it reports.
+    pub fn runCount(self: TestMetadata) usize {
+        var implemented: usize = 0;
+        for (self.globals.items) |g| {
+            if (g.isImplemented()) implemented += 1;
+        }
+        if (implemented == 0) return 1;
+        return implemented * self.variantsOrDefault().len;
+    }
+
+    /// The variants to run, with WPT's default filled in.
+    ///
+    /// A file that declares no variant still runs exactly once - upstream
+    /// sourcefile.py ends its variant list with `if not rv: rv = [""]`. Handing
+    /// back one empty variant rather than an empty list means the runner has a
+    /// single loop instead of a loop and a special case, and an empty variant
+    /// costs nothing downstream: it appends nothing to the URL and names
+    /// nothing in the result.
+    pub fn variantsOrDefault(self: TestMetadata) []const []const u8 {
+        if (self.variants.items.len == 0) return &no_variants;
+        return self.variants.items;
+    }
 };
+
+const no_variants = [_][]const u8{""};
+
+/// How one run of a source is named in the results.
+///
+/// A source fans out along two independent axes - the globals it declares (a
+/// `.any.js` runs in window and worker) and the query-string variants it
+/// declares - and they multiply. MANIFEST.json lists every combination as its
+/// own test URL, so each needs a name that tells it apart from its siblings;
+/// without one, several URLs' results collapse onto a single scoreboard line.
+///
+/// Null means there is nothing to tell apart: one global, no variants, which is
+/// most of the corpus and whose display name should stay the bare path.
+///
+/// `global_count` is how many globals the file *declares*, not how many of them
+/// this runner can execute. A file declaring window and sharedworker is named
+/// `[window]` even though only one global runs, so that its scoreboard line
+/// stays the same line once the missing global is turned on.
+///
+/// The caller owns a non-null result.
+pub fn runLabel(
+    allocator: std.mem.Allocator,
+    context: GlobalType,
+    global_count: usize,
+    variant: []const u8,
+) !?[]const u8 {
+    const name_global = global_count > 1;
+    if (name_global and variant.len > 0) {
+        return try std.fmt.allocPrint(allocator, "{s} {s}", .{ context.toString(), variant });
+    }
+    if (name_global) return try allocator.dupe(u8, context.toString());
+    if (variant.len > 0) return try allocator.dupe(u8, variant);
+    return null;
+}
 
 /// Parsed test file
 pub const ParsedTest = struct {
@@ -667,12 +735,14 @@ pub const ScriptLoader = struct {
         }
 
         // Load from file
-        const file = std.fs.cwd().openFile(resolved_path, .{}) catch |err| {
+        const io = host.io();
+        const file = host.cwd().openFile(io, resolved_path, .{}) catch |err| {
             return err;
         };
-        defer file.close();
+        defer file.close(io);
 
-        const content = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| {
+        var file_reader = file.reader(io, &.{});
+        const content = file_reader.interface.allocRemaining(self.allocator, .limited(10 * 1024 * 1024)) catch |err| {
             return err;
         };
 
@@ -685,16 +755,16 @@ pub const ScriptLoader = struct {
 
     /// Load all scripts for a parsed test
     pub fn loadAll(self: *ScriptLoader, parsed_test: *const ParsedTest) !std.ArrayList(LoadedScript) {
-        var scripts = std.ArrayList(LoadedScript).init(self.allocator);
+        var scripts: std.ArrayList(LoadedScript) = .empty;
         errdefer {
             for (scripts.items) |*s| s.deinit(self.allocator);
-            scripts.deinit();
+            scripts.deinit(self.allocator);
         }
 
         for (parsed_test.metadata.scripts.items) |script_ref| {
             if (script_ref.inline_script) {
                 // Inline script - content is already available
-                try scripts.append(LoadedScript{
+                try scripts.append(self.allocator, LoadedScript{
                     .path = try self.allocator.dupe(u8, "inline"),
                     .content = try self.allocator.dupe(u8, script_ref.path),
                     .inline_script = true,
@@ -706,7 +776,7 @@ pub const ScriptLoader = struct {
                 defer self.allocator.free(resolved);
 
                 const content = try self.load(resolved);
-                try scripts.append(LoadedScript{
+                try scripts.append(self.allocator, LoadedScript{
                     .path = try self.allocator.dupe(u8, resolved),
                     .content = try self.allocator.dupe(u8, content),
                     .inline_script = false,
@@ -1378,4 +1448,157 @@ test "multi-context: effective test count with variants and globals" {
 
     // 2 contexts * 3 variants = 6 effective tests
     try std.testing.expectEqual(@as(usize, 6), parsed.metadata.getEffectiveTestCount());
+}
+
+test "variantsOrDefault: a file with no variants still runs exactly once" {
+    const allocator = std.testing.allocator;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", "test(() => {});");
+    defer parsed.deinit();
+
+    // WPT's own rule, from sourcefile.py: `if not rv: rv = [""]`. Two thirds of
+    // the corpus declares no variant, and modelling that as one empty variant
+    // rather than as a separate case is what lets the runner have a single loop.
+    const variants = parsed.metadata.variantsOrDefault();
+    try std.testing.expectEqual(@as(usize, 1), variants.len);
+    try std.testing.expectEqualStrings("", variants[0]);
+}
+
+test "variantsOrDefault: declared variants come back verbatim" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: variant=
+        \\// META: variant=?include=file
+        \\// META: variant=#fragment
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // The leading `?` or `#` is part of the variant, and an explicitly declared
+    // empty variant is a real variant that happens to look like the default.
+    // They are appended to the URL as-is, so nothing here may be normalised.
+    const variants = parsed.metadata.variantsOrDefault();
+    try std.testing.expectEqual(@as(usize, 3), variants.len);
+    try std.testing.expectEqualStrings("", variants[0]);
+    try std.testing.expectEqualStrings("?include=file", variants[1]);
+    try std.testing.expectEqualStrings("#fragment", variants[2]);
+}
+
+test "runCount: multiplies implemented globals by variants" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,worker
+        \\// META: variant=?1
+        \\// META: variant=?2
+        \\// META: variant=?3
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // 2 globals * 3 variants. This is the runner's progress denominator, so a
+    // count that ignored either axis would leave the bar stuck short of its own
+    // total, or run past it.
+    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.runCount());
+}
+
+test "runCount: counts only globals that run" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,worker,sharedworker,serviceworker
+        \\// META: variant=?1
+        \\// META: variant=?2
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Unlike getEffectiveTestCount, which counts what WPT would run: the two
+    // unimplemented globals are skipped outright and never report, so counting
+    // them would promise results that never arrive.
+    try std.testing.expectEqual(@as(usize, 8), parsed.metadata.getEffectiveTestCount());
+    try std.testing.expectEqual(@as(usize, 4), parsed.metadata.runCount());
+}
+
+test "runCount: a file with no variants counts once per global" {
+    const allocator = std.testing.allocator;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", "test(() => {});");
+    defer parsed.deinit();
+
+    // .any.js defaults to window+worker, both implemented, no variants.
+    try std.testing.expectEqual(@as(usize, 2), parsed.metadata.runCount());
+}
+
+test "runCount: a file with no implemented global still counts once" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=sharedworker
+        \\// META: variant=?1
+        \\// META: variant=?2
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // The file is skipped rather than run, and its variants are skipped with
+    // it - so they must not multiply. One, matching the single skip the
+    // execution loop reports for it.
+    try std.testing.expectEqual(@as(usize, 1), parsed.metadata.runCount());
+}
+
+test "runLabel: names both axes when both fan out" {
+    const allocator = std.testing.allocator;
+
+    const label = (try runLabel(allocator, .worker, 2, "?include=file")).?;
+    defer allocator.free(label);
+    try std.testing.expectEqualStrings("worker ?include=file", label);
+}
+
+test "runLabel: names the global alone when only globals fan out" {
+    const allocator = std.testing.allocator;
+
+    const label = (try runLabel(allocator, .window, 2, "")).?;
+    defer allocator.free(label);
+    try std.testing.expectEqualStrings("window", label);
+}
+
+test "runLabel: names the variant alone when only variants fan out" {
+    const allocator = std.testing.allocator;
+
+    // A plain .html file with variants has exactly one global, so naming it
+    // would add "window" to every line of the scoreboard without telling any
+    // two runs apart.
+    const label = (try runLabel(allocator, .window, 1, "?include=file")).?;
+    defer allocator.free(label);
+    try std.testing.expectEqualStrings("?include=file", label);
+}
+
+test "runLabel: names nothing when the source runs once" {
+    const allocator = std.testing.allocator;
+
+    // The common case, and the reason this returns an optional: the display
+    // name of a source that runs once should stay the bare path.
+    try std.testing.expectEqual(@as(?[]const u8, null), try runLabel(allocator, .window, 1, ""));
+}
+
+test "runLabel: counts declared globals, not implemented ones" {
+    const allocator = std.testing.allocator;
+
+    // `global=window,sharedworker` fans out to two URLs in MANIFEST.json even
+    // though only one of them runs here. Labelling on the declared count keeps
+    // the window run named `[window]` in both the before and after of turning
+    // sharedworker on, so its scoreboard line stays the same line.
+    const label = (try runLabel(allocator, .window, 2, "")).?;
+    defer allocator.free(label);
+    try std.testing.expectEqualStrings("window", label);
 }

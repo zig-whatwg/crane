@@ -57,10 +57,10 @@ pub const BaseAudioContext = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "destination", "get_destination", null },
@@ -72,7 +72,7 @@ pub const BaseAudioContext = struct {
             .{ "audioWorklet", "get_audioWorklet", null },
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createAnalyser", "call_createAnalyser", 0 },
@@ -95,7 +95,7 @@ pub const BaseAudioContext = struct {
             .{ "createWaveShaper", "call_createWaveShaper", 0 },
             .{ "decodeAudioData", "call_decodeAudioData", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createAnalyser",
@@ -118,7 +118,7 @@ pub const BaseAudioContext = struct {
             "createWaveShaper",
             "decodeAudioData",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -126,7 +126,7 @@ pub const BaseAudioContext = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "destination", "get_destination", null },
@@ -138,11 +138,10 @@ pub const BaseAudioContext = struct {
             .{ "audioWorklet", "get_audioWorklet", null },
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -164,7 +163,6 @@ pub const BaseAudioContext = struct {
     );
 
     const delegates = .{
-
         .get_audioWorklet = &get_audioWorklet,
         .get_currentTime = &get_currentTime,
         .get_destination = &get_destination,
@@ -198,7 +196,7 @@ pub const BaseAudioContext = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -266,7 +264,6 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createScriptProcessor(instance, bufferSize, numberOfInputChannels, numberOfOutputChannels);
     }
 
@@ -275,12 +272,10 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createDelay(instance, maxDelayTime);
     }
 
     pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createChannelMerger(instance, numberOfInputs);
     }
 
@@ -293,7 +288,6 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_createIIRFilter(instance: *runtime.Instance, feedforward: runtime.JSValue, feedback: runtime.JSValue) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createIIRFilter(instance, feedforward, feedback);
     }
 
@@ -302,7 +296,6 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createChannelSplitter(instance, numberOfOutputs);
     }
 
@@ -319,7 +312,6 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: runtime.JSValue, successCallback: webidl.Opt(?DecodeSuccessCallback), errorCallback: webidl.Opt(?DecodeErrorCallback)) anyerror!runtime.JSValue {
-        
         return try BaseAudioContextImpl.call_decodeAudioData(instance, audioData, successCallback, errorCallback);
     }
 
@@ -340,13 +332,10 @@ pub const BaseAudioContext = struct {
     }
 
     pub fn call_createBuffer(instance: *runtime.Instance, numberOfChannels: u32, length: u32, sampleRate: f32) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createBuffer(instance, numberOfChannels, length, sampleRate);
     }
 
     pub fn call_createPeriodicWave(instance: *runtime.Instance, real: runtime.JSValue, imag: runtime.JSValue, constraints: webidl.Opt(PeriodicWaveConstraints)) anyerror!*runtime.Instance {
-        
         return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
-
 };

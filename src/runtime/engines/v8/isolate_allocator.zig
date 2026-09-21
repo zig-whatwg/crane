@@ -53,10 +53,7 @@ const AllocatorData = struct {
     /// Gets reset after each callback
     arena: std.heap.ArenaAllocator,
 
-    /// General purpose allocator for long-lived objects
-    gpa: std.heap.GeneralPurposeAllocator(.{}),
-
-    /// Whether this uses an arena or GPA
+    /// Arena mode, rather than handing back the parent directly.
     use_arena: bool,
 };
 
@@ -69,7 +66,12 @@ const AllocatorData = struct {
 /// Arguments:
 /// - isolate: V8 isolate to initialize allocator for
 /// - parent: Parent allocator to use for creating the isolate allocator
-/// - use_arena: If true, use arena allocator (fast, bulk free). If false, use GPA (slower, granular free)
+/// - use_arena: If true, allocations go to a per-isolate arena that is freed in
+///   bulk at isolate teardown. If false, `parent` is handed back directly, so
+///   `free` reaches the real allocator and memory is reclaimed during the run.
+///   False is what every caller wants and what every caller passes: the arena's
+///   `free` is a no-op, and this allocator serves every method and attribute
+///   dispatcher, so in arena mode each argument conversion leaked until teardown.
 ///
 /// Returns: Error if allocator already initialized or allocation fails
 pub fn initIsolateAllocator(
@@ -92,19 +94,22 @@ pub fn initIsolateAllocator(
             .allocator = undefined, // Set below
             .parent = parent,
             .arena = std.heap.ArenaAllocator.init(parent),
-            .gpa = undefined,
             .use_arena = true,
         };
         data.allocator = data.arena.allocator();
     } else {
+        // Non-arena: hand back the PARENT allocator, so `free` actually frees.
+        //
+        // Not a DebugAllocator: that retains freed pages to detect use-after-free
+        // and never returns them to the OS, which would swap one non-reclaiming
+        // allocator for another. The parent is whatever the caller supplied, and
+        // the call sites supply `std.heap.c_allocator`.
         data.* = .{
-            .allocator = undefined, // Set below
+            .allocator = parent,
             .parent = parent,
             .arena = undefined,
-            .gpa = std.heap.GeneralPurposeAllocator(.{}){},
             .use_arena = false,
         };
-        data.allocator = data.gpa.allocator();
     }
 
     // Store in isolate
@@ -142,11 +147,11 @@ pub fn deinitIsolateAllocator(isolate: *v8.Isolate) void {
     const data_ptr = v8.v8_Isolate_GetData(isolate, ALLOCATOR_SLOT) orelse return;
     const data: *AllocatorData = @ptrCast(@alignCast(data_ptr));
 
-    // Clean up based on type
+    // Only the arena is ours to tear down. In passthrough mode `allocator` IS
+    // `parent`, every allocation was already freed through it by its owner, and
+    // there is no wrapper state - `arena` is `undefined` and must not be touched.
     if (data.use_arena) {
         data.arena.deinit();
-    } else {
-        _ = data.gpa.deinit();
     }
 
     // Free the data struct itself
@@ -172,8 +177,21 @@ pub fn getOrInitAllocator(
         return alloc;
     }
 
-    // Initialize with arena (faster for callbacks)
-    try initIsolateAllocator(isolate, fallback, true);
+    // NOT an arena, despite "faster for callbacks".
+    //
+    // An arena's `free` is a no-op, so every per-callback argument conversion
+    // accumulated for the life of the isolate - and this allocator serves the
+    // method and getter dispatchers, i.e. every DOM call. `resetArena` exists for
+    // exactly this, with the comment "Call this after each callback", and nothing
+    // has ever called it.
+    //
+    // Resetting would be the other fix, but it is only safe if nothing allocated
+    // during the callback outlives it, and that is not something the dispatcher
+    // can know for 1,263 interfaces. Making `free` real is safe by construction:
+    // callers that free reclaim, callers that do not leak exactly as much as they
+    // already did. It is also backed by malloc rather than the page allocator, so
+    // the memory is visible to `mstats()` instead of vanishing into VM_ALLOCATE.
+    try initIsolateAllocator(isolate, fallback, false);
     return getIsolateAllocator(isolate).?;
 }
 

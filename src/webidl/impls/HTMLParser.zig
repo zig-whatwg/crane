@@ -24,6 +24,7 @@
 //! ```
 
 const std = @import("std");
+const log = std.log.scoped(.html_parser);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -397,7 +398,7 @@ pub fn parseHTMLWithScripting(
     // with its bubbles attribute initialized to true.
     fireDOMContentLoadedEvent(allocator, ctx, document) catch |err| {
         // Log error but don't fail parsing - the document is valid
-        std.debug.print("HTMLParser: Failed to fire DOMContentLoaded: {}\n", .{err});
+        log.err("HTMLParser: Failed to fire DOMContentLoaded: {}", .{err});
     };
 
     return document;
@@ -433,7 +434,7 @@ fn convertTreeNodeToDomWithScripts(
                 if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
                     // Execute script via script_execution module
                     _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
-                        std.debug.print("Script preparation error: {}\n", .{err});
+                        log.err("Script preparation error: {}", .{err});
                     };
                 }
             }
@@ -468,7 +469,7 @@ fn convertChildrenToDomWithScripts(
                 if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
                     // Execute script
                     _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
-                        std.debug.print("Script preparation error: {}\n", .{err});
+                        log.err("Script preparation error: {}", .{err});
                     };
                 }
             }
@@ -667,7 +668,7 @@ fn convertTreeNodeToDom(
             if (tree_child.local_name) |name| {
                 if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
                     _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
-                        std.debug.print("Script preparation error: {}\n", .{err});
+                        log.err("Script preparation error: {}", .{err});
                     };
                 }
             }
@@ -704,7 +705,7 @@ fn convertChildrenToDom(
                     // This will execute inline classic scripts immediately
                     _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
                         // Script preparation error - log but don't fail parsing
-                        std.debug.print("Script preparation error: {}\n", .{err});
+                        log.err("Script preparation error: {}", .{err});
                     };
                 }
             }

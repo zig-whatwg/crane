@@ -26,6 +26,7 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// A moment represents a single point in time with high-resolution precision.
 ///
@@ -46,7 +47,7 @@ pub const Moment = struct {
 
     /// Get the current moment (now)
     pub fn now() Moment {
-        const ns = std.time.nanoTimestamp();
+        const ns = clock.wallNanos();
         const ms = @as(f64, @floatFromInt(ns)) / 1_000_000.0;
         return Moment{ .timestamp_ms = ms };
     }

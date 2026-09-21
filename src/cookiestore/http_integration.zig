@@ -13,6 +13,7 @@ const RetrieveOptions = @import("jar.zig").RetrieveOptions;
 const SameSiteContext = @import("jar.zig").SameSiteContext;
 const validation = @import("validation.zig");
 const domain_matching = @import("domain_matching.zig");
+const clock = @import("clock");
 
 /// Errors that can occur during header parsing
 pub const ParseError = error{
@@ -46,7 +47,7 @@ pub fn generateCookieHeader(
     }
 
     // Build the Cookie header value
-    var result = std.ArrayListUnmanaged(u8){};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (cookies.items, 0..) |cookie, i| {
@@ -97,7 +98,7 @@ pub fn parseSetCookieHeader(
         if (attrs[0] == ';') {
             attrs = attrs[1..];
         }
-        attrs = std.mem.trimLeft(u8, attrs, " \t");
+        attrs = std.mem.trimStart(u8, attrs, " \t");
         if (attrs.len == 0) break;
 
         // Find next semicolon or end
@@ -157,7 +158,7 @@ fn parseAttribute(
     } else if (std.mem.eql(u8, attr_lower, "max-age")) {
         if (std.fmt.parseInt(i64, attr_value, 10)) |seconds| {
             // Max-Age overrides Expires
-            const now = std.time.timestamp();
+            const now = clock.wallSeconds();
             if (seconds <= 0) {
                 // Already expired
                 cookie.expiry_time = 0;

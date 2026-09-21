@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const mock_server = @import("mock_server");
+const clock = @import("clock");
 const MockServer = mock_server.MockServer;
 const MockRequest = mock_server.MockRequest;
 const MockResponse = mock_server.MockResponse;
@@ -25,8 +26,12 @@ const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /// HTTP wrapper around MockServer
 pub const HttpMockServer = struct {
     allocator: std.mem.Allocator,
+    /// Zig 0.16 moved networking onto `std.Io`, so every socket operation needs
+    /// one. It is 16 bytes and copyable; connection handlers receive it as a
+    /// thread argument rather than reading it back out of `self`.
+    io: std.Io,
     mock: MockServer,
-    server: std.net.Server,
+    server: std.Io.net.Server,
     should_stop: std.atomic.Value(bool),
     large_content: ?[]u8,
     /// Dynamically allocated paths that need to be freed on deinit
@@ -34,21 +39,22 @@ pub const HttpMockServer = struct {
     /// Expected cookie value for WebSocket cookie validation
     expected_ws_cookie: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator) !*HttpMockServer {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io) !*HttpMockServer {
         const self = try allocator.create(HttpMockServer);
 
-        const address = try std.net.Address.parseIp("127.0.0.1", 8080);
-        const server = try address.listen(.{
+        const address = try std.Io.net.IpAddress.parse("127.0.0.1", 8080);
+        const server = try address.listen(io, .{
             .reuse_address = true,
         });
 
         self.* = .{
             .allocator = allocator,
+            .io = io,
             .mock = MockServer.init(allocator),
             .server = server,
             .should_stop = std.atomic.Value(bool).init(false),
             .large_content = null,
-            .allocated_paths = .{},
+            .allocated_paths = .empty,
         };
 
         // Setup default routes for fetch tests
@@ -70,7 +76,7 @@ pub const HttpMockServer = struct {
         }
         self.allocated_paths.deinit(self.allocator);
         self.mock.deinit();
-        self.server.deinit();
+        self.server.deinit(self.io);
         self.allocator.destroy(self);
     }
 
@@ -270,24 +276,25 @@ pub const HttpMockServer = struct {
         std.debug.print("Press Ctrl+C to stop\n\n", .{});
 
         while (!self.should_stop.load(.acquire)) {
-            // Accept connection
-            const conn = self.server.accept() catch |err| {
+            // Accept connection. 0.16 `accept` hands back a `Stream` directly;
+            // `Server.Connection` no longer exists.
+            const stream = self.server.accept(self.io) catch |err| {
                 std.debug.print("Error accepting connection: {}\n", .{err});
                 continue;
             };
 
             // Handle request in a detached thread to allow concurrent connections
-            const thread = std.Thread.spawn(.{}, handleConnectionThread, .{ self, conn }) catch |err| {
+            const thread = std.Thread.spawn(.{}, handleConnectionThread, .{ self, self.io, stream }) catch |err| {
                 std.debug.print("Error spawning thread: {}\n", .{err});
-                conn.stream.close();
+                stream.close(self.io);
                 continue;
             };
             thread.detach();
         }
     }
 
-    fn handleConnectionThread(self: *HttpMockServer, conn: std.net.Server.Connection) void {
-        self.handleHttpRequest(conn) catch |err| {
+    fn handleConnectionThread(self: *HttpMockServer, io: std.Io, stream: std.Io.net.Stream) void {
+        self.handleHttpRequest(io, stream) catch |err| {
             std.debug.print("Error handling request: {}\n", .{err});
         };
     }
@@ -296,20 +303,49 @@ pub const HttpMockServer = struct {
         self.should_stop.store(true, .release);
 
         // Make a dummy connection to wake up the accept() call
-        const address = std.net.Address.parseIp("127.0.0.1", 8080) catch return;
-        const stream = std.net.tcpConnectToAddress(address) catch return;
-        stream.close();
+        const address = std.Io.net.IpAddress.parse("127.0.0.1", 8080) catch return;
+        const stream = address.connect(self.io, .{ .mode = .stream }) catch return;
+        stream.close(self.io);
     }
 
-    fn handleHttpRequest(self: *HttpMockServer, conn: std.net.Server.Connection) !void {
-        defer conn.stream.close();
+    /// Write every byte of `bytes` to `stream`.
+    ///
+    /// `std.Io.net.Stream` has no `write`/`writeAll` in 0.16; it vends a buffered
+    /// `Io.Writer`. A zero-length buffer makes `writeAll` drain straight through
+    /// to the socket on every call, which is what the 0.15 `Stream.writeAll` did.
+    /// The buffered `Io.Writer` reports failure as the opaque `error.WriteFailed`
+    /// and stashes the real socket error on the adapter, so unwrap it here to keep
+    /// the errors callers used to see.
+    fn writeAllToStream(io: std.Io, stream: std.Io.net.Stream, bytes: []const u8) std.Io.net.Stream.Writer.Error!void {
+        var buffer: [0]u8 = .{};
+        var stream_writer = stream.writer(io, &buffer);
+        stream_writer.interface.writeAll(bytes) catch |err| switch (err) {
+            error.WriteFailed => return stream_writer.err.?,
+        };
+        // No-op while `buffer` is empty; kept so enlarging it cannot lose bytes.
+        stream_writer.interface.flush() catch |err| switch (err) {
+            error.WriteFailed => return stream_writer.err.?,
+        };
+    }
 
-        var buf: [8192]u8 = undefined;
-        const bytes_read = try conn.stream.read(&buf);
+    fn handleHttpRequest(self: *HttpMockServer, io: std.Io, stream: std.Io.net.Stream) !void {
+        defer stream.close(io);
 
-        if (bytes_read == 0) return;
+        // 0.16 reads through a buffered `Io.Reader` whose buffer the caller owns.
+        // `fillMore` performs exactly one underlying read, matching the single
+        // `read()` this used to do, and signals a closed peer with
+        // `error.EndOfStream` where 0.15 returned 0 bytes.
+        var recv_buf: [8192]u8 = undefined;
+        var stream_reader = stream.reader(io, &recv_buf);
+        const reader = &stream_reader.interface;
+        reader.fillMore() catch |err| switch (err) {
+            error.EndOfStream => return,
+            error.ReadFailed => return stream_reader.err.?,
+        };
 
-        const request_data = buf[0..bytes_read];
+        const request_data = reader.buffered();
+
+        if (request_data.len == 0) return;
 
         // Parse HTTP request
         const parsed = try parseHttpRequest(self.allocator, request_data);
@@ -326,7 +362,7 @@ pub const HttpMockServer = struct {
 
         // Check for WebSocket upgrade request
         if (self.isWebSocketUpgrade(parsed)) {
-            try self.handleWebSocketUpgrade(conn.stream, parsed);
+            try self.handleWebSocketUpgrade(io, stream, parsed);
             return;
         }
 
@@ -376,7 +412,7 @@ pub const HttpMockServer = struct {
         }
 
         // Send HTTP response
-        try self.sendHttpResponse(conn.stream, response);
+        try self.sendHttpResponse(io, stream, response);
     }
 
     const EchoResult = struct {
@@ -390,13 +426,13 @@ pub const HttpMockServer = struct {
     fn handleEchoRequest(self: *HttpMockServer, parsed: ParsedRequest) !EchoResult {
         if (std.mem.eql(u8, parsed.path, "/echo/headers")) {
             // Echo headers as JSON
-            var json: std.ArrayList(u8) = .{};
+            var json: std.ArrayList(u8) = .empty;
             defer json.deinit(self.allocator);
 
             try json.appendSlice(self.allocator, "{");
             for (parsed.headers, 0..) |header, i| {
                 if (i > 0) try json.appendSlice(self.allocator, ",");
-                try std.fmt.format(json.writer(self.allocator), "\"{s}\": \"{s}\"", .{ header[0], header[1] });
+                try json.print(self.allocator, "\"{s}\": \"{s}\"", .{ header[0], header[1] });
             }
             try json.appendSlice(self.allocator, "}");
 
@@ -461,7 +497,7 @@ pub const HttpMockServer = struct {
             return .{ .status = 404, .body = "Invalid delay" };
         };
 
-        std.Thread.sleep(delay_ms * std.time.ns_per_ms);
+        clock.sleep(delay_ms * std.time.ns_per_ms);
 
         return .{
             .status = 200,
@@ -580,7 +616,7 @@ pub const HttpMockServer = struct {
     }
 
     /// Handle WebSocket upgrade and manage the WebSocket connection
-    fn handleWebSocketUpgrade(self: *HttpMockServer, stream: std.net.Stream, parsed: ParsedRequest) !void {
+    fn handleWebSocketUpgrade(self: *HttpMockServer, io: std.Io, stream: std.Io.net.Stream, parsed: ParsedRequest) !void {
         // Get Sec-WebSocket-Key
         var ws_key: ?[]const u8 = null;
         var cookie_header: ?[]const u8 = null;
@@ -604,7 +640,7 @@ pub const HttpMockServer = struct {
                     "Content-Length: 29\r\n" ++
                     "\r\n" ++
                     "Missing or invalid cookie";
-                try stream.writeAll(reject_response);
+                try writeAllToStream(io, stream, reject_response);
                 return;
             }
         }
@@ -616,7 +652,7 @@ pub const HttpMockServer = struct {
                 "Content-Length: 24\r\n" ++
                 "\r\n" ++
                 "Missing WebSocket key";
-            try stream.writeAll(reject_response);
+            try writeAllToStream(io, stream, reject_response);
             return;
         };
 
@@ -625,20 +661,19 @@ pub const HttpMockServer = struct {
         defer self.allocator.free(accept_value);
 
         // Send upgrade response
-        var response_buf: std.ArrayList(u8) = .{};
+        var response_buf: std.ArrayList(u8) = .empty;
         defer response_buf.deinit(self.allocator);
 
-        const writer = response_buf.writer(self.allocator);
-        try writer.writeAll("HTTP/1.1 101 Switching Protocols\r\n");
-        try writer.writeAll("Upgrade: websocket\r\n");
-        try writer.writeAll("Connection: Upgrade\r\n");
-        try std.fmt.format(writer, "Sec-WebSocket-Accept: {s}\r\n", .{accept_value});
-        try writer.writeAll("\r\n");
+        try response_buf.appendSlice(self.allocator, "HTTP/1.1 101 Switching Protocols\r\n");
+        try response_buf.appendSlice(self.allocator, "Upgrade: websocket\r\n");
+        try response_buf.appendSlice(self.allocator, "Connection: Upgrade\r\n");
+        try response_buf.print(self.allocator, "Sec-WebSocket-Accept: {s}\r\n", .{accept_value});
+        try response_buf.appendSlice(self.allocator, "\r\n");
 
-        try stream.writeAll(response_buf.items);
+        try writeAllToStream(io, stream, response_buf.items);
 
         // Handle WebSocket frames (simple echo for testing)
-        try self.handleWebSocketFrames(stream, parsed.path);
+        try self.handleWebSocketFrames(io, stream, parsed.path);
     }
 
     /// Validate that the WebSocket request contains the expected cookie
@@ -684,19 +719,34 @@ pub const HttpMockServer = struct {
     }
 
     /// Handle WebSocket frames after upgrade
-    fn handleWebSocketFrames(self: *HttpMockServer, stream: std.net.Stream, path: []const u8) !void {
+    fn handleWebSocketFrames(self: *HttpMockServer, io: std.Io, stream: std.Io.net.Stream, path: []const u8) !void {
         _ = self;
 
-        var buf: [4096]u8 = undefined;
+        var recv_buf: [4096]u8 = undefined;
+        var stream_reader = stream.reader(io, &recv_buf);
+        const reader = &stream_reader.interface;
 
         // Simple frame handling - just echo or respond based on path
         while (true) {
-            const bytes_read = stream.read(&buf) catch |err| {
-                if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) {
-                    return;
-                }
-                return err;
+            // 0.15 read() overwrote the whole buffer each iteration, so bytes left
+            // over from a frame this loop declined to handle were dropped. Tossing
+            // what is still buffered before reading again preserves that exactly,
+            // and also guarantees `fillMore` always has spare capacity.
+            reader.tossBuffered();
+            reader.fillMore() catch |err| switch (err) {
+                // 0.15 signalled a closed peer with a zero-length read.
+                error.EndOfStream => return,
+                error.ReadFailed => {
+                    // `Stream.Reader.Error` no longer includes `BrokenPipe`; a
+                    // vanished peer surfaces as EndOfStream or ConnectionResetByPeer.
+                    const read_err = stream_reader.err.?;
+                    if (read_err == error.ConnectionResetByPeer) return;
+                    return read_err;
+                },
             };
+
+            const buf = reader.buffered();
+            const bytes_read = buf.len;
 
             if (bytes_read == 0) return; // Connection closed
 
@@ -729,7 +779,7 @@ pub const HttpMockServer = struct {
             if (opcode == 8) {
                 // Send close frame back
                 const close_frame = [_]u8{ 0x88, 0x00 }; // Close frame, no payload
-                stream.writeAll(&close_frame) catch {};
+                writeAllToStream(io, stream, &close_frame) catch {};
                 return;
             }
 
@@ -748,7 +798,7 @@ pub const HttpMockServer = struct {
                         }
                     }
                 }
-                stream.writeAll(pong_frame[0 .. 2 + payload_len]) catch {};
+                writeAllToStream(io, stream, pong_frame[0 .. 2 + payload_len]) catch {};
                 continue;
             }
 
@@ -774,45 +824,43 @@ pub const HttpMockServer = struct {
                     response_frame[0] = 0x81; // Text frame, FIN
                     response_frame[1] = @intCast(success_msg.len);
                     @memcpy(response_frame[2..][0..success_msg.len], success_msg);
-                    stream.writeAll(response_frame[0 .. 2 + success_msg.len]) catch {};
+                    writeAllToStream(io, stream, response_frame[0 .. 2 + success_msg.len]) catch {};
                 } else {
                     // Echo back for /ws/echo
                     var response_frame: [4096]u8 = undefined;
                     response_frame[0] = 0x81; // Text frame, FIN
                     response_frame[1] = @intCast(payload_len);
                     @memcpy(response_frame[2..][0..payload_len], payload[0..payload_len]);
-                    stream.writeAll(response_frame[0 .. 2 + payload_len]) catch {};
+                    writeAllToStream(io, stream, response_frame[0 .. 2 + payload_len]) catch {};
                 }
             }
         }
     }
 
-    fn sendHttpResponse(self: *HttpMockServer, stream: std.net.Stream, response: MockResponse) !void {
-        var response_buf: std.ArrayList(u8) = .{};
+    fn sendHttpResponse(self: *HttpMockServer, io: std.Io, stream: std.Io.net.Stream, response: MockResponse) !void {
+        var response_buf: std.ArrayList(u8) = .empty;
         defer response_buf.deinit(self.allocator);
 
-        const writer = response_buf.writer(self.allocator);
-
         // Status line
-        try std.fmt.format(writer, "HTTP/1.1 {d} {s}\r\n", .{ response.status, response.status_text });
+        try response_buf.print(self.allocator, "HTTP/1.1 {d} {s}\r\n", .{ response.status, response.status_text });
 
         // Headers
         for (response.headers) |header| {
-            try std.fmt.format(writer, "{s}: {s}\r\n", .{ header[0], header[1] });
+            try response_buf.print(self.allocator, "{s}: {s}\r\n", .{ header[0], header[1] });
         }
 
         // Content-Length
         const body = response.body orelse "";
-        try std.fmt.format(writer, "Content-Length: {d}\r\n", .{body.len});
+        try response_buf.print(self.allocator, "Content-Length: {d}\r\n", .{body.len});
 
         // End of headers
-        try writer.writeAll("\r\n");
+        try response_buf.appendSlice(self.allocator, "\r\n");
 
         // Body
-        try writer.writeAll(body);
+        try response_buf.appendSlice(self.allocator, body);
 
         // Send
-        try stream.writeAll(response_buf.items);
+        try writeAllToStream(io, stream, response_buf.items);
     }
 
     fn getStatusText(code: u16) []const u8 {
@@ -852,7 +900,7 @@ fn parseHttpRequest(allocator: std.mem.Allocator, data: []const u8) !ParsedReque
     errdefer allocator.free(path);
 
     // Parse headers
-    var headers: std.ArrayList([2][]const u8) = .{};
+    var headers: std.ArrayList([2][]const u8) = .empty;
     errdefer {
         for (headers.items) |h| {
             allocator.free(h[0]);
@@ -889,12 +937,15 @@ fn parseHttpRequest(allocator: std.mem.Allocator, data: []const u8) !ParsedReque
 }
 
 // Standalone server for manual testing
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+// See tests/v8/integration_test_runner.zig: 0.16 delivers the process `Io` (and
+// gpa/arena/args) via std.process.Init. The mock server needs that `Io` for every
+// socket call, and only the entry point can hand out the one the runtime built.
+pub fn main(init: std.process.Init) !void {
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var server = try HttpMockServer.init(allocator);
+    var server = try HttpMockServer.init(allocator, init.io);
     defer server.deinit();
 
     try server.start();

@@ -435,7 +435,8 @@ pub fn TypedMicrotaskCallback(comptime T: type) type {
 ///
 /// ```zig
 /// const NativeResource = struct {
-///     file_handle: std.fs.File,
+///     file_handle: std.Io.File,
+///     io: std.Io,
 ///     buffer: []u8,
 ///     allocator: std.mem.Allocator,
 /// };
@@ -443,7 +444,7 @@ pub fn TypedMicrotaskCallback(comptime T: type) type {
 /// const FinalizerCb = TypedGCCallback(NativeResource);
 ///
 /// fn cleanupResource(resource: *NativeResource) void {
-///     resource.file_handle.close();
+///     resource.file_handle.close(resource.io);
 ///     resource.allocator.free(resource.buffer);
 /// }
 ///
@@ -988,13 +989,14 @@ pub fn SelfContainedPromiseCallback(comptime UserData: type) type {
 ///     path: []const u8,
 ///     result: ?[]u8 = null,
 ///     allocator: std.mem.Allocator,
+///     io: std.Io,
 /// };
 ///
 /// const WorkCb = TypedWorkCallback(FileReadContext);
 ///
 /// fn readFile(ctx: *FileReadContext) void {
-///     ctx.result = std.fs.cwd().readFileAlloc(
-///         ctx.allocator, ctx.path, 1024 * 1024
+///     ctx.result = std.Io.Dir.cwd().readFileAlloc(
+///         ctx.io, ctx.path, ctx.allocator, .limited(1024 * 1024)
 ///     ) catch null;
 /// }
 ///

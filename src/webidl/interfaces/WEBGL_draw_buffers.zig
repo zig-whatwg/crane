@@ -24,22 +24,21 @@ pub const WEBGL_draw_buffers = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "drawBuffersWEBGL", "call_drawBuffersWEBGL", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "COLOR_ATTACHMENT0_WEBGL", "get_COLOR_ATTACHMENT0_WEBGL" },
@@ -77,24 +76,21 @@ pub const WEBGL_draw_buffers = struct {
             .{ "MAX_COLOR_ATTACHMENTS_WEBGL", "get_MAX_COLOR_ATTACHMENTS_WEBGL" },
             .{ "MAX_DRAW_BUFFERS_WEBGL", "get_MAX_DRAW_BUFFERS_WEBGL" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "drawBuffersWEBGL",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -281,7 +277,6 @@ pub const WEBGL_draw_buffers = struct {
     }
 
     const delegates = .{
-
         .get_COLOR_ATTACHMENT0_WEBGL = &get_COLOR_ATTACHMENT0_WEBGL,
         .get_COLOR_ATTACHMENT10_WEBGL = &get_COLOR_ATTACHMENT10_WEBGL,
         .get_COLOR_ATTACHMENT11_WEBGL = &get_COLOR_ATTACHMENT11_WEBGL,
@@ -321,7 +316,7 @@ pub const WEBGL_draw_buffers = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -345,8 +340,6 @@ pub const WEBGL_draw_buffers = struct {
     }
 
     pub fn call_drawBuffersWEBGL(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
-        
         return try WEBGL_draw_buffersImpl.call_drawBuffersWEBGL(instance, buffers);
     }
-
 };

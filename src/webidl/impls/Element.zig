@@ -319,7 +319,7 @@ pub const InternalState = struct {
 
         // Spill to heap
         if (self.heap_attrs == null) {
-            self.heap_attrs = std.ArrayList(AttributeEntry){};
+            self.heap_attrs = std.ArrayList(AttributeEntry).empty;
         }
         try self.heap_attrs.?.append(self.allocator, entry);
     }
@@ -460,9 +460,11 @@ pub fn init(
 
     // Initialize Element's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // The registry owns this block, so `Registry.remove` returns it to the
+    // arena. With `set` it was dropped from the map and held to process
+    // exit - 904 bytes per discarded element, measured.
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -595,7 +597,7 @@ pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
     const is_html_element = internal.namespace_uri == null or
         (internal.namespace_uri != null and
-        std.mem.eql(u8, internal.namespace_uri.?.asSlice(), HTML_NAMESPACE));
+            std.mem.eql(u8, internal.namespace_uri.?.asSlice(), HTML_NAMESPACE));
 
     // If there's a prefix, return "prefix:localName"
     if (internal.prefix) |p| {

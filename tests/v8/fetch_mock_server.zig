@@ -15,6 +15,7 @@
 //! Run with: zig build test-v8-fetch
 
 const std = @import("std");
+const clock = @import("clock");
 const http = std.http;
 const Server = http.Server;
 
@@ -53,7 +54,7 @@ pub const MockHttpServer = struct {
                 .allocator = self.allocator,
             }) catch |err| {
                 if (err == error.WouldBlock) {
-                    std.time.sleep(10 * std.time.ns_per_ms);
+                    clock.sleep(10 * std.time.ns_per_ms);
                     continue;
                 }
                 return err;
@@ -234,7 +235,7 @@ pub const MockHttpServer = struct {
                 const chunk = try std.fmt.allocPrint(self.allocator, "Chunk {d}\n", .{i});
                 defer self.allocator.free(chunk);
                 try conn.writeAll(chunk);
-                std.time.sleep(100 * std.time.ns_per_ms); // 100ms delay between chunks
+                clock.sleep(100 * std.time.ns_per_ms); // 100ms delay between chunks
             }
 
             try conn.finish();
@@ -306,7 +307,7 @@ pub const MockHttpServer = struct {
         };
 
         // Sleep for specified delay
-        std.time.sleep(delay_ms * std.time.ns_per_ms);
+        clock.sleep(delay_ms * std.time.ns_per_ms);
 
         try self.sendText(conn, .ok, "Delayed response");
     }

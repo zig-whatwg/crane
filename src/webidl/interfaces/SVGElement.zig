@@ -94,10 +94,10 @@ pub const SVGElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "className", "get_className", null },
@@ -217,32 +217,32 @@ pub const SVGElement = struct {
             .{ "autofocus", "get_autofocus", "set_autofocus" },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-        
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "style", "cssText" },
         };
-        
+
         /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
         /// Getters return undefined, setters silently return
         pub const lenient_this_attributes = .{
             "onmouseenter",
             "onmouseleave",
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "focus", "call_focus", 0 },
             .{ "blur", "call_blur", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "focus",
             "blur",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -331,7 +331,7 @@ pub const SVGElement = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "className", "get_className", null },
@@ -449,13 +449,13 @@ pub const SVGElement = struct {
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dataset", "get_dataset", null },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -468,111 +468,7 @@ pub const SVGElement = struct {
             viewportElement: ?*runtime.Instance = null,
             style: *runtime.Instance = undefined,
             attributeStyleMap: *runtime.Instance = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onauxclick: typedefs.EventHandler = undefined,
-            onbeforeinput: typedefs.EventHandler = undefined,
-            onbeforematch: typedefs.EventHandler = undefined,
-            onbeforetoggle: typedefs.EventHandler = undefined,
-            onblur: typedefs.EventHandler = undefined,
-            oncancel: typedefs.EventHandler = undefined,
-            oncanplay: typedefs.EventHandler = undefined,
-            oncanplaythrough: typedefs.EventHandler = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            onclick: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
-            oncommand: typedefs.EventHandler = undefined,
-            oncontextlost: typedefs.EventHandler = undefined,
-            oncontextmenu: typedefs.EventHandler = undefined,
-            oncontextrestored: typedefs.EventHandler = undefined,
-            oncopy: typedefs.EventHandler = undefined,
-            oncuechange: typedefs.EventHandler = undefined,
-            oncut: typedefs.EventHandler = undefined,
-            ondblclick: typedefs.EventHandler = undefined,
-            ondrag: typedefs.EventHandler = undefined,
-            ondragend: typedefs.EventHandler = undefined,
-            ondragenter: typedefs.EventHandler = undefined,
-            ondragleave: typedefs.EventHandler = undefined,
-            ondragover: typedefs.EventHandler = undefined,
-            ondragstart: typedefs.EventHandler = undefined,
-            ondrop: typedefs.EventHandler = undefined,
-            ondurationchange: typedefs.EventHandler = undefined,
-            onemptied: typedefs.EventHandler = undefined,
-            onended: typedefs.EventHandler = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
-            onfocus: typedefs.EventHandler = undefined,
-            onformdata: typedefs.EventHandler = undefined,
-            oninput: typedefs.EventHandler = undefined,
-            oninvalid: typedefs.EventHandler = undefined,
-            onkeydown: typedefs.EventHandler = undefined,
-            onkeypress: typedefs.EventHandler = undefined,
-            onkeyup: typedefs.EventHandler = undefined,
-            onload: typedefs.EventHandler = undefined,
-            onloadeddata: typedefs.EventHandler = undefined,
-            onloadedmetadata: typedefs.EventHandler = undefined,
-            onloadstart: typedefs.EventHandler = undefined,
-            onmousedown: typedefs.EventHandler = undefined,
-            onmouseenter: typedefs.EventHandler = undefined,
-            onmouseleave: typedefs.EventHandler = undefined,
-            onmousemove: typedefs.EventHandler = undefined,
-            onmouseout: typedefs.EventHandler = undefined,
-            onmouseover: typedefs.EventHandler = undefined,
-            onmouseup: typedefs.EventHandler = undefined,
-            onpaste: typedefs.EventHandler = undefined,
-            onpause: typedefs.EventHandler = undefined,
-            onplay: typedefs.EventHandler = undefined,
-            onplaying: typedefs.EventHandler = undefined,
-            onprogress: typedefs.EventHandler = undefined,
-            onratechange: typedefs.EventHandler = undefined,
-            onreset: typedefs.EventHandler = undefined,
-            onresize: typedefs.EventHandler = undefined,
-            onscroll: typedefs.EventHandler = undefined,
-            onscrollend: typedefs.EventHandler = undefined,
-            onsecuritypolicyviolation: typedefs.EventHandler = undefined,
-            onseeked: typedefs.EventHandler = undefined,
-            onseeking: typedefs.EventHandler = undefined,
-            onselect: typedefs.EventHandler = undefined,
-            onslotchange: typedefs.EventHandler = undefined,
-            onstalled: typedefs.EventHandler = undefined,
-            onsubmit: typedefs.EventHandler = undefined,
-            onsuspend: typedefs.EventHandler = undefined,
-            ontimeupdate: typedefs.EventHandler = undefined,
-            ontoggle: typedefs.EventHandler = undefined,
-            onvolumechange: typedefs.EventHandler = undefined,
-            onwaiting: typedefs.EventHandler = undefined,
-            onwebkitanimationend: typedefs.EventHandler = undefined,
-            onwebkitanimationiteration: typedefs.EventHandler = undefined,
-            onwebkitanimationstart: typedefs.EventHandler = undefined,
-            onwebkittransitionend: typedefs.EventHandler = undefined,
-            onwheel: typedefs.EventHandler = undefined,
-            onselectstart: typedefs.EventHandler = undefined,
-            onselectionchange: typedefs.EventHandler = undefined,
-            onanimationstart: typedefs.EventHandler = undefined,
-            onanimationiteration: typedefs.EventHandler = undefined,
-            onanimationend: typedefs.EventHandler = undefined,
-            onanimationcancel: typedefs.EventHandler = undefined,
-            ontransitionrun: typedefs.EventHandler = undefined,
-            ontransitionstart: typedefs.EventHandler = undefined,
-            ontransitionend: typedefs.EventHandler = undefined,
-            ontransitioncancel: typedefs.EventHandler = undefined,
-            onbeforexrselect: typedefs.EventHandler = undefined,
-            onpointerover: typedefs.EventHandler = undefined,
-            onpointerenter: typedefs.EventHandler = undefined,
-            onpointerdown: typedefs.EventHandler = undefined,
-            onpointermove: typedefs.EventHandler = undefined,
-            onpointerrawupdate: typedefs.EventHandler = undefined,
-            onpointerup: typedefs.EventHandler = undefined,
-            onpointercancel: typedefs.EventHandler = undefined,
-            onpointerout: typedefs.EventHandler = undefined,
-            onpointerleave: typedefs.EventHandler = undefined,
-            ongotpointercapture: typedefs.EventHandler = undefined,
-            onlostpointercapture: typedefs.EventHandler = undefined,
-            ontouchstart: typedefs.EventHandler = undefined,
-            ontouchend: typedefs.EventHandler = undefined,
-            ontouchmove: typedefs.EventHandler = undefined,
-            ontouchcancel: typedefs.EventHandler = undefined,
-            onfencedtreeclick: typedefs.EventHandler = undefined,
-            onsnapchanged: typedefs.EventHandler = undefined,
-            onsnapchanging: typedefs.EventHandler = undefined,
             correspondingElement: ?*runtime.Instance = null,
             correspondingUseElement: ?*runtime.Instance = null,
             dataset: *runtime.Instance = undefined,
@@ -590,7 +486,6 @@ pub const SVGElement = struct {
     );
 
     const delegates = .{
-
         .get_attributeStyleMap = &get_attributeStyleMap,
         .get_autofocus = &get_autofocus,
         .get_className = &get_className,
@@ -823,7 +718,7 @@ pub const SVGElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -883,7 +778,7 @@ pub const SVGElement = struct {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
         const target = try get_style(instance);
-        
+
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
         try runtime.setPropertyOnInstance(target, "cssText", value);
@@ -1801,7 +1696,7 @@ pub const SVGElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGElementImpl.set_autofocus(instance, value);
     }
 
@@ -1815,17 +1710,15 @@ pub const SVGElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try SVGElementImpl.set_tabIndex(instance, value);
     }
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
-        
         return try SVGElementImpl.call_focus(instance, options);
     }
 
     pub fn call_blur(instance: *runtime.Instance) anyerror!void {
         return try SVGElementImpl.call_blur(instance);
     }
-
 };

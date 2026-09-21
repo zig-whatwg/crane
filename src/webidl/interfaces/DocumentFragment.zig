@@ -54,8 +54,7 @@ pub const DocumentFragment = struct {
             .{ "childElementCount", "get_childElementCount", null },
         };
 
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity)
-        /// Note: Includes inherited Node methods because V8 prototype chain is not properly set up
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementById", "call_getElementById", 1 },
             .{ "prepend", "call_prepend", 1 },
@@ -64,10 +63,6 @@ pub const DocumentFragment = struct {
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
-            // Inherited from Node - required for DOM tree manipulation
-            .{ "appendChild", "call_appendChild", 1 },
-            .{ "removeChild", "call_removeChild", 1 },
-            .{ "insertBefore", "call_insertBefore", 2 },
         };
 
         /// Methods defined/overridden by this interface
@@ -152,14 +147,9 @@ pub const DocumentFragment = struct {
         .call_querySelectorAll = &call_querySelectorAll,
         .call_replaceChildren = &call_replaceChildren,
 
-        // Inherited Node methods - required for DOM tree manipulation
-        .call_appendChild = &call_appendChild,
-        .call_removeChild = &call_removeChild,
-        .call_insertBefore = &call_insertBefore,
-
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -263,40 +253,5 @@ pub const DocumentFragment = struct {
         defer runtime.CEReactions.end();
 
         return try DocumentFragmentImpl.call_append(instance, nodes);
-    }
-
-    // =========================================================================
-    // Inherited Node methods for DOM tree manipulation
-    // These are required because DocumentFragment inherits from Node
-    // =========================================================================
-
-    /// Node.appendChild - adds a node to the end of the list of children
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_appendChild(instance, node);
-    }
-
-    /// Node.removeChild - removes a child node from the DOM
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_removeChild(instance, child);
-    }
-
-    /// Node.insertBefore - inserts a node before a reference child
-    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
-    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        const NodeImpl = @import("impls").Node;
-        return try NodeImpl.call_insertBefore(instance, node, child);
     }
 };

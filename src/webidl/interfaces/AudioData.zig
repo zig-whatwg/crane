@@ -28,13 +28,13 @@ pub const AudioData = struct {
             .{ .name = "Serializable" },
             .{ .name = "Transferable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "format", "get_format", null },
@@ -44,7 +44,7 @@ pub const AudioData = struct {
             .{ "duration", "get_duration", null },
             .{ "timestamp", "get_timestamp", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "allocationSize", "call_allocationSize", 1 },
@@ -52,7 +52,7 @@ pub const AudioData = struct {
             .{ "clone", "call_clone", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "allocationSize",
@@ -60,11 +60,10 @@ pub const AudioData = struct {
             "clone",
             "close",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "format", "get_format", null },
@@ -74,11 +73,10 @@ pub const AudioData = struct {
             .{ "duration", "get_duration", null },
             .{ "timestamp", "get_timestamp", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -97,7 +95,6 @@ pub const AudioData = struct {
     );
 
     const delegates = .{
-
         .get_duration = &get_duration,
         .get_format = &get_format,
         .get_numberOfChannels = &get_numberOfChannels,
@@ -112,7 +109,7 @@ pub const AudioData = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -168,7 +165,6 @@ pub const AudioData = struct {
     }
 
     pub fn call_allocationSize(instance: *runtime.Instance, options: AudioDataCopyToOptions) anyerror!u32 {
-        
         return try AudioDataImpl.call_allocationSize(instance, options);
     }
 
@@ -177,12 +173,10 @@ pub const AudioData = struct {
     }
 
     pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: AudioDataCopyToOptions) anyerror!void {
-        
         return try AudioDataImpl.call_copyTo(instance, destination, options);
     }
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioDataImpl.call_clone(instance);
     }
-
 };

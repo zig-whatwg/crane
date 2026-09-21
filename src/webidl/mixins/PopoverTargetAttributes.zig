@@ -29,4 +29,3 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!typedefs.DO
 pub fn set_popoverTargetAction(instance: *runtime.Instance, value: typedefs.DOMString) !void {
     return PopoverTargetAttributesImpl.set_popoverTargetAction(instance, value);
 }
-

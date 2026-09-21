@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const types = @import("types.zig");
+const clock = @import("clock");
 
 /// Service worker timing info.
 ///
@@ -91,7 +92,7 @@ pub const TimingInfo = struct {
 /// Returns time relative to an arbitrary epoch.
 /// In real implementation, this would use performance.now() semantics.
 fn getCurrentTime() f64 {
-    const ns = std.time.nanoTimestamp();
+    const ns = clock.monotonicNanos();
     return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
 }
 
@@ -142,7 +143,7 @@ test "TimingInfo.setRouterSources" {
 test "TimingInfo.elapsedSinceStart" {
     const timing = TimingInfo.now();
     // Small delay
-    std.time.sleep(1_000_000); // 1ms
+    clock.sleep(1_000_000); // 1ms
 
     const elapsed = timing.elapsedSinceStart();
     try std.testing.expect(elapsed >= 0.5); // At least 0.5ms

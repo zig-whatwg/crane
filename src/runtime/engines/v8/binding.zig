@@ -136,6 +136,8 @@ fn v8RegisterInterface(
 
     // Configure the instance template
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
+    // Owned handle: V8 returns a borrowed Local here, this wrapper allocates.
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
 
     // Set internal field count for wrapper storage
     ffi.v8_ObjectTemplate_SetInternalFieldCount(instance_template, 2);
@@ -155,11 +157,6 @@ fn v8RegisterInterface(
         const methods_slice = methods[0..descriptor.methods_len];
         for (methods_slice, 0..) |method, i| {
             if (method.name) |method_name| {
-                const method_name_v8 = ffi.v8_String_NewFromUtf8(
-                    isolate,
-                    method_name,
-                    @intCast(std.mem.span(method_name).len),
-                ) orelse continue;
 
                 // Get the native method callback if provided
                 if (config.methods) |methods_arr| {
@@ -171,7 +168,6 @@ fn v8RegisterInterface(
                     }
                 }
 
-                _ = method_name_v8;
                 _ = prototype_template;
             }
         }
@@ -181,13 +177,6 @@ fn v8RegisterInterface(
     if (descriptor.properties) |properties| {
         const props_slice = properties[0..descriptor.properties_len];
         for (props_slice, 0..) |prop, i| {
-            const prop_name = ffi.v8_String_NewFromUtf8(
-                isolate,
-                prop.name,
-                @intCast(std.mem.span(prop.name).len),
-            ) orelse continue;
-
-            _ = prop_name;
             _ = i;
             // TODO: Set property accessors via FFI
             // if (config.getters) |getters| {
@@ -301,6 +290,7 @@ fn v8CreateInstance(
 
     // Get the instance template and create a new object
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(func_template);
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
     const v8_object = ffi.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         return EngineError.ObjectCreationFailed;
     };
@@ -388,7 +378,7 @@ fn v8SetupGlobalObject(
 
     // Set up the prototype from the template
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(func_template);
-    _ = instance_template;
+    ffi.v8_ObjectTemplate_Dispose(instance_template);
 
     // TODO: Configure global prototype chain
 
@@ -457,6 +447,7 @@ fn v8ToJSValue(
             const interface_name = template_registry.getInstanceInterfaceName(instance);
             const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
                 return EngineError.OperationFailed;
+            defer ffi.v8_Context_Dispose(context);
             const v8_obj = template_registry.wrapInstanceAsV8Object(
                 instance,
                 interface_name,
@@ -627,6 +618,7 @@ fn v8ThrowDOMException(
     _ = engine_ctx;
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(context);
     const global = ffi.v8_Context_Global(context) orelse return;
 
     // Get the DOMException constructor from global
@@ -747,6 +739,7 @@ fn v8CreateReadableStream(
         return EngineError.OperationFailed;
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_Context_Dispose(context);
 
     const runtime = @import("runtime");
     const instance: *runtime.Instance = @ptrCast(@alignCast(zig_stream));

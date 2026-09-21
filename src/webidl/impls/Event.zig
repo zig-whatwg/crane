@@ -13,6 +13,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
 const v8_engine = @import("v8");
+const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Event = interfaces.Event;
 
@@ -110,6 +111,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
+        // Return the block itself, not just what it points to. `internal.deinit()`
+        // releases what the state OWNS; the state struct was staying allocated for
+        // the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
@@ -160,7 +167,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.returnValue = true; // !canceled_flag
     state.own.defaultPrevented = false;
     state.own.isTrusted = false;
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     return instance;
 }
@@ -403,6 +410,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return the empty composedPath as a V8 array
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
         const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+        defer v8_engine.ffi.v8_Context_Dispose(v8_context);
         const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
             composed_path.deinit();
             return error.NotImplemented;
@@ -528,6 +536,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         composed_path.deinit();
         return error.NotImplemented;
     };
+    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
 
     const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
         composed_path.deinit();

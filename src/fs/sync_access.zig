@@ -120,7 +120,7 @@ pub const FileSystemSyncAccessHandle = struct {
         const current_data = self.file_entry.data();
 
         // Build new data
-        var new_data = std.ArrayListUnmanaged(u8){};
+        var new_data: std.ArrayListUnmanaged(u8) = .empty;
         defer new_data.deinit(self.allocator);
 
         // Ensure capacity for the result
@@ -168,14 +168,14 @@ pub const FileSystemSyncAccessHandle = struct {
 
         if (size < current_data.len) {
             // Shrink: copy to temp buffer first to avoid aliasing
-            var new_data = std.ArrayListUnmanaged(u8){};
+            var new_data: std.ArrayListUnmanaged(u8) = .empty;
             defer new_data.deinit(self.allocator);
 
             try new_data.appendSlice(self.allocator, current_data[0..size]);
             self.file_entry.setData(new_data.items) catch return error.QuotaExceededError;
         } else {
             // Grow: append zeros
-            var new_data = std.ArrayListUnmanaged(u8){};
+            var new_data: std.ArrayListUnmanaged(u8) = .empty;
             defer new_data.deinit(self.allocator);
 
             try new_data.appendSlice(self.allocator, current_data);

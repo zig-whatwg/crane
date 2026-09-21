@@ -37,10 +37,10 @@ pub const ShadowRealmGlobalScope = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "ShadowRealm" } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ShadowRealm = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "self", "get_self", "set_self" },
@@ -49,7 +49,7 @@ pub const ShadowRealmGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "btoa", "call_btoa", 1 },
@@ -58,7 +58,7 @@ pub const ShadowRealmGlobalScope = struct {
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "reportError", "call_reportError", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "btoa",
@@ -67,7 +67,7 @@ pub const ShadowRealmGlobalScope = struct {
             "queueMicrotask",
             "reportError",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,7 +75,7 @@ pub const ShadowRealmGlobalScope = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "self", "get_self", "set_self" },
@@ -84,11 +84,10 @@ pub const ShadowRealmGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -106,7 +105,6 @@ pub const ShadowRealmGlobalScope = struct {
     );
 
     const delegates = .{
-
         .get_crossOriginIsolated = &get_crossOriginIsolated,
         .get_isSecureContext = &get_isSecureContext,
         .get_name = &get_name,
@@ -123,7 +121,7 @@ pub const ShadowRealmGlobalScope = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -176,28 +174,22 @@ pub const ShadowRealmGlobalScope = struct {
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        
         return try ShadowRealmGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
-        
         return try ShadowRealmGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        
         return try ShadowRealmGlobalScopeImpl.call_atob(instance, data);
     }
 
     pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        
         return try ShadowRealmGlobalScopeImpl.call_btoa(instance, data);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-        
         return try ShadowRealmGlobalScopeImpl.call_reportError(instance, e);
     }
-
 };

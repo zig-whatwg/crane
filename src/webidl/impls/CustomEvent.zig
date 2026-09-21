@@ -53,6 +53,16 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // CustomEvent's detail is typically a JS value that doesn't need Zig cleanup
 
+    // Release CustomEvent's OWN internal block. The parent's deinit releases the
+    // Event-level one, which on a CustomEvent instance is a different allocation -
+    // so delegating alone left this one held for the life of the process.
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
     interfaces.Event.deinit(instance);
 }

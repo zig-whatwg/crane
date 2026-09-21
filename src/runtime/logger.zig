@@ -27,6 +27,7 @@
 //! ```
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// Log level enumeration
 pub const LogLevel = enum {
@@ -125,7 +126,7 @@ pub const Logger = struct {
 
         // Write timestamp if enabled
         if (self.config.show_timestamp) {
-            const timestamp = std.time.timestamp();
+            const timestamp = clock.wallSeconds();
             std.debug.print("[{d}] ", .{timestamp});
         }
 

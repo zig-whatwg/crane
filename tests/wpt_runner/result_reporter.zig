@@ -40,6 +40,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const test_harness = @import("test_harness.zig");
 const config = @import("config.zig");
+const clock = @import("clock");
+const host = @import("host");
 
 // =============================================================================
 // Lone Surrogate Sanitization
@@ -62,7 +64,7 @@ pub fn sanitizeLoneSurrogates(allocator: std.mem.Allocator, input: []const u8) !
         return try allocator.dupe(u8, input);
     }
 
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -305,10 +307,12 @@ pub fn loadExpectedResults(allocator: std.mem.Allocator, wpt_root: []const u8, t
         const ini_path = try std.fmt.allocPrint(allocator, "{s}/{s}{s}.ini", .{ wpt_root, prefix, test_path });
         defer allocator.free(ini_path);
 
-        const file = std.fs.cwd().openFile(ini_path, .{}) catch continue;
-        defer file.close();
+        const io = host.io();
+        const file = host.cwd().openFile(io, ini_path, .{}) catch continue;
+        defer file.close(io);
 
-        const content = file.readToEndAlloc(allocator, 1024 * 1024) catch continue;
+        var file_reader = file.reader(io, &.{});
+        const content = file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024)) catch continue;
         defer allocator.free(content);
 
         return try parseIniMetadata(allocator, content);
@@ -417,8 +421,8 @@ pub const WptReport = struct {
         return WptReport{
             .allocator = allocator,
             .run_info = RunInfo.getDefault(),
-            .time_start = std.time.milliTimestamp(),
-            .results = .{},
+            .time_start = clock.wallMillis(),
+            .results = .empty,
         };
     }
 
@@ -431,7 +435,7 @@ pub const WptReport = struct {
 
     /// Mark the end of the test run
     pub fn finish(self: *WptReport) void {
-        self.time_end = std.time.milliTimestamp();
+        self.time_end = clock.wallMillis();
     }
 
     /// Add a test result from the harness collector
@@ -463,7 +467,7 @@ pub const WptReport = struct {
             .message = if (harness_result.message) |m| try self.allocator.dupe(u8, m) else null,
             .expected = test_expected,
             .duration = harness_result.duration_ms,
-            .subtests = .{},
+            .subtests = .empty,
         };
 
         for (harness_result.subtests.items) |sub| {
@@ -502,29 +506,36 @@ pub const WptReport = struct {
     /// Convert to JSON and write to file
     pub fn writeToFile(self: *WptReport, path: []const u8) !void {
         // Ensure output directory exists
+        const io = host.io();
         const dir_path = std.fs.path.dirname(path);
         if (dir_path) |dir| {
-            std.fs.cwd().makePath(dir) catch |err| {
+            host.cwd().createDirPath(io, dir) catch |err| {
                 if (err != error.PathAlreadyExists) return err;
             };
         }
 
         // Build JSON string first, then write to file
-        var json_buf: std.ArrayList(u8) = .{};
+        var json_buf: std.ArrayList(u8) = .empty;
         defer json_buf.deinit(self.allocator);
 
         try self.writeJsonToArrayList(&json_buf);
 
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try host.cwd().createFile(io, path, .{});
+        defer file.close(io);
 
-        _ = try file.writeAll(json_buf.items);
+        _ = try file.writeStreamingAll(io, json_buf.items);
     }
 
     /// Write JSON to an ArrayList buffer
     fn writeJsonToArrayList(self: *WptReport, buf: *std.ArrayList(u8)) !void {
-        var writer = buf.writer(self.allocator);
-        try self.writeJsonInner(&writer);
+        // 0.16 removed ArrayList.writer(). std.Io.Writer.Allocating is the
+        // replacement: it owns its own list and exposes a real std.Io.Writer, so
+        // writeJsonInner keeps working unchanged. The bytes are moved back into
+        // `buf` afterwards so the caller's ownership is unchanged.
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        try self.writeJsonInner(&aw.writer);
+        try buf.appendSlice(self.allocator, aw.written());
     }
 
     /// Write JSON to any writer

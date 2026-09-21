@@ -29,4 +29,3 @@ pub fn get_ongattserverdisconnected(instance: *runtime.Instance) anyerror!typede
 pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
     return BluetoothDeviceEventHandlersImpl.set_ongattserverdisconnected(instance, value);
 }
-

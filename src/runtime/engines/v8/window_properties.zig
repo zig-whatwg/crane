@@ -67,6 +67,7 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     // EventTarget.prototype without inheriting its methods as own properties.
 
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
+    defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
 
     // Reserve internal field to store the associated Window instance
     // This allows named property lookups to find the correct Window regardless of
@@ -116,6 +117,7 @@ pub fn create(
 
     const tpl = getTemplate(isolate);
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
+    defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
     const instance = v8.v8_ObjectTemplate_NewInstance(instance_tpl, context) orelse return null;
 
     // Store the Window instance in internal field 0
@@ -195,6 +197,7 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         // Fallback: try current context's global (for backwards compatibility)
         const isolate = info.getIsolate();
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        defer v8.v8_Context_Dispose(context);
         const global = v8.v8_Context_Global(context) orelse return null;
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));
@@ -203,6 +206,7 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         // Fallback: try current context's global (for backwards compatibility)
         const isolate = info.getIsolate();
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        defer v8.v8_Context_Dispose(context);
         const global = v8.v8_Context_Global(context) orelse return null;
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));

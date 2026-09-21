@@ -44,6 +44,7 @@ pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
 
 /// Import webidl for Opt type checking
 const webidl = @import("webidl");
+const host = @import("host");
 
 /// Number of internal fields required for wrapped objects
 /// Slot 0: Zig instance pointer
@@ -231,6 +232,136 @@ fn defaultInit(comptime T: type) T {
 /// A type with methods to register the interface in V8:
 /// - `registerGlobal(isolate, context, name)` - Register as global constructor
 /// - `createTemplate(isolate)` - Create FunctionTemplate
+/// Can a value of type `T` cause argument conversion to RETAIN the V8
+/// context beyond the call?
+///
+/// Expressed as an ALLOWLIST of provably inert types, and that direction is
+/// the whole point. Twice I wrote this as a blocklist - "retains unless it
+/// is an Instance pointer", "retains only for *runtime.CallbackWrapper" -
+/// and twice an unlisted type slipped through and became a use-after-free:
+/// 2-3 crashes per timers run the first time, 10 of 12 files the second,
+/// because `setTimeout`'s handler is `typedefs.TimerHandler`, a union whose
+/// `function` arm is a callback. A blocklist is wrong by default for an
+/// open set of types; an allowlist is merely conservative.
+///
+/// An unrecognised type therefore answers TRUE - assume retention, keep the
+/// old leak - which costs memory and never correctness.
+pub fn typeRetainsContext(comptime T: type) bool {
+    return typeRetainsContextDepth(T, 0);
+}
+
+fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
+    return comptime blk: {
+        // Inert scalars: conversion produces a Zig value holding no handle.
+        if (T == void or T == bool) break :blk false;
+        if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk false;
+        if (T == u8 or T == u16 or T == u32 or T == u64 or T == usize) break :blk false;
+        if (T == f32 or T == f64) break :blk false;
+
+        // Strings own their own bytes; no V8 handle survives the call.
+        if (T == runtime.DOMString or T == []const u8) break :blk false;
+        if (@hasDecl(runtime, "USVString") and T == runtime.USVString) break :blk false;
+        if (@hasDecl(runtime, "ByteString") and T == runtime.ByteString) break :blk false;
+
+        const info = @typeInfo(T);
+
+        // WebIDL enums convert to a plain tag.
+        if (info == .@"enum") break :blk false;
+
+        // `JSValue` is inert FOR THE CONTEXT, which is what this predicate
+        // governs. `conv.fromV8Value`'s JSValue branch returns
+        // `.handle = .{ .ptr = value, .handle_scope = .local }` - it keeps the
+        // VALUE pointer and uses `context` only transiently, for
+        // `v8_Value_NumberValue` and `v8_Value_ToString`. Retaining a value handle
+        // is a different question from retaining the context, and conflating them
+        // kept `createElement` - whose second parameter is `webidl.Opt(JSValue)` -
+        // leaking its context on the hottest path in the DOM.
+        if (T == runtime.JSValue) break :blk false;
+
+        // Optionals and error unions are inert exactly when their payload is.
+        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth + 1);
+        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth + 1);
+
+        // `webidl.Opt(T)` wraps a payload in `.value`.
+        if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
+            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth + 1);
+        }
+
+        // Everything else - callbacks, JSValue, Instance pointers, unions
+        // like TimerHandler, dictionaries, slices of any of them - is
+        // assumed to retain.
+        break :blk true;
+    };
+}
+
+/// Does converting an argument of type `T` COPY out of the V8 handle, so the
+/// `Global<Value>` that `info.get(N)` allocated can be released once the
+/// conversion returns?
+///
+/// `v8_FunctionCallbackInfo_GetArgument` heap-allocates a `Global<Value>` where
+/// V8 hands back a borrowed `Local`, and nothing released it: `leaks --atExit`
+/// counted 199,997 abandoned argument handles per 200,000 cycles - one per
+/// `document.createElement` call.
+///
+/// An ALLOWLIST, for the same reason `typeRetainsContext` is one, and the
+/// danger here is sharper: some conversions TAKE OWNERSHIP of this exact
+/// pointer rather than copying from it. `conv.fromV8Value`'s function-pointer
+/// branch says so outright - "The value is already a Global<Value>* ... we
+/// don't need to create another Global - just use this one directly" - and
+/// `runtime.JSValue` keeps it as `.handle.ptr`. Releasing either is a
+/// use-after-free.
+///
+/// So an unrecognised type answers FALSE: keep the handle, keep the old leak.
+pub fn argHandleIsCopied(comptime T: type) bool {
+    return comptime blk: {
+        // Scalars decode to a Zig value; the handle is read and done with.
+        if (T == void or T == bool) break :blk true;
+        if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk true;
+        if (T == u8 or T == u16 or T == u32 or T == u64 or T == usize) break :blk true;
+        if (T == f32 or T == f64) break :blk true;
+
+        // Strings are copied out: the DOMString branch ends at
+        // `fromV8String` -> `DOMString.initOwned(buffer)`, an owned buffer, and
+        // the V8 string it read from is released by `v8_FreeToStringResult`
+        // before it returns.
+        if (T == runtime.DOMString or T == []const u8) break :blk true;
+        if (@hasDecl(runtime, "USVString") and T == runtime.USVString) break :blk true;
+        if (@hasDecl(runtime, "ByteString") and T == runtime.ByteString) break :blk true;
+
+        const info = @typeInfo(T);
+
+        // WebIDL enums decode to a plain tag.
+        if (info == .@"enum") break :blk true;
+
+        // Wrappers are copied exactly when their payload is. Note these are NOT
+        // recursive beyond one level on purpose - a payload that is itself a
+        // wrapper falls through to the conservative answer.
+        if (info == .optional) break :blk argHandleIsCopied(info.optional.child);
+        if (info == .error_union) break :blk argHandleIsCopied(info.error_union.payload);
+        if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
+            break :blk argHandleIsCopied(@FieldType(T, "value"));
+        }
+
+        // JSValue, callbacks, Instance pointers, unions, dictionaries, slices:
+        // assume the handle is kept.
+        break :blk false;
+    };
+}
+
+/// `conv.fromV8Value`, releasing the argument handle afterwards when
+/// `argHandleIsCopied` can prove that is safe. The `defer` fires on the error
+/// path too, which is where the handle would otherwise be lost silently.
+fn convertArgReleasing(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    arg: *v8.Value,
+) !T {
+    defer if (comptime argHandleIsCopied(T)) v8.v8_Value_Dispose(arg);
+    return conv.fromV8Value(T, allocator, isolate, context, arg);
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -770,8 +901,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                             );
                                             if (method_name) |m_name| {
                                                 // Per WebIDL § 3.7.5, iterable methods (entries, keys, values, forEach)
-                                            // are enumerable properties on the prototype
-                                            _ = v8.v8_Object_DefineProperty(
+                                                // are enumerable properties on the prototype
+                                                _ = v8.v8_Object_DefineProperty(
                                                     @ptrCast(proto),
                                                     context,
                                                     @ptrCast(m_name),
@@ -1301,6 +1432,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Field 0: pointer to Zig instance (*runtime.Instance)
             // Field 1: pointer to type tag (for type-safe unwrapping)
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
+            defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);
             v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
 
             // Per WebIDL spec, platform objects of [Global] interfaces have immutable [[Prototype]].
@@ -1760,7 +1892,25 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "No current context");
                         return;
                     };
-                    const getter_context = info.getFunctionCreationContext() orelse caller_context;
+                    // THE one-per-element context leak. This fires on every attribute
+                    // read - `document`, `el.id`, `el.tagName` - and nothing released
+                    // it. The live-handle counter showed contexts growing 1.00 per
+                    // createElement; this was all of it.
+                    //
+                    // Safe either way the `orelse` below lands: when
+                    // `getter_context_owned` is non-null this value goes unused, and
+                    // when it is null this becomes `getter_context`, which only feeds
+                    // return-value conversion. Getters take no arguments, so
+                    // `fromV8Value` - the one conversion path that retains a context -
+                    // is not involved at all.
+                    defer v8.v8_Context_Dispose(caller_context);
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const getter_context_owned = info.getFunctionCreationContext();
+                    defer if (getter_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const getter_context = getter_context_owned orelse caller_context;
 
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
@@ -1782,6 +1932,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     } else {
                         // Instance getter - extract instance from 'this' and call
                         const this_obj = info.getThis();
+                        defer v8.v8_Object_Dispose(this_obj);
 
                         // Derive property name from getter_name (strip "get_" prefix)
                         const prop_name = comptime blk: {
@@ -1815,7 +1966,26 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (is_global_interface) {
                                 // Get the method's context - V8 enters the function's creation context
                                 if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
+                                    // The last of the two per-element context leaks that
+                                    // `leaks --atExit` named. This branch runs for [Global]
+                                    // interfaces, so every `window.document` read reached it
+                                    // and abandoned a Global<Context>: 31,597 per 200,000
+                                    // cycles, 1.00 per createElement.
+                                    //
+                                    // Safe to release, and provably so rather than hopefully:
+                                    // `method_ctx` appears on exactly two lines - this one and
+                                    // the call below - and `v8_Context_Global` reads it into a
+                                    // Local and returns a FRESH Global<Object> built from
+                                    // `local_context->Global()`. It keeps no pointer to the
+                                    // context. That is the distinction from the disposes
+                                    // reverted in 5abd41550 and 6c64a3925, where the callee's
+                                    // retention was never established.
+                                    defer v8.v8_Context_Dispose(method_ctx);
                                     if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                        // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                        // returns a borrowed Local. Everything below only compares it or
+                                        // reads an internal field, so releasing at block exit is correct.
+                                        defer v8.v8_Object_Dispose(method_global);
                                         // Check if this IS the method's global object
                                         // (handles normal case: window.name where this === window)
                                         if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
@@ -1861,6 +2031,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // by checking if it equals its own context's global
                                             if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                                 if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                    // returns a borrowed Local. Everything below only compares it or
+                                                    // reads an internal field, so releasing at block exit is correct.
+                                                    defer v8.v8_Object_Dispose(this_global);
                                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                         // this IS a global object (caller's global)
                                                         // This happens when getter.call(null) coerces to caller's global
@@ -2319,6 +2493,30 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
+                    // This handle is ours to release unless converting one of the
+                    // arguments makes the engine keep the context. `conv.fromV8Value`
+                    // stores it into a persistent `runtime.CallbackWrapper` for
+                    // callback-typed parameters, so `createElement(DOMString)` is
+                    // transient while `setTimeout(TimerHandler, ...)` is not.
+                    //
+                    // `typeRetainsContext` is an ALLOWLIST of provably inert types
+                    // and answers "retains" for anything it does not recognise. That
+                    // direction matters: written as a blocklist, this exact check
+                    // released a context `setTimeout` still needed and produced 10
+                    // crashes out of 12 files. See tests/v8/retention_predicate_test.zig.
+                    //
+                    // Six handles per DOM object created were leaking here.
+                    const params_retain = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(@field(Interface, zig_name))).@"fn";
+                        for (fi.params) |prm| {
+                            const P = prm.type orelse break :blk true;
+                            if (P == *runtime.Instance) continue; // the receiver
+                            if (typeRetainsContext(P)) break :blk true;
+                        }
+                        break :blk false;
+                    };
+                    defer if (comptime !params_retain) v8.v8_Context_Dispose(current_context);
+
                     // CROSS-REALM SUPPORT: For return value conversion, we need the METHOD's realm.
                     // When calling other.SomeInterface.prototype.method.call(obj), the result object
                     // should have its prototype from 'other' (the method's realm), not the caller's realm.
@@ -2328,8 +2526,13 @@ pub fn V8Interface(comptime Interface: type) type {
                     // the target function being called, then returns its creation context. This gives
                     // us the context where the function was instantiated (e.g., iframe context for
                     // other.DOMRectReadOnly.prototype.toJSON).
-                    const method_context = info.getFunctionCreationContext() orelse
-                        current_context;
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const method_context_owned = info.getFunctionCreationContext();
+                    defer if (method_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const method_context = method_context_owned orelse current_context;
 
                     // Use current_context for argument parsing (input comes from caller's realm)
                     // Use method_context for return value conversion (output goes to method's realm)
@@ -2337,13 +2540,14 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };
 
                     // Get 'this' object and extract the Zig instance
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // For [Global] interfaces (like Window), we need special handling:
                     // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
@@ -2352,6 +2556,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
@@ -2380,6 +2588,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                // returns a borrowed Local. Everything below only compares it or
+                                                // reads an internal field, so releasing at block exit is correct.
+                                                defer v8.v8_Object_Dispose(this_global);
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                     // this IS a global (caller's global) -> use method's global
                                                     if (global_ptr != null) {
@@ -2445,6 +2657,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Check if `this` IS a global object and use it as implicit this.
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |ctx| {
                                 if (v8.v8_Context_Global(ctx)) |context_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(context_global);
                                     // Check if this_obj IS the current context's global
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
@@ -2673,8 +2889,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (union_info.tag_type) |_| {
                     // Tagged union - we can switch on it
                     switch (arg) {
-                        inline else => |val, tag| {
-                            const FieldType = std.meta.TagPayloadByName(T, @tagName(tag));
+                        inline else => |val| {
+                            // Zig 0.16 removed std.meta.TagPayloadByName; inside an
+                            // `inline else` prong the capture already has the payload type.
+                            const FieldType = @TypeOf(val);
                             if (comptime needsArgCleanup(FieldType)) {
                                 freeConvertedArg(FieldType, allocator, val);
                             }
@@ -2761,7 +2979,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -2781,7 +2999,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -2796,7 +3014,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -2817,7 +3035,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2832,7 +3050,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2846,7 +3064,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
@@ -2868,7 +3086,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2883,7 +3101,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2897,7 +3115,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2911,7 +3129,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
-                        break :arg_blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                        break :arg_blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3291,10 +3509,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // If called as a function (without 'new'), 'this' may be the global object
             // which has 0 internal fields, causing "Internal field out of bounds" crash.
             if (!info.isConstructCall()) {
+                // Owned handle; the null branch has none to release.
                 const function_ctx = info.getFunctionCreationContext() orelse {
                     conv.throwTypeError(isolate, interface_name ++ " constructor: 'new' is required");
                     return;
                 };
+                defer v8.v8_Context_Dispose(function_ctx);
                 conv.throwTypeErrorFromContext(isolate, function_ctx, interface_name ++ " constructor: 'new' is required");
                 return;
             }
@@ -3314,12 +3534,23 @@ pub fn V8Interface(comptime Interface: type) type {
             // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
             // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
             const constructor_v8_fn = info.getFunction();
+            // NOT disposed, despite being owned in both branches. `constructor_context`
+            // below is handed to `ctx_mgr.getOrCreateWithIsolate`, which on its CREATE
+            // path stores it as `ContextEntry.engine_ctx` and hands it to
+            // `WrapperCache.init` - both outliving this callback. Disposing here frees
+            // a handle the context manager still holds.
+            //
+            // This leaks one handle per constructor call on realms already registered,
+            // which is the common case. Fixing it properly means giving the context
+            // manager a way to say "I took ownership", and that is a wider change than
+            // a defer. An earlier version of this code DID dispose here; it was a
+            // use-after-free that only hid because the create path is rarely taken.
             const constructor_v8_context = if (constructor_v8_fn) |f| getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
             const constructor_context = constructor_v8_context orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                 conv.throwError(isolate, "Failed to get isolate allocator");
                 return;
             };
@@ -3333,6 +3564,14 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Get 'this' object (the newly created instance)
+            //
+            // NOT disposed, unlike every other getThis() in this file. `cache.set`
+            // below stores this exact pointer as `entry.wrapper` and arms
+            // `v8_Global_SetWeak` on it, so the wrapper cache owns it from that
+            // point and frees it via `disposeEntryWrapper`. Disposing here is a
+            // double free plus a weak callback pointing at freed memory. The store
+            // is conditional on the cache existing, so a conditional dispose is not
+            // a fix either.
             const this_obj = info.getThis();
 
             // ========================================
@@ -3365,7 +3604,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
                 // Throw appropriate error type based on error name
                 // Use throwWebIDLError which properly creates DOMException for WebIDL errors
-                const function_ctx = info.getFunctionCreationContext() orelse current_context;
+                // Owned: this returns a fresh Global<Context> per call, which nothing was
+                // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                // one only; the `orelse` fallback is borrowed and freeing it would be a
+                // double free.
+                const function_ctx_owned = info.getFunctionCreationContext();
+                defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                const function_ctx = function_ctx_owned orelse current_context;
                 conv.throwWebIDLErrorFromContext(isolate, function_ctx, @errorName(err));
                 return;
             };
@@ -3479,7 +3724,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
                     }
                     const v8_arg1 = info.get(0);
-                    const converted = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const converted = try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                         log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
                     }
@@ -3512,7 +3757,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     // Try default for first param
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3528,7 +3773,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     // Use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -3543,8 +3788,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Debug for Worker
                 if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                    const stderr = std.fs.File.stderr();
-                    stderr.writeAll("[CTOR_CALLBACK] Worker args converted, calling Interface.call_constructor\n") catch {};
+                    const stderr = std.Io.File.stderr();
+                    stderr.writeStreamingAll(host.io(), "[CTOR_CALLBACK] Worker args converted, calling Interface.call_constructor\n") catch {};
                 }
 
                 return try Interface.call_constructor(ctx, arg1, arg2);
@@ -3557,7 +3802,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -3572,7 +3817,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -3587,7 +3832,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -3610,7 +3855,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -3625,7 +3870,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -3640,7 +3885,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -3655,7 +3900,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
                     const v8_arg4 = info.get(3);
-                    break :blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                    break :blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                         break :blk default_val;
@@ -3684,10 +3929,12 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Must throw TypeError, NOT a generic Error
         fn nonConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
+            // Owned handle; the null branch has none to release.
             const function_ctx = info.getFunctionCreationContext() orelse {
                 conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
                 return;
             };
+            defer v8.v8_Context_Dispose(function_ctx);
             conv.throwTypeErrorFromContext(isolate, function_ctx, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
@@ -3718,6 +3965,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' value - this should be the HTMLAllCollection instance
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const instance = getInstance(runtime.Instance, this_obj) orelse {
                 // If not a valid instance, return undefined
                 info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
@@ -3733,7 +3981,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                 info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
                 return;
             };
@@ -3947,6 +4195,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // (the entered context), not the object's creation context.
                     // This ensures the caller's try/catch can catch the exception.
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
                     const creation_ctx = v8.v8_Object_GetPrototypeCreationContext(this_obj) orelse v8.v8_Isolate_GetCurrentContext(isolate).?;
                     const error_context = if (err == error.SecurityError)
                         v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse
@@ -4334,6 +4583,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4433,6 +4683,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4488,6 +4739,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4541,6 +4793,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4659,6 +4912,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4722,6 +4976,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4940,10 +5195,6 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return .kYes;
-            };
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5002,6 +5253,24 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
+            };
+
+            // Acquired HERE, not at entry. `v8_Isolate_GetCurrentContext` heap-
+            // allocates a Global<Context> where V8 hands back a borrowed Local, and
+            // every `return .kNo` above it abandoned one. That is the common case,
+            // not a corner: this interceptor runs for EVERY property miss on a
+            // named-property interface, and `isSupportedPropertyName` rejects all
+            // of them - `document.createElement` included. `leaks --atExit` put it
+            // at 31,597 abandoned contexts per 200,000 cycles from this line alone.
+            //
+            // Still not disposed on the paths below. Whether `wrapInstanceAsV8Object`
+            // stores the pointer is unproven, and releasing a context that is kept
+            // is a use-after-free - which is what happened in 6c64a3925 and again
+            // in the getter fix reverted by 5abd41550. Not allocating is safe
+            // without needing that answer; disposing is not.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                conv.throwError(isolate, "No V8 context");
+                return .kYes;
             };
 
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
@@ -5091,6 +5360,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -5137,7 +5407,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // constraints where indices MUST come before names, we include both here
                 // in the prescribed order. V8 will merge/deduplicate with the indexed
                 // enumerator results.
-                var keys: std.ArrayListUnmanaged(*v8.Value) = .{};
+                var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
                 defer keys.deinit(std.heap.c_allocator);
 
                 // 1. Add indexed properties (ascending) if interface supports them
@@ -5297,6 +5567,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -5799,6 +6070,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Determine default iterator kind based on iterable type:
             // - Pair iterables (key_type is a string, not null): default to entries per WebIDL spec
@@ -5835,6 +6107,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .entries);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5852,6 +6125,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .keys);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5869,6 +6143,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5887,6 +6162,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the Headers/URLSearchParams/etc instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Get callback argument (required)
             if (info.length() < 1) {
@@ -5996,6 +6272,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Get the Zig instance from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -6046,6 +6323,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the values() iterator from the array
             const values_key = v8.v8_String_NewFromUtf8(isolate, "values", 6) orelse return null;
+            defer v8.v8_String_Dispose(values_key);
             const values_fn_val = v8.v8_Object_Get(@ptrCast(arr), context, @ptrCast(values_key)) orelse return null;
             if (!v8.v8_Value_IsFunction(values_fn_val)) return null;
 
@@ -6119,6 +6397,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const next_tmpl = v8.v8_FunctionTemplate_New(isolate, unifiedIteratorNextCallback, null) orelse return null;
             const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
             const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+            defer v8.v8_String_Dispose(next_key);
             _ = v8.v8_Object_Set(iter_proto, context, @ptrCast(next_key), @ptrCast(next_func));
 
             // Set Symbol.iterator on the prototype (returns this)
@@ -6149,6 +6428,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Check if this is null/undefined (happens with .call(null) or .call(undefined))
             // Per WebIDL, calling iterator.next() with invalid this throws TypeError
@@ -6159,6 +6439,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Check if this is a pair iterator (has _isPairIterator flag) or indexed iterator
             const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return;
+            defer v8.v8_String_Dispose(pair_flag_key);
             const pair_flag_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pair_flag_key));
 
             if (pair_flag_val) |fv| {
@@ -6182,6 +6463,7 @@ pub fn V8Interface(comptime Interface: type) type {
         ) ?*v8.Object {
             // Determine if this is a pair iterable (has forEach but no length)
             const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return null;
+            defer v8.v8_String_Dispose(length_key);
             const length_val = v8.v8_Object_Get(target, context, @ptrCast(length_key));
             const has_length = if (length_val) |lv| !v8.v8_Value_IsUndefined(@ptrCast(lv)) else false;
             const is_pair_iterator = !has_length;
@@ -6197,18 +6479,22 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Store current index
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return null;
+            defer v8.v8_String_Dispose(index_key);
             const zero = v8.v8_Number_New(isolate, 0);
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(index_key), @ptrCast(zero));
 
             // Store iterator kind
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return null;
+            defer v8.v8_String_Dispose(kind_key);
             const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
 
             // Store interface type marker for brand checking in next()
             // This ensures next() can only be called with iterators of the same interface type
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return null;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return null;
+            defer v8.v8_String_Dispose(type_val);
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(type_key), @ptrCast(type_val));
 
             if (is_pair_iterator) {
@@ -6216,15 +6502,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Store reference to target for LIVE iteration (not snapshot)
                 // Per WebIDL spec, iteration should reflect concurrent modifications
                 const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                defer v8.v8_String_Dispose(target_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
 
                 // Mark this as a pair iterator by setting _isPairIterator flag
                 const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return null;
+                defer v8.v8_String_Dispose(pair_flag_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(pair_flag_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             } else {
                 // This is an indexed iterable (like NodeList, HTMLCollection)
                 // Store reference to target object
                 const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                defer v8.v8_String_Dispose(target_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
             }
 
@@ -6234,6 +6523,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Callback for [Symbol.iterator] on iterator objects - returns this
         fn iteratorSelfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             info.setReturnValue(@ptrCast(this_obj));
         }
 
@@ -6363,6 +6653,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
             const has_correct_type = blk: {
                 const tv = type_val orelse break :blk false;
@@ -6390,8 +6681,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get stored state (index, kind, and target)
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            defer v8.v8_String_Dispose(index_key);
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+            defer v8.v8_String_Dispose(kind_key);
             const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
+            defer v8.v8_String_Dispose(target_key);
 
             const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
             const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
@@ -6407,7 +6701,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // Create result object { value: ..., done: ... }
             const result_obj = v8.v8_Object_New(isolate) orelse return;
             const value_key_str = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            defer v8.v8_String_Dispose(value_key_str);
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+            defer v8.v8_String_Dispose(done_key);
 
             // Get live entries from the Zig instance
             // Use comptime check for IterableEntry and getEntriesForIterable
@@ -6518,8 +6814,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get stored state
             const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
+            defer v8.v8_String_Dispose(target_key);
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            defer v8.v8_String_Dispose(index_key);
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+            defer v8.v8_String_Dispose(kind_key);
 
             // Validate that this is an actual iterator object, not the prototype
             // Per WebIDL spec: next() must throw TypeError when called on ineligible receiver
@@ -6547,6 +6846,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
             const has_correct_type = blk: {
                 const tv = type_val orelse break :blk false;
@@ -6580,13 +6880,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get length from target
             const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
+            defer v8.v8_String_Dispose(length_key);
             const length_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(length_key));
             const length: u32 = if (length_val) |lv| @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(lv), v8_context)) else 0;
 
             // Create result object { value: ..., done: ... }
             const result_obj = v8.v8_Object_New(isolate) orelse return;
             const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            defer v8.v8_String_Dispose(value_key);
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+            defer v8.v8_String_Dispose(done_key);
 
             const undef_val = v8.v8_Undefined(isolate) orelse return;
 
@@ -6632,6 +6935,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Try type-safe unwrapping first
             const wrapper_type_info_registry_iter = @import("wrapper_type_info_registry.zig");
@@ -6765,7 +7069,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get function's creation context for cross-realm error throwing
                     // Per WebIDL spec: "Throw a TypeError using the function's realm."
-                    const setter_context = info.getFunctionCreationContext() orelse context;
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const setter_context_owned = info.getFunctionCreationContext();
+                    defer if (setter_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const setter_context = setter_context_owned orelse context;
 
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined
@@ -6773,6 +7083,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // Derive property name from setter_name_param (strip "set_" prefix)
                     const prop_name = comptime blk: {
@@ -6792,6 +7103,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
@@ -6820,6 +7135,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                // returns a borrowed Local. Everything below only compares it or
+                                                // reads an internal field, so releasing at block exit is correct.
+                                                defer v8.v8_Object_Dispose(this_global);
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                     // this IS a global object (caller's global) -> use method's global
                                                     if (global_ptr != null) {
@@ -7059,6 +7378,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
                     // Get 'this' object
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // Step 1: Use JavaScript [[Get]] to get the attribute's value
                     // This MUST respect user-defined getters on the object
@@ -7087,13 +7407,25 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Step 2: Check if the target is an object (not null/undefined)
                     // Per WebIDL spec: "if the result is not an object, throw a TypeError"
                     if (v8.v8_Value_IsNull(target_value) or v8.v8_Value_IsUndefined(target_value)) {
-                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        // Owned: this returns a fresh Global<Context> per call, which nothing was
+                        // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                        // one only; the `orelse` fallback is borrowed and freeing it would be a
+                        // double free.
+                        const function_ctx_owned = info.getFunctionCreationContext();
+                        defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                        const function_ctx = function_ctx_owned orelse context;
                         conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on null or undefined");
                         return;
                     }
 
                     if (!v8.v8_Value_IsObject(target_value)) {
-                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        // Owned: this returns a fresh Global<Context> per call, which nothing was
+                        // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                        // one only; the `orelse` fallback is borrowed and freeing it would be a
+                        // double free.
+                        const function_ctx_owned = info.getFunctionCreationContext();
+                        defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                        const function_ctx = function_ctx_owned orelse context;
                         conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on non-object");
                         return;
                     }
@@ -7249,7 +7581,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };
@@ -7264,6 +7596,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Create a template instance to carry context to the static method
                     // This instance is just a vehicle for passing allocator/context
                     const template_instance = runtime.Instance.init(allocator, struct {}, &runtime.VTable{
+                        // Not a real interface - a vehicle for handing the static
+                        // method an allocator and context. Named so that if it ever
+                        // does reach getInstanceInterfaceName the answer is honest
+                        // rather than a plausible-looking lie.
+                        .name = "<static-call-vehicle>",
                         .deinit = null,
                         .methods_ptr = &.{},
                     }, runtime_ctx) catch {
@@ -7527,6 +7864,7 @@ fn handleNewTargetPrototypeFallback(
         "prototype",
         9,
     ) orelse return;
+    defer v8.v8_String_Dispose(prototype_key);
 
     const new_target_obj: *v8.Object = @ptrCast(new_target_val);
     const proto_val = v8.v8_Object_Get(new_target_obj, v8_context, @ptrCast(prototype_key));
@@ -7558,6 +7896,7 @@ fn handleNewTargetPrototypeFallback(
         interface_name.ptr,
         @intCast(interface_name.len),
     ) orelse return;
+    defer v8.v8_String_Dispose(ctor_name);
 
     const ctor_val = v8.v8_Object_Get(global, target_realm, @ptrCast(ctor_name)) orelse return;
 
@@ -7760,6 +8099,7 @@ fn captureDOMExceptionStack(
 
     // Store the DOMException object as a temporary global for the script to access
     const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
+    defer v8.v8_String_Dispose(temp_key);
     _ = v8.v8_Object_Set(global, v8_context, @ptrCast(temp_key), @ptrCast(this_obj));
 
     // Compile and run a script that captures the stack trace
@@ -7780,6 +8120,7 @@ fn captureDOMExceptionStack(
         \\})();
     ;
     const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
+    defer v8.v8_String_Dispose(source);
     const script = v8.v8_Script_Compile(v8_context, source) orelse return;
     _ = v8.v8_Script_Run(v8_context, script);
 }

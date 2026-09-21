@@ -149,7 +149,7 @@ fn traverseAndMatchTagRecursive(
 ) !void {
     // Check if this node is an element with matching tag name
     if (node.node_type == NodeBase.ELEMENT_NODE) {
-        const element: *ElementWithBase = @ptrCast(node);
+        const element: *ElementWithBase = @fieldParentPtr("base", node);
         // Case-insensitive tag name comparison for HTML
         if (std.ascii.eqlIgnoreCase(element.tag_name, tag_name)) {
             try matches.append(element);
@@ -188,7 +188,7 @@ fn traverseAndMatchClassRecursive(
 ) !void {
     // Check if this node is an element with matching class
     if (node.node_type == NodeBase.ELEMENT_NODE) {
-        const element: *ElementWithBase = @ptrCast(node);
+        const element: *ElementWithBase = @fieldParentPtr("base", node);
 
         // Fast negative check via bloom filter
         if (element.class_bloom_filter.contains(class_name)) {
@@ -245,7 +245,7 @@ fn traverseAndMatchIdRecursive(
 ) !void {
     // Check if this node is an element with matching ID
     if (node.node_type == NodeBase.ELEMENT_NODE) {
-        const element: *ElementWithBase = @ptrCast(node);
+        const element: *ElementWithBase = @fieldParentPtr("base", node);
         if (element.getAttribute("id")) |elem_id| {
             if (std.mem.eql(u8, elem_id, id)) {
                 try matches.append(element);
@@ -321,7 +321,7 @@ fn traverseAndMatch(
 ) !void {
     // Check if this node is an element and matches
     if (node.node_type == NodeBase.ELEMENT_NODE) {
-        const element: *ElementWithBase = @ptrCast(node);
+        const element: *ElementWithBase = @fieldParentPtr("base", node);
         if (try matcher.matches(element, selector_list)) {
             try matches.append(element);
         }

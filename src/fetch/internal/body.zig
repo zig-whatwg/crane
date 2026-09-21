@@ -94,7 +94,7 @@ pub const Body = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .data = .{},
+            .data = .empty,
             .source = .none,
             .length = null,
             .used = false,
@@ -117,7 +117,7 @@ pub const Body = struct {
 
         body.* = .{
             .allocator = allocator,
-            .data = .{},
+            .data = .empty,
             .source = .{ .bytes = bytes },
             .length = bytes.len,
             .used = false,
@@ -137,7 +137,7 @@ pub const Body = struct {
 
         body.* = .{
             .allocator = allocator,
-            .data = .{},
+            .data = .empty,
             .source = source,
             .length = length,
             .used = false,
@@ -174,7 +174,7 @@ pub const Body = struct {
 
         new_body.* = .{
             .allocator = allocator,
-            .data = .{},
+            .data = .empty,
             .source = self.source,
             .length = self.length,
             .used = false,

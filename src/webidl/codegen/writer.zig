@@ -1481,6 +1481,63 @@ pub fn writeStateStruct(
 ///     },
 /// );
 /// ```
+/// Does this interface's impl own its event handlers, rather than storing them in
+/// the generated State?
+///
+/// HTMLElement keeps handlers in `event_handlers: StringHashMap(*anyopaque)` on its
+/// InternalState - deliberately, because V8 GlobalHandle pointers carry tag bits in
+/// the low 2 bits that a function-pointer type would strip (impls/HTMLElement.zig:83).
+/// So its 105 generated EventHandler slots are written by nobody and read by nobody:
+/// verified all 105 have zero accesses from the impl AND from the generated interface,
+/// whose accessors delegate straight to the impl.
+///
+/// At 8 bytes each that is 840 dead bytes in EVERY HTML element's state.
+///
+/// This is an allow-list on purpose. 71 `own.on*` accesses elsewhere are REAL -
+/// SharedWorker, WorkerGlobalScope, DedicatedWorkerGlobalScope, WebSocket and
+/// XMLHttpRequestUpload genuinely store handlers in State - so a blanket rule would
+/// silently break them. Add an interface here only after checking its impl.
+/// Does this interface's impl own its DOMString attribute storage too?
+///
+/// Element is the case that matters: 52 of its 90 own-fields are DOMString IDL
+/// attributes (~1,248 bytes), and NOTHING reads them. impls/Element.zig contains no
+/// `own.<attr>` access at all, and the generated accessors delegate straight to the
+/// impl (get_tagName -> ElementImpl.get_tagName), which keeps the real values in its
+/// InternalState. Every HTML element inherits all of it.
+///
+/// The generated `cached_*` fields are NOT affected: they are codegen-added caches
+/// rather than IDL attributes, so they never enter the attribute loop this filters.
+/// interfaces/Element.zig does use those four.
+///
+/// Verified per field before listing an interface here, same as the handler list.
+fn implOwnsStringAttributes(impl_name: []const u8) bool {
+    const owners = [_][]const u8{"ElementImpl"};
+    for (owners) |o| {
+        if (std.mem.eql(u8, impl_name, o)) return true;
+    }
+    return false;
+}
+
+fn implOwnsEventHandlers(impl_name: []const u8) bool {
+    // Each verified the same way as HTMLElement: zero `own.on*` accesses in the
+    // impl AND in the generated interface (whose accessors delegate to the impl).
+    const owners = [_][]const u8{
+        "HTMLElementImpl", // 105 slots
+        "WindowImpl", // 130
+        "DocumentImpl", // 113
+        "SVGElementImpl", // 104
+        "MathMLElementImpl", // 104
+        "HTMLBodyElementImpl", // 21
+        "SVGSVGElementImpl", // 20
+        "HTMLFrameSetElementImpl", // 20
+        "ServiceWorkerGlobalScopeImpl", // 19
+    };
+    for (owners) |o| {
+        if (std.mem.eql(u8, impl_name, o)) return true;
+    }
+    return false;
+}
+
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
@@ -1513,6 +1570,17 @@ pub fn writeGeneratedState(
         for (attributes) |attr| {
             // Skip static attributes - they're not stored in instance state
             if (attr.static) continue;
+
+            // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
+            if (implOwnsEventHandlers(impl_name) and
+                std.mem.eql(u8, attr.idlType.type, "EventHandler")) continue;
+
+            // Skip DOMString attribute storage the impl owns; see
+            // implOwnsStringAttributes. Union-typed attributes are left alone - they
+            // are a different shape and were not part of the audit.
+            if (implOwnsStringAttributes(impl_name) and
+                attr.idlType.unionTypes == null and
+                std.mem.eql(u8, attr.idlType.type, "DOMString")) continue;
 
             // Check if type name ends with '?' (parser includes it in type string)
             var type_name = attr.idlType.type;
@@ -2086,7 +2154,7 @@ pub fn writeVTable(
 
     try writer.writeAll("    };\n");
     // buildVTable auto-extracts .deinit from delegates struct
-    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates);\n\n");
+    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);\n\n");
 }
 
 /// VTable entry for sorting
@@ -2348,38 +2416,38 @@ pub fn writeOverloadedConstructor(
         } else if (ctor.arguments.len == 1) {
             // Build type with optional, variadic, nullable, and union handling
             var buffer: [512]u8 = undefined;
-            var fbs = std.io.fixedBufferStream(&buffer);
+            var fbs: std.Io.Writer = .fixed(&buffer);
             const arg = ctor.arguments[0];
 
             // Optional: optional T -> webidl.Opt(T)
             if (arg.optional) {
-                try fbs.writer().writeAll("webidl.Opt(");
+                try fbs.writeAll("webidl.Opt(");
             }
 
             // Variadic: T... -> []const T
             if (arg.variadic) {
-                try fbs.writer().writeAll("[]const ");
+                try fbs.writeAll("[]const ");
             }
 
             // Check for union types FIRST
             if (arg.idlType.unionTypes) |union_types| {
                 if (isNodeOrDOMStringUnion(union_types)) {
                     if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writer().writeByte('?');
+                        try fbs.writeByte('?');
                     }
-                    try fbs.writer().writeAll("mixins.ParentNode.NodeOrString");
+                    try fbs.writeAll("mixins.ParentNode.NodeOrString");
                     if (arg.optional) {
-                        try fbs.writer().writeByte(')');
+                        try fbs.writeByte(')');
                     }
                     try writer.print("        /// constructor({s})\n", .{arg.name});
-                    try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
+                    try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
                     continue;
                 }
             }
 
             // Nullable: T? -> ?T (but not for variadic)
             if (arg.idlType.nullable and !arg.variadic) {
-                try fbs.writer().writeByte('?');
+                try fbs.writeByte('?');
             }
 
             var base_type = if (type_registry) |reg|
@@ -2389,15 +2457,15 @@ pub fn writeOverloadedConstructor(
             if (std.mem.eql(u8, base_type, "anyopaque")) {
                 base_type = "runtime.JSValue";
             }
-            try fbs.writer().writeAll(base_type);
+            try fbs.writeAll(base_type);
 
             // Close optional wrapper
             if (arg.optional) {
-                try fbs.writer().writeByte(')');
+                try fbs.writeByte(')');
             }
 
             try writer.print("        /// constructor({s})\n", .{arg.name});
-            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
+            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
         } else {
             try writer.writeAll("        /// constructor(");
             for (ctor.arguments, 0..) |arg, i| {
@@ -2410,16 +2478,16 @@ pub fn writeOverloadedConstructor(
             for (ctor.arguments) |arg| {
                 // Build type with optional, variadic, nullable, and union handling
                 var buffer: [512]u8 = undefined;
-                var fbs = std.io.fixedBufferStream(&buffer);
+                var fbs: std.Io.Writer = .fixed(&buffer);
 
                 // Optional: optional T -> webidl.Opt(T)
                 if (arg.optional) {
-                    try fbs.writer().writeAll("webidl.Opt(");
+                    try fbs.writeAll("webidl.Opt(");
                 }
 
                 // Variadic: T... -> []const T
                 if (arg.variadic) {
-                    try fbs.writer().writeAll("[]const ");
+                    try fbs.writeAll("[]const ");
                 }
 
                 // Check for union types FIRST
@@ -2427,11 +2495,11 @@ pub fn writeOverloadedConstructor(
                 if (arg.idlType.unionTypes) |union_types| {
                     if (isNodeOrDOMStringUnion(union_types)) {
                         if (arg.idlType.nullable and !arg.variadic) {
-                            try fbs.writer().writeByte('?');
+                            try fbs.writeByte('?');
                         }
-                        try fbs.writer().writeAll("mixins.ParentNode.NodeOrString");
+                        try fbs.writeAll("mixins.ParentNode.NodeOrString");
                         if (arg.optional) {
-                            try fbs.writer().writeByte(')');
+                            try fbs.writeByte(')');
                         }
                         is_union = true;
                     }
@@ -2440,7 +2508,7 @@ pub fn writeOverloadedConstructor(
                 if (!is_union) {
                     // Nullable: T? -> ?T (but not for variadic)
                     if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writer().writeByte('?');
+                        try fbs.writeByte('?');
                     }
 
                     var base_type = if (type_registry) |reg|
@@ -2450,19 +2518,19 @@ pub fn writeOverloadedConstructor(
                     if (std.mem.eql(u8, base_type, "anyopaque")) {
                         base_type = "runtime.JSValue";
                     }
-                    try fbs.writer().writeAll(base_type);
+                    try fbs.writeAll(base_type);
 
                     // Close optional wrapper
                     if (arg.optional) {
-                        try fbs.writer().writeByte(')');
+                        try fbs.writeByte(')');
                     }
                 }
 
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
-                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.getWritten() });
+                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.buffered() });
                 } else {
-                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.getWritten() });
+                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.buffered() });
                 }
             }
             try writer.writeAll("        },\n");
@@ -2796,53 +2864,53 @@ fn writeOverloadedOperation(
         } else if (op.arguments.len == 1) {
             // Build type with optional, variadic, nullable, and union handling
             var buffer: [512]u8 = undefined;
-            var fbs = std.io.fixedBufferStream(&buffer);
+            var fbs: std.Io.Writer = .fixed(&buffer);
             const arg = op.arguments[0];
 
             // Optional: optional T -> webidl.Opt(T)
             if (arg.optional) {
-                try fbs.writer().writeAll("webidl.Opt(");
+                try fbs.writeAll("webidl.Opt(");
             }
 
             // Variadic: T... -> []const T
             if (arg.variadic) {
-                try fbs.writer().writeAll("[]const ");
+                try fbs.writeAll("[]const ");
             }
 
             // Check for union types FIRST
             if (arg.idlType.unionTypes) |union_types| {
                 if (isNodeOrDOMStringUnion(union_types)) {
                     if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writer().writeByte('?');
+                        try fbs.writeByte('?');
                     }
-                    try fbs.writer().writeAll("mixins.ParentNode.NodeOrString");
+                    try fbs.writeAll("mixins.ParentNode.NodeOrString");
                     if (arg.optional) {
-                        try fbs.writer().writeByte(')');
+                        try fbs.writeByte(')');
                     }
                     try writer.print("        /// {s}({s})\n", .{ name, arg.name });
-                    try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
+                    try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
                     continue;
                 }
             }
 
             // Nullable: T? -> ?T (but not for variadic)
             if (arg.idlType.nullable and !arg.variadic) {
-                try fbs.writer().writeByte('?');
+                try fbs.writeByte('?');
             }
 
             const base_type = if (type_registry) |reg|
                 mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
             else
                 mapWebIDLType(arg.idlType);
-            try fbs.writer().writeAll(base_type);
+            try fbs.writeAll(base_type);
 
             // Close optional wrapper
             if (arg.optional) {
-                try fbs.writer().writeByte(')');
+                try fbs.writeByte(')');
             }
 
             try writer.print("        /// {s}({s})\n", .{ name, arg.name });
-            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.getWritten() });
+            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
         } else {
             try writer.print("        /// {s}(", .{name});
             for (op.arguments, 0..) |arg, i| {
@@ -2855,16 +2923,16 @@ fn writeOverloadedOperation(
             for (op.arguments) |arg| {
                 // Build type with optional, variadic, nullable, and union handling
                 var buffer: [512]u8 = undefined;
-                var fbs = std.io.fixedBufferStream(&buffer);
+                var fbs: std.Io.Writer = .fixed(&buffer);
 
                 // Optional: optional T -> webidl.Opt(T)
                 if (arg.optional) {
-                    try fbs.writer().writeAll("webidl.Opt(");
+                    try fbs.writeAll("webidl.Opt(");
                 }
 
                 // Variadic: T... -> []const T
                 if (arg.variadic) {
-                    try fbs.writer().writeAll("[]const ");
+                    try fbs.writeAll("[]const ");
                 }
 
                 // Check for union types FIRST
@@ -2872,11 +2940,11 @@ fn writeOverloadedOperation(
                 if (arg.idlType.unionTypes) |union_types| {
                     if (isNodeOrDOMStringUnion(union_types)) {
                         if (arg.idlType.nullable and !arg.variadic) {
-                            try fbs.writer().writeByte('?');
+                            try fbs.writeByte('?');
                         }
-                        try fbs.writer().writeAll("mixins.ParentNode.NodeOrString");
+                        try fbs.writeAll("mixins.ParentNode.NodeOrString");
                         if (arg.optional) {
-                            try fbs.writer().writeByte(')');
+                            try fbs.writeByte(')');
                         }
                         is_union = true;
                     }
@@ -2885,26 +2953,26 @@ fn writeOverloadedOperation(
                 if (!is_union) {
                     // Nullable: T? -> ?T (but not for variadic)
                     if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writer().writeByte('?');
+                        try fbs.writeByte('?');
                     }
 
                     const base_type = if (type_registry) |reg|
                         mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
                     else
                         mapWebIDLType(arg.idlType);
-                    try fbs.writer().writeAll(base_type);
+                    try fbs.writeAll(base_type);
 
                     // Close optional wrapper
                     if (arg.optional) {
-                        try fbs.writer().writeByte(')');
+                        try fbs.writeByte(')');
                     }
                 }
 
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
-                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.getWritten() });
+                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.buffered() });
                 } else {
-                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.getWritten() });
+                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.buffered() });
                 }
             }
             try writer.writeAll("        },\n");
@@ -3664,14 +3732,14 @@ test "mapWebIDLType maps string types to runtime types" {
 }
 
 test "writeHeader writes basic header" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeHeader(writer.any(), "test.json", null);
+    try writeHeader(writer, "test.json", null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should contain source file
     try testing.expect(std.mem.indexOf(u8, output, "Generated from: test.json") != null);
@@ -3684,28 +3752,28 @@ test "writeHeader writes basic header" {
 }
 
 test "writeHeader includes spec URL" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeHeader(writer.any(), "dom.json", "https://dom.spec.whatwg.org/");
+    try writeHeader(writer, "dom.json", "https://dom.spec.whatwg.org/");
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should contain spec URL
     try testing.expect(std.mem.indexOf(u8, output, "Specification: https://dom.spec.whatwg.org/") != null);
 }
 
 test "writeHeader does not include timestamp" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeHeader(writer.any(), "test.json", null);
+    try writeHeader(writer, "test.json", null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Timestamp should NOT be present (removed to avoid unnecessary git diffs)
     try testing.expect(std.mem.indexOf(u8, output, "Generated at:") == null);
@@ -3714,14 +3782,14 @@ test "writeHeader does not include timestamp" {
 }
 
 test "writeImports writes standard imports" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeImports(writer.any(), "TestInterface", null, &.{}, &.{}, null);
+    try writeImports(writer, "TestInterface", null, &.{}, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should import std
     try testing.expect(std.mem.indexOf(u8, output, "const std = @import(\"std\");") != null);
@@ -3732,14 +3800,14 @@ test "writeImports writes standard imports" {
 }
 
 test "writeImports includes base type" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeImports(writer.any(), "Node", "EventTarget", &.{}, &.{}, null);
+    try writeImports(writer, "Node", "EventTarget", &.{}, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const NodeImpl = @import(\"impls\").Node;") != null);
@@ -3748,15 +3816,15 @@ test "writeImports includes base type" {
 }
 
 test "writeImports includes mixins" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const mixins = [_][]const u8{ "ParentNode", "ChildNode" };
-    try writeImports(writer.any(), "Element", null, &mixins, &.{}, null);
+    try writeImports(writer, "Element", null, &mixins, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const ElementImpl = @import(\"impls\").Element;") != null);
@@ -3766,15 +3834,15 @@ test "writeImports includes mixins" {
 }
 
 test "writeImports includes both base and mixins" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeImports(writer.any(), "Element", "EventTarget", &mixins, &.{}, null);
+    try writeImports(writer, "Element", "EventTarget", &mixins, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should have all imports
     try testing.expect(std.mem.indexOf(u8, output, "const std") != null);
@@ -3785,15 +3853,15 @@ test "writeImports includes both base and mixins" {
 }
 
 test "writeImports includes referenced interfaces" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const refs = [_][]const u8{ "Node", "Document" };
-    try writeImports(writer.any(), "AbstractRange", null, &.{}, &refs, null);
+    try writeImports(writer, "AbstractRange", null, &.{}, &refs, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Should import referenced interfaces from "interfaces" module
     try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"interfaces\").Node;") != null);
@@ -3801,16 +3869,16 @@ test "writeImports includes referenced interfaces" {
 }
 
 test "writeImports avoids duplicate imports" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
     const refs = [_][]const u8{ "EventTarget", "ParentNode", "Node" }; // Duplicates base and mixin
-    try writeImports(writer.any(), "Element", "EventTarget", &mixins, &refs, null);
+    try writeImports(writer, "Element", "EventTarget", &mixins, &refs, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // Count occurrences of each import
     var count_eventtarget: usize = 0;
@@ -3837,70 +3905,70 @@ test "writeImports avoids duplicate imports" {
 }
 
 test "writeInterfaceStruct generates struct declaration" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeInterfaceStruct(writer.any(), "TestInterface");
+    try writeInterfaceStruct(writer, "TestInterface");
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const TestInterface = struct {") != null);
 }
 
 test "writeMetadata generates Meta struct" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeMetadata(writer.any(), "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub const name = \"Node\";") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = EventTarget.State;") != null);
 }
 
 test "writeMetadata handles no base type" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeMetadata(writer.any(), "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
 }
 
 test "writeMetadata includes mixins" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer.any(), "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
     try testing.expect(std.mem.indexOf(u8, output, "ParentNode,") != null);
 }
 
 test "writeMetadata includes extended attributes" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const ext_attrs = [_]types.ExtendedAttribute{
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer.any(), "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
     try testing.expect(std.mem.indexOf(u8, output, ".name = \"Exposed\"") != null);
     try testing.expect(std.mem.indexOf(u8, output, ".identifier = \"Window\"") != null);
@@ -3912,10 +3980,10 @@ test "writeMetadata includes legacy unforgeable properties" {
     // The LegacyUnforgeable extended attribute appears in extended_attributes
     // This test verifies that attributes with LegacyUnforgeable are included in properties
 
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     var ext_attrs = [_]types.ExtendedAttribute{
         .{ .name = "LegacyUnforgeable", .rhs = null },
@@ -3930,9 +3998,9 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer.any(), "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
 
     // LegacyUnforgeable attributes should appear in the properties list
     try testing.expect(std.mem.indexOf(u8, output, "pub const properties = .{") != null);
@@ -3941,45 +4009,45 @@ test "writeMetadata includes legacy unforgeable properties" {
 }
 
 test "writeStateTypeAlias generates type alias" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeStateTypeAlias(writer.any(), "NodeImpl");
+    try writeStateTypeAlias(writer, "NodeImpl");
 
-    const output = buffer.items;
+    const output = buffer.written();
     // Check that parameters are in correct order: BaseType, MixinTypes, OwnFields
     try testing.expect(std.mem.indexOf(u8, output, "pub const State = runtime.FlattenedState(Meta.BaseType, Meta.MixinTypes, NodeImpl.State)") != null);
 }
 
 test "writeVTable generates vtable constant" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const attrs: []const types.Attribute = &.{};
     const ops: []const types.Operation = &.{};
     const all_consts: []const types.Constant = &.{};
     const own_consts: []const types.Constant = &.{};
-    try writeVTable(writer.any(), all_consts, own_consts, attrs, ops, "TestInterface");
+    try writeVTable(writer, all_consts, own_consts, attrs, ops, "TestInterface");
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "const delegates = .{") != null);
     try testing.expect(std.mem.indexOf(u8, output, ".deinit = &deinit,") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);") != null);
 }
 
 test "writeLifecycleFunctions generates init and deinit" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
-    try writeLifecycleFunctions(writer.any(), "NodeImpl");
+    try writeLifecycleFunctions(writer, "NodeImpl");
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn init(") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub fn deinit(") != null);
     // init() should delegate to Impl.init() with State and vtable
@@ -3987,10 +4055,10 @@ test "writeLifecycleFunctions generates init and deinit" {
 }
 
 test "writeDelegateFunctions generates attribute getters" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const attrs = [_]types.Attribute{
         .{
@@ -4000,18 +4068,18 @@ test "writeDelegateFunctions generates attribute getters" {
         },
     };
 
-    try writeDelegateFunctions(writer.any(), "NodeImpl", null, &attrs, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{});
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_nodeType(") != null);
     try testing.expect(std.mem.indexOf(u8, output, "u16") != null);
 }
 
 test "writeDelegateFunctions generates setters for non-readonly attributes" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const attrs = [_]types.Attribute{
         .{
@@ -4021,18 +4089,18 @@ test "writeDelegateFunctions generates setters for non-readonly attributes" {
         },
     };
 
-    try writeDelegateFunctions(writer.any(), "NodeImpl", null, &attrs, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{});
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_textContent(") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub fn set_textContent(") != null);
 }
 
 test "writeDelegateFunctions generates operation delegates" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const args = [_]types.Argument{
         .{
@@ -4049,9 +4117,9 @@ test "writeDelegateFunctions generates operation delegates" {
         },
     };
 
-    try writeDelegateFunctions(writer.any(), "NodeImpl", null, &.{}, &ops);
+    try writeDelegateFunctions(writer, "NodeImpl", null, &.{}, &ops);
 
-    const output = buffer.items;
+    const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_appendChild(") != null);
     // Without type registry, unknown types map to runtime.JSValue
     try testing.expect(std.mem.indexOf(u8, output, "node: runtime.JSValue") != null);
@@ -4067,10 +4135,10 @@ test "mapWebIDLType maps primitive types" {
 }
 
 test "writeConstructor generates constructor function" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     var args_list = std.ArrayList(types.Argument).empty;
     defer args_list.deinit(testing.allocator);
@@ -4083,9 +4151,9 @@ test "writeConstructor generates constructor function" {
         .arguments = args_list.items,
     };
 
-    try writeConstructor(writer.any(), "EventImpl", ctor, null);
+    try writeConstructor(writer, "EventImpl", ctor, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     // Note: allocator parameter was removed - constructors now use ctx.allocator
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context") != null);
     try testing.expect(std.mem.indexOf(u8, output, "@\"type\": runtime.DOMString") != null);
@@ -4093,18 +4161,18 @@ test "writeConstructor generates constructor function" {
 }
 
 test "writeConstructor handles no-argument constructor" {
-    var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
 
     const ctor = types.Constructor{
         .arguments = &.{},
     };
 
-    try writeConstructor(writer.any(), "EventTargetImpl", ctor, null);
+    try writeConstructor(writer, "EventTargetImpl", ctor, null);
 
-    const output = buffer.items;
+    const output = buffer.written();
     // Note: allocator parameter was removed - constructors now use ctx.allocator
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance") != null);
     try testing.expect(std.mem.indexOf(u8, output, "return try EventTargetImpl.call_constructor(ctx)") != null);

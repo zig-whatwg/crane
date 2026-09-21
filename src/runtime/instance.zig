@@ -7,6 +7,8 @@
 //! - MethodMap: Type-safe mapping from Method to function pointers
 
 const std = @import("std");
+
+const brand_log = std.log.scoped(.state_brand);
 const Context = @import("context.zig").Context;
 
 /// Type-erased instance handle (24 bytes)
@@ -24,8 +26,59 @@ pub const Instance = struct {
     ctx: Context,
 
     /// Get the state as a typed pointer (unsafe - caller must ensure correct type)
+    /// Access this instance's state as `T`.
+    ///
+    /// Routes through the vtable's ancestry table, so when an ancestor's impl runs
+    /// against a DERIVED instance - EventTarget's listener code on an Element - it
+    /// reads the ancestor's state at its real byte offset instead of assuming 0.
+    /// That assumption is what `@ptrCast` alone encoded, and auto layout does not
+    /// guarantee it (tests/dom/state_layout_test.zig).
+    ///
+    /// Three cases, deliberately distinguished:
+    ///
+    ///   found        - offset-corrected access. The fix.
+    ///   empty table  - a hand-written vtable with no generated ancestry (test mocks,
+    ///                  the static-call vehicle). Falls back to the old cast so those
+    ///                  keep working; there is nothing better to do without a table.
+    ///   not found    - a genuine brand violation: T is not in this instance's chain
+    ///                  at all. Logged, then falls back, because today these already
+    ///                  silently return garbage and promoting them to a panic would
+    ///                  turn latent bugs into crashes across 1,562 call sites. Fix
+    ///                  the reported sites, THEN tighten this to unreachable.
     pub inline fn getState(self: *const Instance, comptime T: type) *T {
+        if (self.vtable.ancestors.len != 0) {
+            if (self.stateAs(T)) |typed| return typed;
+            brand_log.debug(
+                "brand violation: {s} has no {s} in its state ancestry - " ++
+                    "falling back to an unchecked cast, which reads the wrong bytes",
+                .{ self.vtable.name, @typeName(T) },
+            );
+        }
         return @ptrCast(@alignCast(self.state));
+    }
+
+    /// Offset-corrected, brand-checked replacement for `getState`.
+    ///
+    /// `getState` is a bare cast: it assumes `T` begins at byte 0 of this instance's
+    /// state. That holds only when `T` IS the instance's own state type, or when every
+    /// `base` in the chain happens to sit at offset 0 - which auto layout does not
+    /// promise. `stateAs` finds `T` in the vtable's ancestry and adds its real offset.
+    ///
+    /// Returns null when `T` is not in this instance's chain at all. That is the brand
+    /// check: today such a call silently returns garbage typed as `*T`.
+    ///
+    /// Null is also returned when the ancestry table is empty, i.e. before codegen has
+    /// emitted one for this interface. Callers must treat null as "cannot answer", never
+    /// fall back to the pun.
+    pub inline fn stateAs(self: *const Instance, comptime T: type) ?*T {
+        const want = typeId(T);
+        for (self.vtable.ancestors) |a| {
+            if (a.id == want) {
+                const bytes: [*]u8 = @ptrCast(self.state);
+                return @ptrCast(@alignCast(bytes + a.offset));
+            }
+        }
+        return null;
     }
 
     /// Initialize a new instance with consolidated lifecycle management
@@ -115,13 +168,82 @@ pub const Instance = struct {
             deinit_fn(instance);
         }
 
-        // Step 2: Return Instance handle to slab allocator
-        SlabAllocator.get().free(instance);
+        // Step 2: Return the state block for reuse.
+        //
+        // Must come after the vtable deinit above, which releases what the state
+        // POINTS TO; this releases the state itself. Same ordering the slab has
+        // always relied on for the Instance handle.
+        //
+        // This used to be a comment saying the arena would batch-free it during GC
+        // sweep. Nothing ever called that sweep, so in practice every discarded
+        // node's state was held to process exit - 21.4 MB across 10,000 elements,
+        // measured by `zig build gc-bench`. A blanket reset was never the answer
+        // anyway: the arena is process-global and holds every LIVE node too.
+        const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+        if (instance.vtable.state_size != 0) {
+            if (ArenaAllocator.tryGet() catch null) |arena| {
+                arena.destroyRaw(
+                    @ptrCast(instance.state),
+                    instance.vtable.state_size,
+                    instance.vtable.state_align,
+                );
+            }
+        }
 
-        // Note: State memory is NOT freed here - it's batch-freed during GC sweep
-        // via ArenaAllocator.reset() in gc_integration.zig::onGCSweep()
+        // Step 3: Return Instance handle to slab allocator
+        SlabAllocator.get().free(instance);
     }
 };
+
+/// A runtime-comparable identity for a comptime type.
+///
+/// `type` cannot cross the runtime boundary, so each state type gets a unique address:
+/// one zero-sized static per instantiation of `TypeIdHolder`. Pointer comparison is
+/// exact, unlike comparing `@typeName` strings.
+pub const TypeId = *const anyopaque;
+
+fn TypeIdHolder(comptime T: type) type {
+    return struct {
+        const marker: u8 = 0;
+        comptime {
+            _ = T;
+        }
+    };
+}
+
+pub fn typeId(comptime T: type) TypeId {
+    return @ptrCast(&TypeIdHolder(T).marker);
+}
+
+/// One level of an interface's ancestry: an ancestor's state type, and where that
+/// ancestor's state begins inside THIS interface's state.
+pub const Ancestor = struct {
+    id: TypeId,
+    offset: usize,
+};
+
+/// Walk `State` and every `base` beneath it, accumulating byte offsets.
+///
+/// Entry 0 is the type itself at offset 0; each further entry adds the
+/// `@offsetOf(.., "base")` of the level above. This is what retires the
+/// derived-to-base pun: `getState` assumed every one of these offsets was 0, which
+/// auto layout does not guarantee (see tests/dom/state_layout_test.zig).
+pub fn ancestorsOf(comptime State: type) []const Ancestor {
+    comptime {
+        var list: []const Ancestor = &.{};
+        var Cur: type = State;
+        var off: usize = 0;
+        while (true) {
+            list = list ++ [_]Ancestor{.{ .id = typeId(Cur), .offset = off }};
+            if (!@hasField(Cur, "base")) break;
+            const Base = @FieldType(Cur, "base");
+            if (Base == void) break;
+            off += @offsetOf(Cur, "base");
+            Cur = Base;
+        }
+        return list;
+    }
+}
 
 /// VTable with function pointers for method dispatch
 ///
@@ -130,6 +252,34 @@ pub const Instance = struct {
 /// - deinit: Cleanup function called by GC (points to interface's deinit function)
 /// - fns: Map from Method enum to function pointers
 pub const VTable = struct {
+    /// The interface's WebIDL name, e.g. "Performance", "HTMLDivElement".
+    ///
+    /// Carried here so an instance can name its own interface in O(1). The V8
+    /// binding layer previously recovered this by comparing the vtable address
+    /// against a hand-maintained chain of `if (vt == &interfaces.X.vtable)`
+    /// branches, which covered 139 of 1,263 interfaces and silently answered
+    /// "Element" for the other 1,124 - so `window.performance` was an Element
+    /// with no `now()`. A name the interface already knows should not be
+    /// re-derived by a lookup table that can fall out of date.
+    name: []const u8,
+
+    /// This interface's state ancestry, innermost first. Empty until codegen emits
+    /// it, which is why `stateAs` reports "unknown" rather than guessing.
+    ancestors: []const Ancestor = &.{},
+
+    /// Size and alignment of this interface's state.
+    ///
+    /// `Instance.deinit` holds a `*Instance` and nothing else, so without these it
+    /// cannot return the state to the right free list and every discarded node's
+    /// state is retained to process exit - the whole of Phase 6's measured 21.4 MB
+    /// over 10,000 elements.
+    ///
+    /// Defaulted to zero so a hand-written vtable still compiles; zero means "do
+    /// not recycle", which is the safe reading. `buildVTable` fills them in from
+    /// the State type it already receives, so no codegen change is needed.
+    state_size: usize = 0,
+    state_align: usize = 0,
+
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
     /// Signature: fn(instance: *Instance) void

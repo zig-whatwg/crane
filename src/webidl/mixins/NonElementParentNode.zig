@@ -17,4 +17,3 @@ pub const impl = @import("impls").NonElementParentNode;
 pub fn call_getElementById(instance: *runtime.Instance, elementId: typedefs.DOMString) !?*runtime.Instance {
     return NonElementParentNodeImpl.call_getElementById(instance, elementId);
 }
-

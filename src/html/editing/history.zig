@@ -14,6 +14,7 @@
 const std = @import("std");
 const commands = @import("commands.zig");
 const executor = @import("executor.zig");
+const clock = @import("clock");
 
 pub const Command = commands.Command;
 pub const CommandResult = executor.CommandResult;
@@ -158,7 +159,7 @@ pub const UndoEntry = struct {
             .command = command,
             .undo_data = .{},
             .redo_data = .{},
-            .timestamp = std.time.timestamp(),
+            .timestamp = clock.wallSeconds(),
         };
 
         // Store deleted text for undo
@@ -189,7 +190,7 @@ pub const UndoEntry = struct {
             .command = command,
             .undo_data = .{ .format_was_active = was_active },
             .redo_data = .{ .format_was_active = !was_active },
-            .timestamp = std.time.timestamp(),
+            .timestamp = clock.wallSeconds(),
         };
     }
 
@@ -268,8 +269,8 @@ pub const UndoManager = struct {
     pub fn init(allocator: std.mem.Allocator) UndoManager {
         return .{
             .allocator = allocator,
-            .undo_stack = .{},
-            .redo_stack = .{},
+            .undo_stack = .empty,
+            .redo_stack = .empty,
         };
     }
 

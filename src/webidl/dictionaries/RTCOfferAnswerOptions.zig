@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const RTCOfferAnswerOptions = struct {
-};
+pub const RTCOfferAnswerOptions = struct {};

@@ -36,7 +36,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       - name: Build library (cross-compile, no host fallback)
         run: |
@@ -116,7 +116,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       - name: Build for macOS arm64
         run: |

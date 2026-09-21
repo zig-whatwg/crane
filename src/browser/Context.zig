@@ -58,6 +58,60 @@ threadlocal var current_timer_interface: ?TimerInterface = null;
 threadlocal var current_allocator: ?std.mem.Allocator = null;
 threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
 
+// ============================================================================
+// HTML timer initialisation steps (HTML Standard s8.6)
+// ============================================================================
+//
+// setTimeout/setInterval do NOT schedule the delay the author asked for. The spec
+// runs "timer initialisation steps" first:
+//
+//   3. If timeout is less than 0, then set timeout to 0.
+//   5. If nesting level is greater than 5, and timeout is less than 4, then set
+//      timeout to 4.
+//
+// and the timer being scheduled records `nesting level + 1`, so a chain of
+// self-rescheduling timers is throttled to 4ms once it is more than five deep.
+//
+// Crane already had a correct implementation of this in
+// src/html/event_loop/timers.zig (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD,
+// setTimerInternal). It is DEAD CODE - nothing references its TimerManager. The live
+// path is this file -> the thread-local TimerInterface -> V8EventLoop -> libuv_timer,
+// which applied no clamping whatsoever. So the clamp is implemented here, at the
+// setTimeout boundary, which is where the spec puts it: initialisation runs before
+// the timer is handed to any scheduler.
+//
+// Thread-local because the nesting level belongs to the agent, and one agent is one
+// thread with one isolate.
+
+// HTML §8.6's nesting and clamp now live in `v8.native_timer`, so the worker
+// binding can apply the same rule - it previously had no clamp at all. These are
+// aliases, not a second copy: two definitions of a spec constant is how the two
+// paths diverged in the first place.
+const nested_min_delay_ms = v8.native_timer.nested_min_delay_ms;
+const nesting_threshold = v8.native_timer.nesting_threshold;
+
+/// Restore the timer nesting level at the start of the microtask checkpoint.
+///
+/// A plain `defer` around the callback restores too late. V8's default microtask
+/// policy drains the queue when the JS call stack empties - which happens INSIDE
+/// `v8_Function_Call` - so a microtask queued by a timer callback would still
+/// observe the task's nesting level and have its sub-4ms timeout clamped.
+///
+/// Microtasks run FIFO, so enqueueing this BEFORE invoking the callback puts it
+/// ahead of anything the callback enqueues. That lands the reset exactly on the
+/// spec boundary: a setTimeout called synchronously from the callback nests one
+/// deeper, while one scheduled from a microtask does not inherit the level at all.
+/// The checkpoint runs between tasks, so the level there is 0 by definition.
+fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
+    v8.native_timer.nesting_level = 0;
+}
+
+/// Apply the clamping half of the timer initialisation steps.
+///
+/// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
+/// so it can be unit-tested without a V8 isolate.
+const clampTimeout = v8.native_timer.clampTimeout;
+
 /// Set the current timer interface for V8 callbacks
 pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
     current_timer_interface = timer;
@@ -82,9 +136,14 @@ pub fn clearTimerInterface() void {
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
             // Cancel the timer at the libuv level to prevent callback from firing
-            // and to properly clean up the libuv timer handle
+            // and to properly clean up the libuv timer handle.
+            //
+            // The result is deliberately discarded: this is context teardown, so the
+            // timer manager is going away with us and every wrapper must be freed
+            // here or leak. Unlike unregisterTimerContext there is no later callback
+            // to hand ownership to.
             if (current_timer_interface) |timer| {
-                timer.clearTimeout(wrapper.getData().current_timer_id);
+                _ = timer.clearTimeout(wrapper.getData().current_timer_id);
             }
             wrapper.destroy();
         }
@@ -135,14 +194,32 @@ fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
             const wrapper = kv.value;
-            // Mark as cancelled so interval callbacks know to stop rescheduling
+            // Mark as cancelled so interval callbacks know to stop rescheduling.
+            // This must happen before anything else: it is the only signal that
+            // reaches a callback we could not cancel.
             wrapper.getData().cancelled = true;
-            // Cancel the timer at the libuv level to prevent callback from firing
-            if (current_timer_interface) |timer| {
-                timer.clearTimeout(timer_id);
-            }
-            // Destroy the wrapper immediately - the timer won't fire anymore
-            wrapper.destroy();
+
+            // Cancel at the libuv level so the callback cannot fire.
+            //
+            // The thread-local TimerInterface belongs to the realm calling
+            // clearTimeout, which is NOT necessarily the realm that scheduled the
+            // timer. Cross-realm, the id is unknown to this manager and nothing is
+            // cancelled - clearTimeout used to return void, so that silent miss was
+            // invisible and the wrapper was freed anyway. The armed timer then fired
+            // on freed memory and destroyed it a second time: a double free, and a
+            // 0xaa-poisoned segfault in destroyChildContext just after.
+            //
+            // So the wrapper is only freed when cancellation is CONFIRMED. Otherwise
+            // ownership passes to the callback, which sees `cancelled` and destroys
+            // it when it fires.
+            const cancelled = if (current_timer_interface) |timer|
+                timer.clearTimeout(timer_id)
+            else
+                false;
+
+            // Never free a wrapper whose callback is on the stack - that handler
+            // still reads `data` after the callback returns and frees it itself.
+            if (cancelled and !wrapper.getData().executing) wrapper.destroy();
         }
     }
 }
@@ -175,6 +252,22 @@ const V8TimerContextData = struct {
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
+    /// This timer's nesting level, per the timer initialisation steps. While its
+    /// callback runs, `v8.native_timer.nesting_level` is set to this, so timers created inside
+    /// nest one deeper and eventually trip the 4ms clamp.
+    nesting_level: u32 = 0,
+    /// True while this timer's callback is on the stack.
+    ///
+    /// A callback may cancel ITSELF - `clearInterval(id)` from inside the interval
+    /// is ordinary JS, and testharness cleanups do it routinely. The handler is
+    /// still executing on this wrapper at that moment, and destroys it again when
+    /// the callback returns, so an unconditional free in unregisterTimerContext is
+    /// a double free (and the freed wrapper's context pointer then surfaced as a
+    /// 0xaa-poisoned segfault in destroyChildContext).
+    ///
+    /// While this is set, the running handler owns the wrapper and is the only
+    /// thing allowed to free it.
+    executing: bool = false,
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -215,6 +308,10 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const isolate = data.isolate;
     const context = data.v8_context;
 
+    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
+    // exactly where isolate confinement would break if it is broken.
+    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
+
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
     v8.ffi.v8_Context_Enter(context);
@@ -224,9 +321,29 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
         return;
     };
 
-    // Invoke the V8 function (stored directly, not via persistent handle)
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    {
+        // The "current timer nesting level" is this timer's level for the DURATION OF
+        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
+        // restored before the microtask checkpoint below: per HTML the checkpoint runs
+        // after the task's callback returns, so a timer scheduled from a microtask must
+        // NOT inherit the task's nesting level and must not be clamped to 4ms.
+        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
+        const saved_nesting = v8.native_timer.nesting_level;
+        v8.native_timer.nesting_level = data.nesting_level;
+        defer v8.native_timer.nesting_level = saved_nesting;
+
+        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
+        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+        // This handler owns the wrapper for the duration of the callback, so a
+        // clearTimeout/clearInterval from inside it defers the free to us.
+        data.executing = true;
+        defer data.executing = false;
+
+        // Invoke the V8 function (stored directly, not via persistent handle)
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    }
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -244,11 +361,20 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         if (timer_contexts) |*map| {
             _ = map.remove(data.current_timer_id);
         }
+        // unregisterTimerContext could not confirm cancellation (cross-realm), so it
+        // left the wrapper alive and handed ownership here. Free it now - this is the
+        // last time the timer system will reference it.
+        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+        wrapper.destroy();
         return;
     }
 
     const isolate = data.isolate;
     const context = data.v8_context;
+
+    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
+    // exactly where isolate confinement would break if it is broken.
+    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
 
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
@@ -257,9 +383,29 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
 
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
-    // Invoke the V8 function
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    {
+        // The "current timer nesting level" is this timer's level for the DURATION OF
+        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
+        // restored before the microtask checkpoint below: per HTML the checkpoint runs
+        // after the task's callback returns, so a timer scheduled from a microtask must
+        // NOT inherit the task's nesting level and must not be clamped to 4ms.
+        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
+        const saved_nesting = v8.native_timer.nesting_level;
+        v8.native_timer.nesting_level = data.nesting_level;
+        defer v8.native_timer.nesting_level = saved_nesting;
+
+        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
+        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+        // This handler owns the wrapper for the duration of the callback, so a
+        // clearTimeout/clearInterval from inside it defers the free to us.
+        data.executing = true;
+        defer data.executing = false;
+
+        // Invoke the V8 function
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    }
 
     // Run microtasks after the timer callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -1765,8 +1911,14 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
+    // Timer initialisation steps (HTML s8.6): clamp before scheduling, and record
+    // this timer's nesting level so its own callback nests one deeper.
+    const nesting = v8.native_timer.nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
+    timer_wrapper.getData().nesting_level = nesting;
+
     // Schedule the timer using TimerInterface with typed callback trampoline
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const delay_u64: u64 = @intCast(clamped_ms);
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
@@ -1831,9 +1983,12 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
     }
     const timer_id: TimerId = @intFromFloat(timer_id_f64);
 
-    // Get timer interface and cancel the timer
+    // Get timer interface and cancel the timer.
+    //
+    // Result discarded here on purpose: unregisterTimerContext below performs the
+    // authoritative cancel-and-free, and only frees when cancellation is confirmed.
     if (getTimerInterface()) |timer| {
-        timer.clearTimeout(timer_id);
+        _ = timer.clearTimeout(timer_id);
     }
 
     // Clean up interval context if this was an interval timer
@@ -1908,9 +2063,14 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
-    // Store the interval delay in the context for re-scheduling
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // Timer initialisation steps (HTML s8.6), same as setTimeout. The stored delay is
+    // the CLAMPED one, so every repeat in v8IntervalHandler inherits it rather than
+    // re-deriving an unclamped value.
+    const nesting = v8.native_timer.nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
+    const delay_u64: u64 = @intCast(clamped_ms);
     timer_wrapper.getData().interval_delay_ms = delay_u64;
+    timer_wrapper.getData().nesting_level = nesting;
 
     // Schedule the first timeout (intervals reschedule themselves in v8IntervalHandler)
     const timer_id = timer.setTimeout(

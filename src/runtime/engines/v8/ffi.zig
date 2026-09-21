@@ -655,6 +655,43 @@ pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
 pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;
 pub extern fn v8_Isolate_GetEnteredOrMicrotaskContext(isolate: *Isolate) ?*Context;
 pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
+
+/// V8's own heap accounting, for telling a leak apart from an unreturned
+/// reservation. See the C++ side for why resident memory alone cannot.
+/// Live `Global<String>` handles: created minus disposed.
+///
+/// Each is a C++ heap allocation plus a slot in V8's global handle table, which
+/// sits OUTSIDE `used_heap_size` - so leaking them is invisible to
+/// `GetHeapStatistics` and plainly visible in RSS.
+pub extern fn v8_Debug_LiveStringGlobals() i64;
+
+/// Live `Global<Context>` handles: created by `v8_Isolate_GetCurrentContext`
+/// minus disposed. Flat across a create/discard loop means contexts are not
+/// leaking per element, whatever the cumulative creation count says.
+pub extern fn v8_Debug_LiveContextGlobals() i64;
+
+/// Live `Global<Object>` handles from the per-element entry points.
+pub extern fn v8_Debug_LiveObjectGlobals() i64;
+
+/// Per-entry-point Global<Object> creation counts, indexed 0..5.
+pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
+
+/// Every `Global<T>` handed to Zig, CUMULATIVE creations - not a live count.
+/// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
+/// nearly all of them. Read it as a rate: N per element on a create-and-discard
+/// loop is N leaked per element.
+pub extern fn v8_Debug_CreatedGlobals() i64;
+
+/// Read slot `index` of the Global-creation site histogram. Returns false past the
+/// end. Keyed on the caller's return address; resolve with `atos`.
+pub extern fn v8_Debug_GlobalSite(index: c_int, pc: ?*usize, count: ?*i64) bool;
+
+pub extern fn v8_Isolate_GetHeapUsage(
+    isolate: *Isolate,
+    used: ?*usize,
+    total: ?*usize,
+    external: ?*usize,
+) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
 
 // Isolate embedder data (for storing per-isolate state)
@@ -1500,7 +1537,12 @@ pub extern fn v8_FunctionTemplate_NewWithSignature(isolate: *Isolate, callback: 
 pub extern fn v8_FunctionTemplate_GetFunction(function_template: *FunctionTemplate, context: *Context) ?*Function;
 pub extern fn v8_FunctionTemplate_Dispose(tpl: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *String) void;
+/// Returns a NEWLY ALLOCATED handle, despite V8's own `InstanceTemplate()`
+/// returning a borrowed `Local`. Dispose it with `v8_ObjectTemplate_Dispose`.
 pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
+
+/// Release a handle from `v8_FunctionTemplate_InstanceTemplate`.
+pub extern fn v8_ObjectTemplate_Dispose(tpl: *ObjectTemplate) void;
 pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 /// Get the prototype object from a FunctionTemplate.
 /// This is used when wrapping Zig instances as V8 objects - ObjectTemplate::NewInstance()

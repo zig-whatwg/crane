@@ -28,14 +28,14 @@ pub const URL = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "webkitURL" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
             .SharedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -51,13 +51,13 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
             .{ "toString", "get_href", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parse", "call_static_parse", 1 },
@@ -65,7 +65,7 @@ pub const URL = struct {
             .{ "createObjectURL", "call_static_createObjectURL", 1 },
             .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "parse",
@@ -75,11 +75,10 @@ pub const URL = struct {
             "revokeObjectURL",
             "toString",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -95,11 +94,10 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -125,7 +123,6 @@ pub const URL = struct {
     );
 
     const delegates = .{
-
         .get_hash = &get_hash,
         .get_host = &get_host,
         .get_hostname = &get_hostname,
@@ -154,7 +151,7 @@ pub const URL = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -288,23 +285,18 @@ pub const URL = struct {
     }
 
     pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
-        
         return try URLImpl.call_static_canParse(instance, url, base);
     }
 
     pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!DOMString {
-        
         return try URLImpl.call_static_createObjectURL(instance, obj);
     }
 
     pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
-        
         return try URLImpl.call_static_parse(instance, url, base);
     }
 
     pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
-        
         return try URLImpl.call_static_revokeObjectURL(instance, url);
     }
-
 };

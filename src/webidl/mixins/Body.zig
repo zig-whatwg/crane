@@ -45,4 +45,3 @@ pub fn call_text(instance: *runtime.Instance) anyerror!void {
 pub fn call_blob(instance: *runtime.Instance) anyerror!void {
     return BodyImpl.call_blob(instance);
 }
-

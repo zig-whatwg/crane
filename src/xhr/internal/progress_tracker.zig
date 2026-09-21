@@ -6,6 +6,7 @@
 //! Browser implementations: All use 50ms throttling timers
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// Progress event tracker with 50ms throttling
 pub const ProgressTracker = struct {
@@ -39,7 +40,7 @@ pub const ProgressTracker = struct {
         self.total_bytes += chunk_size;
         self.bytes_since_last_event += chunk_size;
 
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const elapsed = now - self.last_progress_time;
 
         if (elapsed >= THROTTLE_MS) {
@@ -53,7 +54,7 @@ pub const ProgressTracker = struct {
 
     /// Force fire progress event (for final event)
     pub fn forceFire(self: *ProgressTracker) void {
-        self.last_progress_time = std.time.milliTimestamp();
+        self.last_progress_time = clock.monotonicMillis();
         self.bytes_since_last_event = 0;
     }
 

@@ -21,4 +21,3 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
 pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.JSValue) !void {
     return HTMLAttributionSrcElementUtilsImpl.set_attributionSrc(instance, value);
 }
-
