@@ -157,13 +157,17 @@ fn parseAttribute(
         }
     } else if (std.mem.eql(u8, attr_lower, "max-age")) {
         if (std.fmt.parseInt(i64, attr_value, 10)) |seconds| {
-            // Max-Age overrides Expires
-            const now = clock.wallSeconds();
+            // Max-Age overrides Expires.
+            //
+            // `expiry_time` is a wall-clock *milliseconds* timestamp — that is
+            // what `Cookie.isExpired` compares against. Building it out of
+            // wallSeconds() put every Max-Age cookie decades in the past, so
+            // `jar.store` dropped it on arrival.
             if (seconds <= 0) {
                 // Already expired
                 cookie.expiry_time = 0;
             } else {
-                cookie.expiry_time = now + seconds;
+                cookie.expiry_time = clock.wallMillis() +| (seconds *| 1000);
             }
         } else |_| {}
     } else if (std.mem.eql(u8, attr_lower, "domain")) {
@@ -233,7 +237,11 @@ pub fn processSetCookieHeaders(
     is_secure_origin: bool,
 ) !void {
     for (headers) |header| {
-        if (parseSetCookieHeader(allocator, header, request_host, request_path, is_secure_origin)) |cookie| {
+        if (parseSetCookieHeader(allocator, header, request_host, request_path, is_secure_origin)) |parsed| {
+            // `jar.store` clones, so the parsed cookie is ours to free —
+            // leaving it was one leaked Cookie per Set-Cookie header.
+            var cookie = parsed;
+            defer cookie.deinit();
             try jar.store(cookie);
         } else |_| {
             // Invalid cookie, skip
