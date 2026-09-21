@@ -26,6 +26,11 @@ const runtime = @import("runtime");
 const html_parser = @import("html").parser;
 const host = @import("host");
 
+const log = std.log.scoped(.navigation);
+
+/// Response type from the Fetch implementation, for `isNetworkErrorResponse`.
+const ResponseType = @import("fetch").internal.ResponseType;
+
 /// Navigation result containing parsed content info
 pub const NavigationResult = struct {
     /// HTTP status code (or synthetic for non-HTTP)
@@ -301,6 +306,28 @@ fn fetchHttpUrl(
     const response = result.response;
     defer response.deinit();
 
+    // A network error is not a document.
+    //
+    // `mainFetch` does not fail on a transport failure - it returns a network
+    // error *response*, and `fetch` hands it back as a success. So everything
+    // below this point would run on a response the spec defines as empty: the
+    // `orelse "text/html"` would call it an HTML document, the caller would
+    // parse the empty body into a blank tree and report a successful load, and
+    // the WPT runner would then poll `window.__wpt_complete` for the whole
+    // 10-second ceiling and record a TIMEOUT. A DNS failure, a refused
+    // connection, a TLS error and a genuine hang were indistinguishable.
+    if (isNetworkErrorResponse(response.response_type, response.status)) {
+        // `aborted` is the one detail a network error carries - everything else
+        // about it is specified empty - so it is the only distinction available
+        // here. It means an AbortController abort, not a transport failure.
+        if (response.aborted) {
+            log.warn("navigation to {s} aborted", .{url});
+            return NavigationError.Timeout;
+        }
+        log.warn("navigation to {s} failed: network error (no response)", .{url});
+        return NavigationError.NetworkError;
+    }
+
     // Extract body
     const body = if (response.body) |b| blk: {
         const data = b.getBytes();
@@ -322,6 +349,26 @@ fn fetchHttpUrl(
         .final_url = final_url,
         .allocator = allocator,
     };
+}
+
+/// Is this fetch response a network error rather than a document?
+///
+/// Spec: "A network error is a response whose type is 'error', status is 0,
+/// status message is the empty byte sequence, header list is empty, body is
+/// null, and body info is a new response body info."
+/// https://fetch.spec.whatwg.org/#concept-network-error
+///
+/// Both halves are checked and either is conclusive, which is the same
+/// predicate the fetch algorithms apply to these same responses
+/// (`src/fetch/algorithms/main_fetch.zig`, `http_fetch.zig`):
+/// `internal_response.networkError()` sets the type *and* leaves the status at
+/// 0, and no real HTTP response has a status below 100.
+///
+/// Deliberately not a test of the body or of the content type. 204, 205 and 304
+/// have no body by design and may arrive with no `Content-Type`; they are
+/// perfectly good navigations and an emptiness test would have swallowed them.
+fn isNetworkErrorResponse(response_type: ResponseType, status: u16) bool {
+    return response_type == .@"error" or status == 0;
 }
 
 /// Parse HTML content and return a document tree
@@ -554,6 +601,55 @@ fn guessContentType(path: []const u8) []const u8 {
 // =============================================================================
 // Tests
 // =============================================================================
+
+test "navigation - a network error is not a document" {
+    // What `internal_response.networkError()` builds: type "error", status 0.
+    // Before this predicate existed, `fetchHttpUrl` read straight past it, and
+    // the `orelse "text/html"` on a header list the spec defines as empty made
+    // every transport failure look like a blank HTML page that loaded fine.
+    try std.testing.expect(isNetworkErrorResponse(.@"error", 0));
+
+    // Each half is conclusive on its own, which is what the fetch algorithms
+    // already assume about these same responses.
+    try std.testing.expect(isNetworkErrorResponse(.@"error", 200));
+    try std.testing.expect(isNetworkErrorResponse(.default, 0));
+}
+
+test "navigation - a bodiless response is still a real navigation" {
+    // 204, 205 and 304 legitimately carry no body and may carry no
+    // Content-Type. Keying the check on an empty body, or on a missing content
+    // type, would have swallowed all three; keying it on the status and the
+    // response type does not.
+    try std.testing.expect(!isNetworkErrorResponse(.basic, 204));
+    try std.testing.expect(!isNetworkErrorResponse(.basic, 205));
+    try std.testing.expect(!isNetworkErrorResponse(.default, 304));
+    try std.testing.expect(!isNetworkErrorResponse(.basic, 200));
+
+    // A 404 is a page, not a transport failure - browsers render the server's
+    // error document, and the WPT server answers 404 for a missing test.
+    try std.testing.expect(!isNetworkErrorResponse(.basic, 404));
+    try std.testing.expect(!isNetworkErrorResponse(.basic, 500));
+
+    // Filtered responses are opaque to the *caller*, not broken.
+    try std.testing.expect(!isNetworkErrorResponse(.cors, 200));
+    try std.testing.expect(!isNetworkErrorResponse(.@"opaque", 200));
+    try std.testing.expect(!isNetworkErrorResponse(.opaqueredirect, 302));
+}
+
+test "navigation - an unreachable origin fails instead of loading a blank page" {
+    // Port 9 (discard) is not listening, so this is a refused connection on
+    // loopback: no DNS, no external network, no timeout to wait out. `fetch`
+    // reports it by *returning* a network-error response rather than failing,
+    // so before the check in `fetchHttpUrl` this call succeeded with
+    // content type "text/html", an empty body and status 0 - and the caller
+    // parsed that into a document and reported a successful load.
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(
+        NavigationError.NetworkError,
+        fetchUrl(allocator, "http://127.0.0.1:9/", .{}),
+    );
+}
 
 test "navigation - about:blank" {
     const allocator = std.testing.allocator;

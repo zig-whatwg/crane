@@ -1393,10 +1393,12 @@ pub const Context = struct {
         }
 
         // Step 1: Fetch URL content via HTTP
-        var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch {
-            // Handle navigation errors gracefully
-            return error.NavigationFailed;
-        };
+        //
+        // Propagate the navigation error rather than flattening it to
+        // `NavigationFailed`. The WPT runner prints whatever comes back here,
+        // and one catch-all name made a DNS failure, a refused connection, a
+        // TLS error and a missing file read identically in the journal.
+        var result = try navigation.fetchUrl(self.allocator, self.url, .{});
         defer result.deinit();
 
         // Step 2: Check if HTML content
