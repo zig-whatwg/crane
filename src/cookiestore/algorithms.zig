@@ -15,6 +15,7 @@ const Cookie = @import("cookie.zig").Cookie;
 const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
 const CookieListItem = @import("cookie.zig").CookieListItem;
+const CookieChangeObserver = @import("change_observer.zig").CookieChangeObserver;
 const CookieJar = @import("jar.zig").CookieJar;
 const RetrieveOptions = @import("jar.zig").RetrieveOptions;
 const SameSiteContext = @import("jar.zig").SameSiteContext;
@@ -141,10 +142,35 @@ pub fn queryCookies(
 /// Set a cookie algorithm
 /// https://cookiestore.spec.whatwg.org/#set-a-cookie
 ///
-/// Creates and stores a cookie with all validation steps.
+/// Creates and stores a cookie with all validation steps. Records nothing for
+/// `change` event dispatch; use `setCookieObserved` when an observer exists.
 pub fn setCookie(
     allocator: std.mem.Allocator,
     jar: *CookieJar,
+    url_host: []const u8,
+    options: SetCookieOptions,
+) !void {
+    return setCookieObserved(allocator, jar, null, url_host, options);
+}
+
+/// Set a cookie, recording the resulting change for `change` event dispatch.
+///
+/// https://cookiestore.spec.whatwg.org/#set-a-cookie, then
+/// https://cookiestore.spec.whatwg.org/#process-cookie-changes
+///
+/// `observer` may be null, in which case this is exactly `setCookie`.
+///
+/// What gets recorded follows what script can observe:
+/// - a set that leaves a live cookie behind is a `changed` entry, including an
+///   overwrite, which is one `changed` and never a delete plus an add;
+/// - a set whose expiry is already past is a deletion, and a deletion is only
+///   observable when there was something to delete. WPT's
+///   `cookieStore_event_delete.https.window.js` asserts exactly that: deleting
+///   a cookie that does not exist fires no event.
+pub fn setCookieObserved(
+    allocator: std.mem.Allocator,
+    jar: *CookieJar,
+    observer: ?*CookieChangeObserver,
     url_host: []const u8,
     options: SetCookieOptions,
 ) !void {
@@ -252,11 +278,33 @@ pub fn setCookie(
         }
     }
 
+    // Whether this displaces an existing cookie has to be read before the
+    // store, because storing an expired cookie removes the old one.
+    const displaced = jarHolds(jar, cookie);
+
     // Store the cookie
     try jar.store(cookie);
 
+    if (observer) |obs| {
+        if (cookie.isExpired()) {
+            // Nothing was there to delete, so nothing is observable.
+            if (displaced) try obs.recordChange(.deleted, cookie);
+        } else {
+            try obs.recordChange(.changed, cookie);
+        }
+    }
+
     // Clean up our temporary cookie (jar clones it)
     cookie.deinit();
+}
+
+/// Whether the jar already holds a cookie of the same identity
+/// (name, domain, path, partition key).
+fn jarHolds(jar: *const CookieJar, cookie: Cookie) bool {
+    for (jar.cookies.items) |existing| {
+        if (existing.hasSameIdentity(cookie)) return true;
+    }
+    return false;
 }
 
 /// Resolve the expiry-time for a cookie being set.
@@ -301,6 +349,20 @@ pub fn deleteCookie(
     url_host: []const u8,
     options: DeleteCookieOptions,
 ) !void {
+    return deleteCookieObserved(allocator, jar, null, url_host, options);
+}
+
+/// Delete a cookie, recording the deletion for `change` event dispatch.
+/// https://cookiestore.spec.whatwg.org/#delete-a-cookie
+///
+/// `observer` may be null, in which case this is exactly `deleteCookie`.
+pub fn deleteCookieObserved(
+    allocator: std.mem.Allocator,
+    jar: *CookieJar,
+    observer: ?*CookieChangeObserver,
+    url_host: []const u8,
+    options: DeleteCookieOptions,
+) !void {
     // Step 1: Get earliest representable date (epoch - 1 year for safety)
     const expires: i64 = 0; // Unix epoch = Jan 1, 1970 = definitely expired
 
@@ -316,7 +378,7 @@ pub fn deleteCookie(
     }
 
     // Step 5: Set cookie with expired date (this will cause deletion)
-    try setCookie(allocator, jar, url_host, .{
+    try setCookieObserved(allocator, jar, observer, url_host, .{
         .name = name,
         .value = value,
         .expires = expires,
