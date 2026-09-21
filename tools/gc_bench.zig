@@ -385,9 +385,18 @@ pub fn main(init: std.process.Init) !void {
     // leak behind a large constant.
     try samples.append(allocator, takeSample(0));
 
+    // Batch size is FIXED, not `every`. GC is forced once per batch and a sample
+    // is taken every `every` cycles; tying the two together meant the report
+    // granularity silently changed the thing being measured. `300000 200000` ran
+    // one un-GC'd 200,000-iteration script and reported 756 B/element, while
+    // `300000 25000` ran twelve and reported 476 - same build, same work, a
+    // difference that was entirely an artefact of how often the numbers printed.
+    const gc_batch: usize = 5000;
+
     var done: usize = 0;
+    var next_sample: usize = every;
     while (done < cycles) {
-        const batch = @min(every, cycles - done);
+        const batch = @min(gc_batch, cycles - done);
 
         // The element is created and dropped inside the loop, so nothing in JS
         // holds it afterwards. `void` on the createElement call keeps V8 from
@@ -422,7 +431,10 @@ pub fn main(init: std.process.Init) !void {
         }
 
         done += batch;
-        try samples.append(allocator, takeSample(done));
+        if (done >= next_sample or done >= cycles) {
+            try samples.append(allocator, takeSample(done));
+            while (next_sample <= done) next_sample += every;
+        }
     }
 
     report(samples.items, force_gc, control);
