@@ -1738,6 +1738,25 @@ void v8_Isolate_Exit(Isolate* isolate) {
 // entirely startup, which made a 4-per-element leak look real when there was none.
 static std::atomic<int64_t> g_live_context_globals{0};
 
+// Live Global<Object> handles. Counted at the entry points that mint one on the
+// per-element path - `This`, `Context::Global`, the prototype getters - and
+// decremented in v8_Object_Dispose. Same reason as the context counter: cumulative
+// creations cannot tell a released handle from a leaked one.
+static std::atomic<int64_t> g_live_object_globals{0};
+
+extern "C" int64_t v8_Debug_LiveObjectGlobals() {
+    return g_live_object_globals.load(std::memory_order_relaxed);
+}
+
+// Per-entry-point creation counts. The aggregate says one Global<Object> leaks
+// per element but not WHICH of the six mints it, and they all allocate at about
+// the same rate, so the aggregate alone cannot separate them.
+static std::atomic<int64_t> g_obj_src[6];
+
+extern "C" int64_t v8_Debug_ObjSrc(int i) {
+    return (i >= 0 && i < 6) ? g_obj_src[i].load(std::memory_order_relaxed) : -1;
+}
+
 extern "C" int64_t v8_Debug_LiveContextGlobals() {
     return g_live_context_globals.load(std::memory_order_relaxed);
 }
@@ -1943,6 +1962,8 @@ Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[2].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> local_context = context->Get(isolate);
@@ -3289,6 +3310,7 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
 
 void v8_Object_Dispose(Global<Object>* obj) {
     if (!obj) return;
+    g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);
     // See v8_ObjectTemplate_Dispose: while the snapshot is being built every
     // handle is registered for bulk cleanup, so disposing one here as well is a
     // double free.
@@ -4328,6 +4350,8 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
 // Used when wrapping Zig instances as V8 objects - we need to manually set the prototype
 // because ObjectTemplate::NewInstance() doesn't automatically link to the FunctionTemplate's prototype.
 Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[4].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
 
@@ -4362,6 +4386,8 @@ Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>*
 // This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
 // This is necessary for `instanceof` to work correctly.
 Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* constructor_name) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[3].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
 
@@ -4923,6 +4949,8 @@ void v8_Function_SetName(Global<Function>* func, Global<String>* name) {
 
 // FunctionCallbackInfo - get 'this' object
 Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* info) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[0].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> self = info->This();
@@ -5584,6 +5612,8 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
 
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
@@ -5609,6 +5639,8 @@ Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void
 
 // PropertyCallbackInfo - get this
 Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     return trackHandle(new Global<Object>(isolate, info->This()));

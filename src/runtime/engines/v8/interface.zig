@@ -1899,6 +1899,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Get the method's context - V8 enters the function's creation context
                                 if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                                     if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                        // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                        // returns a borrowed Local. Everything below only compares it or
+                                        // reads an internal field, so releasing at block exit is correct.
+                                        defer v8.v8_Object_Dispose(method_global);
                                         // Check if this IS the method's global object
                                         // (handles normal case: window.name where this === window)
                                         if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
@@ -1944,6 +1948,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // by checking if it equals its own context's global
                                             if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                                 if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                    // returns a borrowed Local. Everything below only compares it or
+                                                    // reads an internal field, so releasing at block exit is correct.
+                                                    defer v8.v8_Object_Dispose(this_global);
                                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                         // this IS a global object (caller's global)
                                                         // This happens when getter.call(null) coerces to caller's global
@@ -2465,6 +2473,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
@@ -2493,6 +2505,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                // returns a borrowed Local. Everything below only compares it or
+                                                // reads an internal field, so releasing at block exit is correct.
+                                                defer v8.v8_Object_Dispose(this_global);
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                     // this IS a global (caller's global) -> use method's global
                                                     if (global_ptr != null) {
@@ -2558,6 +2574,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Check if `this` IS a global object and use it as implicit this.
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |ctx| {
                                 if (v8.v8_Context_Global(ctx)) |context_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(context_global);
                                     // Check if this_obj IS the current context's global
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
@@ -6986,6 +7006,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                    // returns a borrowed Local. Everything below only compares it or
+                                    // reads an internal field, so releasing at block exit is correct.
+                                    defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
@@ -7014,6 +7038,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
+                                                // returns a borrowed Local. Everything below only compares it or
+                                                // reads an internal field, so releasing at block exit is correct.
+                                                defer v8.v8_Object_Dispose(this_global);
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
                                                     // this IS a global object (caller's global) -> use method's global
                                                     if (global_ptr != null) {

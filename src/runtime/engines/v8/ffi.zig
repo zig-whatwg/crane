@@ -670,6 +670,12 @@ pub extern fn v8_Debug_LiveStringGlobals() i64;
 /// leaking per element, whatever the cumulative creation count says.
 pub extern fn v8_Debug_LiveContextGlobals() i64;
 
+/// Live `Global<Object>` handles from the per-element entry points.
+pub extern fn v8_Debug_LiveObjectGlobals() i64;
+
+/// Per-entry-point Global<Object> creation counts, indexed 0..5.
+pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
+
 /// Every `Global<T>` handed to Zig, CUMULATIVE creations - not a live count.
 /// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
 /// nearly all of them. Read it as a rate: N per element on a create-and-discard
