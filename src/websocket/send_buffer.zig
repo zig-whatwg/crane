@@ -62,7 +62,7 @@ pub const SendBuffer = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .queue = std.ArrayList(QueuedMessage).init(allocator),
+            .queue = .empty,
             .buffered_amount = 0,
             .max_buffer_size = 0, // unlimited by default
         };
@@ -72,7 +72,7 @@ pub const SendBuffer = struct {
     pub fn initWithLimit(allocator: std.mem.Allocator, max_size: u64) Self {
         return .{
             .allocator = allocator,
-            .queue = std.ArrayList(QueuedMessage).init(allocator),
+            .queue = .empty,
             .buffered_amount = 0,
             .max_buffer_size = max_size,
         };
@@ -86,7 +86,7 @@ pub const SendBuffer = struct {
                 self.allocator.free(msg.data);
             }
         }
-        self.queue.deinit();
+        self.queue.deinit(self.allocator);
     }
 
     /// Queue a text message for sending.
@@ -117,7 +117,7 @@ pub const SendBuffer = struct {
     /// Queue a close frame.
     /// Close frames don't count toward bufferedAmount per spec.
     pub fn queueClose(self: *Self, data: []const u8) !void {
-        try self.queue.append(.{
+        try self.queue.append(self.allocator, .{
             .data = data,
             .message_type = .close,
             .owns_data = false,
@@ -128,7 +128,7 @@ pub const SendBuffer = struct {
     /// Queue a ping frame.
     /// Control frames don't count toward bufferedAmount.
     pub fn queuePing(self: *Self, data: []const u8) !void {
-        try self.queue.append(.{
+        try self.queue.append(self.allocator, .{
             .data = data,
             .message_type = .ping,
             .owns_data = false,
@@ -138,7 +138,7 @@ pub const SendBuffer = struct {
     /// Queue a pong frame.
     /// Control frames don't count toward bufferedAmount.
     pub fn queuePong(self: *Self, data: []const u8) !void {
-        try self.queue.append(.{
+        try self.queue.append(self.allocator, .{
             .data = data,
             .message_type = .pong,
             .owns_data = false,
@@ -156,7 +156,7 @@ pub const SendBuffer = struct {
             }
         }
 
-        try self.queue.append(.{
+        try self.queue.append(self.allocator, .{
             .data = data,
             .message_type = msg_type,
             .owns_data = owns_data,

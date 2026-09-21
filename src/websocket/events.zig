@@ -208,7 +208,7 @@ pub const WebSocketEventQueue = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .tasks = std.ArrayList(*WebSocketEventTask).init(allocator),
+            .tasks = .empty,
             .dispatch_callback = null,
         };
     }
@@ -219,7 +219,7 @@ pub const WebSocketEventQueue = struct {
         for (self.tasks.items) |task| {
             self.allocator.destroy(task);
         }
-        self.tasks.deinit();
+        self.tasks.deinit(self.allocator);
     }
 
     /// Set the dispatch callback for all events
@@ -240,7 +240,7 @@ pub const WebSocketEventQueue = struct {
         const task = try self.allocator.create(WebSocketEventTask);
         task.* = WebSocketEventTask.createOpen(self.allocator, websocket_ptr, extensions, protocol);
         task.dispatch_callback = self.dispatch_callback;
-        try self.tasks.append(task);
+        try self.tasks.append(self.allocator, task);
     }
 
     /// Queue a 'message' event
@@ -254,7 +254,7 @@ pub const WebSocketEventQueue = struct {
         const task = try self.allocator.create(WebSocketEventTask);
         task.* = WebSocketEventTask.createMessage(self.allocator, websocket_ptr, data, is_text, origin);
         task.dispatch_callback = self.dispatch_callback;
-        try self.tasks.append(task);
+        try self.tasks.append(self.allocator, task);
     }
 
     /// Queue an 'error' event
@@ -262,7 +262,7 @@ pub const WebSocketEventQueue = struct {
         const task = try self.allocator.create(WebSocketEventTask);
         task.* = WebSocketEventTask.createError(self.allocator, websocket_ptr);
         task.dispatch_callback = self.dispatch_callback;
-        try self.tasks.append(task);
+        try self.tasks.append(self.allocator, task);
     }
 
     /// Queue a 'close' event
@@ -276,7 +276,7 @@ pub const WebSocketEventQueue = struct {
         const task = try self.allocator.create(WebSocketEventTask);
         task.* = WebSocketEventTask.createClose(self.allocator, websocket_ptr, was_clean, code, reason);
         task.dispatch_callback = self.dispatch_callback;
-        try self.tasks.append(task);
+        try self.tasks.append(self.allocator, task);
     }
 
     /// Dequeue the next event task (FIFO order)
