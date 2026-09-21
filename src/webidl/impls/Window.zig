@@ -703,10 +703,35 @@ pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for customElements
 /// Per spec: Returns the CustomElementRegistry for this window.
+/// Lazily creates the registry on first access.
+///
+/// Until this landed, `internal.custom_elements` was declared and never
+/// assigned, so every `window.customElements` access threw NotImplemented and
+/// script saw `undefined`. The whole custom elements subsystem - a 625-line
+/// registry, a reaction stack, an upgrade path - was unreachable behind it,
+/// and WPT reported `Cannot read properties of undefined (reading 'define')`.
+///
+/// Created with `is_scoped` left false, which is what the window's registry
+/// is. `new CustomElementRegistry()` sets that flag instead; the two must not
+/// share a construction path.
 pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create CustomElementRegistry instance lazily
-    return internal.custom_elements orelse error.NotImplemented;
+
+    if (internal.custom_elements) |registry| {
+        return registry;
+    }
+
+    const CustomElementRegistryImpl = @import("CustomElementRegistry.zig");
+    const CustomElementRegistry = interfaces.CustomElementRegistry;
+    const registry = try CustomElementRegistryImpl.init(
+        internal.allocator,
+        CustomElementRegistryImpl.State,
+        &CustomElementRegistry.vtable,
+        instance.ctx,
+    );
+
+    internal.custom_elements = registry;
+    return registry;
 }
 
 // ============================================================================
