@@ -170,6 +170,26 @@ pub const ArenaAllocator = struct {
         self.total_bytes_allocated += size;
         self.bytes_in_use += size;
 
+        // A zero-sized state is not exotic: any interface that keeps no internal
+        // state has one, and `Geolocation` and `Clipboard` both declare
+        // `InternalState = struct {}`. std's ArenaAllocator opens `alloc` with
+        // `assert(n > 0)`, so forwarding the request aborted the process the
+        // first time script touched such an interface:
+        //
+        //     panic: reached unreachable code
+        //       heap.ArenaAllocator.alloc
+        //       arena_allocator.createRaw
+        //       instance.Instance.init
+        //
+        // Zig's allocator contract already says what to hand back - a non-null,
+        // correctly-aligned pointer that must never be dereferenced. The
+        // alignment itself is such an address, and it deliberately never
+        // reaches a size class, so `destroyRaw` cannot push it onto a free list
+        // where a later real allocation would take it.
+        if (size == 0) {
+            return @ptrFromInt(@max(alignment, 1));
+        }
+
         if (sizeClassOf(size, alignment)) |class| {
             if (self.popFree(class)) |recycled| {
                 @memset(recycled[0..classSize(class)], 0);
