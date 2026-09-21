@@ -64,7 +64,10 @@ def load_results():
     except (OSError, json.JSONDecodeError):
         records = {}
 
-    files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')),
+    # Subdirectories too, so archived journals can be dropped in without
+    # colliding with the filenames the runner reuses.
+    files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')) +
+                   glob.glob(os.path.join(RESULTS, '*', '*.jsonl')),
                    key=os.path.getmtime)
     for fn in files:
         for line in open(fn, errors='replace'):
