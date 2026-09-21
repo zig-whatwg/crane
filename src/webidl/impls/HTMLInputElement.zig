@@ -21,7 +21,37 @@ pub const ImplError = error{
 /// Implementations can replace this with a real struct containing:
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+// Shared registry utility, the same mechanism HTMLFormElement uses.
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
+/// https://html.spec.whatwg.org/multipage/input.html#concept-fe-value
+///
+/// `value` and `checked` are NOT reflections. Each is element state that starts
+/// out tracking a content attribute and permanently detaches the moment anything
+/// assigns to it - the "dirty value flag" and "dirty checkedness flag". So:
+///
+///     <input value="a">           .value -> "a"   (tracking the attribute)
+///     el.setAttribute("value","b"); .value -> "b"   (still tracking)
+///     el.value = "c";               .value -> "c"   (now dirty)
+///     el.setAttribute("value","d"); .value -> "c"   (attribute no longer wins)
+///
+/// That last line is the one that matters for React: it sets .value directly,
+/// and a later attribute write must not clobber what it set.
+///
+/// Dirtiness is encoded as the optional being non-null, so there is no way to
+/// have a dirty flag set with no value behind it.
+pub const InternalState = struct {
+    /// Owned. Non-null means the dirty value flag is set.
+    value: ?[]u8 = null,
+    /// Non-null means the dirty checkedness flag is set.
+    checkedness: ?bool = null,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        if (self.value) |v| allocator.free(v);
+        self.value = null;
+    }
+};
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -34,7 +64,15 @@ pub fn init(
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    // HTMLInputElement has no additional initialization
+    errdefer interfaces.HTMLElement.deinit(instance);
+
+    // createIn, not set: the registry then owns the block and returns it to the
+    // arena on remove, rather than dropping it from the map and holding it to
+    // process exit.
+    const ArenaAllocator = runtime.ArenaAllocator;
+    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    internal.* = .{};
+
     return instance;
 }
 
@@ -96,8 +134,11 @@ const INPUT_TYPES = [_][]const u8{
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLInputElement has no additional cleanup
-    // Chain to parent class
+    if (Registry.get(instance)) |internal| {
+        internal.deinit(instance.ctx.allocator);
+    }
+    Registry.remove(instance);
+
     const HTMLElementImpl = @import("HTMLElement.zig");
     HTMLElementImpl.deinit(instance);
 }
@@ -160,8 +201,10 @@ pub fn get_defaultChecked(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for checked
 pub fn get_checked(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    if (Registry.get(instance)) |internal| {
+        if (internal.checkedness) |c| return c;
+    }
+    return reflectBool(instance, "checked");
 }
 
 /// Getter for colorSpace
@@ -330,8 +373,14 @@ pub fn get_defaultValue(instance: *runtime.Instance) anyerror!runtime.DOMString 
 
 /// Getter for value
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    if (Registry.get(instance)) |internal| {
+        if (internal.value) |v| {
+            // Dirty: the element's own value wins over the attribute.
+            return runtime.DOMString.initDupe(instance.ctx.allocator, v) catch return error.OutOfMemory;
+        }
+    }
+    // Clean: track the content attribute.
+    return reflectString(instance, "value");
 }
 
 /// Getter for valueAsDate
@@ -465,9 +514,8 @@ pub fn set_defaultChecked(instance: *runtime.Instance, value: bool) anyerror!voi
 
 /// Setter for checked
 pub fn set_checked(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    internal.checkedness = value;
 }
 
 /// Setter for colorSpace
@@ -620,9 +668,10 @@ pub fn set_step(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
 /// Setter for type
 pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Setting writes the attribute VERBATIM; only the getter canonicalises.
+    // `el.type = "NONSENSE"` leaves type="NONSENSE" in the markup while
+    // `el.type` reads back "text".
+    try setStringAttr(instance, "type", value);
 }
 
 /// Setter for defaultValue
@@ -632,9 +681,14 @@ pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) a
 
 /// Setter for value
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
+
+    const copy = allocator.dupe(u8, value.asSlice()) catch return error.OutOfMemory;
+    // Free AFTER the new copy succeeds, so a failed allocation leaves the old
+    // value intact rather than clearing it.
+    if (internal.value) |old| allocator.free(old);
+    internal.value = copy;
 }
 
 /// Setter for valueAsDate
