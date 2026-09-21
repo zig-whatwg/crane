@@ -9,6 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLInputElement = interfaces.HTMLInputElement;
+const ElementImpl = @import("Element.zig");
 
 pub const State = HTMLInputElement.State;
 
@@ -37,6 +38,62 @@ pub fn init(
     return instance;
 }
 
+// ---------------------------------------------------------------------------
+// Reflected content attributes
+//
+// https://html.spec.whatwg.org/multipage/input.html
+//
+// These were `return error.NotImplemented`, which V8 turns into a thrown
+// exception - so `input.type` THREW rather than returning "text". React's
+// controlled inputs read value/checked/type/name/disabled on every commit, so
+// none of them could work.
+//
+// NOTE the difference between the two `value`-ish pairs:
+//   defaultValue   reflects the "value" CONTENT ATTRIBUTE
+//   value          is the element's VALUE, which starts from that attribute
+//                  and detaches from it once anything assigns to it
+//   defaultChecked reflects the "checked" CONTENT ATTRIBUTE
+//   checked        is the element's CHECKEDNESS, likewise detaching
+// Only the reflecting halves are implemented here; the stateful halves need
+// the dirty-value and dirty-checkedness flags.
+// ---------------------------------------------------------------------------
+
+fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    if (elem_internal.findAttribute(null, attr)) |entry| {
+        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
+    }
+    return runtime.DOMString.initEmpty();
+}
+
+fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!bool {
+    // A boolean content attribute is true by PRESENCE; disabled="false" is true.
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    return elem_internal.findAttribute(null, attr) != null;
+}
+
+fn setBoolAttr(instance: *runtime.Instance, comptime attr: []const u8, value: bool) anyerror!void {
+    const name = runtime.DOMString.initInterned(attr);
+    if (value) {
+        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
+    } else {
+        try interfaces.Element.call_removeAttribute(instance, name);
+    }
+}
+
+fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(attr), value);
+}
+
+/// The input type keywords, in spec order. Missing OR unrecognised both map to
+/// "text", so this needs no separate invalid-value default.
+const INPUT_TYPES = [_][]const u8{
+    "hidden", "text",     "search", "tel",  "url",            "email",  "password",
+    "date",   "month",    "week",   "time", "datetime-local", "number", "range",
+    "color",  "checkbox", "radio",  "file", "submit",         "image",  "reset",
+    "button",
+};
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // HTMLInputElement has no additional cleanup
@@ -59,8 +116,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for accept
 pub fn get_accept(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "accept");
 }
 
 /// Getter for alpha
@@ -71,20 +127,35 @@ pub fn get_alpha(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for alt
 pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "alt");
 }
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // Enumerated, and BOTH defaults are the empty string - unlike the form
+    // element, whose autocomplete defaults to "on". So:
+    //
+    //     <input>                      -> ""     (missing default)
+    //     <input autocomplete="on">    -> "on"
+    //     <input autocomplete="off">   -> "off"
+    //     <input autocomplete="foobar">-> ""     (invalid default)
+    //
+    // Reflecting an unrecognised value verbatim is wrong: form-autocomplete.html
+    // asserts "" for exactly that case.
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const entry = elem_internal.findAttribute(null, "autocomplete") orelse
+        return runtime.DOMString.initEmpty();
+    inline for ([_][]const u8{ "on", "off" }) |candidate| {
+        if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {
+            return runtime.DOMString.initInterned(candidate);
+        }
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for defaultChecked
 pub fn get_defaultChecked(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectBool(instance, "checked");
 }
 
 /// Getter for checked
@@ -107,8 +178,7 @@ pub fn get_dirName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for disabled
 pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectBool(instance, "disabled");
 }
 
 /// Getter for form
@@ -173,8 +243,7 @@ pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Getter for max
 pub fn get_max(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "max");
 }
 
 /// Getter for maxLength
@@ -185,8 +254,7 @@ pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
 
 /// Getter for min
 pub fn get_min(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "min");
 }
 
 /// Getter for minLength
@@ -197,38 +265,32 @@ pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
 
 /// Getter for multiple
 pub fn get_multiple(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectBool(instance, "multiple");
 }
 
 /// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "name");
 }
 
 /// Getter for pattern
 pub fn get_pattern(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "pattern");
 }
 
 /// Getter for placeholder
 pub fn get_placeholder(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "placeholder");
 }
 
 /// Getter for readOnly
 pub fn get_readOnly(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectBool(instance, "readonly");
 }
 
 /// Getter for required
 pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectBool(instance, "required");
 }
 
 /// Getter for size
@@ -245,20 +307,25 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 
 /// Getter for step
 pub fn get_step(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "step");
 }
 
 /// Getter for type
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const entry = elem_internal.findAttribute(null, "type") orelse
+        return runtime.DOMString.initInterned("text");
+    inline for (INPUT_TYPES) |candidate| {
+        if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {
+            return runtime.DOMString.initInterned(candidate);
+        }
+    }
+    return runtime.DOMString.initInterned("text");
 }
 
 /// Getter for defaultValue
 pub fn get_defaultValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectString(instance, "value");
 }
 
 /// Getter for value
@@ -371,9 +438,7 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOM
 
 /// Setter for accept
 pub fn set_accept(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "accept", value);
 }
 
 /// Setter for alpha
@@ -385,23 +450,17 @@ pub fn set_alpha(instance: *runtime.Instance, value: bool) anyerror!void {
 
 /// Setter for alt
 pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "alt", value);
 }
 
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "autocomplete", value);
 }
 
 /// Setter for defaultChecked
 pub fn set_defaultChecked(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBoolAttr(instance, "checked", value);
 }
 
 /// Setter for checked
@@ -427,9 +486,7 @@ pub fn set_dirName(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 
 /// Setter for disabled
 pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBoolAttr(instance, "disabled", value);
 }
 
 /// Setter for files
@@ -490,9 +547,7 @@ pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void
 
 /// Setter for max
 pub fn set_max(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "max", value);
 }
 
 /// Setter for maxLength
@@ -504,9 +559,7 @@ pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
 
 /// Setter for min
 pub fn set_min(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "min", value);
 }
 
 /// Setter for minLength
@@ -518,44 +571,32 @@ pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
 
 /// Setter for multiple
 pub fn set_multiple(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBoolAttr(instance, "multiple", value);
 }
 
 /// Setter for name
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "name", value);
 }
 
 /// Setter for pattern
 pub fn set_pattern(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "pattern", value);
 }
 
 /// Setter for placeholder
 pub fn set_placeholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "placeholder", value);
 }
 
 /// Setter for readOnly
 pub fn set_readOnly(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBoolAttr(instance, "readonly", value);
 }
 
 /// Setter for required
 pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBoolAttr(instance, "required", value);
 }
 
 /// Setter for size
@@ -574,9 +615,7 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 
 /// Setter for step
 pub fn set_step(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "step", value);
 }
 
 /// Setter for type
@@ -588,9 +627,7 @@ pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
 /// Setter for defaultValue
 pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setStringAttr(instance, "value", value);
 }
 
 /// Setter for value
