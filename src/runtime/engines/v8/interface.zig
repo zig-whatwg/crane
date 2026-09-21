@@ -232,6 +232,68 @@ fn defaultInit(comptime T: type) T {
 /// A type with methods to register the interface in V8:
 /// - `registerGlobal(isolate, context, name)` - Register as global constructor
 /// - `createTemplate(isolate)` - Create FunctionTemplate
+/// Can a value of type `T` cause argument conversion to RETAIN the V8
+/// context beyond the call?
+///
+/// Expressed as an ALLOWLIST of provably inert types, and that direction is
+/// the whole point. Twice I wrote this as a blocklist - "retains unless it
+/// is an Instance pointer", "retains only for *runtime.CallbackWrapper" -
+/// and twice an unlisted type slipped through and became a use-after-free:
+/// 2-3 crashes per timers run the first time, 10 of 12 files the second,
+/// because `setTimeout`'s handler is `typedefs.TimerHandler`, a union whose
+/// `function` arm is a callback. A blocklist is wrong by default for an
+/// open set of types; an allowlist is merely conservative.
+///
+/// An unrecognised type therefore answers TRUE - assume retention, keep the
+/// old leak - which costs memory and never correctness.
+pub fn typeRetainsContext(comptime T: type) bool {
+    return typeRetainsContextDepth(T, 0);
+}
+
+fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
+    return comptime blk: {
+        // Inert scalars: conversion produces a Zig value holding no handle.
+        if (T == void or T == bool) break :blk false;
+        if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk false;
+        if (T == u8 or T == u16 or T == u32 or T == u64 or T == usize) break :blk false;
+        if (T == f32 or T == f64) break :blk false;
+
+        // Strings own their own bytes; no V8 handle survives the call.
+        if (T == runtime.DOMString or T == []const u8) break :blk false;
+        if (@hasDecl(runtime, "USVString") and T == runtime.USVString) break :blk false;
+        if (@hasDecl(runtime, "ByteString") and T == runtime.ByteString) break :blk false;
+
+        const info = @typeInfo(T);
+
+        // WebIDL enums convert to a plain tag.
+        if (info == .@"enum") break :blk false;
+
+        // `JSValue` is inert FOR THE CONTEXT, which is what this predicate
+        // governs. `conv.fromV8Value`'s JSValue branch returns
+        // `.handle = .{ .ptr = value, .handle_scope = .local }` - it keeps the
+        // VALUE pointer and uses `context` only transiently, for
+        // `v8_Value_NumberValue` and `v8_Value_ToString`. Retaining a value handle
+        // is a different question from retaining the context, and conflating them
+        // kept `createElement` - whose second parameter is `webidl.Opt(JSValue)` -
+        // leaking its context on the hottest path in the DOM.
+        if (T == runtime.JSValue) break :blk false;
+
+        // Optionals and error unions are inert exactly when their payload is.
+        if (info == .optional) break :blk typeRetainsContextDepth(info.optional.child, depth + 1);
+        if (info == .error_union) break :blk typeRetainsContextDepth(info.error_union.payload, depth + 1);
+
+        // `webidl.Opt(T)` wraps a payload in `.value`.
+        if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
+            break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth + 1);
+        }
+
+        // Everything else - callbacks, JSValue, Instance pointers, unions
+        // like TimerHandler, dictionaries, slices of any of them - is
+        // assumed to retain.
+        break :blk true;
+    };
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -2327,6 +2389,30 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate, "No current V8 context");
                         return;
                     };
+
+                    // This handle is ours to release unless converting one of the
+                    // arguments makes the engine keep the context. `conv.fromV8Value`
+                    // stores it into a persistent `runtime.CallbackWrapper` for
+                    // callback-typed parameters, so `createElement(DOMString)` is
+                    // transient while `setTimeout(TimerHandler, ...)` is not.
+                    //
+                    // `typeRetainsContext` is an ALLOWLIST of provably inert types
+                    // and answers "retains" for anything it does not recognise. That
+                    // direction matters: written as a blocklist, this exact check
+                    // released a context `setTimeout` still needed and produced 10
+                    // crashes out of 12 files. See tests/v8/retention_predicate_test.zig.
+                    //
+                    // Six handles per DOM object created were leaking here.
+                    const params_retain = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(@field(Interface, zig_name))).@"fn";
+                        for (fi.params) |prm| {
+                            const P = prm.type orelse break :blk true;
+                            if (P == *runtime.Instance) continue; // the receiver
+                            if (typeRetainsContext(P)) break :blk true;
+                        }
+                        break :blk false;
+                    };
+                    defer if (comptime !params_retain) v8.v8_Context_Dispose(current_context);
 
                     // CROSS-REALM SUPPORT: For return value conversion, we need the METHOD's realm.
                     // When calling other.SomeInterface.prototype.method.call(obj), the result object
