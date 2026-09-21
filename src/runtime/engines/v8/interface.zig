@@ -348,6 +348,42 @@ pub fn argHandleIsCopied(comptime T: type) bool {
     };
 }
 
+/// Does converting an argument of type `T` yield a NON-OWNING view - memory
+/// this engine never allocated and must therefore never free?
+///
+/// `conv.convertAllowSharedBufferSource` says so in its own words: it discards
+/// the allocator (`_ = allocator; // Not needed - we create a non-owning view`),
+/// reads `v8_ArrayBuffer_Data`, and returns
+/// `.{ .byte_slice = src_ptr[0..byte_length] }` - a `[]const u8` aliasing V8's
+/// backing store. `needsArgCleanup` then walked into that union arm, saw a
+/// slice, and concluded "allocated by fromV8Sequence"; `freeConvertedArg`
+/// called `allocator.free` on it and the DebugAllocator aborted the process
+/// with `panic: Invalid free`. Every `new TextDecoder(x).decode(bytes)` over a
+/// non-empty buffer died that way - 67 of 149 `encoding/` WPT files, including
+/// all fifteen `textdecoder-*`.
+///
+/// The hazard this guards is `needsArgCleanup`'s slice rule, which answers
+/// "owned" for *any* slice - a blocklist over an open set, wrong by default in
+/// exactly the way AGENTS.md warns about. Flipping that default would leak
+/// every string argument, so the narrow repair is to name the conversions that
+/// are known not to allocate. Today `convertAllowSharedBufferSource` is the
+/// only one; `grep -n "non-owning" conversions.zig` is how you check that is
+/// still true. Anything unrecognised answers FALSE and keeps the existing
+/// free-it behaviour, so adding a second non-owning conversion without adding
+/// it here reintroduces the abort.
+pub fn argConversionIsNonOwning(comptime T: type) bool {
+    return T == webidl.buffer_sources.AllowSharedBufferSource or
+        T == webidl.buffer_sources.BufferSource;
+}
+
+/// The buffer-source unions `argConversionIsNonOwning` recognises, re-exported
+/// so `tests/v8` can name them: that test target imports `clock`, `host`,
+/// `runtime` and `v8`, but not `webidl`.
+pub const non_owning_arg_types = struct {
+    pub const AllowSharedBufferSource = webidl.buffer_sources.AllowSharedBufferSource;
+    pub const BufferSource = webidl.buffer_sources.BufferSource;
+};
+
 /// `conv.fromV8Value`, releasing the argument handle afterwards when
 /// `argHandleIsCopied` can prove that is safe. The `defer` fires on the error
 /// path too, which is where the handle would otherwise be lost silently.
@@ -2762,6 +2798,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Struct types (dictionaries) may contain string fields that need cleanup.
         fn needsArgCleanup(comptime T: type) bool {
             @setEvalBranchQuota(10000);
+            // Non-owning views alias memory this engine did not allocate. This
+            // must come first: the union arm that holds the view IS a
+            // `[]const u8`, so every rule below would claim it. See
+            // `argConversionIsNonOwning`.
+            if (argConversionIsNonOwning(T)) return false;
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
