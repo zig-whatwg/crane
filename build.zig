@@ -401,6 +401,33 @@ fn linkV8(builder: *std.Build, module: *std.Build.Module, target: std.Build.Reso
     module.link_libcpp = true; //
 }
 
+/// A `zig test` artifact for an existing module's own test tree, with V8 linked.
+///
+/// `b.addTest(.{ .root_module = mod })` does **not** give the test its own
+/// module: the Compile's `root_module` *is* `mod`, shared with every artifact
+/// that imports it. Linking V8 there would add `v8_wrapper.cpp` and the three
+/// archives to `crane`, `wpt_runner`, `full_static_lib` and the rest - each of
+/// which already adds them - and the link would fail on duplicate symbols.
+///
+/// So clone: same root source file, same import table, its own link objects.
+/// Call this only after the module's last `addImport`, or the clone's import
+/// table comes out short.
+fn addModuleTestWithV8(
+    builder: *std.Build,
+    mod: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+) *std.Build.Step.Compile {
+    const test_mod = builder.createModule(.{
+        .root_source_file = mod.root_source_file,
+        .target = target,
+    });
+    for (mod.import_table.keys(), mod.import_table.values()) |name, dep| {
+        test_mod.addImport(name, dep);
+    }
+    linkV8(builder, test_mod, target);
+    return builder.addTest(.{ .root_module = test_mod });
+}
+
 /// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
@@ -686,6 +713,7 @@ pub fn build(b: *std.Build) void {
         "intl",
         "platform",
         "websocket",
+        "browser",
     };
     if (spec_filter) |spec| {
         var is_valid = false;
@@ -2240,6 +2268,30 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
         };
+    }
+
+    // Browser tests (the single-isolate browser that WPT drives)
+    //
+    // `src/browser/` had no test root in this file at all - `browser_mod` was
+    // only ever a dependency of `wpt_runner`, `crane_exe` and friends - so its
+    // test blocks compiled as part of those binaries and were never run. That
+    // is 13 of them, 9 added to `navigation.zig` on 2026-09-21 alone, and
+    // `src/browser/root.zig` even has the `test { _ = @import(...); }` block
+    // that pulls the other three files in. It was wired to nothing.
+    //
+    // V8-linked, and it has to be: `Browser.init` creates an isolate, and
+    // `browser_mod` imports `v8`, `runtime` and `impls`. Unlike `html_mod`
+    // above, nothing imports `browser_mod`, so it is not a dependency of itself
+    // and `addModuleTestWithV8` can clone it without two modules claiming
+    // `src/browser/root.zig`.
+    //
+    // There is no `tests/browser/` directory; the one file at
+    // `tests/browser_document_test.zig` hangs off the separate `test-browser`
+    // step. Register the directory here if one is ever added.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
+        const browser_tests = addModuleTestWithV8(b, browser_mod, target);
+        const run_browser_tests = b.addRunArtifact(browser_tests);
+        test_step.dependOn(&run_browser_tests.step);
     }
 
     // File API tests
