@@ -17,6 +17,11 @@ const cookiestore = @import("cookiestore");
 const CookieChangeEvent = interfaces.CookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
+// The FrozenArray<CookieListItem> attributes have to be marshalled into real V8
+// arrays, so this impl reaches for the engine directly.
+const v8_engine = @import("v8");
+const v8 = v8_engine.ffi;
+
 pub const State = CookieChangeEvent.State;
 
 pub const ImplError = error{
@@ -152,27 +157,119 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     return instance;
 }
 
+// ============================================================================
+// FrozenArray<CookieListItem> marshalling
+//
+// `changed` and `deleted` used to return
+// `runtime.JSValue.fromAnyopaque(@ptrCast(&internal.changed))` - the address of
+// a Zig `ArrayListUnmanaged`. `fromAnyopaque` produces a `.handle` with
+// `handle_scope = .global`, and the getter path in
+// src/runtime/engines/v8/interface.zig hands that pointer straight to
+// `v8_FunctionCallbackInfo_SetReturnValueGlobal`, which `reinterpret_cast`s it
+// to `Global<Value>*` and dereferences it. A heap-allocated Zig struct is
+// aligned and inside the heap range, so every guard in that function passes and
+// the read goes through - taking the process down, not the subtest.
+// src/runtime/js_value.zig:199-207 names this exact mistake.
+//
+// The fix is to build a real V8 array of `{name, value}` objects. Ownership
+// follows the house rule (AGENTS.md): every `v8_*` call returning a pointer
+// allocates a `Global<T>` the caller owns, so everything acquired here is
+// disposed except the array handed back, which the return path consumes.
+//
+// The duplication with CookieStore.zig's `Realm` is deliberate: impls are
+// private to each other (AGENTS.md, "The impls boundary"), and a shared helper
+// would have to live outside `impls/`.
+// ============================================================================
+
+/// The current isolate and context, for the duration of one getter.
+const Realm = struct {
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+
+    fn enter() error{NoRealm}!Realm {
+        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoRealm;
+        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoRealm;
+        return .{ .isolate = isolate, .context = context };
+    }
+
+    /// `v8_Isolate_GetCurrentContext` allocated the Global we are holding.
+    fn exit(self: Realm) void {
+        v8.v8_Context_Dispose(self.context);
+    }
+
+    fn setString(self: Realm, object: *v8.Object, key: []const u8, value: []const u8) error{OutOfMemory}!void {
+        const key_str = v8.v8_String_NewFromUtf8(self.isolate, key.ptr, @intCast(key.len)) orelse
+            return error.OutOfMemory;
+        defer v8.v8_String_Dispose(key_str);
+
+        // An empty Zig slice has no usable `.ptr`. A deleted cookie always has
+        // an empty value, and an unnamed cookie an empty name, so this arm is
+        // the common case here rather than an edge.
+        const value_str = if (value.len > 0)
+            v8.v8_String_NewFromUtf8(self.isolate, value.ptr, @intCast(value.len)) orelse
+                return error.OutOfMemory
+        else
+            v8.v8_String_Empty(self.isolate) orelse return error.OutOfMemory;
+        defer v8.v8_String_Dispose(value_str);
+
+        _ = v8.v8_Object_Set(object, self.context, @ptrCast(key_str), @ptrCast(value_str));
+    }
+
+    /// A `CookieListItem` as script sees it: `{ name, value }`.
+    /// https://cookiestore.spec.whatwg.org/#create-a-cookielistitem
+    fn cookieListItem(self: Realm, item: CookieListItem) error{OutOfMemory}!*v8.Object {
+        const object = v8.v8_Object_NewInContext(self.context) orelse return error.OutOfMemory;
+        errdefer v8.v8_Object_Dispose(object);
+
+        try self.setString(object, "name", item.name);
+        try self.setString(object, "value", item.value);
+        return object;
+    }
+
+    /// A JS Array of CookieListItem objects.
+    ///
+    /// Deviation, stated per AGENTS.md: the IDL says `[SameObject]
+    /// FrozenArray`, and this builds a fresh, unfrozen array per read. Freezing
+    /// and caching need a `Global<Array>` held in instance state and disposed
+    /// in `deinit`, which is teardown-order work this change does not take on.
+    /// Script sees a correct array with correct contents; it sees a different
+    /// array identity on each read.
+    fn cookieList(self: Realm, items: []const CookieListItem) error{OutOfMemory}!*v8.Array {
+        const array = v8.v8_Array_NewInContext(self.context, @intCast(items.len)) orelse
+            return error.OutOfMemory;
+        errdefer v8.v8_Array_Dispose(array);
+
+        for (items, 0..) |item, index| {
+            const object = try self.cookieListItem(item);
+            defer v8.v8_Object_Dispose(object);
+            _ = v8.v8_Array_Set(array, self.context, @intCast(index), @ptrCast(object));
+        }
+        return array;
+    }
+};
+
 /// Getter for changed
 /// https://cookiestore.spec.whatwg.org/#dom-cookiechangeevent-changed
-///
-/// Returns a FrozenArray<CookieListItem> of changed cookies.
 pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // Return pointer to the internal changed list as an opaque handle
-    // The V8 bindings will convert this to a FrozenArray
-    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.changed));
+    const realm = try Realm.enter();
+    defer realm.exit();
+
+    const array = try realm.cookieList(internal.changed.items);
+    return runtime.JSValue.fromHandleNonOwning(@ptrCast(array));
 }
 
 /// Getter for deleted
 /// https://cookiestore.spec.whatwg.org/#dom-cookiechangeevent-deleted
-///
-/// Returns a FrozenArray<CookieListItem> of deleted cookies.
 pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // Return pointer to the internal deleted list as an opaque handle
-    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.deleted));
+    const realm = try Realm.enter();
+    defer realm.exit();
+
+    const array = try realm.cookieList(internal.deleted.items);
+    return runtime.JSValue.fromHandleNonOwning(@ptrCast(array));
 }
 
 // ============================================================================
