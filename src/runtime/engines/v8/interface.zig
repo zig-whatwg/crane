@@ -2305,32 +2305,6 @@ pub fn V8Interface(comptime Interface: type) type {
                         };
 
                         info.setReturnValue(v8_value);
-
-                        // Release the handle when this branch minted it. Attribute
-                        // getters are the hot path - every `el.id`, `el.className`,
-                        // `el.tagName` lands here - and `v8_String_NewFromUtf8`,
-                        // `toV8UnsignedLong`, `v8_Null`, `v8_Undefined` and friends
-                        // each allocate a fresh `Global<T>` that nothing was freeing.
-                        //
-                        // NOT for instance wrappers: `conv.instanceToV8` reaches
-                        // `wrapInstanceAsV8Object`, which returns the pointer the
-                        // wrapper cache stored and owns. Disposing that frees the
-                        // cache's handle and leaves its weak callback armed on freed
-                        // memory. Same reasoning as `Converted`; this branch simply
-                        // knows its type at comptime and can say so directly.
-                        //
-                        // Safe after `setReturnValue`, which does not take ownership.
-                        const getter_returns_wrapper = comptime blk: {
-                            const P = PayloadType;
-                            break :blk P == *runtime.Instance or
-                                isRuntimeInstancePtr(P) or
-                                P == ?*runtime.Instance or
-                                isOptionalRuntimeInstancePtr(P) or
-                                P == runtime.JSValue;
-                        };
-                        if (comptime !getter_returns_wrapper) {
-                            v8.v8_Global_Dispose(v8_value);
-                        }
                     }
                 }
             };
@@ -2540,11 +2514,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    // Set the return value and release the handle if we own it.
-                    // `settleInto` knows which, because the branch that built the
-                    // value recorded it - see `Converted`.
-                    result.settleInto(info);
-                    // A null value leaves V8 returning undefined (correct for void)
+                    // Convert and set return value
+                    if (result) |v8_result| {
+                        info.setReturnValue(v8_result);
+                    }
+                    // If result is null, V8 will return undefined (correct for void methods)
                 }
             };
         }
@@ -2775,7 +2749,7 @@ pub fn V8Interface(comptime Interface: type) type {
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
             return_context: *v8.Context,
-        ) !Converted {
+        ) !?*v8.Value {
             const js_arg_count = info.length();
 
             // Call method based on parameter count
@@ -3087,52 +3061,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return try convertReturnValue(ReturnType, zig_result, allocator, isolate, return_context);
         }
 
-        /// A converted return value, and whether the CALLER owns the handle.
-        ///
-        /// This wrapper's V8 APIs return heap-allocated `Global<T>` where V8 itself
-        /// returns a borrowed `Local<T>`, so a converted return value is usually the
-        /// caller's to release - and nothing was releasing it, which is most of the
-        /// per-element leak Phase 6 measured.
-        ///
-        /// It is NOT uniformly the caller's, which is why this cannot be a bare
-        /// `defer` at the call site:
-        ///
-        ///   * a `*runtime.Instance` becomes `wrapInstanceAsV8Object`, which returns
-        ///     THE SAME POINTER it stored in the wrapper cache. Disposing it frees
-        ///     the cache's handle and leaves its weak callback armed on freed memory.
-        ///   * `JSValue.handle` and `Promise.handle` belong to those values.
-        ///
-        /// `convertReturnValue` is comptime-generic over `ReturnType`, so only the
-        /// branch that knows the type can decide. Carrying the answer out with the
-        /// value is the whole point of this struct.
-        ///
-        /// `owned = false` is the safe default: it preserves the old behaviour
-        /// exactly (a leak), where `true` on a borrowed handle is a use-after-free.
-        const Converted = struct {
-            value: ?*v8.Value,
-            owned: bool,
-
-            fn borrowed(v: ?*v8.Value) Converted {
-                return .{ .value = v, .owned = false };
-            }
-
-            fn fresh(v: ?*v8.Value) Converted {
-                return .{ .value = v, .owned = true };
-            }
-
-            /// Hand the value to V8 and release it if we own it.
-            ///
-            /// Safe in this order because `setReturnValue` does NOT take ownership -
-            /// `v8_FunctionCallbackInfo_SetReturnValueGlobal` has no `Reset` and no
-            /// `delete` on any path; `ReturnValue::Set(Local)` copies into V8's
-            /// return slot, which the GC roots independently of this handle.
-            fn settleInto(self: Converted, info: *const v8.FunctionCallbackInfo) void {
-                const v = self.value orelse return;
-                info.setReturnValue(v);
-                if (self.owned) v8.v8_Global_Dispose(v);
-            }
-        };
-
         /// Convert Zig return value to V8 Value
         fn convertReturnValue(
             comptime ReturnType: type,
@@ -3140,7 +3068,7 @@ pub fn V8Interface(comptime Interface: type) type {
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
-        ) !Converted {
+        ) !?*v8.Value {
             // Suppress unused parameter warning - allocator used only in recursive calls
             _ = allocator;
 
@@ -3154,7 +3082,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Handle void return
             if (ReturnType == void) {
-                return Converted.borrowed(null);
+                return null;
             }
 
             // Handle optional types
@@ -3163,7 +3091,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const ChildType = type_info.optional.child;
                     return convertReturnValue(ChildType, value, std.heap.page_allocator, isolate, v8_context);
                 } else {
-                    return Converted.fresh(@ptrCast(v8.v8_Null(isolate)));
+                    return @ptrCast(v8.v8_Null(isolate));
                 }
             }
 
@@ -3182,64 +3110,53 @@ pub fn V8Interface(comptime Interface: type) type {
                     isolate,
                     v8_context,
                 ) catch {
-                    return Converted.fresh(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
-                // Borrowed: `wrapInstanceAsV8Object` returns the pointer it stored
-                // in the wrapper cache, which owns it and frees it from the weak
-                // callback. Disposing here is a double free plus a live weak
-                // callback on freed memory.
-                return Converted.borrowed(@ptrCast(v8_obj));
+                return @ptrCast(v8_obj);
             }
 
             // Handle primitive types
             if (ReturnType == bool) {
-                return Converted.fresh(@ptrCast(v8.v8_Boolean_New(isolate, result)));
+                return @ptrCast(v8.v8_Boolean_New(isolate, result));
             }
 
             if (ReturnType == i16 or ReturnType == i32 or ReturnType == i64 or ReturnType == u16 or ReturnType == u32 or ReturnType == u64) {
-                return Converted.fresh(@ptrCast(v8.v8_Number_New(isolate, @floatFromInt(result))));
+                return @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(result)));
             }
 
             if (ReturnType == f64 or ReturnType == f32) {
-                return Converted.fresh(@ptrCast(v8.v8_Number_New(isolate, result)));
+                return @ptrCast(v8.v8_Number_New(isolate, result));
             }
 
             // Handle DOMString
             if (ReturnType == runtime.DOMString) {
                 const slice = result.asSlice();
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
-                    return Converted.fresh(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
-                return Converted.fresh(@ptrCast(v8_str));
+                return @ptrCast(v8_str);
             }
 
             // Handle []const u8 (string slices)
             if (ReturnType == []const u8) {
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
-                    return Converted.fresh(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
-                return Converted.fresh(@ptrCast(v8_str));
+                return @ptrCast(v8_str);
             }
 
             // Handle runtime.JSValue - engine-agnostic value wrapper
             if (ReturnType == runtime.JSValue) {
-                // Borrowed for the whole switch, i.e. today's behaviour unchanged.
-                // The prongs disagree - `.string`/`.number` mint a fresh handle while
-                // `.handle` (already global) and `.instance` return one owned by the
-                // JSValue and the wrapper cache respectively - and one flag cannot
-                // describe both. Splitting it needs each prong to produce its own
-                // `Converted`, which is a separate change; marking it borrowed leaks
-                // exactly what it leaked before rather than risking a double free.
-                return Converted.borrowed(switch (result) {
+                return switch (result) {
                     .undefined => v8.v8_Undefined(isolate),
                     .null => @ptrCast(v8.v8_Null(isolate)),
                     .boolean => |b| @ptrCast(v8.v8_Boolean_New(isolate, b)),
                     .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
                     .string => |s| blk: {
                         if (s.data.len == 0) {
-                            break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return Converted.fresh(v8.v8_Undefined(isolate)));
+                            break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return v8.v8_Undefined(isolate));
                         }
-                        break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return Converted.fresh(v8.v8_Undefined(isolate)));
+                        break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return v8.v8_Undefined(isolate));
                     },
                     .handle => |h| blk: {
                         // Handle is a Global<Value>* - return it directly for setReturnValueGlobal
@@ -3264,28 +3181,27 @@ pub fn V8Interface(comptime Interface: type) type {
                         };
                         break :blk @ptrCast(v8_obj);
                     },
-                });
+                };
             }
 
             // Handle union types (e.g., ReadableStreamReader)
             if (type_info == .@"union") {
                 // Use the generic toV8Value conversion which handles unions
-                return Converted.borrowed(conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
-                    return Converted.fresh(v8.v8_Undefined(isolate));
-                });
+                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    return v8.v8_Undefined(isolate);
+                };
             }
 
             // Handle Promise(T) types - extract the handle and return the V8 Promise
             if (@typeInfo(ReturnType) == .@"struct") {
                 if (@hasDecl(ReturnType, "ResultType") and @hasField(ReturnType, "handle")) {
                     // This is a Promise(T) type - extract the V8 Promise handle
-                    // Borrowed: the handle belongs to the Promise.
-                    return Converted.borrowed(@ptrCast(result.handle));
+                    return @ptrCast(result.handle);
                 }
                 // Handle dictionary structs (like URLPatternResult) using generic conversion
-                return Converted.borrowed(conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
-                    return Converted.fresh(v8.v8_Undefined(isolate));
-                });
+                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    return v8.v8_Undefined(isolate);
+                };
             }
 
             // Handle *const anyopaque - SAFETY: Cannot blindly cast to V8 Value
@@ -3294,12 +3210,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ReturnType == *const anyopaque) {
                 // Return undefined to prevent crashes from misaligned pointers
                 // TODO: Implement proper Promise creation for [NewObject] methods
-                return Converted.fresh(v8.v8_Undefined(isolate));
+                return v8.v8_Undefined(isolate);
             }
 
             // For other types, return undefined as fallback
             // TODO: Expand type conversion coverage
-            return Converted.fresh(v8.v8_Undefined(isolate));
+            return v8.v8_Undefined(isolate);
         }
 
         /// Register a method on the prototype template using generated callback
@@ -7481,11 +7397,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    // Set the return value and release the handle if we own it.
-                    // `settleInto` knows which, because the branch that built the
-                    // value recorded it - see `Converted`.
-                    result.settleInto(info);
-                    // A null value leaves V8 returning undefined (correct for void)
+                    // Convert and set return value
+                    if (result) |v8_result| {
+                        info.setReturnValue(v8_result);
+                    }
+                    // If result is null, V8 will return undefined (correct for void methods)
                 }
             };
         }
