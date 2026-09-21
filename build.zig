@@ -354,42 +354,51 @@ fn addTestFilesFromDir(
         });
 
         // Link V8 libraries if requested (for V8 tests)
-        if (link_v8) {
-            // Same target-aware selection as `build()` below; this helper is a
-            // separate scope, so it recomputes rather than sharing the binding.
-            const v8_dir = switch (target.result.os.tag) {
-                .ios => "jsengines/v8/out/ios-arm64",
-                else => "jsengines/v8/out/static",
-            };
-            const v8_monolith_path = builder.fmt("{s}/obj/libv8_monolith.a", .{v8_dir});
-            const v8_libplatform_path = builder.fmt("{s}/obj/libv8_libplatform_fat.a", .{v8_dir});
-            const v8_libbase_path = builder.fmt("{s}/obj/libv8_libbase_fat.a", .{v8_dir});
-
-            // Add V8 C++ wrapper
-            test_exe.root_module.addCSourceFile(.{
-                .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-                .flags = &.{
-                    "-std=c++20",
-                    "-fno-exceptions",
-                    "-fno-rtti",
-                    "-DV8_COMPRESS_POINTERS",
-                    "-DV8_ENABLE_SANDBOX",
-                },
-            });
-
-            // Add custom-built V8 static libraries
-            test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-            // Add libuv
-            test_exe.root_module.link_libcpp = true; //
-        }
+        if (link_v8) linkV8(builder, test_exe.root_module, target);
 
         const run_test = builder.addRunArtifact(test_exe);
         step.dependOn(&run_test.step);
     }
+}
+
+/// Link the V8 C++ wrapper and the three static archives into `module`.
+///
+/// `module` must be one the caller owns exclusively - a module created for a
+/// single artifact, never one shared through `addImport`. A module's link
+/// objects belong to every artifact downstream of it, so linking V8 into a
+/// shared module puts a second `v8_wrapper.cpp` into each consumer that
+/// already compiles one: 844 duplicate symbol definitions, measured.
+fn linkV8(builder: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    // Same target-aware selection as `build()` below; this helper is a
+    // separate scope, so it recomputes rather than sharing the binding.
+    const v8_dir = switch (target.result.os.tag) {
+        .ios => "jsengines/v8/out/ios-arm64",
+        else => "jsengines/v8/out/static",
+    };
+    const v8_monolith_path = builder.fmt("{s}/obj/libv8_monolith.a", .{v8_dir});
+    const v8_libplatform_path = builder.fmt("{s}/obj/libv8_libplatform_fat.a", .{v8_dir});
+    const v8_libbase_path = builder.fmt("{s}/obj/libv8_libbase_fat.a", .{v8_dir});
+
+    // Add V8 C++ wrapper
+    module.addCSourceFile(.{
+        .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add custom-built V8 static libraries
+    module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
+
+    // Add libuv
+    module.link_libcpp = true; //
 }
 
 /// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
@@ -2174,6 +2183,46 @@ pub fn build(b: *std.Build) void {
 
     // HTML tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "html")) {
+        // NOT V8-linked, and it cannot be - see below. `html_mod` imports
+        // `runtime`, `impls`, `interfaces` and `v8`, so this target links today
+        // only for as long as Zig's lazy analysis never walks from a test block
+        // in `src/html/` into a `v8_*` extern. The day one does, this goes red
+        // with ~238 `undefined symbol: _v8_*`. `tests/dom/` hit exactly that
+        // wall with 246 and was fixed by passing `link_v8 = true` for the files
+        // under `tests/dom/`; the module-root target still is not linked, so
+        // `dom_mod`, `intl_mod` and `platform_mod` all carry the same latency.
+        //
+        // Neither way of linking it works from build.zig alone. Both measured:
+        //
+        //   Clone the module - same root source file, same import table, its
+        //   own link objects - so the linkage stays local to the test:
+        //     src/webidl/impls/HTMLIFrameElement.zig:1:1: error: file exists in
+        //     modules 'root' and 'html'
+        //   because `impls_mod.addImport("html", html_mod)` above makes
+        //   `html_mod` a transitive dependency of itself. The clone is rooted
+        //   at `src/html/full.zig` and so is `html_mod`, and both end up in the
+        //   one compilation: `-Mroot=src/html/full.zig ... -Mhtml=src/html/full.zig`.
+        //
+        //   `linkV8(b, html_mod, target)` - link it in place:
+        //     844 `error: duplicate symbol definition:` (_crane_callback_*,
+        //     CallbackManager::instance_, ...)
+        //   because `html_mod` is a dependency of `wpt_runner`, `full_static_lib`,
+        //   `crane` and `crane_exe`, each of which already compiles
+        //   `v8_wrapper.cpp` into itself. A module's link objects belong to every
+        //   artifact downstream of it.
+        //
+        // A generated root that does `_ = @import("html")` does not help either:
+        // `zig test` collects test blocks from the root module only, never from
+        // an imported module (verified - a dep module's tests do not run).
+        //
+        // The fix is a source change, so it is not made here. Either:
+        //   1. break the cycle - have `src/webidl/impls/**` reach HTML through
+        //      `html_core` (as it already does for DOMParser, innerHTML and
+        //      Window) instead of `html`, which leaves `html_mod` a leaf that
+        //      can be cloned; or
+        //   2. keep every V8-reaching HTML test under `tests/html/`, which IS
+        //      V8-linked below, and treat `src/html/**` test blocks as
+        //      pure-Zig-only. That is the convention `tests/dom/` follows.
         const html_tests = b.addTest(.{ .root_module = html_mod });
         const run_html_tests = b.addRunArtifact(html_tests);
         test_step.dependOn(&run_html_tests.step);
