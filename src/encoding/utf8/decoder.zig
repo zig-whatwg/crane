@@ -219,12 +219,23 @@ pub fn decode(
                 continue;
             }
 
-            // Invalid byte (0xFF marker)
+            // Invalid lead byte - 0x80 to 0xC1 and 0xF5 to 0xFF.
+            //
+            // Spec step 3, "Otherwise: Return error". The error is the caller's
+            // to interpret: replacement error mode substitutes U+FFFD, fatal
+            // error mode throws. A decoder that substitutes here makes
+            // `new TextDecoder("utf-8", {fatal: true})` unable to throw.
+            //
+            // The byte is part of the error, so it is not consumed and
+            // `error_length` covers it.
             if (info.bytes_needed == 0xFF) {
-                output[out_pos] = 0xFFFD; // Replacement character
-                out_pos += 1;
-                in_pos += 1;
-                continue;
+                @branchHint(.unlikely);
+                return .{
+                    .status = .malformed,
+                    .bytes_consumed = in_pos,
+                    .code_units_written = out_pos,
+                    .error_length = 1,
+                };
             }
 
             // Multi-byte sequence (2, 3, or 4 bytes)
@@ -241,16 +252,38 @@ pub fn decode(
         // Validate continuation byte is in range
         if (byte < state.lower_boundary or byte > state.upper_boundary) {
             @branchHint(.unlikely); // Invalid sequences are rare in valid UTF-8
-            // Invalid continuation byte - reset and emit replacement
+            // Spec step 4: reset the state, RESTORE `byte` to the queue, and
+            // return error.
+            //
+            // Restoring is what decides the error's extent. `byte` is re-read
+            // as a fresh lead byte, so the failed sequence is the lead plus
+            // whatever continuations were already accepted - never `byte`
+            // itself. Counting it would swallow a valid character after a bad
+            // one, e.g. the 'A' in <C2 41>.
+            const seq_len: usize = 1 + @as(usize, state.bytes_seen);
+            state.code_point = 0;
             state.bytes_needed = 0;
             state.bytes_seen = 0;
             state.lower_boundary = 0x80;
             state.upper_boundary = 0xBF;
 
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            // Don't consume this byte - it might be a valid lead byte
-            continue;
+            if (in_pos >= seq_len) {
+                return .{
+                    .status = .malformed,
+                    .bytes_consumed = in_pos - seq_len,
+                    .code_units_written = out_pos,
+                    .error_length = @intCast(seq_len),
+                };
+            }
+            // The sequence started in an earlier streaming call, so its leading
+            // bytes are not in this buffer and cannot be named as a skip within
+            // it. Report the part that is here.
+            return .{
+                .status = .malformed,
+                .bytes_consumed = 0,
+                .code_units_written = out_pos,
+                .error_length = @intCast(in_pos),
+            };
         }
 
         // Reset boundaries after first continuation byte
@@ -305,14 +338,24 @@ pub fn decode(
     // Check if we have incomplete sequence at end
     if (is_last and state.bytes_needed > 0 and state.bytes_needed != 0xFF) {
         @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        // Incomplete sequence at EOF - emit replacement character
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-        }
-
+        // Spec step 1: end-of-queue while bytes needed is not 0 is an error.
+        // Only at end-of-queue - with `is_last` false the state is kept and the
+        // sequence may still be completed by the next chunk, which is what
+        // `decode(bytes, {stream: true})` depends on.
+        const seq_len: usize = 1 + @as(usize, state.bytes_seen);
+        state.code_point = 0;
         state.bytes_needed = 0;
         state.bytes_seen = 0;
+        state.lower_boundary = 0x80;
+        state.upper_boundary = 0xBF;
+
+        const within_buffer = in_pos >= seq_len;
+        return .{
+            .status = .malformed,
+            .bytes_consumed = if (within_buffer) in_pos - seq_len else 0,
+            .code_units_written = out_pos,
+            .error_length = if (within_buffer) @intCast(seq_len) else @intCast(in_pos),
+        };
     }
 
     return .{

@@ -186,6 +186,64 @@ pub const Decoder = struct {
         return self.encoding.decode_fn(self, input, output, is_last);
     }
 
+    /// Decode with the REPLACEMENT error mode: every error the handler reports
+    /// becomes one U+FFFD and decoding continues.
+    ///
+    /// WHATWG Encoding Standard § 5.1.3 - the error mode belongs to the caller,
+    /// not the decoder, which is why `decode` reports `.malformed` and stops.
+    /// Callers with no way to surface an error - the § 6 hooks, the internal
+    /// convenience APIs - want this loop, and writing it out by hand four times
+    /// is how one of them ended up with `assert(bytes_consumed == bytes.len)`.
+    ///
+    /// Callers that need the FATAL error mode use `decode` and treat
+    /// `.malformed` as the error it is.
+    pub fn decodeReplacement(
+        self: *Decoder,
+        input: []const u8,
+        output: []u16,
+        is_last: bool,
+    ) streaming.DecodeResult {
+        var in_pos: usize = 0;
+        var out_pos: usize = 0;
+
+        while (true) {
+            const result = self.decode(input[in_pos..], output[out_pos..], is_last);
+            out_pos += result.code_units_written;
+            in_pos += result.bytes_consumed;
+
+            switch (result.status) {
+                .input_empty, .output_full => return .{
+                    .status = result.status,
+                    .bytes_consumed = in_pos,
+                    .code_units_written = out_pos,
+                },
+                .malformed => {
+                    if (out_pos >= output.len) return .{
+                        .status = .output_full,
+                        .bytes_consumed = in_pos,
+                        .code_units_written = out_pos,
+                    };
+                    output[out_pos] = 0xFFFD;
+                    out_pos += 1;
+
+                    // An error resets the decoder per spec, so no half-read
+                    // sequence survives into the next iteration. `error_length`
+                    // of 0 can only mean "the bad bytes were in an earlier
+                    // chunk"; advance by one so this cannot spin.
+                    const skip: usize = if (result.error_length > 0) result.error_length else 1;
+                    in_pos = @min(in_pos + skip, input.len);
+                    self.state = .neutral;
+
+                    if (in_pos >= input.len) return .{
+                        .status = .input_empty,
+                        .bytes_consumed = in_pos,
+                        .code_units_written = out_pos,
+                    };
+                },
+            }
+        }
+    }
+
     /// Decode input bytes directly to UTF-8 output.
     ///
     /// If the encoding has a native decodeToUtf8 implementation, it will be used.

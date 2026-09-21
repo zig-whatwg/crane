@@ -46,7 +46,6 @@ pub fn decodeUtf8(allocator: std.mem.Allocator, bytes: []const u8) ![]const u16 
 /// Useful for performance-critical code that manages its own buffers.
 pub fn decodeUtf8ToBuffer(bytes: []const u8, buffer: []u16) ![]const u16 {
     const encoding_mod = @import("encoding.zig");
-    const utf8_decode_fn = @import("utf8/decoder.zig").decode;
     const Decoder = @import("encoding.zig").Decoder;
     const bom_mod = @import("bom.zig");
 
@@ -54,8 +53,9 @@ pub fn decodeUtf8ToBuffer(bytes: []const u8, buffer: []u16) ![]const u16 {
     const input = bom_mod.skipUtf8Bom(bytes);
 
     // Decode
+    // Replacement error mode - this API has no way to report one.
     var decoder = Decoder{ .encoding = &encoding_mod.UTF_8, .state = .neutral };
-    const result = utf8_decode_fn(&decoder, input, buffer, true);
+    const result = decoder.decodeReplacement(input, buffer, true);
 
     return buffer[0..result.code_units_written];
 }

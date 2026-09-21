@@ -81,7 +81,10 @@ pub fn utf8DecodeWithoutBom(allocator: std.mem.Allocator, bytes: []const u8) Dec
     defer allocator.free(output_buf);
 
     var decoder = Decoder{ .encoding = &encoding_mod.UTF_8, .state = .neutral };
-    const result = utf8_decode_fn(&decoder, bytes, output_buf, true);
+    // Replacement error mode: the decoder reports errors, this hook substitutes
+    // U+FFFD for each one. Before it did, the assertion below could not fail
+    // because the decoder never stopped short.
+    const result = decoder.decodeReplacement(bytes, output_buf, true);
 
     // Verify all bytes consumed
     std.debug.assert(result.bytes_consumed == bytes.len);
@@ -116,8 +119,12 @@ pub fn utf8DecodeWithoutBomOrFail(allocator: std.mem.Allocator, bytes: []const u
     var decoder = Decoder{ .encoding = &encoding_mod.UTF_8, .state = .neutral };
     const result = utf8_decode_fn(&decoder, bytes, output_buf, true);
 
-    // In fatal mode, any incomplete or invalid UTF-8 is an error
-    if (result.bytes_consumed < bytes.len) {
+    // Fatal error mode: the decoder's error is the answer. The
+    // `bytes_consumed` check alone was not enough - it can only notice an
+    // error that stopped the decoder, and for years the UTF-8 decoder
+    // substituted U+FFFD and ran to the end, so this hook returned a string of
+    // replacement characters and called it success.
+    if (result.status == .malformed or result.bytes_consumed < bytes.len) {
         return DecodeError.InvalidUtf8Sequence;
     }
 
@@ -228,7 +235,7 @@ pub fn decode(
     var output_buf = try allocator.alloc(u16, max_output_len);
     defer allocator.free(output_buf);
 
-    const result = decoder.decode(input, output_buf, true);
+    const result = decoder.decodeReplacement(input, output_buf, true);
 
     // Step 4: Return output (replacement mode - no errors)
     const final_output = try allocator.alloc(u16, result.code_units_written);

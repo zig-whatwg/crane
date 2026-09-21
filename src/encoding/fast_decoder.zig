@@ -147,7 +147,8 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
             const utf16_buf = try self.allocator.alloc(u16, max_len);
             defer self.allocator.free(utf16_buf);
 
-            const result = decoder.decode(input, utf16_buf, true);
+            // Replacement error mode - this API returns bytes, not an error.
+            const result = decoder.decodeReplacement(input, utf16_buf, true);
 
             // Convert UTF-16 to UTF-8
             for (utf16_buf[0..result.code_units_written]) |cu| {
@@ -168,7 +169,8 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
             const utf16_buf = try self.allocator.alloc(u16, max_len);
             defer self.allocator.free(utf16_buf);
 
-            const result = decoder.decode(input, utf16_buf, true);
+            // Replacement error mode - this API returns bytes, not an error.
+            const result = decoder.decodeReplacement(input, utf16_buf, true);
 
             // Convert UTF-16 to UTF-8
             var output = infra.List(u8).init(self.allocator);
