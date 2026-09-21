@@ -294,6 +294,74 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
     };
 }
 
+/// Does converting an argument of type `T` COPY out of the V8 handle, so the
+/// `Global<Value>` that `info.get(N)` allocated can be released once the
+/// conversion returns?
+///
+/// `v8_FunctionCallbackInfo_GetArgument` heap-allocates a `Global<Value>` where
+/// V8 hands back a borrowed `Local`, and nothing released it: `leaks --atExit`
+/// counted 199,997 abandoned argument handles per 200,000 cycles - one per
+/// `document.createElement` call.
+///
+/// An ALLOWLIST, for the same reason `typeRetainsContext` is one, and the
+/// danger here is sharper: some conversions TAKE OWNERSHIP of this exact
+/// pointer rather than copying from it. `conv.fromV8Value`'s function-pointer
+/// branch says so outright - "The value is already a Global<Value>* ... we
+/// don't need to create another Global - just use this one directly" - and
+/// `runtime.JSValue` keeps it as `.handle.ptr`. Releasing either is a
+/// use-after-free.
+///
+/// So an unrecognised type answers FALSE: keep the handle, keep the old leak.
+pub fn argHandleIsCopied(comptime T: type) bool {
+    return comptime blk: {
+        // Scalars decode to a Zig value; the handle is read and done with.
+        if (T == void or T == bool) break :blk true;
+        if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk true;
+        if (T == u8 or T == u16 or T == u32 or T == u64 or T == usize) break :blk true;
+        if (T == f32 or T == f64) break :blk true;
+
+        // Strings are copied out: the DOMString branch ends at
+        // `fromV8String` -> `DOMString.initOwned(buffer)`, an owned buffer, and
+        // the V8 string it read from is released by `v8_FreeToStringResult`
+        // before it returns.
+        if (T == runtime.DOMString or T == []const u8) break :blk true;
+        if (@hasDecl(runtime, "USVString") and T == runtime.USVString) break :blk true;
+        if (@hasDecl(runtime, "ByteString") and T == runtime.ByteString) break :blk true;
+
+        const info = @typeInfo(T);
+
+        // WebIDL enums decode to a plain tag.
+        if (info == .@"enum") break :blk true;
+
+        // Wrappers are copied exactly when their payload is. Note these are NOT
+        // recursive beyond one level on purpose - a payload that is itself a
+        // wrapper falls through to the conservative answer.
+        if (info == .optional) break :blk argHandleIsCopied(info.optional.child);
+        if (info == .error_union) break :blk argHandleIsCopied(info.error_union.payload);
+        if (info == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
+            break :blk argHandleIsCopied(@FieldType(T, "value"));
+        }
+
+        // JSValue, callbacks, Instance pointers, unions, dictionaries, slices:
+        // assume the handle is kept.
+        break :blk false;
+    };
+}
+
+/// `conv.fromV8Value`, releasing the argument handle afterwards when
+/// `argHandleIsCopied` can prove that is safe. The `defer` fires on the error
+/// path too, which is where the handle would otherwise be lost silently.
+fn convertArgReleasing(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    arg: *v8.Value,
+) !T {
+    defer if (comptime argHandleIsCopied(T)) v8.v8_Value_Dispose(arg);
+    return conv.fromV8Value(T, allocator, isolate, context, arg);
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -2896,7 +2964,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -2916,7 +2984,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -2931,7 +2999,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -2952,7 +3020,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2967,7 +3035,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -2981,7 +3049,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
@@ -3003,7 +3071,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3018,7 +3086,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3032,7 +3100,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3046,7 +3114,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
-                        break :arg_blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                        break :arg_blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3641,7 +3709,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
                     }
                     const v8_arg1 = info.get(0);
-                    const converted = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const converted = try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                     if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                         log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
                     }
@@ -3674,7 +3742,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     // Try default for first param
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3690,7 +3758,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     // Use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -3719,7 +3787,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -3734,7 +3802,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -3749,7 +3817,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -3772,7 +3840,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -3787,7 +3855,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -3802,7 +3870,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -3817,7 +3885,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
                     const v8_arg4 = info.get(3);
-                    break :blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                    break :blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                         break :blk default_val;

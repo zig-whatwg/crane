@@ -97,3 +97,79 @@ test "an unknown type defaults to RETAINS" {
     // whole story.
     try std.testing.expect(retains([]runtime.JSValue));
 }
+
+// ---------------------------------------------------------------------------
+// `argHandleIsCopied` - may the Global<Value> that `info.get(N)` allocated be
+// released once conversion returns?
+//
+// The sibling predicate, and the riskier one. `typeRetainsContext` asks whether
+// the CONTEXT survives; this asks whether the ARGUMENT HANDLE does, and for
+// some types `conv.fromV8Value` does not copy out of it at all - it adopts the
+// pointer. Releasing one of those is a use-after-free.
+//
+// Same allowlist discipline, same reason, and the polarity is inverted from the
+// predicate above: here TRUE means "safe to release", so an unrecognised type
+// must answer FALSE. The last test pins that.
+// ---------------------------------------------------------------------------
+
+const copied = v8.interface_mod.argHandleIsCopied;
+
+test "argHandleIsCopied - scalars are copied out of the handle" {
+    try std.testing.expect(copied(bool));
+    try std.testing.expect(copied(i32));
+    try std.testing.expect(copied(u32));
+    try std.testing.expect(copied(f64));
+}
+
+test "argHandleIsCopied - DOMString is copied: initOwned, not a borrow" {
+    // `fromV8Value` -> `fromV8String` -> `DOMString.initOwned(buffer)`. The bytes
+    // are the DOMString's own, and the V8 string they came from is released by
+    // `v8_FreeToStringResult` before the conversion returns. Nothing points into
+    // the argument handle afterwards.
+    try std.testing.expect(copied(runtime.DOMString));
+    try std.testing.expect(copied([]const u8));
+}
+
+test "argHandleIsCopied - JSValue is NOT, it keeps the pointer" {
+    // The distinction that makes this a separate predicate from the one above.
+    // JSValue does not retain the CONTEXT - `typeRetainsContext(JSValue)` is
+    // false, asserted earlier in this file - but it absolutely retains the VALUE:
+    // `.handle = .{ .ptr = value, .handle_scope = .local }`. Releasing the
+    // argument handle would free what it points at.
+    try std.testing.expect(!copied(runtime.JSValue));
+    try std.testing.expect(!copied(?runtime.JSValue));
+}
+
+test "argHandleIsCopied - function pointers adopt the handle outright" {
+    // conversions.zig is explicit: "The value is already a Global<Value>* from
+    // v8_FunctionCallbackInfo_GetArgument. We don't need to create another
+    // Global - just use this one directly." Ownership transfers to the callback
+    // wrapper, which disposes it later.
+    const FnPtr = *const fn () callconv(.c) void;
+    try std.testing.expect(!copied(FnPtr));
+}
+
+test "argHandleIsCopied - Instance pointers and handler unions are NOT copied" {
+    try std.testing.expect(!copied(*runtime.Instance));
+    const TimerHandlerShaped = union(enum) {
+        domstring: runtime.DOMString,
+        function: *anyopaque,
+    };
+    try std.testing.expect(!copied(TimerHandlerShaped));
+}
+
+test "argHandleIsCopied - wrappers follow their payload" {
+    try std.testing.expect(copied(?runtime.DOMString));
+    try std.testing.expect(copied(?i32));
+    try std.testing.expect(!copied(?*runtime.Instance));
+}
+
+test "argHandleIsCopied - an unknown type defaults to NOT copied" {
+    // The property the design rests on, in its inverted form. TRUE here means
+    // "release the handle", so the fallthrough must be FALSE: an unrecognised
+    // type keeps its handle and keeps the old leak, which costs memory and never
+    // correctness.
+    const SomethingNew = struct { a: u32, b: *anyopaque };
+    try std.testing.expect(!copied(SomethingNew));
+    try std.testing.expect(!copied([]runtime.JSValue));
+}
