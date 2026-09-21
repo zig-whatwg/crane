@@ -278,6 +278,45 @@ each other in `/tmp`.
 
 ---
 
+## Clean up as you go, not at the end
+
+Delete each temporary artifact **as soon as it stops being useful**, not when
+the task finishes. "I'll tidy up at the end" means it is still there at the end,
+because the end is where context runs out and sessions get interrupted.
+
+Applies to: build caches, `/tmp` clones and scratch directories, git worktrees
+and their branches, crash dumps, throwaway databases, captured logs and profiler
+output, and anything under `tmp/` you have finished reading.
+
+Concretely, while working:
+
+- **Finished with a measurement?** Delete the logs it produced. A `leaks` or
+  `heap` dump is worth keeping until you have extracted the number, and worthless
+  after.
+- **Switched approach?** The artifacts of the abandoned one go now.
+- **Spawned load generators, servers or background jobs?** Kill them in the same
+  step that stops needing them, and verify with `pgrep` rather than assuming.
+- **Long session?** Check disk periodically — `df -h /` and
+  `du -sh /tmp/* 2>/dev/null | sort -h | tail -5`. Do not wait to be surprised.
+
+Build caches are the big one. `/tmp/crane-z16-cache` reached **31 GB** in a
+single session; deleting it returned 398 GB free to 429 GB. It is worth keeping
+while you are still building and worth deleting the moment you are not — a cold
+rebuild is ~10 minutes, since V8 itself is prebuilt.
+
+Keep `/tmp/sdkshim` — it is 4 KB, every build needs it, and it does not survive
+a reboot.
+
+Before reporting a task complete, verify rather than claim:
+
+```bash
+git worktree list          # only the checkout you expect
+pgrep -fl 'gc_bench|wpt_runner|zig build'   # nothing of yours running
+du -sh /tmp/* 2>/dev/null | sort -h | tail -5
+```
+
+---
+
 ## Non-negotiable
 
 - Memory leaks, Zig or C++
@@ -288,7 +327,8 @@ each other in `/tmp`.
   unguarded `fprintf` in `v8_wrapper.cpp`. A prototype-chain dump guarded only
   by `strcmp(name, "HTMLDivElement")` ran on every wrapped element and emitted
   500,000 stderr writes in one benchmark.
-- Leaving temporary artifacts behind — worktrees, `/tmp` clones, build caches
+- Leaving temporary artifacts behind, or deferring cleanup to the end of a task
+  — see "Clean up as you go"
 
 ## Known debt — do not add to it
 
