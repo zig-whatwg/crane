@@ -209,6 +209,30 @@ fn configureStaticLibcurl(
     // full safety checks. Revisit when a curl release fixes it upstream.
     libcurl.root_module.sanitize_c = .off;
 
+    // The mbedTLS package compiles the LIBRARY with these two macros
+    // (mbedtls-3.6.4/build.zig:31-32) but does not propagate them to anything
+    // that includes the installed headers. MBEDTLS_THREADING_C appends a
+    // `mbedtls_threading_mutex_t mutex` to mbedtls_entropy_context and
+    // mbedtls_ctr_drbg_context, so the two translation units disagree:
+    //
+    //     libmbedtls.a  (macros on)   entropy_ctx 904   ctr_drbg_ctx 416
+    //     libcurl       (macros off)  entropy_ctx 832   ctr_drbg_ctx 344
+    //
+    // curl sizes its context with the short view, mbedtls_entropy_init writes
+    // the mutex 72 bytes past the end of it, a neighbour clears mutex.is_valid,
+    // and at connect time mbedtls_entropy_func fails the mutex lock and returns
+    // WITHOUT POLLING ANY ENTROPY SOURCE. mbedtls_ctr_drbg_seed then reports
+    // -0x0034 CTR_DRBG_ENTROPY_SOURCE_FAILED, surfacing as CURLE_SSL_CONNECT_ERROR.
+    //
+    // Every `.https.` WPT test failed on this: 0 of 192 produced a single
+    // subtest result, 157 of them inside the 0.1 worklist. It presented as a
+    // 10-second timeout rather than an error because a network-error response
+    // carries no headers, so src/browser/navigation.zig:312 defaults the
+    // content type to text/html and parses an empty document as a successful
+    // page load.
+    libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
+    libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+
     // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
     // zlib and mbedtls are compiled inside the curl package's own artifacts, so
     // pointing only the top-level module at the SDK left them failing on <stdio.h>
