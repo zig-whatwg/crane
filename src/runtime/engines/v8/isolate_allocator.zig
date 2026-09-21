@@ -53,10 +53,7 @@ const AllocatorData = struct {
     /// Gets reset after each callback
     arena: std.heap.ArenaAllocator,
 
-    /// General purpose allocator for long-lived objects
-    gpa: std.heap.DebugAllocator(.{}),
-
-    /// Whether this uses an arena or GPA
+    /// Arena mode, rather than handing back the parent directly.
     use_arena: bool,
 };
 
@@ -69,7 +66,12 @@ const AllocatorData = struct {
 /// Arguments:
 /// - isolate: V8 isolate to initialize allocator for
 /// - parent: Parent allocator to use for creating the isolate allocator
-/// - use_arena: If true, use arena allocator (fast, bulk free). If false, use GPA (slower, granular free)
+/// - use_arena: If true, allocations go to a per-isolate arena that is freed in
+///   bulk at isolate teardown. If false, `parent` is handed back directly, so
+///   `free` reaches the real allocator and memory is reclaimed during the run.
+///   False is what every caller wants and what every caller passes: the arena's
+///   `free` is a no-op, and this allocator serves every method and attribute
+///   dispatcher, so in arena mode each argument conversion leaked until teardown.
 ///
 /// Returns: Error if allocator already initialized or allocation fails
 pub fn initIsolateAllocator(
@@ -92,7 +94,6 @@ pub fn initIsolateAllocator(
             .allocator = undefined, // Set below
             .parent = parent,
             .arena = std.heap.ArenaAllocator.init(parent),
-            .gpa = undefined,
             .use_arena = true,
         };
         data.allocator = data.arena.allocator();
@@ -107,7 +108,6 @@ pub fn initIsolateAllocator(
             .allocator = parent,
             .parent = parent,
             .arena = undefined,
-            .gpa = undefined,
             .use_arena = false,
         };
     }
@@ -147,11 +147,11 @@ pub fn deinitIsolateAllocator(isolate: *v8.Isolate) void {
     const data_ptr = v8.v8_Isolate_GetData(isolate, ALLOCATOR_SLOT) orelse return;
     const data: *AllocatorData = @ptrCast(@alignCast(data_ptr));
 
-    // Clean up based on type
+    // Only the arena is ours to tear down. In passthrough mode `allocator` IS
+    // `parent`, every allocation was already freed through it by its owner, and
+    // there is no wrapper state - `arena` is `undefined` and must not be touched.
     if (data.use_arena) {
         data.arena.deinit();
-    } else {
-        _ = data.gpa.deinit();
     }
 
     // Free the data struct itself
