@@ -424,6 +424,55 @@ acquire, or restructure so you never acquire it.
 
 ---
 
+### Architecture: A network-error response is not a failed call
+
+**Date**: 2026-09-21
+**Lesson**: Fetch reports transport failure **in-band**, as a response object, not as an error return.
+
+**Why**: `mainFetch` catches a transport error and *successfully returns*
+`internal_response.networkError()` — type `error`, status 0, empty header list,
+null body. Any caller written to expect `catch |err|` sees success.
+
+**What Happened**: `src/browser/navigation.zig` read straight past it to
+`getFirstValue("Content-Type") orelse "text/html"`. A network error has no
+headers, so every failed navigation became an empty HTML document reported as a
+successful page load, and the WPT runner then polled `window.__wpt_complete` for
+the full 10-second ceiling. **Every transport failure was laundered into a
+silent timeout** — DNS failure, refused connection, TLS error and a genuine hang
+were indistinguishable in the journal. It hid an mbedTLS bug that broke all 192
+`.https.` tests for a month.
+
+**Fix**: Gate on `response_type == .@"error" or status == 0`, the same
+predicate the fetch algorithms already apply. Do NOT test for an empty body or
+missing content type — 204/205/304 legitimately have neither.
+
+**Takeaway**: **When a subsystem signals failure in-band, every consumer must
+check it explicitly; nothing will throw on their behalf.**
+
+---
+
+### Debugging: A diagnostic below the consumer's log level does not exist
+
+**Date**: 2026-09-21
+**Lesson**: Every curl diagnostic was `log.debug`; the WPT runner runs at `.warn`.
+
+**What Happened**: A hard transport failure — connection refused, TLS
+handshake failure, DNS failure — printed **nothing at all**. Diagnosing the
+mbedTLS ABI mismatch took a 2,052-file journal analysis and four independent
+experiments. With the error visible it would have taken one run: curl's own
+message named it outright.
+
+**Fix**: Transport failures log at `warn` with the curl code and
+`CURLOPT_ERRORBUFFER` text. Per-request chatter stays `debug`. Note
+`CURLOPT_ERRORBUFFER` was not even declared in the FFI, and
+`curl_easy_strerror` is not a substitute — it gives "Couldn't connect to
+server" where the error buffer gives the host, port and timing.
+
+**Takeaway**: **Pick the level from the consumer's threshold, not the
+author's.** A failure nobody can see costs more than the noise of one they can.
+
+---
+
 ### Architecture: A re-export does not mean the code is compiled
 
 **Date**: 2026-09-21
@@ -582,3 +631,63 @@ instead of four times by hand.
 
 **Takeaway**: **When one decoder in a family passes a conformance file and its
 siblings do not, diff their contracts before their algorithms.**
+
+---
+
+### Architecture: A null parent is not proof of ownership
+
+**Date**: 2026-09-21
+**Lesson**: `DomTreeAdapter.deinit` decided what to free by re-reading
+`getParent(node) == null` over every node the parser had ever created.
+
+**Why**: The adapter's map outlives the nodes in it. A node the parser attached
+belongs to V8 from that moment - the wrapper cache holds it and a weak callback
+can hand its Instance handle back to the slab whenever. And a recycled handle
+still *looks* like an Instance: `SlabAllocator.free` overwrites only offset 0
+(the vtable, with the free-list link) and `alloc` re-stamps `state` and `ctx`
+with `undefined`, which is 0xAA bytes in a safe build. Nothing about the 24
+bytes says "this is not the node you mapped".
+
+**What Happened**: on a document big enough for one GC during the parse, the
+sweep followed a recycled pointer into an instance belonging to a context that
+had already been torn down, and `markInstanceCleanedUp` panicked at
+`@ptrCast(@alignCast(cache_storage))` with `incorrect alignment` - the
+`_v8_wrapper_cache_storage` it read came out of freed memory, and `0xAAAA…AAAA`
+is not null, so `orelse return` passed it straight to `@alignCast`. Roughly 40
+crashes in `encoding/*-encode-form-*` alone. The same sweep also freed nodes a
+script had detached but still held, which is the same bug pointing the other way.
+
+**Fix**: record membership when you take it. `unattached_nodes` gains a node in
+`onNodeCreated` and loses it the instant `appendChild` succeeds; `deinit` sweeps
+that set. An unattached node is unreachable from script, so nothing can have
+wrapped or collected it, so its pointer is still valid.
+
+**Takeaway**: **Ownership is a fact you record at the moment you take it, never
+a predicate you re-evaluate later - by then the object may be someone else's.**
+
+---
+
+### Architecture: `var x = entry.field` is a copy, so clearing it clears nothing
+
+**Date**: 2026-09-21
+**Lesson**: `destroyChildContext` and `context_manager.deinit` both opened with
+`var ctx_data = entry.runtime_ctx;` and then mutated `ctx_data`.
+
+**Why**: `ContextEntry.runtime_ctx` is an inline `ContextData` and
+`runtime.Context` is `*ContextData`, so every Instance created in that context
+holds `&entry.runtime_ctx` - the entry's own field is the one everybody reads. A
+`var` binding copies the struct, so `ctx_data.clearV8WrapperCacheStorage()`
+cleared a stack copy that nothing else could see.
+
+**What Happened**: after 4c freed the `WrapperCache`,
+`entry.runtime_ctx._v8_wrapper_cache_storage` still pointed at it, and the realm
+and context-data phases that run next can reach an Instance whose `ctx` is that
+entry. Silent rather than loud, because a freed-but-aligned pointer sails past
+`@alignCast`.
+
+**Fix**: `const ctx_data = &entry.runtime_ctx;`. Nothing else changes - the
+copy's `deinit()` was already freeing the original's buffers.
+
+**Takeaway**: **A struct field read into a `var` is a copy; if you mean to clear
+the original, bind a pointer. Grep for `var x = y.field` wherever a teardown
+path "clears" something.**
