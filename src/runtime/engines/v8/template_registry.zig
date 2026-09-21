@@ -397,7 +397,12 @@ pub fn wrapInstanceAsV8Object(
                     cached_name_buf[interface_name.len] = 0;
                     break :cached_blk @as([*:0]const u8, @ptrCast(&cached_name_buf));
                 };
+                // Same allocation as the fresh-wrap path below, and this branch is
+                // the CACHE HIT - the one taken every time an already-wrapped node
+                // is handed back to JS, so it runs more often than the other.
                 const cached_global_proto = if (cached_name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+                defer if (cached_global_proto) |p| v8.v8_Object_Dispose(p);
+
                 if (cached_global_proto) |prototype| {
                     _ = v8.v8_Object_SetPrototype(cached_wrapper, context, @ptrCast(prototype));
                 }
@@ -456,12 +461,19 @@ pub fn wrapInstanceAsV8Object(
     };
 
     // Get the prototype from the global object - this is the SAME prototype that JavaScript sees
+    // Both prototype getters allocate a fresh Global<Object> - V8's own APIs return
+    // a borrowed Local - and this runs once per wrapped DOM object, so leaking them
+    // leaks per element. `SetPrototype` converts Global to Local and stores nothing
+    // (v8_wrapper.cpp:5984-5988), so releasing straight after is correct.
     const global_proto = if (name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+    defer if (global_proto) |p| v8.v8_Object_Dispose(p);
+
     if (global_proto) |prototype| {
         _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
     } else {
         // Fall back to GetPrototypeObject for interfaces not exposed on global
         if (v8.v8_FunctionTemplate_GetPrototypeObject(template, context)) |prototype| {
+            defer v8.v8_Object_Dispose(prototype);
             _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
         }
     }

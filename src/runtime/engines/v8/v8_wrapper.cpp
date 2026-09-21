@@ -131,6 +131,11 @@ static Global<T>* trackHandle(Global<T>* handle) {
     if (handle) {
 #if CRANE_TRACK_GLOBALS
         g_live_globals.fetch_add(1, std::memory_order_relaxed);
+        // Frame 0 - inside the `v8_*` wrapper, so this attributes by WHICH V8 entry
+        // point allocated. Frame 1 would name the Zig caller instead, but there are
+        // more distinct Zig call sites than the 512-slot table holds, and the counts
+        // spread too thin to rank. Entry-point attribution plus a targeted read of
+        // the hot path has been the more useful pair.
         recordGlobalSite(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
 #endif
     }

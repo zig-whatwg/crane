@@ -6194,6 +6194,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the values() iterator from the array
             const values_key = v8.v8_String_NewFromUtf8(isolate, "values", 6) orelse return null;
+            defer v8.v8_String_Dispose(values_key);
             const values_fn_val = v8.v8_Object_Get(@ptrCast(arr), context, @ptrCast(values_key)) orelse return null;
             if (!v8.v8_Value_IsFunction(values_fn_val)) return null;
 
@@ -6267,6 +6268,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const next_tmpl = v8.v8_FunctionTemplate_New(isolate, unifiedIteratorNextCallback, null) orelse return null;
             const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
             const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
+            defer v8.v8_String_Dispose(next_key);
             _ = v8.v8_Object_Set(iter_proto, context, @ptrCast(next_key), @ptrCast(next_func));
 
             // Set Symbol.iterator on the prototype (returns this)
@@ -6308,6 +6310,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Check if this is a pair iterator (has _isPairIterator flag) or indexed iterator
             const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return;
+            defer v8.v8_String_Dispose(pair_flag_key);
             const pair_flag_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pair_flag_key));
 
             if (pair_flag_val) |fv| {
@@ -6331,6 +6334,7 @@ pub fn V8Interface(comptime Interface: type) type {
         ) ?*v8.Object {
             // Determine if this is a pair iterable (has forEach but no length)
             const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return null;
+            defer v8.v8_String_Dispose(length_key);
             const length_val = v8.v8_Object_Get(target, context, @ptrCast(length_key));
             const has_length = if (length_val) |lv| !v8.v8_Value_IsUndefined(@ptrCast(lv)) else false;
             const is_pair_iterator = !has_length;
@@ -6346,18 +6350,22 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Store current index
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return null;
+            defer v8.v8_String_Dispose(index_key);
             const zero = v8.v8_Number_New(isolate, 0);
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(index_key), @ptrCast(zero));
 
             // Store iterator kind
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return null;
+            defer v8.v8_String_Dispose(kind_key);
             const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
 
             // Store interface type marker for brand checking in next()
             // This ensures next() can only be called with iterators of the same interface type
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return null;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return null;
+            defer v8.v8_String_Dispose(type_val);
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(type_key), @ptrCast(type_val));
 
             if (is_pair_iterator) {
@@ -6365,15 +6373,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Store reference to target for LIVE iteration (not snapshot)
                 // Per WebIDL spec, iteration should reflect concurrent modifications
                 const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                defer v8.v8_String_Dispose(target_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
 
                 // Mark this as a pair iterator by setting _isPairIterator flag
                 const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return null;
+                defer v8.v8_String_Dispose(pair_flag_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(pair_flag_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             } else {
                 // This is an indexed iterable (like NodeList, HTMLCollection)
                 // Store reference to target object
                 const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                defer v8.v8_String_Dispose(target_key);
                 _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
             }
 
@@ -6513,6 +6524,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
             const has_correct_type = blk: {
                 const tv = type_val orelse break :blk false;
@@ -6540,8 +6552,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get stored state (index, kind, and target)
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            defer v8.v8_String_Dispose(index_key);
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+            defer v8.v8_String_Dispose(kind_key);
             const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
+            defer v8.v8_String_Dispose(target_key);
 
             const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
             const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
@@ -6557,7 +6572,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // Create result object { value: ..., done: ... }
             const result_obj = v8.v8_Object_New(isolate) orelse return;
             const value_key_str = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            defer v8.v8_String_Dispose(value_key_str);
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+            defer v8.v8_String_Dispose(done_key);
 
             // Get live entries from the Zig instance
             // Use comptime check for IterableEntry and getEntriesForIterable
@@ -6668,8 +6685,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get stored state
             const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
+            defer v8.v8_String_Dispose(target_key);
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
+            defer v8.v8_String_Dispose(index_key);
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
+            defer v8.v8_String_Dispose(kind_key);
 
             // Validate that this is an actual iterator object, not the prototype
             // Per WebIDL spec: next() must throw TypeError when called on ineligible receiver
@@ -6697,6 +6717,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
             const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            defer v8.v8_String_Dispose(type_key);
             const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
             const has_correct_type = blk: {
                 const tv = type_val orelse break :blk false;
@@ -6730,13 +6751,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get length from target
             const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
+            defer v8.v8_String_Dispose(length_key);
             const length_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(length_key));
             const length: u32 = if (length_val) |lv| @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(lv), v8_context)) else 0;
 
             // Create result object { value: ..., done: ... }
             const result_obj = v8.v8_Object_New(isolate) orelse return;
             const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            defer v8.v8_String_Dispose(value_key);
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+            defer v8.v8_String_Dispose(done_key);
 
             const undef_val = v8.v8_Undefined(isolate) orelse return;
 
@@ -7703,6 +7727,7 @@ fn handleNewTargetPrototypeFallback(
         "prototype",
         9,
     ) orelse return;
+    defer v8.v8_String_Dispose(prototype_key);
 
     const new_target_obj: *v8.Object = @ptrCast(new_target_val);
     const proto_val = v8.v8_Object_Get(new_target_obj, v8_context, @ptrCast(prototype_key));
@@ -7734,6 +7759,7 @@ fn handleNewTargetPrototypeFallback(
         interface_name.ptr,
         @intCast(interface_name.len),
     ) orelse return;
+    defer v8.v8_String_Dispose(ctor_name);
 
     const ctor_val = v8.v8_Object_Get(global, target_realm, @ptrCast(ctor_name)) orelse return;
 
@@ -7936,6 +7962,7 @@ fn captureDOMExceptionStack(
 
     // Store the DOMException object as a temporary global for the script to access
     const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
+    defer v8.v8_String_Dispose(temp_key);
     _ = v8.v8_Object_Set(global, v8_context, @ptrCast(temp_key), @ptrCast(this_obj));
 
     // Compile and run a script that captures the stack trace
@@ -7956,6 +7983,7 @@ fn captureDOMExceptionStack(
         \\})();
     ;
     const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
+    defer v8.v8_String_Dispose(source);
     const script = v8.v8_Script_Compile(v8_context, source) orelse return;
     _ = v8.v8_Script_Run(v8_context, script);
 }
