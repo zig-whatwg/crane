@@ -1135,3 +1135,168 @@ remainder, dropping the first not-done path - that is the one it hung on.
 running.** The per-file ceiling is not a guarantee; budget for one pathological
 file stalling a batch indefinitely, and check liveness by output rather than by
 process.
+||||||| a9e0ddd0f
+
+---
+
+### Architecture: An empty `MaybeLocal` from a V8 callback is a promise, not a return value
+
+**Date**: 2026-09-22
+**Lesson**: `v8::Module::ResolveModuleCallback` returning empty means "I have
+already thrown". Returning empty without throwing kills the process.
+
+**Why**: V8 cannot represent "no module and no reason". Its internals `CHECK`
+that an exception is scheduled whenever a resolve callback comes back empty, and
+a failed `CHECK` is `IMMEDIATE_CRASH()` - SIGTRAP on arm64, with no Zig frame in
+the trace because nothing Zig wrote is on the stack.
+
+**What Happened**: `v8_Module_SetResolveCallback` is **never called from Zig**.
+`moduleResolveCallback` exists in `script_execution.zig` and nothing installs
+it, so `g_module_resolve_callback` was always null and
+`V8ModuleResolveCallback` returned `MaybeLocal<Module>()` for every import in
+the process. Every `<script type=module>` containing an `import` took the
+runner down. In `html/semantics/scripting-1/` that was 47 of 59 measured
+crashes, all in `the-script-element/module/`, plus `json-module/`,
+`import-attributes/` and `microtasks/` - and it read as "modules crash",
+which is a much larger-sounding problem than one missing `ThrowException`.
+
+A `TryCatch` does NOT help here. It catches a thrown exception; it cannot catch
+a `CHECK` inside V8.
+
+**Fix**: throw before returning empty - a TypeError, which is also what the HTML
+spec's "resolve a module specifier" produces on failure - and skip the throw if
+`isolate->HasPendingException()` so a real cause is not clobbered. Separately,
+`v8_Module_Compile`, `v8_Module_Instantiate` and `v8_Module_Evaluate` (the
+non-`_Safe` trio) had no `TryCatch` at all, so a syntax error left an exception
+pending that detonated at the next unrelated V8 call.
+
+**Takeaway**: **Every V8 API that can return "empty" documents what it wants
+alongside it. Read the contract, not the signature - the signature will compile
+either way and the violation surfaces as a process death somewhere else.**
+
+---
+
+### Architecture: `event_utils.dispatchEvent` invokes no listeners, on purpose
+
+**Date**: 2026-09-22
+**Lesson**: `event_utils.fireSimpleEvent` cannot be used to fire an event that
+script is supposed to hear.
+
+**Why**: `fireEvent` synthesises a `ContextData` on the CALLER'S STACK when
+handed a null context, and `Event.call_constructor` stores it in
+`instance.ctx`. The only thing keeping that from becoming a dangling pointer is
+that `dispatchEvent` runs no listener, so the event is never wrapped by V8 and
+never outlives the frame. The file says so in capitals, and it is correct.
+
+**What Happened**: `script_execution.fireLoadEvent` and `fireErrorEvent` both
+went through it, so neither `script.onload = fn` nor
+`script.addEventListener("load", fn)` had ever fired for a `<script>` element -
+in either direction, for any script, ever. Tests that wait on a script's load
+event waited out the full harness timeout, which is most of
+`the-script-element/microtasks/` and a good part of `module/`. The symptom is a
+hang, so it reads as a scheduling bug rather than a dispatch one.
+
+**Fix**: a script element has a real context whose entry outlives every Instance
+in it, so fire at it with `interfaces.EventTarget.call_dispatchEvent` instead -
+that walks the event path, invokes listeners, and calls
+`invokeIdlEventHandler` for the `on*` IDL attribute. Do NOT `defer
+Event.deinit`: a listener can hand the event to script and V8 will hold a
+wrapper. `errdefer` only, exactly as `HTMLParser.fireDOMContentLoadedEvent` does.
+
+**Takeaway**: **A stub whose comment explains why it is safe is describing a
+precondition, not a TODO. Check whether your caller meets it before reusing it.**
+
+---
+
+### Spec Compliance: "Prepare the script element" had no insertion-steps caller
+
+**Date**: 2026-09-22
+**Lesson**: `prepareScriptElement` was only ever called by the two parser paths,
+so a script created by `document.createElement` and appended never ran.
+
+**Why**: HTML lists "the script element becomes connected" as a trigger for
+preparing a script that is *not* parser-inserted. `src/dom/mutation.zig` has the
+registry for exactly this (`registerInsertionStepsCallback`), and only
+`HTMLIFrameElement` had ever used it.
+
+**What Happened**: `execution-timing/` builds 140 of its 153 files out of
+`testlib.addScript()`, which is `createElement('script')` + `appendChild`. None
+of those scripts ran. Three further defects were hiding behind that one, each
+invisible until the one in front of it was fixed:
+
+1. `handleScriptScheduling` tested `has_async` where step 35.1 says "has an
+   `async` attribute **OR** force async is true", so a dynamically-inserted
+   `<script src>` fell through all four cases onto a bare `return true`.
+2. Nothing drained the "execute as soon as possible" queues - `executeScriptsAsap`
+   and `executeScriptsInOrderAsap` existed and had no callers.
+3. `Document.InternalState.base_uri` is assigned by nothing in the tree, so every
+   relative `src` resolved to itself. An absolute URL in the same position
+   worked, which is what isolated it.
+
+**Fix**: register the insertion steps from `HTMLScriptElement.init`. The parser
+is excluded by the spec's own condition and needs no extra flag: both tree
+builders set the parser document on the element *before* appending it, so
+`isParserInserted` is already true. That ordering is load-bearing - the parser
+appends the script while it is still EMPTY and adds its text children
+afterwards, so preparing it on insertion would mark a sourceless script
+already-started and kill it.
+
+**Takeaway**: **When a directory of tests all hang on the same idiom, look for
+the algorithm that idiom triggers and ask who calls it. "No caller" is a
+likelier answer than "wrong implementation", and grep answers it in one line.**
+
+---
+
+### Testing: A drain guard keyed on a boolean strands a second document
+
+**Date**: 2026-09-22
+**Lesson**: Re-entrancy guards over per-document queues must record the
+document, not a flag.
+
+**Why**: A script run from a drain can insert a script into *another* document -
+an iframe's, or one from `createHTMLDocument`. A global "already draining"
+boolean suppresses that document's drain while nobody is walking its queues, and
+the outer loop only ever rescans the document it was given, so the script sits
+in the queue forever. The failure is a hang, not a crash, and only on pages with
+two documents.
+
+**Fix**: `var draining_document: ?*runtime.Instance`, compared against the
+document being asked for. A different document nests (bounded by an explicit
+depth cap for the mutually-recursive case); the same document returns and lets
+the outer loop pick the new entry up.
+
+**Takeaway**: **A guard against re-entrancy has to be as fine-grained as the
+state it protects, or it turns recursion into deadlock.**
+
+---
+
+### Debugging: `v8::Module` CHECKs its own preconditions, and a failed CHECK is SIGTRAP
+
+**Date**: 2026-09-22
+**Lesson**: `IsGraphAsync`, `GetModuleNamespace` and `Evaluate` all require a
+module that is at least `kInstantiated`, and enforce it with a CHECK.
+
+**Why**: The doc comments read as advice ("Must be called after module
+instantiation"). They are not. V8 aborts:
+
+    # Fatal error in v8::Module::IsGraphAsync
+    # v8::Module::IsGraphAsync must be used on an instantiated module
+
+**What Happened**: `script_execution.runModuleFromSource` asks
+`engine.hasTopLevelAwait(module)` immediately after compiling, to choose between
+the sync and async evaluation paths - before anything instantiates. So EVERY
+module script killed the process, including inline ones with no imports, which
+is why the first hypothesis (unresolvable imports) fit the failing set well
+enough to be believed and was wrong. The journal only records
+`.{ .signal = .TRAP }`; the message is on the child's stderr and the runner
+swallows it unless you run the one file by hand.
+
+**Fix**: guard at the FFI boundary, where "V8 will abort" becomes a value Zig
+can see - `if (local_module->GetStatus() < Module::kInstantiated) return ...`.
+False for `IsGraphAsync` is the safe answer, because the caller then evaluates
+synchronously and `Evaluate()` on a top-level-await module returns a promise
+anyway.
+
+**Takeaway**: **Run the one crashing file by hand before theorising. A
+`.{ .signal = .TRAP }` in the journal is V8 telling you exactly what is wrong on
+a stderr nobody is reading.**
