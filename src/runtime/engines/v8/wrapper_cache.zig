@@ -86,6 +86,10 @@ const CacheEntry = struct {
     /// onObjectFreed since the instance is already cleaned up.
     instance_already_cleaned: bool = false,
 
+    /// True while the wrapper is held strongly (no weak arm): the node has a
+    /// parent, or the document has a window. See installTreeHooks.
+    strong: bool = false,
+
     /// Set to true when the cache is being destroyed. This allows pending
     /// weak callbacks to detect that they should skip cleanup because:
     /// 1. The cache is no longer valid
@@ -159,6 +163,93 @@ fn slotReissued(entry: *const CacheEntry) bool {
     return entry.instance.vtable != entry.original_vtable or
         entry.instance.state != entry.original_state or
         runtime.SlabAllocator.generationOf(entry.instance) != entry.original_generation;
+}
+
+/// True while something other than V8 holds `instance`: a node with a parent
+/// (its tree owns it) or a document with a default view (its browsing context
+/// owns it). Read at callback time from the DOM's own parent pointer, which the
+/// mutation algorithms keep current - and `slotReissued` has already
+/// established that `instance` is the one this entry was made for. A stale
+/// registry entry at a recycled address can only answer "owned" for something
+/// that is not, which keeps an instance alive a little longer, never frees a
+/// live one.
+fn engineOwns(instance: *runtime.Instance) bool {
+    const NodeImpl = @import("impls").Node;
+    if (NodeImpl.getInternalState(instance)) |node_internal| {
+        if (node_internal.node_base) |node_base| {
+            if (node_base.parent_node != null) return true;
+        }
+    }
+    const DocumentImpl = @import("impls").Document;
+    if (DocumentImpl.getInternalState(instance)) |doc_internal| {
+        if (doc_internal.default_view != null) return true;
+    }
+    return false;
+}
+
+/// Which node wrappers V8 may collect. WebKit keeps a node's wrapper alive for
+/// as long as the node's tree is (JSNodeOwner::isReachableFromOpaqueRoots: the
+/// tree's root is the opaque root), and Blink traces the wrapper through the
+/// node, so in both `el.expando` and `el === el` survive a collection while the
+/// node is in a live tree. With Global handles that is: strong while the node
+/// has a parent, weak once it is a root - the root's own reachability then
+/// decides for the whole tree. The mutation algorithms run the insertion and
+/// removing steps for every node of a moved subtree, but only the subtree's
+/// root gains or loses a parent, so the predicate is read per node rather than
+/// implied by which hook fired. Installed once, by the first WrapperCache.
+var tree_hooks_installed = false;
+
+fn installTreeHooks() void {
+    if (tree_hooks_installed) return;
+    tree_hooks_installed = true;
+    const mutation = @import("dom").mutation;
+    mutation.registerInsertionStepsCallback(onNodeInserted) catch {};
+    mutation.registerRemovingStepsCallback(onNodeRemoved) catch {};
+}
+
+fn onNodeInserted(node: *@import("dom").NodeBase) void {
+    syncStrength(node);
+}
+
+fn onNodeRemoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").NodeBase) void {
+    _ = old_parent;
+    syncStrength(node);
+}
+
+fn syncStrength(node: *@import("dom").NodeBase) void {
+    setStrong(instanceOfNode(node) orelse return, node.parent_node != null);
+}
+
+fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
+    const instance_bridge = @import("dom").instance_bridge;
+    const raw = instance_bridge.getInstance(node) orelse return null;
+    return @ptrCast(@alignCast(raw));
+}
+
+/// A document becomes a window's document after it may already have been
+/// wrapped (an iframe's document is handed out as contentDocument before its
+/// context exists). From that moment the window aliases the wrapper - WebKit's
+/// `document` is a strong reference - so it must be held, not just kept: a
+/// document whose wrapper was collected under the window died in
+/// LookupIterator::GetRootForNonJSReceiver on the next `document` access
+/// (custom-elements/connected-callbacks.html, SIGTRAP).
+pub fn holdStrong(instance: *runtime.Instance) void {
+    setStrong(instance, true);
+}
+
+/// Hold or release `instance`'s wrapper, if its context's cache has one.
+fn setStrong(instance: *runtime.Instance, strong: bool) void {
+    const cache_storage = instance.ctx.getV8WrapperCacheStorage() orelse return;
+    const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+    if (cache.is_tearing_down) return;
+    const entry = cache.cache.get(instance) orelse return;
+    if (entry.strong == strong) return;
+    if (strong) {
+        v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+    } else {
+        v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+    }
+    entry.strong = strong;
 }
 
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
@@ -273,6 +364,21 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
 
         // Step 3: Entry already removed from cache at the top (with validation)
 
+        // An instance the ENGINE still owns is not freed when JS drops its
+        // wrapper: a node in a tree is reachable from its parent, a window's
+        // document from its browsing context, and neither pointer is visible
+        // to V8. Freeing here left the parent holding a dangling child, and
+        // the next walk over it - teardown, childNodes, textContent - read
+        // freed memory. Only the wrapper goes; a later wrap makes a fresh one,
+        // and the instance is freed when its tree is torn down, or once it is
+        // removed from the tree and its next wrapper is collected.
+        if (engineOwns(entry.instance)) {
+            log.debug("[weakCallback] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
         // Step 4: Clean up the Zig instance via GC integration
         // This calls the type's deinit function (e.g., Response.deinit)
         // which frees all owned resources (headers, body, URL list, etc.)
@@ -318,6 +424,7 @@ pub const WrapperCache = struct {
     /// ## Returns
     /// Initialized WrapperCache
     pub fn init(allocator: std.mem.Allocator, context: *v8.Context) !Self {
+        installTreeHooks();
         return .{
             .cache = std.AutoHashMap(*runtime.Instance, *CacheEntry).init(allocator),
             .allocator = allocator,
@@ -573,11 +680,20 @@ pub const WrapperCache = struct {
         try self.cache.put(instance, entry);
 
         // Set weak callback for GC cleanup
-        v8.v8_Global_SetWeak(
-            @ptrCast(wrapper),
-            @ptrCast(entry),
-            weakCallback,
-        );
+        // The wrapper of a node in a tree - or of a window's document - is
+        // held strongly, so its identity and its expandos survive a collection
+        // the way they do in WebKit and Blink. It goes weak when the node
+        // becomes a root (installTreeHooks), and the teardown sweep frees it
+        // otherwise.
+        if (engineOwns(instance)) {
+            entry.strong = true;
+        } else {
+            v8.v8_Global_SetWeak(
+                @ptrCast(wrapper),
+                @ptrCast(entry),
+                weakCallback,
+            );
+        }
     }
 
     /// Clear the entire cache

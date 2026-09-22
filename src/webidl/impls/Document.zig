@@ -1420,6 +1420,9 @@ pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowPro
 pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.default_view = window;
+    // The window aliases this document's wrapper from here on, so the wrapper
+    // cache holds it strongly (see wrapper_cache.holdStrong).
+    @import("v8").wrapper_cache_mod.holdStrong(instance);
 }
 
 /// Getter for designMode
