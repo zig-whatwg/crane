@@ -6416,6 +6416,21 @@ Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {
     return new Global<Value>(isolate, proto);
 }
 
+/// The [[Prototype]] script sees. On a global proxy, GetPrototype() answers
+/// with the hidden JSGlobalObject behind it, and handing that to
+/// SetPrototypeV2 is a V8 CHECK failure ("from_javascript implies
+/// !i::IsJSGlobalObject(*self)"); GetPrototypeV2() skips it.
+Global<Value>* v8_Object_GetPrototypeV2(Global<Object>* object) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> proto = obj->GetPrototypeV2();
+    if (proto.IsEmpty()) {
+        return nullptr;
+    }
+    return new Global<Value>(isolate, proto);
+}
+
 // ============================================================================
 // Lazy Data Property Functions
 // ============================================================================

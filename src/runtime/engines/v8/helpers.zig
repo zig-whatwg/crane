@@ -46,6 +46,30 @@ pub fn asFunction(value: *ffi.Value) ?*ffi.Function {
 /// Safely cast Value to Object if it is one.
 ///
 /// Returns null if the value is not an object, allowing for clean error handling.
+/// The string `String::WriteUtf8` wrote into `buf`, given what it returned.
+///
+/// WriteUtf8 writes a terminating NUL and COUNTS it in its return value
+/// (unless NO_NULL_TERMINATION is passed), so slicing `buf` with that count
+/// yields "name\0" - which matches nothing. WindowProperties' named access
+/// searched for exactly that for as long as it existed. Null for a failed
+/// write (<= 0) or a count the buffer cannot hold.
+pub fn writtenUtf8(buf: []const u8, written: c_int) ?[]const u8 {
+    if (written <= 0) return null;
+    const n: usize = @intCast(written);
+    if (n > buf.len) return null;
+    if (buf[n - 1] == 0) return buf[0 .. n - 1];
+    return buf[0..n];
+}
+
+/// A property-key Name as UTF-8 in `buf`, or null for a Symbol, a failed
+/// write, or a name that does not fit. Interceptor callbacks receive raw Name
+/// pointers, hence the `_Raw` write.
+pub fn nameToUtf8(name: *ffi.Name, buf: []u8) ?[]const u8 {
+    if (!ffi.v8_Name_IsString(name)) return null;
+    const string: *ffi.String = @ptrCast(name);
+    return writtenUtf8(buf, ffi.v8_String_WriteUtf8_Raw(string, buf.ptr, @intCast(buf.len)));
+}
+
 pub fn asObject(value: *ffi.Value) ?*ffi.Object {
     if (ffi.v8_Value_IsObject(value)) {
         return @ptrCast(value);

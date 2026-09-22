@@ -966,7 +966,9 @@ pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*A
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
-pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: *anyopaque) void;
+/// `value` may be null: clearing field 0 is how a discarded Window is severed
+/// from its global (window_properties.detachWindow).
+pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: ?*anyopaque) void;
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
 pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;
 // Raw versions for property interceptors (take raw Local pointers not Global handles)
@@ -990,6 +992,8 @@ pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototy
 /// Set the prototype using the newer V2 API that works properly with global objects
 pub extern fn v8_Object_SetPrototypeV2(object: *Object, context: *Context, prototype: *Value) bool;
 pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
+/// The prototype script sees: skips a global proxy's hidden JSGlobalObject.
+pub extern fn v8_Object_GetPrototypeV2(object: *Object) ?*Value;
 
 pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const PropertyCallbackInfo) callconv(.c) void;
 

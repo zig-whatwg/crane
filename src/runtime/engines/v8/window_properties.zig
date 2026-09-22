@@ -94,9 +94,12 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     // Per WebIDL §3.7.4, the named properties object's prototype is immutable
     v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
 
-    const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(tpl);
-    // Mark WindowProperties.prototype as immutable per WebIDL §3.7.4
-    v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
+    // The template's prototype object is NOT made immutable. It is not the
+    // named properties object - the instance above is, and it is immutable -
+    // but it is the only link after that instance whose [[Prototype]] can
+    // still be set, and insertIntoPrototypeChain points it at
+    // EventTarget.prototype. With both immutable, that step was refused
+    // silently and `window instanceof EventTarget` was never true.
 
     template_cache = tpl;
     template_cache_isolate = isolate;
@@ -161,9 +164,24 @@ pub fn insertIntoPrototypeChain(
     const window_proto_val = v8.v8_Object_Get(window_ctor, context, @ptrCast(proto_key)) orelse return false;
     const window_proto = helpers.asObject(window_proto_val) orelse return false;
 
-    // Get EventTarget.prototype (current prototype of Window.prototype)
-    const current_proto_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
-    const event_target_proto = helpers.asObject(current_proto_val) orelse return false;
+    // WindowProperties' [[Prototype]] is EventTarget.prototype (HTML 7.3.3) - the
+    // one the global exposes, which is what `instanceof EventTarget` checks.
+    // After a snapshot restore, Window.prototype's own [[Prototype]] is a
+    // placeholder object rather than it, so it is only the fallback.
+    const et_key = v8.v8_String_NewFromUtf8(isolate, "EventTarget", 11) orelse return false;
+    defer v8.v8_String_Dispose(et_key);
+    const event_target_proto: *v8.Object = blk: {
+        if (v8.v8_Object_Get(global, context, @ptrCast(et_key))) |et_ctor_val| {
+            defer v8.v8_Value_Dispose(et_ctor_val);
+            if (helpers.asObject(et_ctor_val)) |et_ctor| {
+                if (v8.v8_Object_Get(et_ctor, context, @ptrCast(proto_key))) |et_proto_val| {
+                    if (helpers.asObject(et_proto_val)) |et_proto| break :blk et_proto;
+                }
+            }
+        }
+        const current_proto_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
+        break :blk helpers.asObject(current_proto_val) orelse return false;
+    };
 
     // Use provided window_instance, or try to get from global's internal field
     const window_instance: ?*runtime.Instance = window_instance_opt orelse blk: {
@@ -174,14 +192,66 @@ pub fn insertIntoPrototypeChain(
     // Create a new WindowProperties instance with the Window reference
     const wp = create(isolate, context, event_target_proto, window_instance) orelse return false;
 
-    // Set WindowProperties's prototype to EventTarget.prototype
-    _ = v8.v8_Object_SetPrototype(wp, context, @ptrCast(event_target_proto));
+    // WindowProperties -> EventTarget.prototype. The instance's own
+    // [[Prototype]] is immutable (WebIDL), so the link goes on the template's
+    // prototype object behind it: wp -> wp_proto -> EventTarget.prototype.
+    if (v8.v8_Object_GetPrototypeV2(wp)) |wp_proto_val| {
+        defer v8.v8_Value_Dispose(wp_proto_val);
+        if (helpers.asObject(wp_proto_val)) |wp_proto| {
+            _ = v8.v8_Object_SetPrototypeV2(wp_proto, context, @ptrCast(event_target_proto));
+        }
+    }
 
     // Insert WindowProperties between Window.prototype and EventTarget.prototype
     // Window.prototype.__proto__ = WindowProperties
     _ = v8.v8_Object_SetPrototype(window_proto, context, @ptrCast(wp));
 
+    linkGlobalToWindowProperties(context, global, window_proto, wp);
+
     return true;
+}
+
+/// Make the global's prototype chain reach WindowProperties, so named access on
+/// the Window object (HTML 7.3.3) works: `window.<id>`, a bare `<id>`
+/// identifier, `'<id>' in window`, `window.<iframe name>`.
+///
+/// A [Global] object has an immutable prototype (WebIDL: an immutable
+/// prototype exotic object), so its [[Prototype]] is fixed when the context is
+/// created. Every context here is restored from a snapshot whose context was
+/// made by a plain `Context::New(isolate)` (v8_SnapshotCreator_CreateAndAddContext),
+/// so that prototype is V8's placeholder for a template without a constructor:
+/// an object holding only `constructor`, directly on Object.prototype. Setting
+/// the global's prototype afterwards is refused without an exception
+/// (SetPrototypeImpl uses kDontThrow), which is how the SetPrototypeV2 calls in
+/// Context.zig and context_manager.createChildContext came to do nothing: the
+/// WindowProperties object inserted above was never on the global's chain, in
+/// top-level pages or iframes.
+///
+/// The placeholder is an ordinary object, so it is what gets linked:
+///   window -> placeholder -> WindowProperties -> EventTarget.prototype
+/// Window.prototype is deliberately NOT spliced in. After a snapshot restore
+/// its accessors are mis-wired: setting `self` on the global walked to
+/// Window.prototype's `self` accessor, whose setter dispatched to
+/// `MethodCallback("call_pauseTransformFeedback")` and threw
+/// NotEnoughArguments - every page errored before its first script. The global
+/// already carries Window's members as own properties
+/// (registerPropertiesAsOwnOnObject / registerMethodsAsOwnOnObject), so nothing
+/// is lost by skipping it. Left over: `Object.getPrototypeOf(window) !==
+/// Window.prototype`; creating the snapshot's global from Window's
+/// InstanceTemplate, once its accessors are sound, is the fix for both.
+///
+/// Only SetPrototypeV2 and GetPrototypeV2 on the global: the V1 calls are V8's
+/// from_javascript=false path, which on a global proxy reaches the hidden
+/// JSGlobalObject rather than the [[Prototype]] script sees - and SetPrototypeV2
+/// on a JSGlobalObject is a CHECK failure.
+fn linkGlobalToWindowProperties(context: *v8.Context, global: *v8.Object, window_proto: *v8.Object, wp: *v8.Object) void {
+    // A global created mutable takes Window.prototype directly.
+    if (v8.v8_Object_SetPrototypeV2(global, context, @ptrCast(window_proto))) return;
+    const placeholder_val = v8.v8_Object_GetPrototypeV2(global) orelse return;
+    defer v8.v8_Value_Dispose(placeholder_val);
+    if (v8.v8_Value_StrictEquals(placeholder_val, @ptrCast(window_proto))) return;
+    const placeholder = helpers.asObject(placeholder_val) orelse return;
+    _ = v8.v8_Object_SetPrototypeV2(placeholder, context, @ptrCast(wp));
 }
 
 // ============================================================================
@@ -202,16 +272,51 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));
     };
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(holder, 0) orelse {
-        // Fallback: try current context's global (for backwards compatibility)
-        const isolate = info.getIsolate();
-        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
-        defer v8.v8_Context_Dispose(context);
-        const global = v8.v8_Context_Global(context) orelse return null;
-        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
-        return @ptrCast(@alignCast(global_ptr));
-    };
+    // An empty field means the Window was discarded (detachWindow): answer
+    // nothing. Falling back to the CURRENT context's window here would answer
+    // `iframe.contentWindow.x` from the parent's document.
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(holder, 0) orelse return null;
     return @ptrCast(@alignCast(ptr));
+}
+
+/// Sever `window_instance` from its context's global and WindowProperties
+/// object before the instance is freed.
+///
+/// Script can outlive a browsing context: `const w = iframe.contentWindow;
+/// iframe.remove(); w.length` is ordinary. Both the global and its
+/// WindowProperties object hold the Window instance in internal field 0, so
+/// once destroyChildContext freed the instance, every later access read freed
+/// state - `w.length` panicked in an @intCast of a poisoned child count, and
+/// `w.x` walked a freed document. With the fields cleared, a getter finds no
+/// instance and throws "Illegal invocation", and named access is undefined.
+/// (A discarded window should answer `length` 0 and `closed` true; that needs
+/// its state retired rather than freed.)
+pub fn detachWindow(context: *v8.Context, window_instance: *runtime.Instance) void {
+    const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
+    clearIfWindow(global, window_instance);
+    // global -> placeholder -> WindowProperties: a couple of links up. Every
+    // handle stays alive until the walk is over - each link is read through
+    // the previous one.
+    var links: [3]?*v8.Value = .{ null, null, null };
+    defer for (links) |link| {
+        if (link) |value| v8.v8_Value_Dispose(value);
+    };
+    var current: *v8.Object = global;
+    for (&links) |*slot| {
+        const proto_val = v8.v8_Object_GetPrototypeV2(current) orelse return;
+        slot.* = proto_val;
+        const proto = helpers.asObject(proto_val) orelse return;
+        clearIfWindow(proto, window_instance);
+        current = proto;
+    }
+}
+
+fn clearIfWindow(obj: *v8.Object, window_instance: *runtime.Instance) void {
+    if (v8.v8_Object_InternalFieldCount(obj) < 1) return;
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0) orelse return;
+    if (@intFromPtr(ptr) != @intFromPtr(window_instance)) return;
+    v8.v8_Object_SetAlignedPointerInInternalField(obj, 0, null);
 }
 
 /// Get the current context for WindowProperties operations
@@ -222,11 +327,7 @@ fn getContextFromHolder(info: *const v8.PropertyCallbackInfo) ?*v8.Context {
 
 /// Convert V8 Name to native string
 fn nameToNative(_: *v8.Isolate, name: *v8.Name, buf: []u8) ?[]const u8 {
-    if (!v8.v8_Name_IsString(name)) return null;
-    const string = @as(*v8.String, @ptrCast(name));
-    const len = v8.v8_String_WriteUtf8_Raw(string, buf.ptr, @intCast(buf.len));
-    if (len < 0) return null;
-    return buf[0..@intCast(len)];
+    return helpers.nameToUtf8(name, buf);
 }
 
 /// Named property getter - [[Get]] for WindowProperties

@@ -2321,11 +2321,7 @@ pub fn windowNamedPropertyQuery(
 
 /// Convert a V8 Name to a native Zig string
 fn nameToNative(_: *v8.Isolate, name: *v8.Name, buf: []u8) ?[]const u8 {
-    if (!v8.v8_Name_IsString(name)) return null;
-    const string: *v8.String = @ptrCast(name);
-    const len = v8.v8_String_WriteUtf8_Raw(string, buf.ptr, @intCast(buf.len));
-    if (len < 0) return null;
-    return buf[0..@intCast(len)];
+    return @import("helpers.zig").nameToUtf8(name, buf);
 }
 
 /// Check if a property name is a built-in Window property that should not be intercepted.
@@ -2637,6 +2633,11 @@ pub fn createChildContext(
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
     window_instance.ctx = &child_entry.runtime_ctx;
 
+    // 10a. Named access on this window (HTML 7.3.3): put WindowProperties on the
+    // global's chain, as createWindowForExistingBrowsingContext does. This path
+    // never did, so `iframe.contentWindow.<id>` was always undefined.
+    _ = @import("window_properties.zig").insertIntoPrototypeChain(options.isolate, child_context, window_instance);
+
     // 10b. Link to parent's children list BEFORE creating Location
     // This ensures the child context is properly tracked for cleanup even if
     // Location creation fails. Without this, a failed Location init would
@@ -2797,6 +2798,11 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
                     }
                 }
             }
+
+            // Script can still hold this window (iframe.contentWindow outlives
+            // iframe.remove()); sever the global's and WindowProperties'
+            // pointers to it before it is freed.
+            @import("window_properties.zig").detachWindow(entry.v8_ctx, window_instance);
 
             // Now call the full Window.deinit() which cleans up:
             // - Location.deinit()
