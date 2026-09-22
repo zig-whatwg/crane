@@ -1686,6 +1686,155 @@ void v8_FreeFunctionCallResult(V8FunctionCallResult* result) {
     delete result;
 }
 
+// ============================================================================
+// Completion-returning primitives (WebIDL "invoke a callback function")
+// ============================================================================
+//
+// `v8_Function_Call` leaves a throw pending on the isolate, where Zig can
+// neither read nor clear it, and the `_Safe` variants catch it but report only
+// its string form. WebIDL needs the thrown VALUE: a callback whose return type
+// is a promise turns it into a rejected promise, and "rethrow" hands it back
+// to the caller's caller unchanged (Streams: `start()` throwing `error1` must
+// make the constructor throw `error1`, not a TypeError describing it).
+
+/// Call `function` with `recv` (null = undefined) under a TryCatch and return
+/// the completion. On a normal return the result is returned and `*threw` is
+/// false; on a throw the thrown value is returned and `*threw` is true - the
+/// exception is caught, never left pending. Returns nullptr with `*threw` true
+/// only when there is no value to report: `function` is not callable, or the
+/// isolate is terminating. Every non-null result is a new Global the caller owns.
+Global<Value>* v8_Function_CallCatching(
+    Global<Context>* context,
+    Global<Value>* function,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv,
+    bool* threw
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+
+    if (!context || !function || function->IsEmpty()) return nullptr;
+    Local<Value> fn_value = function->Get(isolate);
+    if (!fn_value->IsFunction()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Value> this_val = recv ? recv->Get(isolate) : Undefined(isolate).As<Value>();
+
+    std::vector<Local<Value>> local_argv;
+    local_argv.reserve(argc > 0 ? argc : 0);
+    for (int i = 0; i < argc; i++) {
+        local_argv.push_back(argv[i] ? argv[i]->Get(isolate) : Undefined(isolate).As<Value>());
+    }
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_result = fn_value.As<Function>()->Call(
+        ctx, this_val, argc, local_argv.empty() ? nullptr : local_argv.data());
+
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (maybe_result.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
+}
+
+/// A second, independently owned Global for the value `global` holds. Both
+/// must be disposed. Returns nullptr for a null or empty handle.
+Global<Value>* v8_Global_Clone(Global<Value>* global) {
+    if (!global || global->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return trackHandle(new Global<Value>(isolate, global->Get(isolate)));
+}
+
+/// Set promise.[[PromiseIsHandled]] to true (WebIDL "mark as handled"), so a
+/// rejection nobody awaits is not reported as unhandled. No-op for a
+/// non-promise.
+void v8_Promise_MarkAsHandled(Global<Value>* promise) {
+    if (!promise || promise->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> value = promise->Get(isolate);
+    if (value->IsPromise()) value.As<Promise>()->MarkAsHandled();
+}
+
+/// Called once, with the settled value (a new Global the callee owns) and
+/// whether the promise rejected.
+typedef void (*ZigReactionCallback)(void* data, Global<Value>* value, bool rejected);
+
+struct ZigReaction {
+    ZigReactionCallback callback;
+    void* data;
+};
+
+static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool rejected) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope scope(isolate);
+    auto* reaction = static_cast<ZigReaction*>(info.Data().As<External>()->Value());
+    Local<Value> arg = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
+    Global<Value>* value = trackHandle(new Global<Value>(isolate, arg));
+    ZigReactionCallback callback = reaction->callback;
+    void* data = reaction->data;
+    // A promise settles once and `then` registered exactly one reaction, so the
+    // other trampoline sharing this record never runs: free it before calling
+    // out, so a callback that never returns normally cannot leak it.
+    delete reaction;
+    callback(data, value, rejected);
+}
+
+/// WebIDL "react to" a promise: promise.then(onFulfilled, onRejected), where
+/// both call `callback(data, value, rejected)`. Exactly one of them runs,
+/// exactly once. Returns false - and `callback` never runs - when the
+/// reaction could not be attached (`promise` is not a promise).
+///
+/// The promise `then` derives is marked handled: nothing observes it, and a
+/// throw escaping `callback` must not surface as an unhandled rejection.
+/// Uses Function::New rather than a FunctionTemplate per reaction - templates
+/// are cached per context for the context's lifetime.
+bool v8_Promise_React(
+    Global<Context>* context,
+    Global<Value>* promise,
+    ZigReactionCallback callback,
+    void* data
+) {
+    if (!context || !promise || promise->IsEmpty() || !callback) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    Local<Value> value = promise->Get(isolate);
+    if (!value->IsPromise()) return false;
+
+    auto* reaction = new ZigReaction{callback, data};
+    Local<External> external = External::New(isolate, reaction);
+
+    Local<Function> on_fulfilled;
+    Local<Function> on_rejected;
+    if (!Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
+            zigReactionTrampoline(info, false);
+        }, external, 1).ToLocal(&on_fulfilled) ||
+        !Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
+            zigReactionTrampoline(info, true);
+        }, external, 1).ToLocal(&on_rejected)) {
+        delete reaction;
+        return false;
+    }
+
+    Local<Promise> derived;
+    if (!value.As<Promise>()->Then(ctx, on_fulfilled, on_rejected).ToLocal(&derived)) {
+        delete reaction;
+        return false;
+    }
+    derived->MarkAsHandled();
+    return true;
+}
+
 /// Compile an ES module with TryCatch error handling
 V8ModuleCompileResult* v8_Module_Compile_Safe(
     Global<Context>* context,
