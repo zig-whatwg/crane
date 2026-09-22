@@ -3141,6 +3141,18 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
     const ElementImpl = @import("Element.zig");
     try ElementImpl.setLocalName(element, local_name_slice);
 
+    // DOM 4.5 createElement step 3: "Let namespace be the HTML namespace, if
+    // this is an HTML document or this's content type is
+    // "application/xhtml+xml"; otherwise null."
+    //
+    // Leaving this null made a script-created <div> and a parser-created <div>
+    // differ: the parser already puts elements in the HTML namespace, so
+    // getElementsByTagNameNS, matches() and cloning disagreed depending on how
+    // the element happened to be made.
+    if (internal.doc_type == .html) {
+        try ElementImpl.setNamespaceURI(element, "http://www.w3.org/1999/xhtml");
+    }
+
     // Set owner document
     try NodeImpl.setOwnerDocument(element, instance);
 
@@ -3803,16 +3815,16 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const pi = try interfaces.ProcessingInstruction.init(internal.allocator, instance.ctx);
+    // DOM 4.5: return a new ProcessingInstruction with target `target`, data
+    // `data` and node document this. The target is readonly on the interface,
+    // so it can only be set at creation.
+    const pi = try ProcessingInstructionImpl.createProcessingInstruction(
+        internal.allocator,
+        instance.ctx,
+        target.asSlice(),
+        data.asSlice(),
+    );
     errdefer interfaces.ProcessingInstruction.deinit(pi);
-
-    // Set node type
-    try NodeImpl.setNodeType(pi, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
-
-    // TODO: Set target and data fields on the ProcessingInstruction
-    _ = target;
-    _ = data;
 
     // Set owner document
     try NodeImpl.setOwnerDocument(pi, instance);
@@ -4291,8 +4303,8 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
     // Set node type
     try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
 
-    // TODO: Set data field via CharacterData
-    _ = data;
+    // DOM 4.5: the new CDATASection node's data is `data`.
+    try interfaces.CharacterData.set_data(cdata, data);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(cdata, instance);
