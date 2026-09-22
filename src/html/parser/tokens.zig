@@ -504,6 +504,11 @@ pub const TagToken = struct {
         }
         self.attributes.deinit();
         if (self.attribute_names) |*names| {
+            // The keys are copies this token made - see rememberAttributeName.
+            var keys = names.keyIterator();
+            while (keys.next()) |key| {
+                self.allocator.free(key.*);
+            }
             names.deinit(self.allocator);
         }
         if (self.current_attribute) |*attr| {
@@ -562,13 +567,28 @@ pub const TagToken = struct {
             var is_duplicate = false;
 
             if (attr_count > 4) {
-                // Use hash set for larger attribute counts
+                // Use hash set for larger attribute counts.
+                //
+                // The keys are OWNED copies, not slices into an Attribute. A
+                // `SmallString` keeps up to 31 bytes INLINE, so `toSlice()`
+                // returns a pointer into the struct it was called on - and
+                // every Attribute reachable here is a temporary: `attr` above
+                // is the `if (self.current_attribute) |attr|` payload copy,
+                // and a `for (slice) |existing|` binding is a stack slot the
+                // next iteration reuses. Seeding the set from those handed it
+                // N keys all aliasing ONE address, so the next rehash found
+                // them all equal and `grow`'s `putAssumeCapacityNoClobber`
+                // asserted - `panic: reached unreachable code`, taking the
+                // process with it on any tag with seven or more attributes.
+                // `infra.List.append` reallocates, so a pointer into
+                // `self.attributes` is no more stable. Duping is the only
+                // answer that survives both.
                 if (self.attribute_names == null) {
                     // Initialize hash set and populate with existing attributes
                     self.attribute_names = std.StringHashMapUnmanaged(void){};
                     const slice = self.attributes.toSlice();
-                    for (slice) |existing| {
-                        try self.attribute_names.?.put(self.allocator, existing.name.toSlice(), {});
+                    for (slice) |*existing| {
+                        try self.rememberAttributeName(existing.name.toSlice());
                     }
                 }
 
@@ -577,7 +597,7 @@ pub const TagToken = struct {
                     is_duplicate = true;
                 } else {
                     // Add to hash set
-                    try self.attribute_names.?.put(self.allocator, name, {});
+                    try self.rememberAttributeName(name);
                 }
             } else {
                 // Linear scan for small attribute counts
@@ -599,6 +619,24 @@ pub const TagToken = struct {
             }
             self.current_attribute = null;
         }
+    }
+
+    /// Record `name` in the duplicate-detection set, taking a copy of it.
+    ///
+    /// The copy is what makes the key outlive the Attribute it came from; see
+    /// the note in `finishCurrentAttribute`. `deinit` frees every key.
+    fn rememberAttributeName(self: *TagToken, name: []const u8) !void {
+        const gop = try self.attribute_names.?.getOrPut(self.allocator, name);
+        if (gop.found_existing) return;
+
+        // getOrPut stored the BORROWED slice as the key. Replace it with a copy
+        // before anything can observe it, and take the entry back out if the
+        // copy fails - leaving the borrowed key in place would reintroduce the
+        // dangling key this function exists to prevent.
+        gop.key_ptr.* = self.allocator.dupe(u8, name) catch |err| {
+            _ = self.attribute_names.?.remove(name);
+            return err;
+        };
     }
 
     /// Append a character to the current attribute's name.
