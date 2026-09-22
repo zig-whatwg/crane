@@ -386,7 +386,7 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .flushAlgorithm = streams_common.defaultFlushAlgorithm(),
         .cancelAlgorithm = streams_common.defaultCancelAlgorithm(),
         .finishPromise = null,
-        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
+        .isolate = v8_engine.ffi.v8_Isolate_GetCurrent(), // not getEngineContextAs: that is a Global<Context>*
         .v8_context = null,
         // Initialize V8 Global handles to null - will be set below if transformer has callbacks
         .flush_algorithm_v8 = null,

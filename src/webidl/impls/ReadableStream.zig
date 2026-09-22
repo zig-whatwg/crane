@@ -2098,7 +2098,11 @@ fn setUpReadableStreamDefaultController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
+    // The CURRENT isolate. `ctx.getEngineContextAs(Isolate)` reinterprets the
+    // runtime context's Global<Context>* as an Isolate*, so every callback
+    // later invoked through it opened a HandleScope on context memory - a
+    // crash or a silent no-op depending on what that memory held.
+    const isolate: ?*v8_engine.ffi.Isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
 
@@ -2423,7 +2427,11 @@ fn setUpReadableByteStreamController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
+    // The CURRENT isolate. `ctx.getEngineContextAs(Isolate)` reinterprets the
+    // runtime context's Global<Context>* as an Isolate*, so every callback
+    // later invoked through it opened a HandleScope on context memory - a
+    // crash or a silent no-op depending on what that memory held.
+    const isolate: ?*v8_engine.ffi.Isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
     // Step 2: If autoAllocateChunkSize provided, it must be positive (checked in FromUnderlyingSource)
