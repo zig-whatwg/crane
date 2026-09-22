@@ -168,10 +168,23 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
         // Navigate to src URL
         internal.integration.setSrc(src) catch {};
 
-        // Fire load event after navigation for data: and javascript: URLs
-        // (HTTP URLs are async and would need async load event firing)
+        // Fire the load event. `data:` and `javascript:` fire synchronously,
+        // as they always have - the parser has not run any script that could
+        // be listening yet, and changing their timing would move a case that
+        // already works.
+        //
+        // Everything else is deferred by a microtask. The navigation above
+        // completed synchronously, but a parser-created iframe is appended
+        // during tree construction, before the document's scripts have run, so
+        // a synchronous event would arrive before any of them could listen.
+        // Per HTML §4.8.5 the load event fires once the nested navigable's
+        // document has finished loading - including an error document, which
+        // is why a failed navigation still fires rather than leaving the page
+        // waiting forever.
         if (std.mem.startsWith(u8, src, "data:") or std.mem.startsWith(u8, src, "javascript:")) {
             fireLoadEventOnIframe(instance);
+        } else {
+            queueIframeLoadEvent(instance);
         }
         return;
     }
@@ -224,6 +237,16 @@ pub const InternalState = struct {
     credentialless: bool = false,
     ad_auction_headers: bool = false,
     shared_storage_writable: bool = false,
+
+    /// Which navigation the pending load event belongs to, or 0 for none.
+    ///
+    /// Drawn from a process-wide counter rather than a per-instance one on
+    /// purpose. The slab RECYCLES instance addresses, so a deferred callback
+    /// holding a `*runtime.Instance` can find a *different* element's state at
+    /// that address by the time it runs. A per-instance counter starting at
+    /// zero would match on that stale state and dispatch a load event at an
+    /// unrelated iframe; a value no other live state can hold cannot.
+    pending_load_token: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !*InternalState {
         const ArenaAllocator = runtime.ArenaAllocator;
@@ -694,6 +717,101 @@ fn fireLoadCallback(iframe_instance_ptr: ?*anyopaque) void {
     fireLoadEventOnIframe(instance);
 }
 
+/// Source of `InternalState.pending_load_token`. Never reused, never zero.
+threadlocal var next_load_token: u64 = 1;
+
+/// The microtask that carries a deferred iframe load event.
+const PendingLoadEvent = struct {
+    instance: *runtime.Instance,
+    token: u64,
+    allocator: std.mem.Allocator,
+};
+
+/// Fire `load` at the iframe once the current script has finished.
+///
+/// Crane navigates an iframe SYNCHRONOUSLY: `IFrameIntegration.navigateToSrc`
+/// fetches, parses and commits the document before it returns. So by the time
+/// a `src` assignment returns there is nothing left to wait for - but there is
+/// also no listener yet, because the usual shape is
+///
+///     iframe.src = url;
+///     await new Promise(r => iframe.addEventListener("load", r));
+///
+/// and WPT's own helpers are written that way (`setupSentinelIframe` in
+/// `navigating-across-documents/replace-before-load/resources/helpers.js` sets
+/// `src`, appends, and only then awaits). Firing synchronously from the setter
+/// would deliver the event before anything could hear it.
+///
+/// A microtask is the smallest deferral that does that: it drains at the end
+/// of the current script, by which point the listener is attached. The same
+/// applies to a parser-created `<iframe src>`, whose event is queued during
+/// tree construction and delivered after the next script runs.
+///
+/// §4.8.5 queues a TASK, and that was tried: it is bounded where a microtask
+/// is not, because `waitForCompletion` pumps the event loop in <=50ms slices
+/// against the per-file deadline while a microtask chain has nowhere to
+/// yield. It measured WORSE - on the same 52-file slice, the task form left
+/// more files looping in `replace-before-load/location-setter-*` than the
+/// microtask form did, because delivering later let those tests re-navigate.
+/// And `V8EventLoop.runOnceBlocking` drains its queue with
+/// `while (self.tasks.items.len > 0)`, so a task that queues a task does not
+/// return to the deadline either - the bound was theoretical. Measurement
+/// wins; the residual loops are caught by the supervisor's stall watchdog.
+fn queueIframeLoadEvent(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+
+    const token = next_load_token;
+    next_load_token += 1;
+    internal.pending_load_token = token;
+
+    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
+        // No event loop - a unit test, or a context torn down far enough that
+        // nothing will drain a queue. Delivering synchronously is better than
+        // not at all, and there is no listener-ordering hazard without
+        // scripts.
+        internal.pending_load_token = 0;
+        fireLoadEventOnIframe(instance);
+        return;
+    };
+
+    const allocator = instance.ctx.allocator;
+    const pending = allocator.create(PendingLoadEvent) catch {
+        internal.pending_load_token = 0;
+        fireLoadEventOnIframe(instance);
+        return;
+    };
+    pending.* = .{ .instance = instance, .token = token, .allocator = allocator };
+
+    event_loop.queueMicrotask(.{
+        .callback = &deliverPendingLoadEvent,
+        .context = pending,
+    });
+}
+
+fn deliverPendingLoadEvent(data: ?*anyopaque) void {
+    const pending: *PendingLoadEvent = @ptrCast(@alignCast(data orelse return));
+    defer pending.allocator.destroy(pending);
+
+    // The instance may have been collected and its slab address handed to
+    // something else since this was queued. Only a state still carrying this
+    // navigation's token is the one we queued for.
+    const internal = getInternal(pending.instance) orelse return;
+    if (internal.pending_load_token != pending.token) return;
+    internal.pending_load_token = 0;
+
+    // A microtask runs inside V8's own checkpoint, which supplies a
+    // HandleScope and an entered context - but this is cheap and the task form
+    // of this callback showed what their absence costs:
+    // `Event.call_constructor` dies in `HandleScope::CreateHandle` with
+    // "Cannot create a handle without a HandleScope", a SIGTRAP rather than an
+    // error return, taking the whole file down as CRASH. A null scope means
+    // the context is gone; there is nobody left to hear the event.
+    const scope = v8.JsScope.init(pending.instance.ctx) orelse return;
+    defer scope.deinit();
+
+    fireLoadEventOnIframe(pending.instance);
+}
+
 /// Fire a load event on the iframe element.
 /// Per HTML spec §4.8.5, this is the "iframe load event steps" algorithm:
 /// 1. Assert: element's content navigable is not null.
@@ -1092,7 +1210,11 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
     // Per HTML spec, when src is set, the iframe should navigate to the URL.
     // Scripts in the navigated document need a V8 context to execute.
     // Accessing contentWindow lazily creates the V8 context if needed.
-    _ = try get_contentWindow(instance);
+    //
+    // A null answer means the element is not connected, so there is no content
+    // navigable and `IFrameIntegration.setSrc` will store the URL without
+    // navigating. Nothing loads, so nothing may fire a load event.
+    const has_navigable = (try get_contentWindow(instance)) != null;
 
     // Check if an external hook is registered to handle this URL
     // The hook handles relative URLs and HTTP URLs for WPT tests
@@ -1116,12 +1238,22 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
     // Navigation errors are typically silent for iframe src
     internal.integration.setSrc(value) catch {};
 
-    // Fire load event after navigation completes for data: and javascript: URLs
+    // Fire load event after navigation completes.
     // Per HTML spec §4.8.5, the load event fires after the document is loaded.
     // For data: URLs, this is synchronous.
     // For javascript: URLs, the document content is the result of the script.
+    //
+    // Everything else went through `navigateToSrc`, which fetches, parses and
+    // commits before it returns - so the document IS loaded here. It is only
+    // the listener that is not attached yet: `iframe.src = url` is almost
+    // always followed by the `addEventListener("load", ...)` that waits for
+    // it. Hence the microtask; see `queueIframeLoadEvent`. Firing on a failed
+    // navigation too is deliberate - §4.8.5 fires load for the error document
+    // as well, and not firing leaves every waiting page hung.
     if (std.mem.startsWith(u8, value, "data:") or std.mem.startsWith(u8, value, "javascript:")) {
         fireLoadEventOnIframe(instance);
+    } else if (has_navigable and value.len > 0) {
+        queueIframeLoadEvent(instance);
     }
 }
 
