@@ -412,6 +412,80 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 
 /// Operation: addEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+/// "flatten", https://dom.spec.whatwg.org/#concept-flatten-options
+///
+/// The IDL type is `(AddEventListenerOptions or boolean) options = {}`. Codegen
+/// does not generate WebIDL union types yet, so it arrives as a raw JSValue and
+/// the impl has to resolve the union itself. WebIDL union resolution: if the
+/// value is an OBJECT, convert to the dictionary; otherwise apply ECMAScript
+/// ToBoolean.
+///
+/// ToBoolean is the part that is easy to get wrong, and
+/// dom/events/EventListenerOptions-capture.html tests exactly these:
+///
+///     true, "AAAA", 2.3, -1000.3   -> capture      (truthy)
+///     false, null, undefined, ""   -> no capture
+///     NaN, +0.0, -0.0              -> no capture
+///
+/// An earlier version of this matched only `.boolean` and returned false for
+/// everything else, so `addEventListener(t, fn, 2.3)` and
+/// `addEventListener(t, fn, "AAAA")` silently registered as bubble listeners.
+/// That is wrong for ordinary JavaScript, not just for any one framework.
+///
+/// This was previously `_ = options;` with capture hardcoded false, which
+/// downgraded EVERY capture listener to a bubble listener.
+fn toBoolean(value: runtime.JSValue) bool {
+    return switch (value) {
+        .undefined, .null => false,
+        .boolean => |b| b,
+        // +0, -0 and NaN are falsy; every other number is truthy.
+        .number => |n| n != 0 and !std.math.isNan(n),
+        .string => |sv| sv.data.len > 0,
+        // Objects and functions are always truthy - but an object means the
+        // DICTIONARY branch, so reaching here with one is a fallback only.
+        else => true,
+    };
+}
+
+/// The flattened options. `capture` is always resolved; the rest come only from
+/// the dictionary form.
+const FlatOptions = struct {
+    capture: bool = false,
+    once: bool = false,
+    passive: ?bool = null,
+    signal: ?*runtime.Instance = null,
+};
+
+fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue)) FlatOptions {
+    if (!options.was_passed) return .{};
+
+    // WebIDL union resolution: an OBJECT converts to the dictionary, anything
+    // else goes through ToBoolean.
+    if (options.value == .handle) {
+        const engine = ctx.getEngine() orelse return .{};
+        const engine_ctx = ctx.getEngineContext() orelse return .{};
+        const get = engine.getPropertyTruthy orelse return .{};
+        const object = options.value.handle.ptr;
+
+        // Members are truthiness-tested, not identity-tested, so `{capture: 2}`
+        // is capture and `{capture: 0}` is not - which is what
+        // EventListenerOptions-capture.html asserts.
+        return .{
+            .capture = get(engine_ctx, object, "capture", false) catch false,
+            .once = get(engine_ctx, object, "once", false) catch false,
+            // `passive` stays tri-state: absent means "engine decides", which
+            // is not the same as an explicit `passive: false`.
+            .passive = if (get(engine_ctx, object, "passive", false) catch false) true else null,
+            // TODO: `signal` is an AbortSignal object, not a boolean, so it
+            // needs an accessor that returns the value rather than its
+            // truthiness. Left null until there is one.
+            .signal = null,
+        };
+    }
+
+    return .{ .capture = toBoolean(options.value) };
+}
+
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
@@ -424,13 +498,12 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
         internal = new_internal;
     }
 
-    // Flatten options - for now treat as AddEventListenerOptions
-    // TODO: Properly interpret options union (boolean or AddEventListenerOptions)
-    _ = options;
-    const capture = false; // Default
-    const passive: ?bool = null;
-    const once = false;
-    const signal: ?*runtime.Instance = null;
+    // https://dom.spec.whatwg.org/#concept-flatten-more
+    const flat = flattenOptions(instance.ctx, options);
+    const capture = flat.capture;
+    const passive = flat.passive;
+    const once = flat.once;
+    const signal = flat.signal;
 
     // Convert callback wrapper to Instance pointer if present
     // The callback comes as ??*runtime.CallbackWrapper but we store ?*runtime.Instance
@@ -479,9 +552,12 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 
     const internal = getInternalFromRegistry(instance) orelse return;
 
-    // Flatten options
-    _ = options;
-    const capture = false; // Default
+    // https://dom.spec.whatwg.org/#concept-flatten
+    //
+    // Removal matches on type, callback AND capture, so discarding the flag
+    // here meant `removeEventListener(t, fn, true)` could never find the
+    // listener that `addEventListener(t, fn, true)` added.
+    const capture = flattenOptions(instance.ctx, options).capture;
 
     // Convert callback wrapper to Instance pointer if present
     const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {

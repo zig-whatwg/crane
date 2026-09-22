@@ -87,6 +87,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .getPromiseObject = v8GetPromiseObject,
     .destroyPromiseHandle = v8DestroyPromiseHandle,
     .createString = v8CreateString,
+    .getPropertyTruthy = v8GetPropertyTruthy,
     .createArrayBuffer = v8CreateArrayBuffer,
     .createUint8Array = v8CreateUint8Array,
     .parseJson = v8ParseJson,
@@ -281,6 +282,36 @@ fn v8CreateString(
     ) orelse return EngineError.OperationFailed;
 
     return @ptrCast(v8_string);
+}
+
+/// Read a property off a V8 object and report its ECMAScript truthiness.
+///
+/// `v8_Value_BooleanValue` IS ToBoolean, so `{capture: 2}` and
+/// `{capture: "x"}` are both true, matching what the spec requires of a
+/// `boolean` dictionary member.
+fn v8GetPropertyTruthy(
+    engine_ctx: *anyopaque,
+    object: *anyopaque,
+    name: []const u8,
+    default: bool,
+) EngineError!bool {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return EngineError.OperationFailed;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return EngineError.OperationFailed;
+    // GetCurrentContext allocates a Global we own - AGENTS.md, the C++ seam.
+    defer ffi.v8_Context_Dispose(context);
+
+    const obj: *ffi.Value = @ptrCast(@alignCast(object));
+    if (!ffi.v8_Value_IsObject(obj)) return default;
+
+    const key = ffi.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse
+        return EngineError.OperationFailed;
+    defer ffi.v8_String_Dispose(key);
+
+    const value = ffi.v8_Object_Get(@ptrCast(obj), context, @ptrCast(key)) orelse return default;
+    defer ffi.v8_Value_Dispose(value);
+
+    return ffi.v8_Value_BooleanValue(value, isolate);
 }
 
 /// Create a V8 ArrayBuffer from bytes

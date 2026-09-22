@@ -213,6 +213,28 @@ pub const EngineInterface = struct {
         bytes: []const u8,
     ) EngineError!*anyopaque,
 
+    /// Read a property off a JS object and report its ECMAScript truthiness.
+    ///
+    /// The engine-agnostic primitive that was missing. WebIDL dictionaries
+    /// arrive at an impl as an opaque object handle, and without this the only
+    /// ways to read one were to import V8 into the impl - growing the boundary
+    /// debt - or to ignore the dictionary entirely, which is what
+    /// `addEventListener` did: `{capture: true}` silently flattened to false.
+    ///
+    /// Truthiness rather than the raw value because that is what a
+    /// `boolean` dictionary member needs, and `{capture: 2}` must be true.
+    /// A richer accessor can come when something needs one.
+    ///
+    /// Returns `default` when the object has no such property, so a caller
+    /// need not distinguish "absent" from "present and falsy" unless it wants
+    /// to - the two are the same for a defaulted boolean member.
+    getPropertyTruthy: ?*const fn (
+        engine_ctx: *anyopaque,
+        object: *anyopaque,
+        name: []const u8,
+        default: bool,
+    ) EngineError!bool,
+
     /// Create a JavaScript ArrayBuffer from bytes
     ///
     /// Arguments:
