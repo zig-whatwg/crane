@@ -35,6 +35,9 @@ const websocket = @import("websocket");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const WebSocketConnection = websocket.WebSocketConnection;
 
+// The constructor applies the URL parser, per steps 2-5.
+const api_parser = @import("api_parser");
+
 const log = std.log.scoped(.websocket);
 
 /// Largest single frame `pump` will hand to script.
@@ -787,13 +790,28 @@ fn invokeIdlHandler(target: *runtime.Instance, event: *runtime.Instance, kind: H
 /// 9. Let client be this's relevant settings object.
 /// 10. Run this step in parallel: Establish a WebSocket connection given urlRecord, protocols...
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // Validate URL scheme (ws:// or wss://)
-    if (!std.mem.startsWith(u8, url, "ws://") and !std.mem.startsWith(u8, url, "wss://")) {
+    // Steps 2-5. Parse the URL, then check its scheme and fragment.
+    //
+    // This used to be `startsWith("ws://")` plus a search for '#', which reads
+    // as equivalent and is not: it accepts everything the URL parser rejects
+    // for reasons that are not in the prefix. `ws://web platform.test:80/echo`
+    // is a SyntaxError because a space cannot appear in a host, and a prefix
+    // test cannot see that.
+    var record = api_parser.parseURL(ctx.allocator, url, null) catch {
+        // Step 3. Parse failure is a "SyntaxError" DOMException.
+        return error.SyntaxError;
+    };
+    defer record.deinit();
+
+    // Step 4. The scheme must be "ws" or "wss".
+    const scheme = record.scheme();
+    if (!std.mem.eql(u8, scheme, "ws") and !std.mem.eql(u8, scheme, "wss")) {
         return error.SyntaxError;
     }
 
-    // Check for fragment identifier (URL with # is invalid)
-    if (std.mem.indexOf(u8, url, "#") != null) {
+    // Step 5. A non-null fragment is a "SyntaxError" DOMException - including
+    // an EMPTY one, so `ws://host/#` is just as invalid as `ws://host/#x`.
+    if (record.has_fragment) {
         return error.SyntaxError;
     }
 
