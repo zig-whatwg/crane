@@ -234,8 +234,26 @@ pub const WptServer = struct {
         return true;
     }
 
-    /// Stop the WPT server
+    /// Stop the WPT server - but ONLY one we spawned ourselves.
+    ///
+    /// `start()` ADOPTS an already-running server when the lockfile names a
+    /// live pid, and sets `we_spawned = false` for exactly that case. Killing
+    /// an adopted server is not just impolite, it corrupts the next run:
+    /// `wpt serve` is a multiprocessing parent whose children survive SIGTERM
+    /// to the parent and keep holding :8000, so the next `start()` finds the
+    /// port occupied, adopts the CORPSE, and every navigation then fails with a
+    /// constant ~730ms NetworkError. One agent's baseline had 33 of 35 "ERROR"
+    /// files laundered into noise by exactly this, which reads as an engine
+    /// defect rather than a harness one.
+    ///
+    /// `deinit` (line 90) already guards on `we_spawned`; `stop` did not, so
+    /// calling it directly killed a server this process had merely borrowed.
     pub fn stop(self: *WptServer) void {
+        if (!self.we_spawned) {
+            // Not ours. Leave it running and just drop our reference.
+            self.pid = null;
+            return;
+        }
         if (self.pid) |pid| {
             // Send SIGTERM
             posix.kill(pid, posix.SIG.TERM) catch {};
