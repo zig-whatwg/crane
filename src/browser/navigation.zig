@@ -496,24 +496,18 @@ pub fn fireLoad(
     isolate: *v8.ffi.Isolate,
     context: *v8.ffi.Context,
 ) void {
-    // Execute JavaScript to dispatch load event AND invoke window.onload IDL attribute
-    // The dispatchEvent triggers addEventListener callbacks, but the IDL attribute
-    // (window.onload = fn) needs to be invoked separately per HTML spec.
+    // Dispatch load at the Window. Dispatch alone runs the onload event
+    // handler: EventTarget's invoke step calls the Window's event handler
+    // IDL attribute along with its listeners. This used to call
+    // `window.onload(event)` again afterwards, so every onload handler ran
+    // TWICE - harmless while `window.onload = f` handlers tolerated it, fatal
+    // once `<body onload="...">` started working: a handler that registers
+    // tests and calls done() registered everything twice and the file ended
+    // in ERROR (encoding/remove-only-one-bom.html).
     const script =
         \\(function() {
-        \\  if (typeof window !== 'undefined') {
-        \\    var event = new Event('load', { bubbles: false, cancelable: false });
-        \\    if (window.dispatchEvent) {
-        \\      window.dispatchEvent(event);
-        \\    }
-        \\    // Also invoke window.onload IDL attribute if set
-        \\    if (typeof window.onload === 'function') {
-        \\      try {
-        \\        window.onload(event);
-        \\      } catch(e) {
-        \\        console.error('Error in onload:', e);
-        \\      }
-        \\    }
+        \\  if (typeof window !== 'undefined' && window.dispatchEvent) {
+        \\    window.dispatchEvent(new Event('load', { bubbles: false, cancelable: false }));
         \\  }
         \\})();
     ;
