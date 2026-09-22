@@ -1196,6 +1196,40 @@ pub extern fn v8_Function_CallWithReceiver_Safe(
 /// Free a V8FunctionCallResult (does not free the value if non-null)
 pub extern fn v8_FreeFunctionCallResult(result: ?*V8FunctionCallResult) void;
 
+/// Call `function` with `recv` (null = undefined) under a TryCatch and return
+/// the COMPLETION: the result with `threw.* == false`, or the thrown VALUE
+/// with `threw.* == true` - caught, not left pending. Null (with `threw`
+/// true) only when `function` is not callable or the isolate is terminating.
+/// A non-null result is a new Global<Value>* the caller owns.
+pub extern fn v8_Function_CallCatching(
+    context: *Context,
+    function: *Value,
+    recv: ?*Value,
+    argc: c_int,
+    argv: ?[*]const *Value,
+    threw: *bool,
+) ?*Value;
+
+/// A second, independently owned Global for the same value. Null for null/empty.
+pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
+
+/// promise.[[PromiseIsHandled]] = true (WebIDL "mark as handled"). No-op for a non-promise.
+pub extern fn v8_Promise_MarkAsHandled(promise: ?*Value) void;
+
+/// Settlement callback for `v8_Promise_React`: `value` is a new Global<Value>* the
+/// callee owns, `rejected` says which way the promise settled.
+pub const ZigReactionCallback = *const fn (data: ?*anyopaque, value: ?*Value, rejected: bool) callconv(.c) void;
+
+/// WebIDL "react to" `promise`: `callback(data, value, rejected)` runs exactly
+/// once, when the promise settles. False (and no call, ever) if `promise` is
+/// not a promise. The derived promise is marked handled.
+pub extern fn v8_Promise_React(
+    context: *Context,
+    promise: *Value,
+    callback: ZigReactionCallback,
+    data: ?*anyopaque,
+) bool;
+
 /// Get the [[BoundTargetFunction]] of a bound function.
 /// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
 /// Returns null if the value is not a bound function.

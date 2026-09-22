@@ -75,11 +75,21 @@ fn destroyMockWrapper(allocator: std.mem.Allocator, wrapper: *v8.Object) void {
     allocator.destroy(ptr);
 }
 
+/// A vtable for mock instances. `WrapperCache.set` reads the interface name
+/// (`engineOwns` holds streams-graph wrappers strongly), so the mock's vtable
+/// must be real - an interface nobody owns, taking the weak default.
+const mock_methods: u8 = 0;
+const mock_vtable = runtime.VTable{
+    .name = "MockInterface",
+    .deinit = null,
+    .methods_ptr = &mock_methods,
+};
+
 /// Create a mock runtime Instance for testing
 fn createMockInstance(allocator: std.mem.Allocator) !*runtime.Instance {
     const instance = try allocator.create(runtime.Instance);
     instance.* = .{
-        .vtable = undefined, // Not needed for cache testing
+        .vtable = &mock_vtable,
         .state = undefined,
         .ctx = undefined,
     };
@@ -103,6 +113,25 @@ fn cleanupMockCacheEntries(cache: *WrapperCache, instances: []const *runtime.Ins
             allocator.destroy(kv.value);
         }
     }
+}
+
+// ============================================================================
+// Which wrappers are held strongly (the default must stay weak)
+// ============================================================================
+
+test "isStreamsGraphObject - writable streams graph held strongly, everything else keeps the weak default" {
+    const isStreamsGraphObject = v8.wrapper_cache_mod.isStreamsGraphObject;
+    try testing.expect(isStreamsGraphObject("WritableStream"));
+    try testing.expect(isStreamsGraphObject("WritableStreamDefaultWriter"));
+    try testing.expect(isStreamsGraphObject("WritableStreamDefaultController"));
+    // The default: an interface nobody listed keeps its weak wrapper -
+    // including the readable classes until they share the writable rules.
+    try testing.expect(!isStreamsGraphObject("ReadableStream"));
+    try testing.expect(!isStreamsGraphObject("HTMLDivElement"));
+    try testing.expect(!isStreamsGraphObject("Response"));
+    try testing.expect(!isStreamsGraphObject(""));
+    try testing.expect(!isStreamsGraphObject("WritableStreamX"));
+    try testing.expect(!isStreamsGraphObject("MockInterface"));
 }
 
 // ============================================================================

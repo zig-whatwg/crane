@@ -263,84 +263,14 @@ fn createWritableStreamForTransform(
     ctx: runtime.Context,
     writable_hwm: f64,
 ) !*runtime.Instance {
-    // Create WritableStream instance
-    const writable = try interfaces.WritableStream.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(writable);
-
-    const writable_state = writable.getState(interfaces.WritableStream.State);
-
-    // Get event loop from context
-    const loop = try ctx.getEventLoop();
-
-    // Import WritableStream internal types
-    const WritableStreamImpl = @import("WritableStream.zig");
-
-    // Create internal state for WritableStream
-    const writable_internal = try allocator.create(WritableStreamImpl.InternalState);
-    errdefer allocator.destroy(writable_internal);
-
-    writable_internal.* = WritableStreamImpl.InternalState{
-        .controller = null, // Will be set by controller setup
-        .writer = .none,
-        .state = .writable,
-        .stored_error = .none, // Type-safe StoredError
-        .write_requests = .{
-            .items = &.{},
-            .capacity = 0,
-        },
-        .in_flight_write_request = null,
-        .close_request = null,
-        .in_flight_close_request = null,
-        .pending_abort_request = null,
-        .backpressure = false,
-        .event_loop = loop,
-        .allocator = allocator,
-    };
-
-    writable_state.own._internal = writable_internal;
-
-    // Create WritableStreamDefaultController for this stream
-    const controller = try interfaces.WritableStreamDefaultController.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(controller);
-
-    const WritableControllerImpl = @import("WritableStreamDefaultController.zig");
-    const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
-
-    // Create controller internal state
-    const controller_internal = try allocator.create(WritableControllerImpl.InternalState);
-    errdefer allocator.destroy(controller_internal);
-
-    // Note: transform_stream is not stored in algorithms since they're now GlobalHandles.
-    // TransformStream uses internal delegation via v8_context = null signaling.
     _ = transform_stream;
-
-    // TransformStream's writable side uses internal delegation, not V8 callbacks.
-    // The v8_context = null tells the controller to use the fallback path.
-    // Algorithms are set to null since they're not V8 GlobalHandles.
-    controller_internal.* = WritableControllerImpl.InternalState{
-        .stream = writable,
-        .write_algorithm = null, // TransformStream uses internal delegation, not V8 callbacks
-        .close_algorithm = null,
-        .abort_algorithm = null,
-        .start_algorithm = null, // TransformStream starts immediately, no deferred start
-        .strategy_hwm = writable_hwm,
-        .strategy_size_algorithm = null,
-        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
-        .v8_context = null, // null v8_context signals internal mode (no JS callbacks)
-        .started = true, // TransformStream starts immediately
-        .queue = .{
-            .items = &.{},
-            .capacity = 0,
-        },
-        .queue_total_size = 0.0,
-        .abort_controller = null,
-        .allocator = allocator,
-    };
-
-    controller_state.own._internal = controller_internal;
-    writable_internal.controller = controller;
-
-    return writable;
+    _ = allocator;
+    // CreateWritableStream with a sink that accepts every chunk and does
+    // nothing - the writable side has never forwarded to the transformer.
+    // TODO(streams): the TransformStream sink algorithms of § 6.4.
+    const sw = @import("streams_writable.zig");
+    const realm = try @import("streams_js.zig").Realm.ofContext(ctx);
+    return sw.createWritableStream(realm, ctx, sw.noop_sink, writable_hwm, .one);
 }
 
 /// Create a ReadableStream for the TransformStream's readable side
@@ -456,7 +386,7 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .flushAlgorithm = streams_common.defaultFlushAlgorithm(),
         .cancelAlgorithm = streams_common.defaultCancelAlgorithm(),
         .finishPromise = null,
-        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
+        .isolate = v8_engine.ffi.v8_Isolate_GetCurrent(), // not getEngineContextAs: that is a Global<Context>*
         .v8_context = null,
         // Initialize V8 Global handles to null - will be set below if transformer has callbacks
         .flush_algorithm_v8 = null,

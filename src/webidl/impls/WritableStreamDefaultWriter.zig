@@ -1,597 +1,114 @@
 //! WritableStreamDefaultWriter Implementation
 //!
-//! WHATWG Streams Standard: https://streams.spec.whatwg.org/#default-writer-class
+//! WHATWG Streams Standard § 5.3: https://streams.spec.whatwg.org/#default-writer-class
 //!
-//! A writable stream writer designed to be vended by a WritableStream.
+//! The IDL surface only; the slots and algorithms are in `streams_writable.zig`.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WritableStreamDefaultWriter = interfaces.WritableStreamDefaultWriter;
-
-// Import V8 for promise bridging
-const v8_engine = @import("v8");
-const v8 = v8_engine.ffi;
-const promise_utils = v8_engine.promise;
-
-// Import streams infrastructure
-const streams_common = @import("streams_common");
-const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const js = @import("streams_js.zig");
+const sw = @import("streams_writable.zig");
 
 pub const State = WritableStreamDefaultWriter.State;
+pub const InternalState = sw.Writer;
 
-pub const ImplError = error{
-    NotImplemented,
-    TypeError,
-    OutOfMemory,
-    InvalidState,
-};
-
-/// Internal state for WritableStreamDefaultWriter
-///
-/// This mirrors the internal slots defined in WHATWG Streams spec § 4.6.4
-pub const InternalState = struct {
-    /// [[closedPromise]]: Promise returned by closed getter
-    closed_promise: ?*AsyncPromise(void),
-
-    /// [[readyPromise]]: Promise returned by ready getter
-    ready_promise: ?*AsyncPromise(void),
-
-    /// [[stream]]: WritableStream this writer is locked to
-    stream: ?*runtime.Instance,
-
-    /// Resource management
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Clean up promises if needed
-        // Future: Properly manage promise lifecycle
-        allocator.destroy(self);
-    }
-};
-
-/// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
+    if (state.own._internal) |slots| {
+        state.own._internal = null;
+        slots.deinit();
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Constructor implementation
-///
-/// Spec: https://streams.spec.whatwg.org/#writablestreamdefaultwriter-constructor
-/// new WritableStreamDefaultWriter(stream)
-///
-/// Steps:
-/// 1. Perform ? SetUpWritableStreamDefaultWriter(this, stream)
+/// `new WritableStreamDefaultWriter(stream)` - § 5.3.3:
+/// Perform ? SetUpWritableStreamDefaultWriter(this, stream).
 pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &WritableStreamDefaultWriter.vtable, ctx);
-    errdefer deinit(instance);
-
-    // SetUpWritableStreamDefaultWriter
-    try setUpWritableStreamDefaultWriter(instance, stream, ctx.allocator);
-
-    return instance;
+    _ = sw.streamOf(stream) orelse return error.TypeError;
+    const realm = try js.Realm.ofContext(ctx);
+    const writer = try sw.newWriter(ctx);
+    errdefer runtime.Instance.deinit(writer);
+    try sw.setUpWriter(realm, writer, stream);
+    return writer;
 }
 
-/// Getter for closed
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-closed
-/// Returns: Promise<undefined>
-///
-/// Steps:
-/// 1. Return this.[[closedPromise]]
+/// `closed` - § 5.3.3: Return this.[[closedPromise]].
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    const zig_promise = internal.closed_promise orelse return error.InvalidState;
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        void,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        zig_promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    return js.toReturn(writer.closed_promise.?.promise);
 }
 
-/// Getter for desiredSize
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-desired-size
-/// Returns: unrestricted double? (nullable)
-///
-/// Steps:
-/// 1. If this.[[stream]] is undefined, throw TypeError
-/// 2. Return WritableStreamDefaultWriterGetDesiredSize(this)
+/// `desiredSize` - § 5.3.3.
 pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // 1. If stream is undefined, throw TypeError
-    const stream = internal.stream orelse return error.TypeError;
-
-    // 2. Return WritableStreamDefaultWriterGetDesiredSize(this)
-    const result = try writableStreamDefaultWriterGetDesiredSize(stream);
-    return result;
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    // Step 1: If this.[[stream]] is undefined, throw a TypeError.
+    if (writer.stream == null) return error.TypeError;
+    // Step 2: Return ! WritableStreamDefaultWriterGetDesiredSize(this).
+    return sw.writerGetDesiredSize(writer);
 }
 
-/// Getter for ready
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-ready
-/// Returns: Promise<undefined>
-///
-/// Steps:
-/// 1. Return this.[[readyPromise]]
+/// `ready` - § 5.3.3: Return this.[[readyPromise]].
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    const zig_promise = internal.ready_promise orelse return error.InvalidState;
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        void,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        zig_promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    return js.toReturn(writer.ready_promise.?.promise);
 }
 
-/// Operation: releaseLock
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-release-lock
-/// Steps:
-/// 1. Let stream = this.[[stream]]
-/// 2. If stream is undefined, return
-/// 3. Assert: stream.[[writer]] is not undefined
-/// 4. Perform WritableStreamDefaultWriterRelease(this)
-pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // 1. Let stream = this.[[stream]]
-    const stream = internal.stream orelse return; // 2. If undefined, return
-
-    // 4. Perform WritableStreamDefaultWriterRelease(this)
-    writableStreamDefaultWriterRelease(instance, stream);
-}
-
-/// Operation: abort
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-abort
-/// Arguments:
-///   reason: Abort reason (optional)
-/// Returns: Promise<undefined>
-///
-/// Steps:
-/// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
-/// 2. Return WritableStreamDefaultWriterAbort(this, reason)
+/// `abort(reason)` - § 5.3.3.
 pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // 1. If stream is undefined, return promise rejected with TypeError
-    const stream = internal.stream orelse return error.TypeError;
-
-    // 2. Return WritableStreamDefaultWriterAbort(this, reason)
-    // Unwrap the Opt - use a default value if not passed
-    const default_reason: u8 = 0;
-    const reason_ptr: *const anyopaque = if (reason.was_passed)
-        reason.value.toAnyopaque() orelse @ptrCast(&default_reason)
-    else
-        @ptrCast(&default_reason);
-    return writableStreamDefaultWriterAbort(instance, stream, reason_ptr);
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    const realm = try js.Realm.of(instance);
+    // Step 1: A released writer rejects with a TypeError.
+    if (writer.stream == null)
+        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+    // Step 2: Return ! WritableStreamDefaultWriterAbort(this, reason).
+    const r = try realm.fromOptional(reason);
+    defer js.dispose(r);
+    return sw.give(&writer.returned, try sw.writerAbort(realm, writer, r));
 }
 
-/// Operation: write
-///
-/// Spec: https://streams.spec.whatwg.org/#default-writer-write
-/// Arguments:
-///   chunk: Data to write
-/// Returns: Promise<undefined>
-///
-/// Steps:
-/// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
-/// 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // 1. If stream is undefined, return promise rejected with TypeError
-    const stream = internal.stream orelse return error.TypeError;
-
-    // 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-    // Unwrap the Opt - use a default value if not passed
-    const default_chunk: u8 = 0;
-    const chunk_ptr: *const anyopaque = if (chunk.was_passed)
-        chunk.value.toAnyopaque() orelse @ptrCast(&default_chunk)
-    else
-        @ptrCast(&default_chunk);
-    return writableStreamDefaultWriterWrite(instance, stream, chunk_ptr);
-}
-
-/// Operation: close
+/// `close()` - § 5.3.3.
 pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // 1. Let stream = this.[[stream]]
-    const stream = internal.stream orelse {
-        // 2. If stream is undefined, return promise rejected with TypeError
-        return error.TypeError;
-    };
-
-    // 3. If WritableStreamCloseQueuedOrInFlight(stream) is true, return promise rejected with TypeError
-    const stream_state = stream.getState(interfaces.WritableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
-
-    if (writableStreamCloseQueuedOrInFlight(stream_internal)) {
-        return error.TypeError;
-    }
-
-    // 4. Return WritableStreamDefaultWriterClose(this)
-    return writableStreamDefaultWriterClose(instance);
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    const realm = try js.Realm.of(instance);
+    // Steps 1-2: A released writer rejects with a TypeError.
+    const stream_instance = writer.stream orelse
+        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+    // Step 3: So does a stream already closing.
+    if (sw.closeQueuedOrInFlight(sw.streamOf(stream_instance).?))
+        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The stream is already closing"));
+    // Step 4: Return ! WritableStreamDefaultWriterClose(this).
+    return sw.give(&writer.returned, try sw.writerClose(realm, writer));
 }
 
-// ============================================================================
-// Abstract Operations
-// ============================================================================
-
-/// SetUpWritableStreamDefaultWriter
-///
-/// Spec: https://streams.spec.whatwg.org/#set-up-writable-stream-default-writer
-/// Arguments:
-///   writer: WritableStreamDefaultWriter instance
-///   stream: WritableStream to lock to
-fn setUpWritableStreamDefaultWriter(
-    writer: *runtime.Instance,
-    stream: *runtime.Instance,
-    allocator: std.mem.Allocator,
-) !void {
-    const writer_state = writer.getState(State);
-    const stream_state = stream.getState(interfaces.WritableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
-
-    // 1. If ! IsWritableStreamLocked(stream) is true, throw a TypeError exception
-    if (isWritableStreamLocked(stream_internal)) {
-        return error.TypeError;
-    }
-
-    // Create writer internal state
-    const writer_internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(writer_internal);
-
-    // Get event loop from stream
-    const loop = stream_internal.event_loop;
-
-    // Initialize promises
-    // Future: Create proper AsyncPromise instances
-    const closed_promise = try AsyncPromise(void).init(allocator, loop);
-    const ready_promise = try AsyncPromise(void).init(allocator, loop);
-
-    writer_internal.* = .{
-        .closed_promise = closed_promise,
-        .ready_promise = ready_promise,
-        .stream = stream,
-        .allocator = allocator,
-    };
-
-    writer_state.own._internal = writer_internal;
-
-    // 2. Set writer.[[stream]] to stream
-    // (already done above)
-
-    // 3. Set stream.[[writer]] to writer
-    stream_internal.writer = .{ .default = writer };
-
-    // 4. Set up promises based on stream state
-    switch (stream_internal.state) {
-        .writable => {
-            // If backpressure, ready stays pending; else fulfill it
-            if (stream_internal.backpressure) {
-                // ready_promise stays pending
-            } else {
-                ready_promise.fulfill({});
-            }
-            // closed_promise stays pending
-        },
-        .erroring => {
-            // Both promises stay pending
-            // Future: Implement proper promise state
-        },
-        .closed => {
-            // Fulfill ready and closed promises
-            ready_promise.fulfill({});
-            closed_promise.fulfill({});
-        },
-        .errored => {
-            // Reject both promises with stored error
-            // Future: Properly reject with stored_error
-            ready_promise.fulfill({}); // Placeholder
-            closed_promise.fulfill({}); // Placeholder
-        },
-    }
+/// `releaseLock()` - § 5.3.3.
+pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    // Steps 1-2: If this.[[stream]] is undefined, return.
+    if (writer.stream == null) return;
+    // Steps 3-4: Perform ! WritableStreamDefaultWriterRelease(this).
+    sw.writerRelease(try js.Realm.of(instance), instance);
 }
 
-/// IsWritableStreamLocked
-///
-/// Spec: https://streams.spec.whatwg.org/#is-writable-stream-locked
-fn isWritableStreamLocked(stream_internal: *const @import("WritableStream.zig").InternalState) bool {
-    return stream_internal.writer != .none;
-}
-
-/// WritableStreamCloseQueuedOrInFlight
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-close-queued-or-in-flight
-fn writableStreamCloseQueuedOrInFlight(stream_internal: *const @import("WritableStream.zig").InternalState) bool {
-    return stream_internal.close_request != null or stream_internal.in_flight_close_request != null;
-}
-
-/// WritableStreamDefaultWriterClose
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-writer-close
-/// Returns: Promise<undefined>
-///
-/// Simplified for now - returns a placeholder promise
-fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !runtime.JSValue {
-    const state = writer.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Future: Implement full WritableStreamClose algorithm
-    // For now, just return the closed promise
-    const zig_promise = internal.closed_promise orelse return error.InvalidState;
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        void,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        zig_promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
-}
-
-/// WritableStreamDefaultWriterGetDesiredSize
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-writer-get-desired-size
-/// Arguments:
-///   stream: WritableStream instance
-/// Returns: unrestricted double? (nullable double)
-///
-/// Steps:
-/// 1. Let stream = writer.[[stream]]
-/// 2. Let state = stream.[[state]]
-/// 3. If state is "errored" or "erroring", return null
-/// 4. If state is "closed", return 0
-/// 5. Return WritableStreamDefaultControllerGetDesiredSize(stream.[[controller]])
-fn writableStreamDefaultWriterGetDesiredSize(stream: *runtime.Instance) !?f64 {
-    const stream_state = stream.getState(interfaces.WritableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
-
-    // 2. Let state = stream.[[state]]
-    const state = stream_internal.state;
-
-    // 3. If state is "errored" or "erroring", return null
-    if (state == .errored or state == .erroring) {
-        return null;
-    }
-
-    // 4. If state is "closed", return 0
-    if (state == .closed) {
-        return 0.0;
-    }
-
-    // 5. Return WritableStreamDefaultControllerGetDesiredSize(stream.[[controller]])
-    if (stream_internal.controller) |controller| {
-        return writableStreamDefaultControllerGetDesiredSize(controller);
-    }
-
-    return error.InvalidState;
-}
-
-/// WritableStreamDefaultControllerGetDesiredSize
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-get-desired-size
-/// Arguments:
-///   controller: WritableStreamDefaultController instance
-/// Returns: double (high water mark - queue total size)
-fn writableStreamDefaultControllerGetDesiredSize(controller: *runtime.Instance) f64 {
-    const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
-    const controller_internal = controller_state.own._internal orelse return std.math.nan(f64);
-
-    return controller_internal.strategy_hwm - controller_internal.queue_total_size;
-}
-
-/// WritableStreamDefaultWriterRelease
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-writer-release
-/// Arguments:
-///   writer: WritableStreamDefaultWriter instance
-///   stream: WritableStream instance
-///
-/// Simplified for now - just releases the lock
-fn writableStreamDefaultWriterRelease(writer: *runtime.Instance, stream: *runtime.Instance) void {
-    const writer_state = writer.getState(State);
-    const writer_internal = writer_state.own._internal orelse return;
-
-    const stream_state = stream.getState(interfaces.WritableStream.State);
-    const stream_internal = stream_state.own._internal orelse return;
-
-    // Release lock
-    stream_internal.writer = .none;
-    writer_internal.stream = null;
-
-    // Future: Reject pending promises
-}
-
-/// WritableStreamDefaultWriterAbort
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-writer-abort
-/// Arguments:
-///   writer: WritableStreamDefaultWriter instance
-///   stream: WritableStream instance
-///   reason: Abort reason
-/// Returns: Promise<undefined>
-///
-/// Simplified - returns placeholder promise
-fn writableStreamDefaultWriterAbort(
-    writer: *runtime.Instance,
-    stream: *runtime.Instance,
-    reason: *const anyopaque,
-) !runtime.JSValue {
-    const writer_state = writer.getState(State);
-    const writer_internal = writer_state.own._internal orelse return error.InvalidState;
-
-    // Future: Implement full WritableStreamAbort algorithm
-    _ = stream;
-    _ = reason;
-
-    // For now, return closed promise as placeholder
-    const zig_promise = writer_internal.closed_promise orelse return error.InvalidState;
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        void,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        zig_promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
-}
-
-/// WritableStreamDefaultWriterWrite
-///
-/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-writer-write
-/// Arguments:
-///   writer: WritableStreamDefaultWriter instance
-///   stream: WritableStream instance
-///   chunk: Data to write
-/// Returns: Promise<undefined>
-///
-/// Steps:
-/// 1. Let stream be writer.[[stream]]
-/// 2. Assert: stream is not undefined
-/// 3. Let controller be stream.[[controller]]
-/// 4. Let chunkSize be WritableStreamDefaultControllerGetChunkSize(controller, chunk)
-/// 5. If stream is not equal to writer.[[stream]], return promise rejected with TypeError
-/// 6. Let state be stream.[[state]]
-/// 7. If state is "errored", return promise rejected with stream.[[storedError]]
-/// 8. If WritableStreamCloseQueuedOrInFlight(stream) or state is "closed",
-///    return promise rejected with TypeError
-/// 9. If state is "erroring", return promise rejected with stream.[[storedError]]
-/// 10. Assert: state is "writable"
-/// 11. Let promise be WritableStreamDefaultControllerWrite(controller, chunk, chunkSize)
-/// 12. Return promise
-fn writableStreamDefaultWriterWrite(
-    writer: *runtime.Instance,
-    stream: *runtime.Instance,
-    chunk: *const anyopaque,
-) !runtime.JSValue {
-    const writer_state = writer.getState(State);
-    const writer_internal = writer_state.own._internal orelse return error.InvalidState;
-
-    // 1-2. Get stream (already passed in, verify it matches)
-    if (writer_internal.stream != stream) {
-        return error.TypeError; // 5. Stream mismatch
-    }
-
-    // 3. Get controller
-    const stream_state = stream.getState(interfaces.WritableStream.State);
-    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
-    const controller = stream_internal.controller orelse return error.InvalidState;
-
-    // 4. Get chunk size (simplified - use 1.0 for now)
-    // Future: Call WritableStreamDefaultControllerGetChunkSize
-    const chunk_size: f64 = 1.0;
-
-    // 6. Let state be stream.[[state]]
-    const current_state = stream_internal.state;
-
-    // 7. If errored, reject with stored error
-    if (current_state == .errored) {
-        return error.TypeError; // Future: Reject with actual stored_error
-    }
-
-    // 8. If close queued/in-flight or closed, reject with TypeError
-    if (writableStreamCloseQueuedOrInFlight(stream_internal) or current_state == .closed) {
-        return error.TypeError;
-    }
-
-    // 9. If erroring, reject with stored error
-    if (current_state == .erroring) {
-        return error.TypeError; // Future: Reject with actual stored_error
-    }
-
-    // 10. Assert: state is "writable"
-    if (current_state != .writable) {
-        return error.InvalidState;
-    }
-
-    // 11. Let promise be WritableStreamDefaultControllerWrite(controller, chunk, chunkSize)
-    const WritableStreamDefaultController = @import("WritableStreamDefaultController.zig");
-
-    // Convert the anyopaque chunk to type-safe streams_common.JSValue
-    const typed_chunk: streams_common.JSValue = streams_common.JSValue.fromEnginePtr(
-        stream_internal.allocator,
-        @constCast(chunk),
-    ) catch streams_common.JSValue{ .undefined = {} };
-
-    const write_promise = try WritableStreamDefaultController.write(controller, typed_chunk, chunk_size);
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // 12. Return promise - convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        void,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        write_promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+/// `write(chunk)` - § 5.3.3.
+pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    const writer = sw.writerOf(instance) orelse return error.TypeError;
+    const realm = try js.Realm.of(instance);
+    // Step 1: A released writer rejects with a TypeError.
+    if (writer.stream == null)
+        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+    // Step 2: Return ! WritableStreamDefaultWriterWrite(this, chunk).
+    const c = try realm.fromOptional(chunk);
+    defer js.dispose(c);
+    return sw.give(&writer.returned, try sw.writerWrite(realm, writer, c));
 }

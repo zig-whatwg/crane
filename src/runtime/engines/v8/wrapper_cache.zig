@@ -174,6 +174,7 @@ fn slotReissued(entry: *const CacheEntry) bool {
 /// that is not, which keeps an instance alive a little longer, never frees a
 /// live one.
 fn engineOwns(instance: *runtime.Instance) bool {
+    if (isStreamsGraphObject(instance.vtable.name)) return true;
     const NodeImpl = @import("impls").Node;
     if (NodeImpl.getInternalState(instance)) |node_internal| {
         if (node_internal.node_base) |node_base| {
@@ -183,6 +184,32 @@ fn engineOwns(instance: *runtime.Instance) bool {
     const DocumentImpl = @import("impls").Document;
     if (DocumentImpl.getInternalState(instance)) |doc_internal| {
         if (doc_internal.default_view != null) return true;
+    }
+    return false;
+}
+
+/// Streams objects reach each other through Zig pointers V8 cannot see: a
+/// stream's [[controller]] and [[writer]], a controller's [[stream]], and the
+/// context of every pending promise reaction. Blink traces those slots
+/// (third_party/blink/renderer/core/streams/, `Trace` on every class); with
+/// Global handles there is nothing to trace, so collecting one wrapper frees
+/// an instance another still points at. Their wrappers are held strongly and
+/// the realm's teardown sweep frees them - memory for the realm's lifetime,
+/// never a dangling [[controller]].
+///
+/// An allowlist, and only of the classes built on `streams_writable.zig`'s
+/// ownership rules: their teardown touches nothing but their own slots. The
+/// older readable/transform classes are not safe to sweep (their
+/// `StoredError` is disposed twice - `Check failed: node->IsInUse()`), so they
+/// keep the weak default until they move over.
+pub fn isStreamsGraphObject(name: []const u8) bool {
+    const names = [_][]const u8{
+        "WritableStream",
+        "WritableStreamDefaultWriter",
+        "WritableStreamDefaultController",
+    };
+    for (names) |n| {
+        if (std.mem.eql(u8, name, n)) return true;
     }
     return false;
 }

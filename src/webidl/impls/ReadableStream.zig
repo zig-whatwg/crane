@@ -770,7 +770,7 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
     const writable_state = writable.getState(interfaces.WritableStream.State);
     const writable_internal: *WritableStreamImpl.InternalState = writable_state.own._internal orelse return error.InvalidState;
 
-    if (writable_internal.writer != .none) {
+    if (writable_internal.writer != null) {
         return error.TypeError;
     }
 
@@ -1185,7 +1185,7 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     const dest_state = destination.getState(interfaces.WritableStream.State);
     const dest_internal: *WritableStreamImpl.InternalState = dest_state.own._internal orelse return error.InvalidState;
 
-    if (dest_internal.writer != .none) {
+    if (dest_internal.writer != null) {
         const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
         const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
         defer v8_engine.ffi.v8_Context_Dispose(context);
@@ -2098,7 +2098,11 @@ fn setUpReadableStreamDefaultController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
+    // The CURRENT isolate. `ctx.getEngineContextAs(Isolate)` reinterprets the
+    // runtime context's Global<Context>* as an Isolate*, so every callback
+    // later invoked through it opened a HandleScope on context memory - a
+    // crash or a silent no-op depending on what that memory held.
+    const isolate: ?*v8_engine.ffi.Isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
 
@@ -2423,7 +2427,11 @@ fn setUpReadableByteStreamController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
+    // The CURRENT isolate. `ctx.getEngineContextAs(Isolate)` reinterprets the
+    // runtime context's Global<Context>* as an Isolate*, so every callback
+    // later invoked through it opened a HandleScope on context memory - a
+    // crash or a silent no-op depending on what that memory held.
+    const isolate: ?*v8_engine.ffi.Isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
     // Step 2: If autoAllocateChunkSize provided, it must be positive (checked in FromUnderlyingSource)
@@ -3068,7 +3076,10 @@ fn pipeLoop(pipe_state: *PipeState) void {
     if (pipe_state.dest_internal.state == .errored) {
         // Error propagation backward
         // Convert StoredError to runtime.JSValue for type-safe API
-        const error_jsvalue = pipe_state.dest_internal.stored_error.toRuntimeJSValue();
+        const error_jsvalue: runtime.JSValue = if (pipe_state.dest_internal.stored_error) |e|
+            .{ .handle = .{ .ptr = @ptrCast(e), .needs_disposal = false, .handle_scope = .global } }
+        else
+            runtime.JSValue.jsUndefined;
         if (!pipe_state.prevent_cancel) {
             pipeShutdownWithAction(pipe_state, .cancel_source, error_jsvalue);
         } else {
