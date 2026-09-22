@@ -2483,3 +2483,167 @@ corruption; the change set added nothing to it.
 A sweep-only difference that flips between runs belongs to both binaries until
 a side-by-side run says otherwise.
 
+
+---
+
+### Architecture: An object graph without tracing lives and dies as a unit
+
+**Date**: 2026-09-22
+**Lesson**: The wrapper cache frees an instance when V8 collects its wrapper
+unless `engineOwns()` says the engine still holds it. Graphs linked by Zig
+pointers - a stream and its controller and writer, a promise reaction's context
+- are invisible to V8, so collecting one wrapper freed an object its siblings
+still pointed at.
+
+**What Happened**: the writable-streams directory crashed 11 of 11. The fix
+(c3138bb64) adds the three WritableStream classes to `engineOwns` as an
+ALLOWLIST, pinned by `tests/v8/wrapper_cache_gc_test.zig`. Adding the old
+ReadableStream classes the same way exposed their own teardown double-dispose
+(`Check failed: node->IsInUse()`), so they stay out until that code is rebuilt.
+
+**Takeaway**: **Only allowlist a class whose own teardown touches nothing but
+its own slots.** Holding a wrapper strongly moves its free to teardown, and
+teardown code that was never reached before will run.
+
+---
+
+### Architecture: No FFI returned the value a call threw
+
+**Date**: 2026-09-22
+**Lesson**: `v8_TryCatch_Exception` opens its OWN TryCatch, so it can never see
+an exception thrown before it was called; the `_Safe` call variants return only
+strings. "Rethrow the exception" and "reject with the exception" were therefore
+unimplementable.
+
+**Fix**: `v8_Function_CallCatching` (02973cfcf) returns the call's completion -
+normal or throw - with the thrown value as a handle.
+
+**Takeaway**: **A catch you open after the throw catches nothing. Capture the
+completion at the call.**
+
+---
+
+### Architecture: One handle kind per layer
+
+**Date**: 2026-09-22
+**Lesson**: A `runtime.JSValue` handle is always a `Global<Value>*`, and
+`GlobalHandle.get()` returns a LOCAL slot pointer that is merely typed
+`*ffi.Value`. Mixing them reads an object's first word as a handle location.
+
+**What Happened**: the WritableStream constructor cast a JSValue handle to a Zig
+dictionary struct; elsewhere a Local slot was passed where a Global was
+expected. An argument typed `object` in IDL must be converted by the impl,
+reading members with Get in lexicographic order (WebIDL dictionary conversion).
+
+**Takeaway**: **Know which handle kind you hold; the types will not tell you.**
+
+---
+
+### Debugging: `ctx.getEngineContextAs(Isolate)` is a context cast to an isolate
+
+**Date**: 2026-09-22
+**Lesson**: Three more impls survived the WebSocket and XHR fixes still casting
+a context pointer to an isolate (046399d52). Grep for it; use
+`v8_Isolate_GetCurrent()`.
+
+---
+
+### Testing: A crash that only appears in a sweep is the previous file's teardown
+
+**Date**: 2026-09-22
+**Lesson**: A `--from-file` sweep runs many files in one process, so a file's
+teardown code - sweeps that a single-file run exits before reaching - runs
+while the next file loads. A crash that never reproduces standalone usually
+lives there.
+
+**Fix**: replay the shard's worklist PREFIX with `--from-file --parallel=1`,
+bisecting the prefix, rather than rerunning the crashing file alone. Runner
+logs contain non-UTF-8 bytes, so use `grep -a` (plain grep silently finds
+nothing). Killing a `--from-file` supervisor orphans its shard child (one ran on
+for 1h40m with PPID 1): after stopping a run, `pgrep -f start-index` and kill
+the child.
+
+---
+
+### Architecture: libcurl's CUSTOMREQUEST changes the method NAME, not the transfer
+
+**Date**: 2026-09-22
+**Lesson**: A HEAD sent as `CURLOPT_CUSTOMREQUEST "HEAD"` waits for the body
+its Content-Length announces; `CURLOPT_NOBODY` is how libcurl makes a HEAD.
+
+**What Happened**: `wpt serve` keeps connections open, so every HEAD blocked
+forever in `curl_easy_perform` until the stall watchdog killed the child - a
+TIMEOUT journalled with 0 ms of wall time. Fixed in `curl_backend.zig` and
+`connection_pool.zig` (0e15612d4).
+
+**Takeaway**: **A TIMEOUT with 0 ms wall time is the stall watchdog: the whole
+process was stuck, usually in a blocking C call.**
+
+---
+
+### Architecture: A redirect is followed from the response in hand
+
+**Date**: 2026-09-22
+**Lesson**: `httpRedirectFetch` had no response parameter, so it fetched the
+redirecting URL a second time, appended the raw `Location` to the URL list, and
+read `response.status` after `response.deinit()`.
+
+**What Happened**: the use-after-free crashed 12 fetch and xhr files; the
+duplicate request broke every redirect-count test. Fetch 4.4 step 6 now hands
+its response to 4.5, which parses `Location` against the response's URL
+(7e5aeee37).
+
+**Takeaway**: **A signature missing the spec's argument means the code is doing
+something else. Read what you need before `deinit`.**
+
+---
+
+### Testing: A subtest that passes because an earlier step throws the expected exception
+
+**Date**: 2026-09-22
+**Lesson**: `new Request("")` threw TypeError from its URL parse, so every
+`assert_throws_js(TypeError, () => new Request("", badInit))` passed without
+ever reading `badInit`. Giving the constructor its API base URL (7204b9e6b)
+turned ten `request-error` subtests red; implementing the steps they were
+really testing took the file from 34 to 40 of 44.
+
+**Takeaway**: **When fixing one step turns `assert_throws_*` subtests red, they
+were testing a later step that does not exist yet - the drop is a map of it.**
+
+---
+
+### Architecture: A `[SameObject]` attribute cached as a bare pointer dangles after GC
+
+**Date**: 2026-09-22
+**Lesson**: The generated `get_upload` keeps the upload object in `cached_upload`
+as a raw `*Instance`; nothing keeps its wrapper alive, so a collection frees it
+while the XHR still points at it (`send-timeout-events.htm` builds a 1 MB
+string, collects, and `send()` fires `upload.loadstart` into freed memory).
+
+**Takeaway**: **A native pointer to a GC-managed object is a reference V8 cannot
+see. Every `cached_*` field needs an owner that keeps the wrapper alive.**
+
+---
+
+### Codegen: Overloads were deduplicated keep-first
+
+**Date**: 2026-09-22
+**Lesson**: `deduplicateOperations` kept the first operation of each name, so
+`XMLHttpRequest.open(method, url, async, ...)` was never bound and every XHR
+was asynchronous - about 96 overload sets across the IDL lost a signature.
+
+**Takeaway**: **Check the generated `methods` arity before debugging an
+operation: the overload you are testing may not exist.**
+
+---
+
+### Workflow: Run a sweep from a frozen copy of the runner
+
+**Date**: 2026-09-22
+**Lesson**: A `--from-file` sweep re-spawns its children from the on-disk
+`zig-out/bin/wpt_runner`, so rebuilding mid-sweep contaminates the rest of it.
+Copy the binary into `tmp/` and sweep from the copy. (And a fresh worktree needs
+`mkdir -p zig-out/bin` before its first build, or the snapshot generator fails
+with FileNotFound.)
+
+**Takeaway**: **A sweep's result belongs to the binary its children exec.**
