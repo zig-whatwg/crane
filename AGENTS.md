@@ -2026,3 +2026,56 @@ asynchronously, the events still have to fire - and which deferral to use is a
 measurement, not a reading of the spec. Whatever you pick, a callback reached
 from the event loop rather than from V8 must open its own HandleScope before it
 touches a Local, or it SIGTRAPs the whole file instead of failing a subtest.**
+
+---
+
+### Testing: The WebSocket servers are on EPHEMERAL ports, so `lsof :9001` proves nothing
+
+**Date**: 2026-09-22
+**Lesson**: `tests/wpt/config.json` pins the http and https ports and omits
+`ws`/`wss`, so wptserve assigns those two at random on every start - one run
+had `ws on port 62088` and `wss on port 62089`. Tests reach them through
+`constants.sub.js` substitution, so that is not a defect. What it defeats is
+the obvious probe: `lsof -iTCP:9001` is empty, and reads as "no WebSocket
+server".
+
+**What Happened**: two working websockets sweeps were killed as "doomed -
+nothing is listening on the WebSocket port", on that probe alone. The runner
+also spawns the server with `.stdout = .ignore, .stderr = .ignore`, so the
+lines that would have shown the real ports were thrown away. Running
+`python3 wpt.py serve --config config.json` by hand for thirty seconds with
+its output kept showed them at once.
+
+**Fix**: ask the server, not the port: `lsof -nP -a -p <pid> -iTCP
+-sTCP:LISTEN`; any two ports outside 8000-9000 are ws and wss. Pin `ws`/`wss`
+in `config.json` if a fixed port ever matters.
+
+**Takeaway**: **A negative probe on a port you assumed is not evidence.** Run
+the server by hand with its output visible before concluding a component is
+missing.
+
+---
+
+### Workflow: `pgrep -f` matches the shell that is running it
+
+**Date**: 2026-09-22
+**Lesson**: `until ! pgrep -f wpt_runner_frozen; do sleep 30; done` can never
+exit: `pgrep -f` matches the FULL command line of every process, and the
+loop's own shell has "wpt_runner_frozen" in its command line.
+
+**What Happened**: an agent wrote seven of these, sleeps from 30 to 120s, each
+started because the previous one "had not finished yet". Its sweep had been
+done for hours, its journals were final, its four commits were on its branch.
+It reported nothing, was stopped, and its work was merged from its commit
+messages. Then the command written to reap those loops -
+`grep "[u]ntil ! pgrep"` - matched ITS OWN shell's command line and killed
+the session's command mid-run. Same trap, minutes apart, from the other side.
+
+**Fix**: match on the process name (`pgrep -x name`), or build the pattern at
+runtime so the joined string is not in your own command line
+(`pat='until ! pgrep -f wpt_runner_'; pat="${pat}frozen"`), and always
+exclude `$$`. Better: wait on the artefact - a sweep is done when its journal
+stops changing, a build when its output has an exit line.
+
+**Takeaway**: **Wait on what the process WRITES, not on whether a string is
+in the process table - the string is in yours too.**
