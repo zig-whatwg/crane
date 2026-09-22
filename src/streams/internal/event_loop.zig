@@ -82,6 +82,14 @@ pub const Task = struct {
 
     /// KEEP: anyopaque required - Type-erased context for callback
     context: ?*anyopaque,
+
+    /// Frees `context` for a task that will never run, because its loop is
+    /// being torn down with the task still queued. Null for a task whose
+    /// context owns nothing.
+    ///
+    /// Without it, whatever a task carries leaks whenever the page ends before
+    /// the loop's next turn - a message posted in the last task, say.
+    drop: ?*const fn (context: ?*anyopaque) void = null,
 };
 
 /// Event Loop Interface

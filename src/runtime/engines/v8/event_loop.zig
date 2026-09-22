@@ -202,6 +202,10 @@ pub const V8EventLoop = struct {
         if (self.timer_manager) |mgr| {
             mgr.deinit();
         }
+        // A task still queued will never run: let it free what it carries.
+        for (self.tasks.items) |task| {
+            if (task.drop) |drop| drop(task.context);
+        }
         self.tasks.deinit(self.allocator);
         self.promise_arena.deinit();
     }
