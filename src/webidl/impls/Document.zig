@@ -1394,11 +1394,13 @@ pub fn get_scripts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// HTML §4.12.1 - Returns the script element currently executing, or null
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
 ///
-/// Note: In non-browser context, there's no script currently executing
+/// "The currentScript attribute, on getting, must return the value to which it
+/// was most recently set." Execute the script element sets it around a classic
+/// script's run (and leaves it null for a module script) through
+/// `setCurrentScript`; this getter used to ignore that and return null always.
 pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrSVGScriptElement {
-    _ = instance;
-    // No script currently executing in server-side/headless context
-    return null;
+    const script = getCurrentScript(instance) orelse return null;
+    return .{ .htmlscript_element = script };
 }
 
 /// Getter for defaultView
