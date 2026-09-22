@@ -675,6 +675,11 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
     const internal = WindowImpl.getInternal(window) orelse return;
     const location = internal.location orelse return;
 
+    // Record it as the child context's document URL too - only top-level
+    // pages and workers ever did, so `document.URL` inside an iframe was "".
+    // Document.get_URL and, through it, Location read this.
+    context_manager.setDocumentUrl(v8_ctx, url) catch {};
+
     // Update Location's URL
     const LocationImpl = @import("Location.zig");
     LocationImpl.setURLFromString(location, url) catch {};

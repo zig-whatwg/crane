@@ -735,17 +735,16 @@ pub fn get_implementation(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// DOM §4.6 - Returns document's URL
 pub fn get_URL(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.url.len == 0) {
+    if (internal.url.len == 0 and internal.default_view != null) {
         // HTML "create and initialize a Document object": the document's URL
         // is the navigation's URL. The context records that URL when the
         // navigation commits (context_manager.setDocumentUrl) and the parser
         // never copies it here, so a navigated document read as "". Only a
         // window's document is navigated: one made by createHTMLDocument or
-        // DOMParser has no default view and keeps its own URL.
-        if (internal.default_view != null) {
-            if (navigatedUrl(instance)) |url| {
-                internal.url = try internal.allocator.dupe(u8, url);
-            }
+        // DOMParser has no default view and keeps its own URL. Read live, not
+        // cached: an iframe's context records a new URL on every navigation.
+        if (navigatedUrl(instance)) |url| {
+            return try instance.ctx.allocator.dupe(u8, url);
         }
     }
     // Clone to transfer ownership to caller (interface layer will free)

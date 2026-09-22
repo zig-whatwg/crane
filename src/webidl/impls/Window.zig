@@ -175,9 +175,19 @@ pub const InternalState = struct {
     /// Whether this is a secure context (for SecureContext checks)
     is_secure_context: bool = true,
 
-    /// The window's origin string for storage access
-    /// Derived from the document's URL
+    /// The origin this window was CREATED with: the page's for a top-level
+    /// window, the container's for an iframe. It is the origin its document
+    /// inherits when that document has none of its own (about:blank, srcdoc,
+    /// javascript:); `effectiveOrigin` is the window's actual origin. Storage
+    /// keys still read this one.
     origin: []const u8 = "null",
+
+    /// `effectiveOrigin`'s answer for a document URL with an origin of its
+    /// own, and the URL it was derived from; both owned. Recomputed only when
+    /// the URL changes, because the cross-origin `document` check asks on every
+    /// access from another window.
+    derived_origin: ?[]const u8 = null,
+    derived_origin_url: ?[]const u8 = null,
 
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
@@ -271,6 +281,8 @@ pub const InternalState = struct {
         if (!std.mem.eql(u8, self.origin, "null")) {
             self.allocator.free(self.origin);
         }
+        if (self.derived_origin) |o| self.allocator.free(o);
+        if (self.derived_origin_url) |u| self.allocator.free(u);
 
         // Free status if allocated
         if (self.status.len > 0) {
@@ -297,6 +309,59 @@ pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
         internal.allocator.free(internal.origin);
     }
     internal.origin = origin_copy;
+}
+
+/// This window's origin: its associated Document's origin.
+///
+/// HTML "create and initialize a Document object" gives a document fetched
+/// from a URL that URL's origin, except that about:blank, about:srcdoc and
+/// the result of a javascript: URL inherit their creator's - which is what
+/// `internal.origin` holds. A browsing context sandboxed without
+/// allow-same-origin is opaque whatever it loads.
+///
+/// `internal.origin` alone used to be the answer, and for an iframe that was
+/// its PARENT's origin even after the frame loaded a document from another
+/// origin: a message aimed at the frame's real origin was dropped as a
+/// mismatch, one aimed at the parent's was delivered, and the parent could
+/// read the frame's document.
+///
+/// The slice lives until the document's URL next changes; copy it to keep it.
+fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []const u8 {
+    if (internal.browsing_context.sandbox_flags) |flags| {
+        if (flags.sandboxesSameOrigin()) return "null";
+    }
+    const document = internal.document orelse return internal.origin;
+    const url = interfaces.Document.get_URL(document) catch return internal.origin;
+    // The getter clones into the document's context allocator.
+    defer document.ctx.allocator.free(url);
+    if (url.len == 0 or inheritsCreatorOrigin(url)) return internal.origin;
+
+    if (internal.derived_origin_url) |cached_url| {
+        if (std.mem.eql(u8, cached_url, url)) return internal.derived_origin orelse internal.origin;
+    }
+
+    const parsed = (interfaces.URL.call_static_parse(instance, url, webidl.Opt(runtime.USVString).notPassed()) catch null) orelse
+        return internal.origin;
+    defer runtime.Instance.deinit(parsed);
+    const serialized = interfaces.URL.get_origin(parsed) catch return internal.origin;
+    defer parsed.ctx.allocator.free(serialized);
+
+    const origin_copy = internal.allocator.dupe(u8, serialized) catch return internal.origin;
+    const url_copy = internal.allocator.dupe(u8, url) catch {
+        internal.allocator.free(origin_copy);
+        return internal.origin;
+    };
+    if (internal.derived_origin) |old| internal.allocator.free(old);
+    if (internal.derived_origin_url) |old| internal.allocator.free(old);
+    internal.derived_origin = origin_copy;
+    internal.derived_origin_url = url_copy;
+    return origin_copy;
+}
+
+/// about:blank, about:srcdoc and a javascript: URL's result take their
+/// creator's origin rather than one of their own.
+fn inheritsCreatorOrigin(url: []const u8) bool {
+    return std.ascii.startsWithIgnoreCase(url, "about:") or std.ascii.startsWithIgnoreCase(url, "javascript:");
 }
 
 /// Initialize Window instance
@@ -612,13 +677,13 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Cross-origin check for accessing other Window's document
     const accessor_origin: []const u8 = if (accessor_window) |aw|
-        if (getInternal(aw)) |aw_internal| aw_internal.origin else "null"
+        if (getInternal(aw)) |aw_internal| effectiveOrigin(aw, aw_internal) else "null"
     else
         // No accessor window at all - likely internal call, allow access
-        internal.origin;
+        effectiveOrigin(instance, internal);
 
     // Get this Window's origin (target origin)
-    const target_origin = internal.origin;
+    const target_origin = effectiveOrigin(instance, internal);
 
     // Cross-origin check:
     // - If accessor has opaque origin ("null"), it's always cross-origin (except self-access handled above)
@@ -1878,9 +1943,12 @@ pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!typedefs.Event
 }
 
 /// Getter for origin
+/// WindowOrWorkerGlobalScope `origin`: the serialization of the relevant
+/// settings object's origin - this window's document's.
+/// The binding frees the returned string.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
 }
 
 /// Getter for isSecureContext
@@ -2907,7 +2975,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     defer v8.ffi.v8_Context_Dispose(incumbent_ctx);
     const source_window = v8.context_manager.getWindowForContext(incumbent_ctx);
     const source_origin: []const u8 = if (source_window) |sw|
-        if (getInternal(sw)) |sw_internal| sw_internal.origin else "null"
+        if (getInternal(sw)) |sw_internal| effectiveOrigin(sw, sw_internal) else "null"
     else
         "null";
 
@@ -3128,7 +3196,7 @@ fn runPostedMessage(context: ?*anyopaque) void {
     const internal = getInternal(target) orelse return;
 
     // Step 8.1.
-    if (!posted.target_origin.admits(internal.origin)) return;
+    if (!posted.target_origin.admits(effectiveOrigin(target, internal))) return;
 
     // A task runs from the event loop, not from V8: there is no HandleScope
     // and no entered context unless it opens them, and wrapping the event for

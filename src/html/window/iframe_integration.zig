@@ -786,8 +786,21 @@ pub const IFrameIntegration = struct {
         defer self.allocator.free(computed);
 
         const final_url = if (response.final_url.len > 0) response.final_url else url;
+        const kind = document_type.classify(computed);
 
-        switch (document_type.classify(computed)) {
+        // HTML "create and initialize a Document object": the new document's
+        // URL is the response URL from the moment it exists - before the parser
+        // runs its scripts. Support pages read their parameters from
+        // location.search while loading (`self[params.get("window")]
+        // .postMessage(...)`); updating after the commit handed them the
+        // previous URL, they threw, and the page waiting on them timed out. A
+        // handed-off response keeps the current document, and its URL.
+        switch (kind) {
+            .multipart, .external => {},
+            else => self.updateLocationUrl(final_url),
+        }
+
+        switch (kind) {
             .html => try self.commitHtmlDocument(body),
             .text => try self.commitTextDocument(body),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
@@ -800,7 +813,6 @@ pub const IFrameIntegration = struct {
             },
         }
 
-        self.updateLocationUrl(final_url);
         try self.recordCommit(final_url, computed);
         self.state = .ready;
     }
