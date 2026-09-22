@@ -28,6 +28,7 @@ const webidl = @import("webidl");
 // RequestInit is now properly defined in dictionaries with all Fetch spec fields
 
 const Request = interfaces.Request;
+const same_object = @import("same_object.zig");
 
 pub const State = Request.State;
 
@@ -101,7 +102,10 @@ fn toInternalRedirect(redirect: enums.RequestRedirect) fetch.internal.RedirectMo
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     request: *InternalRequest,
-    headers_cache: ?*runtime.Instance = null, // Cached Headers instance
+    /// Keeps `this.body`'s stream alive for as long as this object - see
+    /// `same_object.zig`. (`headers` works the other way round: the Headers
+    /// object keeps its owner alive, because its list lives in the owner.)
+    body_pin: same_object.Pin = .{},
 };
 
 /// Initialize instance
@@ -125,7 +129,6 @@ pub fn init(
     internal.* = .{
         .allocator = allocator,
         .request = request,
-        .headers_cache = null,
     };
 
     // Store in instance
@@ -145,13 +148,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
-        // NOTE: The cached Headers wrapper (if any) was created via initWithHeaderList
-        // which sets owns_headers=false. This means Headers.deinit won't free the
-        // header strings - Request.request.deinit() will. The Headers instance
-        // itself is in the wrapper cache and will be cleaned up by GC.
-        // We don't explicitly call Headers.deinit here to avoid order-of-destruction
-        // issues - let the wrapper cache handle it.
-        internal.headers_cache = null;
+        // No Headers object can be alive here: a live one pins this request,
+        // because its list is `request.header_list` below (Headers.zig,
+        // InternalState.Owner). At context teardown the order is arbitrary,
+        // which is what that object's generation check is for.
+        internal.body_pin.release();
 
         internal.request.deinit();
         allocator.destroy(internal);
@@ -540,24 +541,22 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Return cached instance if exists
-    if (internal.headers_cache) |headers| {
-        return headers;
-    }
-
-    // Create Headers instance wrapping our header_list with "request" guard
+    // Only reached when the generated getter's `cached_headers` is empty - it
+    // is the one cache ([SameObject]). A second cache here used to hold the
+    // same pointer where nothing could clear it.
+    //
+    // The Headers object's list IS this request's header list, by reference,
+    // so it keeps this request alive and clears `cached_headers` when it is
+    // collected - see Headers.InternalState.Owner.
     const Headers = @import("Headers.zig");
-    const headers = try Headers.initWithHeaderList(
+    return Headers.initWithHeaderList(
         internal.allocator,
         instance.ctx,
         &internal.request.header_list,
         .request,
+        instance,
+        &state.own.cached_headers,
     );
-
-    // Cache it
-    internal.headers_cache = headers;
-
-    return headers;
 }
 
 /// Get destination
@@ -790,6 +789,9 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // Cache the stream for future calls
     // Note: This modifies state, which is mutable through the instance
     @constCast(&state.own).body = stream_instance;
+    // `state.own.body` is a pointer V8 cannot see: hold the stream's wrapper
+    // for as long as this object, or a collection frees the stream under it.
+    internal.body_pin.hold(stream_instance);
 
     return stream_instance;
 }

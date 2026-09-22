@@ -31,6 +31,8 @@ const ProgressEventData = xhr.ProgressEventData;
 
 const log = std.log.scoped(.xhr);
 
+const same_object = @import("same_object.zig");
+
 /// The parent interface's generated State. `xhr.onload` and friends are
 /// declared on XMLHttpRequestEventTarget, so the fields live here for BOTH an
 /// XMLHttpRequest and an XMLHttpRequestUpload; `instance.getState` of this type
@@ -85,6 +87,11 @@ pub const InternalState = struct {
     /// The token shared with a queued send task, if one is outstanding.
     send_token: ?*SendToken,
 
+    /// Keeps `this.upload` alive for as long as this XHR - see
+    /// `same_object.zig`. The upload object carries the upload event handlers,
+    /// which script sets on it and then never touches again.
+    upload_pin: same_object.Pin,
+
     /// The request body, owned for the lifetime of one send().
     ///
     /// An async send() hands the bytes to an event-loop TASK, which runs after
@@ -100,6 +107,7 @@ pub const InternalState = struct {
             .onreadystatechange = null,
             .isolate = null,
             .send_token = null,
+            .upload_pin = .{},
             .pending_body = null,
         };
     }
@@ -123,6 +131,8 @@ pub const InternalState = struct {
     pub fn deinitState(self: *InternalState) void {
         // Dispose V8 Global handle to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
+        // The upload object's lifetime is the wrapper cache's from here.
+        self.upload_pin.release();
         // Before anything else: a task queued by an async send() is about to
         // run against an instance that is going away.
         self.cancelPendingSend();
@@ -252,6 +262,12 @@ pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // The caching is handled by [SameObject] in the interface layer (cached_upload)
     const XMLHttpRequestUpload = interfaces.XMLHttpRequestUpload;
     const upload = try XMLHttpRequestUpload.init(internal.allocator, instance.ctx);
+
+    // `cached_upload` is a pointer V8 cannot see. Without this, a collection
+    // between `xhr.upload.onloadend = f` and `send()` freed the upload object
+    // and `send()` fired `upload.loadstart` into the slab
+    // (xhr/send-timeout-events.htm, SEGV in v8_Value_IsFunction).
+    internal.upload_pin.hold(upload);
 
     return upload;
 }

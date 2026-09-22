@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const AbortController = interfaces.AbortController;
+const same_object = @import("same_object.zig");
 
 pub const State = AbortController.State;
 
@@ -29,17 +30,30 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// [[signal]]: The associated AbortSignal
-    /// This signal is created and owned by the AbortController.
-    /// When the controller is destroyed, the signal must also be destroyed.
+    /// [[signal]]: The associated AbortSignal, created with the controller.
     signal: *runtime.Instance,
 
+    /// Holds the signal's wrapper once the signal has been handed to script,
+    /// which also means the wrapper cache owns the signal from then on - see
+    /// `deinit` and `same_object.zig`.
+    signal_pin: same_object.Pin,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Clean up the owned AbortSignal
-        // The signal was created by AbortController.init() and is owned by this controller.
-        // It is NOT registered with the V8 wrapper cache (since it's created via init(),
-        // not via a JS constructor), so we must explicitly call its deinit.
-        interfaces.AbortSignal.deinit(self.signal);
+        if (self.signal_pin.isHeld()) {
+            // Script has seen the signal, so V8's wrapper cache owns it and
+            // frees it when its wrapper goes - which may be long after this
+            // controller: `const s = new AbortController().signal`.
+            //
+            // This used to deinit the signal here unconditionally, on the
+            // premise (in a comment) that a signal made by init() is never in
+            // the wrapper cache. Every `controller.signal` read put it there.
+            // So a collected controller freed a signal script still held, and
+            // a collected signal left the controller pointing into the slab.
+            self.signal_pin.release();
+        } else {
+            // Never handed out - nothing else will ever free it.
+            interfaces.AbortSignal.deinit(self.signal);
+        }
         allocator.destroy(self);
     }
 };
@@ -65,6 +79,7 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.signal = signal;
+    internal.signal_pin = .{};
 
     return instance;
 }
@@ -99,6 +114,9 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    // [SameObject], and the signal carries `onabort` and its listeners: keep
+    // its wrapper for as long as this controller lives.
+    internal.signal_pin.hold(internal.signal);
     return internal.signal;
 }
 
