@@ -1747,7 +1747,21 @@ V8ModuleEvaluateResult* v8_Module_Evaluate_Safe(Global<Context>* context, Global
     result->error = nullptr;
     
     TryCatch try_catch(isolate);
-    
+
+    // v8::Module::Evaluate CHECKs on a module that was never instantiated; see
+    // v8_Module_IsGraphAsync for what a failed CHECK costs.
+    if (local_module->GetStatus() < Module::kInstantiated) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Module was not instantiated");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+
     MaybeLocal<Value> maybe_result = local_module->Evaluate(local_context);
     
     if (try_catch.HasCaught()) {
@@ -3638,6 +3652,44 @@ struct ModuleResolveCallbackData {
 /// Global module resolve callback (set per isolate)
 static ModuleResolveCallbackData* g_module_resolve_callback = nullptr;
 
+/// Report an unresolvable module specifier as a JavaScript exception.
+///
+/// v8::Module::ResolveModuleCallback carries a hard contract: an empty
+/// MaybeLocal means "I have already scheduled an exception". Returning empty
+/// without one does not fail the instantiation - it trips a CHECK inside
+/// v8::internal::Module::ResolveExport and takes the whole process down with
+/// SIGTRAP. That is not a hypothetical: every `import` this engine could not
+/// resolve crashed the runner, which is why the entire error half of
+/// html/semantics/scripting-1/the-script-element/module/ (compilation-error-*,
+/// choice-of-error-*, instantiation-error-*, fetch-error-*) crashed rather than
+/// failing.
+///
+/// A TypeError is what the HTML spec's "resolve a module specifier" produces on
+/// failure, so the exception is also the right one.
+static void throwUnresolvedModuleSpecifier(Isolate* isolate, Local<String> specifier) {
+    // Never clobber an exception the callee already scheduled: that one names
+    // the real cause, and V8 only requires that *some* exception is pending.
+    if (isolate->HasPendingException()) {
+        return;
+    }
+
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    const char* name = *specifier_utf8 ? *specifier_utf8 : "";
+
+    char buf[512];
+    snprintf(buf, sizeof(buf), "Failed to resolve module specifier \"%s\"", name);
+
+    Local<String> message;
+    if (!String::NewFromUtf8(isolate, buf).ToLocal(&message)) {
+        // Even the message could not be built; anything pending is enough.
+        if (!isolate->HasPendingException()) {
+            isolate->ThrowException(Exception::TypeError(String::Empty(isolate)));
+        }
+        return;
+    }
+    isolate->ThrowException(Exception::TypeError(message));
+}
+
 /// V8 Module resolve callback wrapper
 static MaybeLocal<Module> V8ModuleResolveCallback(
     Local<Context> context,
@@ -3646,21 +3698,22 @@ static MaybeLocal<Module> V8ModuleResolveCallback(
     Local<Module> referrer
 ) {
     (void)import_assertions;  // Not used currently
-    
+
+    Isolate* isolate = context->GetIsolate();
+
     if (!g_module_resolve_callback || !g_module_resolve_callback->callback) {
+        throwUnresolvedModuleSpecifier(isolate, specifier);
         return MaybeLocal<Module>();
     }
-    
-    Isolate* isolate = context->GetIsolate();
-    
+
     // Convert specifier to C string
     String::Utf8Value specifier_utf8(isolate, specifier);
     const char* specifier_cstr = *specifier_utf8;
     int specifier_len = specifier_utf8.length();
-    
+
     // Create a Global handle for the referrer module
     Global<Module>* referrer_global = new Global<Module>(isolate, referrer);
-    
+
     // Call the Zig callback
     void* result = g_module_resolve_callback->callback(
         g_module_resolve_callback->user_data,
@@ -3668,12 +3721,13 @@ static MaybeLocal<Module> V8ModuleResolveCallback(
         specifier_len,
         referrer_global
     );
-    
+
     if (!result) {
         delete referrer_global;
+        throwUnresolvedModuleSpecifier(isolate, specifier);
         return MaybeLocal<Module>();
     }
-    
+
     // Result should be a Global<Module>*
     Global<Module>* resolved = static_cast<Global<Module>*>(result);
     Local<Module> local_resolved = resolved->Get(isolate);
@@ -3728,6 +3782,14 @@ Global<Module>* v8_Module_Compile(
 
     // Create ScriptCompiler::Source
     ScriptCompiler::Source script_source(local_source, origin);
+
+    // A syntax error leaves an exception scheduled on the isolate, and this
+    // signature can only say "nullptr". Without a TryCatch to absorb it, the
+    // exception survives the return and the NEXT unrelated V8 call CHECKs -
+    // the failure lands nowhere near the module that caused it. The TryCatch's
+    // destructor clears it, which is exactly what "returns nullptr on
+    // compilation error" already promised.
+    TryCatch try_catch(isolate);
 
     // Compile the module
     MaybeLocal<Module> maybe_module = ScriptCompiler::CompileModule(isolate, &script_source);
@@ -3806,6 +3868,11 @@ bool v8_Module_Instantiate(Global<Context>* context, Global<Module>* module) {
     // This ensures import resolution happens in the right realm
     Context::Scope context_scope(local_context);
 
+    // Same reasoning as v8_Module_Compile: a failed link schedules an exception
+    // that this bool return cannot carry, and an exception left pending kills
+    // the process at the next V8 call rather than here.
+    TryCatch try_catch(isolate);
+
     Maybe<bool> result = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
 
     return result.FromMaybe(false);
@@ -3823,6 +3890,18 @@ Global<Value>* v8_Module_Evaluate(Global<Context>* context, Global<Module>* modu
     // Enter the context for module evaluation
     // This is critical for globalThis to reference the correct global object
     Context::Scope context_scope(local_context);
+
+    // See v8_Module_Compile. Evaluating a module whose graph is errored, or one
+    // that throws at top level, schedules an exception this nullptr return
+    // cannot carry.
+    TryCatch try_catch(isolate);
+
+    // v8::Module::Evaluate CHECKs that the module is instantiated or already
+    // evaluated. A caller that ignored a failed InstantiateModule and evaluated
+    // anyway would take the process down rather than get a null back.
+    if (local_module->GetStatus() < Module::kInstantiated) {
+        return nullptr;
+    }
 
     MaybeLocal<Value> maybe_result = local_module->Evaluate(local_context);
 
@@ -3853,14 +3932,23 @@ Global<Value>* v8_Module_GetException(Global<Module>* module) {
 Global<Object>* v8_Module_GetModuleNamespace(Global<Module>* module) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Module> local_module = module->Get(isolate);
+
+    // Same contract as IsGraphAsync above: v8::Module::GetModuleNamespace
+    // CHECKs that the module is at least instantiated, and the caller here is
+    // the dynamic-import path, which reaches for the namespace on whatever it
+    // was handed - including a module whose instantiation failed.
+    if (local_module->GetStatus() < Module::kInstantiated) {
+        return nullptr;
+    }
+
     Local<Value> ns = local_module->GetModuleNamespace();
-    
+
     if (!ns->IsObject()) {
         return nullptr;
     }
-    
+
     return trackHandle(new Global<Object>(isolate, ns.As<Object>()));
 }
 
@@ -3893,9 +3981,27 @@ void v8_Module_Dispose(Global<Module>* module) {
 bool v8_Module_IsGraphAsync(Global<Module>* module) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Module> local_module = module->Get(isolate);
-    
+
+    // "Must be called after module instantiation" is not advice - it is a
+    // v8::Module CHECK, and a failed CHECK is IMMEDIATE_CRASH():
+    //
+    //     # Fatal error in v8::Module::IsGraphAsync
+    //     # v8::Module::IsGraphAsync must be used on an instantiated module
+    //
+    // `script_execution.runModuleFromSource` asks this straight after
+    // compiling, before anything instantiates, so EVERY module script took the
+    // process down with SIGTRAP - including inline ones with no imports at all,
+    // which is what made it look like an import-resolution problem.
+    //
+    // An uninstantiated graph has no answer to give, and "false" is the safe
+    // one: the caller then evaluates synchronously, and Evaluate() on a module
+    // that does have top-level await returns a promise regardless.
+    if (local_module->GetStatus() < Module::kInstantiated) {
+        return false;
+    }
+
     // V8's IsGraphAsync() checks if this module or any of its dependencies
     // contain top-level await, requiring async evaluation
     return local_module->IsGraphAsync();
