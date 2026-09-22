@@ -669,25 +669,8 @@ fn uploadObjectIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
 
 /// Build the event object and deliver it to both kinds of listener.
 ///
-/// KNOWN LEAK, measured and deliberately not "fixed" by guessing.
-/// `DebugAllocator` names it exactly:
-///
-///     memory address 0x... leaked:
-///       ProgressEvent.call_constructor  ctx.allocator.create(InternalState)
-///       XMLHttpRequest.fireAt           interfaces.ProgressEvent.call_constructor
-///
-/// The event instance created here has no owner. `ProgressEvent.deinit` would
-/// free it, but calling it is only safe if nothing retained the event - and a
-/// listener may have kept it (`let saved; xhr.onload = e => saved = e`), in
-/// which case V8 holds a wrapper around an Instance this would return to the
-/// slab. AGENTS.md is explicit that guessing at that has shipped two
-/// use-after-frees, and there is no "is this instance wrapped" query reachable
-/// from here to decide it with.
-///
-/// It is structural rather than mine: `HTMLImageElement.fireEventOnElement`
-/// creates and abandons an Event the same way. Firing six events per request
-/// makes it more frequent, which is why it is written down here rather than
-/// left to be rediscovered.
+/// The event instance is released when - and only when - nothing wrapped it.
+/// See `releaseEventIfUnwrapped`.
 fn fireAt(
     target: *runtime.Instance,
     xhr_instance: *runtime.Instance,
@@ -740,6 +723,47 @@ fn fireAt(
 
     // (2) the event handler IDL attribute.
     invokeIdlHandler(target, xhr_instance, event, event_type);
+
+    releaseEventIfUnwrapped(event, progress != null);
+}
+
+/// Free an event nobody ever saw.
+///
+/// `ProgressEvent.call_constructor` allocates its `InternalState` with
+/// `ctx.allocator.create` and the instance created here has no owner, so every
+/// event fired leaked one - `DebugAllocator` named it through
+/// `XMLHttpRequest.fireAt`, and a request fires six.
+///
+/// Freeing it unconditionally is NOT safe: a listener may have kept the event
+/// (`let saved; xhr.onload = e => saved = e`), in which case V8 holds a wrapper
+/// around an Instance this would return to the slab. AGENTS.md: prove the
+/// callee does not retain it, or do not dispose.
+///
+/// The WRAPPER CACHE is that proof. Every path that hands the event to V8 -
+/// `wrapInstanceAsV8Object`, from both `invokeIdlHandler` and EventTarget's
+/// listener invocation - puts it in the cache, and the weak callback there
+/// owns it from that moment. So an event absent from the cache after dispatch
+/// has never been seen by V8, nothing can be holding it, and freeing it is
+/// provably safe. An event that IS cached is left entirely alone.
+///
+/// That covers the common case outright: `progress` and `readystatechange` fire
+/// on every request whether or not anything is listening.
+///
+/// `Window.zig` does the same thing for MessageEvent, but removes from the
+/// cache first and frees regardless - which is the version this deliberately
+/// does not copy.
+fn releaseEventIfUnwrapped(event: *runtime.Instance, is_progress_event: bool) void {
+    const cache_storage = event.ctx.getV8WrapperCacheStorage() orelse return;
+    const cache: *v8_engine.WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+    // Wrapped => V8 owns it from here.
+    if (cache.get(event) != null) return;
+
+    if (is_progress_event) {
+        interfaces.ProgressEvent.deinit(event);
+    } else {
+        interfaces.Event.deinit(event);
+    }
 }
 
 /// The raw, still-tagged handler pointer for `event_type` on `target`.
