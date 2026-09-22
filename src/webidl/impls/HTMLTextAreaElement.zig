@@ -24,15 +24,70 @@ pub const ImplError = error{
     NotImplemented,
     InvalidState,
     OutOfMemory,
-    /// Setting an attribute "limited to only positive numbers" to zero, or a
-    /// non-negative one to a negative number. The name matters: it is the
-    /// DOMException the binding layer maps it to (see the table in
-    /// engines/v8/conversions.zig).
+    /// An out-of-range assignment to cols/rows/maxLength/minLength. The name
+    /// matters: it is the DOMException the binding maps it to.
     IndexSizeError,
 };
 
-const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+/// Per-instance state, stored BY VALUE in a map of this module's own rather than
+/// through `utils.InstanceRegistry`.
+///
+/// `InstanceRegistry.createIn` takes a block out of the process-wide
+/// `ArenaAllocator` and hands it back on `remove`, so the block lands on a shared
+/// size-class free list and is reissued to the next caller of that size. Adding
+/// that alloc/free pair to an element the PARSER creates destabilised the DOM:
+/// measured on the 5-file shard of html/semantics/forms/the-textarea-element/
+/// containing textarea-minlength.html, 8 runs each, same tree, one file differing
+///
+///     textarea stubs (no state at all)          0 / 8 runs aborted
+///     state via InstanceRegistry.createIn     1-7 / 8 runs aborted
+///     state in this map (no arena block)        0 / 8 runs aborted
+///
+/// The abort was a SIGABRT from a SEGV in `Node.getFirstChild`, reading a
+/// corrupted `node_base` under `Document.getElementsByTagName` in a LATER test
+/// file - a block that had moved on being read or written through something's
+/// stale view of it.
+///
+/// Storing the state inline in the map removes the arena from the picture
+/// entirely: the map owns its own memory, so a stale entry can only ever give a
+/// wrong answer, never corrupt a neighbour. The map is keyed on the instance
+/// address and is process-global, like the shared registry it replaces.
+///
+/// TODO: the same alloc/free pair is in HTMLInputElement.zig, HTMLFormElement.zig
+/// and ~17 other impls. This is a local workaround, not the fix; the fix is in
+/// whatever holds a block past `ArenaAllocator.destroy`.
+const StateMap = struct {
+    var map: ?std.AutoHashMap(usize, InternalState) = null;
+
+    fn ensure() *std.AutoHashMap(usize, InternalState) {
+        if (map == null) {
+            map = std.AutoHashMap(usize, InternalState).init(std.heap.page_allocator);
+        }
+        return &map.?;
+    }
+
+    fn put(instance: *runtime.Instance, value: InternalState) !void {
+        try ensure().put(@intFromPtr(instance), value);
+    }
+
+    fn get(instance: *runtime.Instance) ?*InternalState {
+        return ensure().getPtr(@intFromPtr(instance));
+    }
+
+    /// The entry for `instance`, creating a default one if this is the first
+    /// write. Nothing is stored until something assigns, so a parser-created
+    /// element that script never touches costs nothing at all.
+    fn getOrPut(instance: *runtime.Instance) !*InternalState {
+        const entry = try ensure().getOrPut(@intFromPtr(instance));
+        if (!entry.found_existing) entry.value_ptr.* = .{};
+        return entry.value_ptr;
+    }
+
+    fn remove(instance: *runtime.Instance) ?InternalState {
+        if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
+        return null;
+    }
+};
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-textarea-raw-value
 ///
@@ -64,9 +119,12 @@ pub const InternalState = struct {
     selection_end: u32 = 0,
     selection_direction: SelectionDirection = .none,
 
+    /// Releases what the state OWNS. Deliberately does not null the field
+    /// afterwards: the block is handed back to the arena immediately, so the
+    /// write would be pointless, and a write through a registry pointer is the
+    /// one thing worth not doing on a teardown path.
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         if (self.raw_value) |v| allocator.free(v);
-        self.raw_value = null;
     }
 };
 
@@ -103,22 +161,21 @@ pub fn init(
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
-    // createIn, not set: the registry then owns the block and returns it to the
-    // arena on remove, rather than dropping it from the map and holding it to
-    // process exit.
-    const ArenaAllocator = runtime.ArenaAllocator;
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
-    internal.* = .{};
-
+    // No state is recorded here on purpose: `StateMap` fills in lazily on the
+    // first assignment, so an element the parser created and script never
+    // touched allocates nothing and leaves nothing to clean up.
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    if (Registry.get(instance)) |internal| {
-        internal.deinit(instance.ctx.allocator);
+    // Take the entry out first, then free what it owned: the freeing happens
+    // against a copy, so nothing is written back through a map slot that has
+    // already been reused.
+    if (StateMap.remove(instance)) |taken| {
+        var state = taken;
+        state.deinit(instance.ctx.allocator);
     }
-    Registry.remove(instance);
 
     const HTMLElementImpl = @import("HTMLElement.zig");
     HTMLElementImpl.deinit(instance);
@@ -246,7 +303,7 @@ fn apiValue(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
 fn currentApiValue(instance: *runtime.Instance) ![]u8 {
     const allocator = instance.ctx.allocator;
 
-    if (Registry.get(instance)) |internal| {
+    if (StateMap.get(instance)) |internal| {
         if (internal.raw_value) |raw| {
             // Dirty: the element's own value wins over the children.
             return apiValue(allocator, raw);
@@ -432,21 +489,30 @@ pub fn get_selectionStart(instance: *runtime.Instance) anyerror!u32 {
     // current value. React reads selectionStart/selectionEnd to restore the
     // caret after a controlled re-render, which is why this reports a position
     // rather than throwing.
-    const internal = Registry.get(instance) orelse return 0;
+    const internal = StateMap.get(instance) orelse return 0;
     return @min(internal.selection_start, apiValueLength(instance));
 }
 
 /// Getter for selectionEnd
 pub fn get_selectionEnd(instance: *runtime.Instance) anyerror!u32 {
-    const internal = Registry.get(instance) orelse return 0;
+    const internal = StateMap.get(instance) orelse return 0;
     return @min(internal.selection_end, apiValueLength(instance));
 }
 
 /// Getter for selectionDirection
 pub fn get_selectionDirection(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = Registry.get(instance) orelse return runtime.DOMString.initInterned("none");
+    const internal = StateMap.get(instance) orelse return runtime.DOMString.initInterned("none");
     return runtime.DOMString.initInterned(internal.selection_direction.keyword());
 }
+
+// ---------------------------------------------------------------------------
+// Out-of-range integer assignments
+//
+// "Limited to only positive numbers" and "limited to only non-negative numbers"
+// both throw "IndexSizeError" on an out-of-range assignment rather than writing
+// the attribute, which textarea-minlength.html and textarea-maxlength.html each
+// assert.
+// ---------------------------------------------------------------------------
 
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
@@ -456,8 +522,7 @@ pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) a
 
 /// Setter for cols
 pub fn set_cols(instance: *runtime.Instance, value: u32) anyerror!void {
-    // "Limited to only positive numbers": setting zero throws rather than
-    // writing cols="0".
+    // "Limited to only positive numbers": zero is invalid.
     if (value == 0) return error.IndexSizeError;
     try setIntAttr(instance, "cols", value);
 }
@@ -524,7 +589,7 @@ pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) a
 
 /// Setter for value
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     const allocator = instance.ctx.allocator;
 
     const copy = allocator.dupe(u8, value.asSlice()) catch return error.OutOfMemory;
@@ -545,7 +610,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 
 /// Setter for selectionStart
 pub fn set_selectionStart(instance: *runtime.Instance, value: u32) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     const length = apiValueLength(instance);
     internal.selection_start = @min(value, length);
     // "If the end is less than the new start, set the end to the new start."
@@ -556,7 +621,7 @@ pub fn set_selectionStart(instance: *runtime.Instance, value: u32) anyerror!void
 
 /// Setter for selectionEnd
 pub fn set_selectionEnd(instance: *runtime.Instance, value: u32) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     const length = apiValueLength(instance);
     internal.selection_end = @min(value, length);
     // "If the start is greater than the new end, set the start to the new end."
@@ -567,13 +632,13 @@ pub fn set_selectionEnd(instance: *runtime.Instance, value: u32) anyerror!void {
 
 /// Setter for selectionDirection
 pub fn set_selectionDirection(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     internal.selection_direction = SelectionDirection.parse(value.asSlice());
 }
 
 /// Operation: select
 pub fn call_select(instance: *runtime.Instance) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     internal.selection_start = 0;
     internal.selection_end = apiValueLength(instance);
     internal.selection_direction = .none;
@@ -581,7 +646,7 @@ pub fn call_select(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: setSelectionRange
 pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) anyerror!void {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const internal = try StateMap.getOrPut(instance);
     const length = apiValueLength(instance);
 
     const clamped_end = @min(end, length);

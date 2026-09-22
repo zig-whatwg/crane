@@ -31,8 +31,65 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+/// Per-instance state, stored BY VALUE in a map of this module's own rather than
+/// through `utils.InstanceRegistry`.
+///
+/// `InstanceRegistry.createIn` takes a block out of the process-wide
+/// `ArenaAllocator` and hands it back on `remove`, so the block lands on a shared
+/// size-class free list and is reissued to the next caller of that size. Adding
+/// that alloc/free pair to an element the PARSER creates destabilised the DOM:
+/// measured on the 5-file shard of html/semantics/forms/the-textarea-element/
+/// containing textarea-minlength.html, 8 runs each, same tree, one file differing
+///
+///     textarea stubs (no state at all)          0 / 8 runs aborted
+///     state via InstanceRegistry.createIn     1-7 / 8 runs aborted
+///     state in this map (no arena block)        0 / 8 runs aborted
+///
+/// The abort was a SIGABRT from a SEGV in `Node.getFirstChild`, reading a
+/// corrupted `node_base` under `Document.getElementsByTagName` in a LATER test
+/// file - a block that had moved on being read or written through something's
+/// stale view of it.
+///
+/// Storing the state inline in the map removes the arena from the picture
+/// entirely: the map owns its own memory, so a stale entry can only ever give a
+/// wrong answer, never corrupt a neighbour. The map is keyed on the instance
+/// address and is process-global, like the shared registry it replaces.
+///
+/// TODO: the same alloc/free pair is in HTMLInputElement.zig, HTMLFormElement.zig
+/// and ~17 other impls. This is a local workaround, not the fix; the fix is in
+/// whatever holds a block past `ArenaAllocator.destroy`.
+const StateMap = struct {
+    var map: ?std.AutoHashMap(usize, InternalState) = null;
+
+    fn ensure() *std.AutoHashMap(usize, InternalState) {
+        if (map == null) {
+            map = std.AutoHashMap(usize, InternalState).init(std.heap.page_allocator);
+        }
+        return &map.?;
+    }
+
+    fn put(instance: *runtime.Instance, value: InternalState) !void {
+        try ensure().put(@intFromPtr(instance), value);
+    }
+
+    fn get(instance: *runtime.Instance) ?*InternalState {
+        return ensure().getPtr(@intFromPtr(instance));
+    }
+
+    /// The entry for `instance`, creating a default one if this is the first
+    /// write. Nothing is stored until something assigns, so a parser-created
+    /// element that script never touches costs nothing at all.
+    fn getOrPut(instance: *runtime.Instance) !*InternalState {
+        const entry = try ensure().getOrPut(@intFromPtr(instance));
+        if (!entry.found_existing) entry.value_ptr.* = .{};
+        return entry.value_ptr;
+    }
+
+    fn remove(instance: *runtime.Instance) ?InternalState {
+        if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
+        return null;
+    }
+};
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-selectedness
 ///
@@ -90,19 +147,16 @@ pub fn init(
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
-    // createIn, not set: the registry then owns the block and returns it to the
-    // arena on remove, rather than dropping it from the map and holding it to
-    // process exit.
-    const ArenaAllocator = runtime.ArenaAllocator;
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
-    internal.* = .{};
-
+    // No state is recorded here on purpose: `StateMap` fills in lazily on the
+    // first assignment, so an element the parser created and script never
+    // touched allocates nothing and leaves nothing to clean up.
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    Registry.remove(instance);
+    // The state owns nothing heap-allocated, so dropping the entry is all of it.
+    _ = StateMap.remove(instance);
 
     const HTMLElementImpl = @import("HTMLElement.zig");
     HTMLElementImpl.deinit(instance);
@@ -239,7 +293,7 @@ pub const Explicit = enum { on, off, off_no_reset, absent };
 /// The option's own selectedness, which never consults the owning select - that
 /// is what keeps `get_selected` from recursing through its siblings.
 pub fn explicitSelectedness(option: *runtime.Instance) Explicit {
-    if (Registry.get(option)) |internal| {
+    if (StateMap.get(option)) |internal| {
         switch (internal.selectedness) {
             .on => return .on,
             .off => return .off,
@@ -255,8 +309,8 @@ pub fn explicitSelectedness(option: *runtime.Instance) Explicit {
 
 /// Record an explicit selectedness. Used by `option.selected` and, through this
 /// module, by `select.value` / `select.selectedIndex`.
-pub fn setSelectedness(option: *runtime.Instance, state: Selectedness) void {
-    const internal = Registry.get(option) orelse return;
+pub fn setSelectedness(option: *runtime.Instance, state: Selectedness) !void {
+    const internal = try StateMap.getOrPut(option);
     internal.selectedness = state;
 }
 
@@ -567,7 +621,7 @@ pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     // Sets selectedness AND dirtiness, then asks for a reset - which is why
     // `false` maps to `.off` rather than `.off_no_reset`: a single select
     // re-selects its first enabled option immediately afterwards.
-    setSelectedness(instance, if (value) .on else .off);
+    try setSelectedness(instance, if (value) .on else .off);
 }
 
 /// Setter for value

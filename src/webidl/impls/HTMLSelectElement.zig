@@ -387,9 +387,9 @@ pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void 
 
     for (options.items, 0..) |option, i| {
         if (in_range and i == target) {
-            OptionImpl.setSelectedness(option, .on);
+            try OptionImpl.setSelectedness(option, .on);
         } else {
-            OptionImpl.setSelectedness(option, if (in_range) .off else .off_no_reset);
+            try OptionImpl.setSelectedness(option, if (in_range) .off else .off_no_reset);
         }
     }
 }
@@ -418,12 +418,12 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 
     for (options.items, 0..) |option, i| {
         if (match != null and i == match.?) {
-            OptionImpl.setSelectedness(option, .on);
+            try OptionImpl.setSelectedness(option, .on);
         } else {
             // No match at all means nothing is selected and nothing asks for a
             // reset, so `select.value = "nonexistent"` reads back "" rather than
             // the first option's value.
-            OptionImpl.setSelectedness(option, if (match == null) .off_no_reset else .off);
+            try OptionImpl.setSelectedness(option, if (match == null) .off_no_reset else .off);
         }
     }
 }
