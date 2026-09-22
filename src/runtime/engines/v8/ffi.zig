@@ -1212,6 +1212,64 @@ pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 /// promise.[[PromiseIsHandled]] = true (WebIDL "mark as handled"). No-op for a non-promise.
 pub extern fn v8_Promise_MarkAsHandled(promise: ?*Value) void;
 
+/// ArrayBufferView kinds; the order is shared with v8_wrapper.cpp (CraneViewKind).
+pub const ViewKind = enum(c_int) {
+    int8,
+    uint8,
+    uint8_clamped,
+    int16,
+    uint16,
+    int32,
+    uint32,
+    float32,
+    float64,
+    bigint64,
+    biguint64,
+    data_view,
+
+    /// Element size from the typed array constructors table (1 for DataView).
+    pub fn elementSize(self: ViewKind) usize {
+        return switch (self) {
+            .int8, .uint8, .uint8_clamped, .data_view => 1,
+            .int16, .uint16 => 2,
+            .int32, .uint32, .float32 => 4,
+            .float64, .bigint64, .biguint64 => 8,
+        };
+    }
+};
+
+pub const ViewInfo = extern struct {
+    kind: ViewKind,
+    byte_offset: usize,
+    byte_length: usize,
+    /// [[ArrayLength]], or the byte length for a DataView.
+    length: usize,
+    buffer_byte_length: usize,
+    buffer_detached: bool,
+    buffer_shared: bool,
+};
+
+/// Describe an ArrayBufferView. False when `view` is not one of a known kind.
+pub extern fn v8_ArrayBufferView_Describe(view: *Value, out: *ViewInfo) bool;
+/// view.[[ViewedArrayBuffer]] as a new owned Global.
+pub extern fn v8_ArrayBufferView_Buffer(view: *Value) ?*Value;
+/// Construct(ctor-of-kind, « buffer, byteOffset, length »); `length` in
+/// elements (bytes for a DataView). New owned Global, or null when it does not fit.
+pub extern fn v8_ArrayBufferView_New(kind: ViewKind, buffer: *Value, byte_offset: usize, length: usize) ?*Value;
+/// AllocateArrayBuffer(%ArrayBuffer%, byteLength). New owned Global, or null on failure.
+pub extern fn v8_ArrayBuffer_Allocate(byte_length: usize) ?*Value;
+/// Streams § 8.3 CanTransferArrayBuffer(O).
+pub extern fn v8_ArrayBuffer_CanTransfer(buffer: *Value) bool;
+/// Streams § 8.3 TransferArrayBuffer(O): detach and return a new owned
+/// ArrayBuffer over the same data block; null when it cannot be transferred.
+pub extern fn v8_ArrayBuffer_Transfer(buffer: *Value) ?*Value;
+/// Data pointer and byte length; false when detached or not an ArrayBuffer.
+pub extern fn v8_ArrayBuffer_Bytes(buffer: *Value, data: *?*anyopaque, byte_length: *usize) bool;
+
+/// HTML "queue a microtask" on the isolate's own queue; `callback` owns `data`.
+pub const ZigMicrotaskCallback = *const fn (data: ?*anyopaque) callconv(.c) void;
+pub extern fn v8_Isolate_QueueMicrotask(isolate: *Isolate, callback: ZigMicrotaskCallback, data: ?*anyopaque) void;
+
 /// Settlement callback for `v8_Promise_React`: `value` is a new Global<Value>* the
 /// callee owns, `rejected` says which way the promise settled.
 pub const ZigReactionCallback = *const fn (data: ?*anyopaque, value: ?*Value, rejected: bool) callconv(.c) void;

@@ -1763,6 +1763,185 @@ void v8_Promise_MarkAsHandled(Global<Value>* promise) {
     if (value->IsPromise()) value.As<Promise>()->MarkAsHandled();
 }
 
+// ============================================================================
+// ArrayBuffer / ArrayBufferView primitives (Streams § 8.3, WebIDL buffer types)
+// ============================================================================
+
+/// View kinds shared with Zig (streams_js.ViewKind). Order is part of the ABI.
+enum CraneViewKind : int {
+    kCraneInt8 = 0, kCraneUint8, kCraneUint8Clamped, kCraneInt16, kCraneUint16,
+    kCraneInt32, kCraneUint32, kCraneFloat32, kCraneFloat64, kCraneBigInt64,
+    kCraneBigUint64, kCraneDataView,
+};
+
+struct CraneViewInfo {
+    int kind;                    // CraneViewKind
+    size_t byte_offset;          // [[ByteOffset]]
+    size_t byte_length;          // [[ByteLength]]
+    size_t length;               // [[ArrayLength]], or byte length for a DataView
+    size_t buffer_byte_length;   // [[ViewedArrayBuffer]].[[ArrayBufferByteLength]]
+    bool buffer_detached;        // IsDetachedBuffer([[ViewedArrayBuffer]])
+    bool buffer_shared;          // [[ViewedArrayBuffer]] is a SharedArrayBuffer
+};
+
+static int craneViewKindOf(Local<Value> v) {
+    if (v->IsDataView()) return kCraneDataView;
+    if (v->IsInt8Array()) return kCraneInt8;
+    if (v->IsUint8Array()) return kCraneUint8;
+    if (v->IsUint8ClampedArray()) return kCraneUint8Clamped;
+    if (v->IsInt16Array()) return kCraneInt16;
+    if (v->IsUint16Array()) return kCraneUint16;
+    if (v->IsInt32Array()) return kCraneInt32;
+    if (v->IsUint32Array()) return kCraneUint32;
+    if (v->IsFloat32Array()) return kCraneFloat32;
+    if (v->IsFloat64Array()) return kCraneFloat64;
+    if (v->IsBigInt64Array()) return kCraneBigInt64;
+    if (v->IsBigUint64Array()) return kCraneBigUint64;
+    return -1;
+}
+
+/// Describe `view`. False when it is not an ArrayBufferView of a known kind.
+bool v8_ArrayBufferView_Describe(Global<Value>* view, CraneViewInfo* out) {
+    if (!view || view->IsEmpty() || !out) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = view->Get(isolate);
+    if (!v->IsArrayBufferView()) return false;
+    int kind = craneViewKindOf(v);
+    if (kind < 0) return false;
+    Local<ArrayBufferView> abv = v.As<ArrayBufferView>();
+    out->kind = kind;
+    out->byte_offset = abv->ByteOffset();
+    out->byte_length = abv->ByteLength();
+    out->length = v->IsTypedArray() ? v.As<TypedArray>()->Length() : abv->ByteLength();
+    Local<Object> buffer_obj = abv->Buffer();
+    out->buffer_shared = buffer_obj->IsSharedArrayBuffer();
+    if (buffer_obj->IsArrayBuffer()) {
+        Local<ArrayBuffer> ab = buffer_obj.As<ArrayBuffer>();
+        out->buffer_byte_length = ab->ByteLength();
+        out->buffer_detached = ab->WasDetached();
+    } else {
+        out->buffer_byte_length = abv->ByteLength();
+        out->buffer_detached = false;
+    }
+    return true;
+}
+
+/// view.[[ViewedArrayBuffer]] as a new Global the caller owns.
+Global<Value>* v8_ArrayBufferView_Buffer(Global<Value>* view) {
+    if (!view || view->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = view->Get(isolate);
+    if (!v->IsArrayBufferView()) return nullptr;
+    Local<Object> buffer = v.As<ArrayBufferView>()->Buffer();
+    return trackHandle(new Global<Value>(isolate, buffer));
+}
+
+/// Construct(ctor-of-kind, « buffer, byteOffset, length ») - `length` in
+/// elements, or in bytes for a DataView. New owned Global, or nullptr when
+/// `buffer` is not an ArrayBuffer or the range does not fit.
+Global<Value>* v8_ArrayBufferView_New(int kind, Global<Value>* buffer, size_t byte_offset, size_t length) {
+    if (!buffer || buffer->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> b = buffer->Get(isolate);
+    if (!b->IsArrayBuffer()) return nullptr;
+    Local<ArrayBuffer> ab = b.As<ArrayBuffer>();
+    if (ab->WasDetached()) return nullptr;
+    static const size_t element_sizes[] = {1, 1, 1, 2, 2, 4, 4, 4, 8, 8, 8, 1};
+    if (kind < 0 || kind > kCraneDataView) return nullptr;
+    size_t element_size = element_sizes[kind];
+    if (byte_offset % element_size != 0) return nullptr;
+    if (byte_offset > ab->ByteLength() || length > (ab->ByteLength() - byte_offset) / element_size) return nullptr;
+    Local<Value> result;
+    switch (kind) {
+        case kCraneInt8: result = Int8Array::New(ab, byte_offset, length); break;
+        case kCraneUint8: result = Uint8Array::New(ab, byte_offset, length); break;
+        case kCraneUint8Clamped: result = Uint8ClampedArray::New(ab, byte_offset, length); break;
+        case kCraneInt16: result = Int16Array::New(ab, byte_offset, length); break;
+        case kCraneUint16: result = Uint16Array::New(ab, byte_offset, length); break;
+        case kCraneInt32: result = Int32Array::New(ab, byte_offset, length); break;
+        case kCraneUint32: result = Uint32Array::New(ab, byte_offset, length); break;
+        case kCraneFloat32: result = Float32Array::New(ab, byte_offset, length); break;
+        case kCraneFloat64: result = Float64Array::New(ab, byte_offset, length); break;
+        case kCraneBigInt64: result = BigInt64Array::New(ab, byte_offset, length); break;
+        case kCraneBigUint64: result = BigUint64Array::New(ab, byte_offset, length); break;
+        case kCraneDataView: result = DataView::New(ab, byte_offset, length); break;
+        default: return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, result));
+}
+
+/// AllocateArrayBuffer(%ArrayBuffer%, byteLength). New owned Global, or
+/// nullptr when the allocation fails (the caller reports a RangeError).
+Global<Value>* v8_ArrayBuffer_Allocate(size_t byte_length) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ArrayBuffer> ab;
+    if (!ArrayBuffer::MaybeNew(isolate, byte_length).ToLocal(&ab)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, ab));
+}
+
+/// Streams § 8.3 CanTransferArrayBuffer(O), for an ArrayBuffer `buffer`.
+bool v8_ArrayBuffer_CanTransfer(Global<Value>* buffer) {
+    if (!buffer || buffer->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> b = buffer->Get(isolate);
+    if (!b->IsArrayBuffer()) return false;
+    Local<ArrayBuffer> ab = b.As<ArrayBuffer>();
+    return !ab->WasDetached() && ab->IsDetachable();
+}
+
+/// Streams § 8.3 TransferArrayBuffer(O): detach `buffer` and return a new
+/// ArrayBuffer (owned Global) over the same data block. nullptr when it
+/// cannot be transferred - detached, not detachable, or not an ArrayBuffer.
+Global<Value>* v8_ArrayBuffer_Transfer(Global<Value>* buffer) {
+    if (!buffer || buffer->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> b = buffer->Get(isolate);
+    if (!b->IsArrayBuffer()) return nullptr;
+    Local<ArrayBuffer> ab = b.As<ArrayBuffer>();
+    if (ab->WasDetached() || !ab->IsDetachable()) return nullptr;
+    std::shared_ptr<BackingStore> store = ab->GetBackingStore();
+    if (ab->Detach(Local<Value>()).IsNothing()) return nullptr;
+    Local<ArrayBuffer> transferred = ArrayBuffer::New(isolate, store);
+    return trackHandle(new Global<Value>(isolate, transferred));
+}
+
+/// Data pointer and byte length of an ArrayBuffer. False when detached or not
+/// an ArrayBuffer. The pointer is valid until the buffer is detached.
+bool v8_ArrayBuffer_Bytes(Global<Value>* buffer, void** data, size_t* byte_length) {
+    if (!buffer || buffer->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> b = buffer->Get(isolate);
+    if (!b->IsArrayBuffer()) return false;
+    Local<ArrayBuffer> ab = b.As<ArrayBuffer>();
+    if (ab->WasDetached()) return false;
+    *data = ab->Data();
+    *byte_length = ab->ByteLength();
+    return true;
+}
+
+/// HTML "queue a microtask": run callback(data) from the isolate's microtask
+/// queue. The callback owns `data`.
+typedef void (*ZigMicrotaskCallback)(void* data);
+
+void v8_Isolate_QueueMicrotask(Isolate* isolate, ZigMicrotaskCallback callback, void* data) {
+    struct Task { ZigMicrotaskCallback callback; void* data; };
+    auto* task = new Task{callback, data};
+    isolate->EnqueueMicrotask([](void* raw) {
+        auto* t = static_cast<Task*>(raw);
+        ZigMicrotaskCallback cb = t->callback;
+        void* d = t->data;
+        delete t;
+        cb(d);
+    }, task);
+}
+
 /// Called once, with the settled value (a new Global the callee owns) and
 /// whether the promise rejected.
 typedef void (*ZigReactionCallback)(void* data, Global<Value>* value, bool rejected);
