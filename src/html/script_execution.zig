@@ -998,6 +998,208 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
     };
 }
 
+// =============================================================================
+// import() - HostLoadImportedModule for a dynamic import, ContinueDynamicImport
+// =============================================================================
+
+/// The isolate the import() hook serves. Worker isolates run their own
+/// threads and their own handler (context_manager's), so the hook declines
+/// anything else.
+var dynamic_import_isolate: ?*@import("v8").ffi.Isolate = null;
+
+/// Route import() in `isolate`'s Window realms through the module loader, so a
+/// dynamically imported module shares the document's module map with its
+/// static imports and scripts, and is evaluated from a task.
+pub fn installDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    const v8_engine = @import("v8");
+    dynamic_import_isolate = isolate;
+    v8_engine.engine.embedder_dynamic_import = &onDynamicImport;
+}
+
+pub fn uninstallDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    if (dynamic_import_isolate != isolate) return;
+    @import("v8").engine.embedder_dynamic_import = null;
+    dynamic_import_isolate = null;
+}
+
+/// The module loading environment for a Window's document.
+fn moduleEnvironmentForWindow(window: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
+    const internal = doc_state.getInternal(document) orelse return null;
+    const engine_ctx = window.ctx.getEngineContext() orelse return null;
+    return .{
+        .allocator = internal.allocator,
+        .context_instance = window,
+        .v8_context = @ptrCast(@alignCast(engine_ctx)),
+        .map = documentModuleMap(document),
+        .resolveImportFn = &documentResolveImport,
+    };
+}
+
+/// Settle `resolver` by rejecting it with a new TypeError.
+fn rejectImportWithTypeError(resolver: @import("v8").engine.DynamicImportResolver, message: []const u8) void {
+    const ffi = @import("v8").ffi;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return resolver.reject(message);
+    const msg = ffi.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse return resolver.reject(message);
+    defer ffi.v8_String_Dispose(msg);
+    const err = ffi.v8_Exception_TypeErrorInContext(@ptrCast(@alignCast(resolver.context)), msg) orelse return resolver.reject(message);
+    defer ffi.v8_Global_Dispose(err);
+    resolver.rejectWithValue(err);
+}
+
+/// The import() hook (V8's HostImportModuleDynamically).
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+/// with loadState undefined, and ECMA-262 ContinueDynamicImport. The
+/// referrer's base URL is V8's resource name for the calling script - the
+/// script URL for an external classic script or a module, the document URL for
+/// an inline one - and the document base URL when there is none (an event
+/// handler, whose [[ScriptOrModule]] is null).
+fn onDynamicImport(
+    context_ptr: *anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    type_attribute: ?[]const u8,
+    resolver: @import("v8").engine.DynamicImportResolver,
+) bool {
+    const v8_engine = @import("v8");
+    const ffi = v8_engine.ffi;
+    if (ffi.v8_Isolate_GetCurrent() != dynamic_import_isolate) return false;
+
+    const context: *ffi.Context = @ptrCast(@alignCast(context_ptr));
+    const window = v8_engine.context_manager.getWindowForContext(context) orelse return false;
+    const document = interfaces.Window.get_document(window) catch return false;
+    const env = moduleEnvironmentForWindow(window, document) orelse return false;
+
+    // HostLoadImportedModule steps 7.1.4-7.1.5 (for the one request an
+    // import() makes): an unsupported type is a TypeError.
+    const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse {
+        rejectImportWithTypeError(resolver, "Unsupported module type");
+        return true;
+    };
+
+    // Steps 8-9: resolve a module specifier, or reject with its TypeError.
+    const base_url = if (referrer.len > 0) referrer else documentBaseUrl(document, window);
+    const url = module_script.resolve(&env, specifier, base_url) orelse {
+        rejectImportWithTypeError(resolver, "Failed to resolve module specifier");
+        return true;
+    };
+    defer window.ctx.allocator.free(url);
+
+    // Step 14: fetch - as a task, so the imported module is fetched and
+    // evaluated after the script that called import() and its microtasks,
+    // the way a real network fetch completes.
+    const loop = window.ctx.getOptionalEventLoop() orelse {
+        rejectImportWithTypeError(resolver, "No event loop to load the module on");
+        return true;
+    };
+    const task = std.heap.c_allocator.create(DynamicImportTask) catch {
+        rejectImportWithTypeError(resolver, "Out of memory");
+        return true;
+    };
+    task.* = .{
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .url = std.heap.c_allocator.dupe(u8, url) catch {
+            std.heap.c_allocator.destroy(task);
+            rejectImportWithTypeError(resolver, "Out of memory");
+            return true;
+        },
+        .module_type = module_type,
+        .resolver = resolver,
+    };
+    loop.queueTask(.{ .callback = &runDynamicImport, .context = task });
+    return true;
+}
+
+const DynamicImportTask = struct {
+    /// The importing Window, as (address, slab generation).
+    window: *runtime.Instance,
+    generation: u64,
+    /// Owned (c_allocator).
+    url: []const u8,
+    module_type: module_script.ModuleType,
+    /// Owns the promise's context and resolver handles until it settles.
+    resolver: @import("v8").engine.DynamicImportResolver,
+};
+
+fn runDynamicImport(data: ?*anyopaque) void {
+    const v8_engine = @import("v8");
+    const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
+    defer {
+        std.heap.c_allocator.free(task.url);
+        std.heap.c_allocator.destroy(task);
+    }
+
+    // The importing Window is gone: settle the promise anyway, to release the
+    // handles it holds; nobody is left to observe how.
+    if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return task.resolver.rejectWithValue(null);
+
+    // A task runs from the event loop, with no HandleScope and no entered
+    // context of its own.
+    const scope = v8_engine.JsScope.init(task.window.ctx) orelse return task.resolver.rejectWithValue(null);
+    defer scope.deinit();
+
+    const document = interfaces.Window.get_document(task.window) catch return task.resolver.rejectWithValue(null);
+    const env = moduleEnvironmentForWindow(task.window, document) orelse return task.resolver.rejectWithValue(null);
+
+    // A null graph is a failed fetch: TypeError.
+    const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
+        return rejectImportWithTypeError(task.resolver, "Failed to fetch dynamically imported module");
+
+    // ContinueDynamicImport: link (done above), evaluate, and settle with the
+    // namespace or the reason.
+    switch (module_script.evaluateForImport(&env, graph)) {
+        .fulfilled => resolveImportWithNamespace(task.resolver, graph),
+        .rejected => |reason| {
+            defer v8_engine.ffi.v8_Global_Dispose(reason);
+            task.resolver.rejectWithValue(reason);
+        },
+        .pending => |promise| {
+            defer v8_engine.ffi.v8_Global_Dispose(promise);
+            const pending = std.heap.c_allocator.create(PendingImport) catch return task.resolver.rejectWithValue(null);
+            pending.* = .{
+                .window = task.window,
+                .generation = task.generation,
+                .graph = graph,
+                .resolver = task.resolver,
+            };
+            if (!v8_engine.ffi.v8_Promise_React(env.v8_context, promise, &onImportEvaluationSettled, pending)) {
+                std.heap.c_allocator.destroy(pending);
+                task.resolver.rejectWithValue(null);
+            }
+        },
+    }
+}
+
+fn resolveImportWithNamespace(resolver: @import("v8").engine.DynamicImportResolver, graph: *module_script.ModuleScript) void {
+    const ffi = @import("v8").ffi;
+    const record = graph.record orelse return resolver.rejectWithValue(null);
+    const namespace = ffi.v8_Module_GetModuleNamespace(record) orelse return resolver.rejectWithValue(null);
+    defer ffi.v8_Global_Dispose(@ptrCast(namespace));
+    resolver.resolve(namespace);
+}
+
+/// An import() whose module awaits top-level await.
+const PendingImport = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    /// Owned by the document's module map, which outlives this reaction for
+    /// as long as the Window does - checked by generation before use.
+    graph: *module_script.ModuleScript,
+    resolver: @import("v8").engine.DynamicImportResolver,
+};
+
+fn onImportEvaluationSettled(data: ?*anyopaque, value: ?*@import("v8").ffi.Value, rejected: bool) callconv(.c) void {
+    const ffi = @import("v8").ffi;
+    const pending: *PendingImport = @ptrCast(@alignCast(data orelse return));
+    defer std.heap.c_allocator.destroy(pending);
+    defer if (value) |v| ffi.v8_Global_Dispose(v);
+
+    if (runtime.SlabAllocator.generationOf(pending.window) != pending.generation) return pending.resolver.rejectWithValue(null);
+    if (rejected) return pending.resolver.rejectWithValue(value);
+    resolveImportWithNamespace(pending.resolver, pending.graph);
+}
+
 /// Prepare step 33.11 "module": fetch an external module script graph, and
 /// mark the element ready with the result.
 ///
