@@ -1415,3 +1415,90 @@ is a no-op for `.empty` and `.interned`, so it is safe unconditionally.
 
 **Takeaway**: **"The interface layer will free it" means the JS binding will.
 Calling a `get_*` from Zig makes you the owner.**
+
+---
+
+### Architecture: A value the spec calls COMPUTED must not be cached
+
+**Date**: 2026-09-22
+**Lesson**: Four getters in a row returned null or "" because they read a field
+somebody had to remember to set, where the spec defines the value as derived
+from the tree.
+
+**Why**: the caches are filled by the PARSER paths only - `HTMLParser`,
+`dom_tree_adapter`, `scripted_parser`, `context_manager`. Anything built through
+the DOM API skips all four, so the field stays null and every getter downstream
+of it answers null too.
+
+    documentElement   read internal.document_element   -> null for DOM-built docs
+    body / head       derived from documentElement     -> null with it
+    doctype           read internal.doctype            -> null
+    nodeName          read Node's internal.local_name  -> "" for EVERY element
+
+`nodeName` is the same shape as the CharacterData bug fixed in c36582d40: an
+element's local name lives in ELEMENT's state, not Node's, so Node's copy is
+always null. It now delegates to `Element.tagName`, which DOM 4.9 already
+defines as the HTML-uppercased qualified name `nodeName` is supposed to return.
+
+**What Happened**: `document.implementation.createHTMLDocument("")` returned a
+document whose `.body` was null, even though the constructor had correctly
+created and appended html/head/body. The cost was not one API: `dom/common.js`
+builds its fixtures inside `setup()`, and testharness RETHROWS out of `setup()`,
+so a single null turns the whole FILE into a harness ERROR with zero subtests.
+
+**Fix**: compute from the tree, keep the cache only as a fallback so paths that
+set it without linking the tree still work. A cache also goes stale - removing
+or replacing the root left the old pointer in place.
+
+**Takeaway**: **When a spec says "the first X child", store nothing.** Walking a
+document's children costs nothing; a cache that only one code path fills is a
+null waiting for the other paths to find it. Grep for `internal.<thing> orelse
+return null` in a getter whose spec text begins "the first".
+
+---
+
+### Spec Compliance: Tree construction never received an EOF token
+
+**Date**: 2026-09-22
+**Lesson**: `TreeBuilder.parse` broke out of its loop when the tokenizer returned
+`null`, so no `.eof` token was ever dispatched and the `.eof` branch of every
+insertion mode was dead code.
+
+```zig
+while (true) {
+    const token = try self.tokenizer.nextToken();
+    if (token == null) break;        // end of input exits HERE
+    ...
+    if (tok == .eof) break;          // unreachable
+}
+```
+
+**Why it matters**: HTML §13.2.6 gives EOF real work. "In head" at EOF pops the
+head element and reprocesses in "after head", which inserts an implied `<body>`.
+Every "stop parsing" step is an EOF step.
+
+**What is FIXED**: EOF is now synthesised and processed when the tokenizer
+signals end of input. Verified no regressions - dom/nodes 40 files per-file:
+23 OK->OK, 14 TIMEOUT->TIMEOUT, 2 ERROR->OK, 1 CRASH->OK, 0 regressions.
+
+**What is NOT fixed, and is the next thing to look at**: `document.body` is
+STILL null for a document whose content is entirely head-level, which is most
+WPT files. Do not re-derive the following - it is all measured:
+
+* The tree builder DOES create the implied body -
+  `handleAfterHeadAnythingElse` builds it and calls `insertAtAppropriatePlace`,
+  the SAME path that successfully inserts `<head>`.
+* `in_head`, `after_head` and `text` EOF handlers are each individually correct,
+  including text mode's reprocess.
+* `tree_builder.parse` is the ONLY tokenizer driver outside document_write's
+  tests, so there is no second parser path to blame.
+* With an explicit `<body>` tag the element appears:
+  `html children: [HEAD, BODY]`. Without one: `[HEAD]`.
+
+So the gap is between the tree builder creating that node and the DOM adapter
+receiving it. Instrument `dom_adapter_on_child_appended` for the body node next.
+
+**Takeaway**: **"The loop ended" and "the parser finished" are different
+claims.** A tokenizer that reports end-of-input out-of-band leaves every
+end-of-input rule in the consumer unreachable, and nothing fails loudly - the
+document is simply missing the parts that only EOF would have added.
