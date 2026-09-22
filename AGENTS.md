@@ -1502,3 +1502,84 @@ receiving it. Instrument `dom_adapter_on_child_appended` for the body node next.
 claims.** A tokenizer that reports end-of-input out-of-band leaves every
 end-of-input rule in the consumer unreachable, and nothing fails loudly - the
 document is simply missing the parts that only EOF would have added.
+
+---
+
+### Architecture: An inline-capacity string cannot be a hash-map key
+
+**Date**: 2026-09-22
+**Lesson**: `SmallString` keeps 31 bytes INSIDE the struct, so `toSlice()` on any
+by-value copy returns a pointer into a temporary.
+
+**Why**: `TagToken.finishCurrentAttribute` switches from a linear scan to a
+`StringHashMapUnmanaged` once a tag carries more than four attributes, and keyed
+it on `Attribute.name.toSlice()`. Every Attribute reachable there is a copy:
+`for (slice) |existing|` binds a stack slot the NEXT iteration reuses, and
+`if (self.current_attribute) |attr|` binds the optional's payload into a frame
+that ends when the function returns.
+
+**What Happened**: the seeding loop handed the set N keys that all aliased ONE
+address. They hash correctly at insert - the slot holds the right bytes right
+then - so nothing goes wrong until the table rehashes. Then every stored key
+reads back as the last name written, `grow` finds them all equal, and
+`putAssumeCapacityNoClobber` asserts:
+
+    panic: reached unreachable code
+      hash_map.HashMapUnmanaged([]const u8,void,...).putAssumeCapacityNoClobberContext
+      hash_map.HashMapUnmanaged([]const u8,void,...).grow
+      parser.tokens.TagToken.finishCurrentAttribute
+      parser.tokenizer.Tokenizer.emitCurrentTag
+
+Seven attributes is the threshold - seeded at the sixth, overflows at the
+seventh - so it looked like "one odd WPT file" rather than "the tokenizer".
+`<input type min max step value style id>` is an ordinary tag.
+
+**Fix**: the set owns its keys (`allocator.dupe`, freed in `deinit`). A pointer
+into `self.attributes` would not have worked either: `infra.List.append`
+reallocates.
+
+**Takeaway**: **Before storing a slice as a key, ask what it points INTO, not
+what it contains.** Small-string optimisation turns every by-value copy into a
+new address for the same text, and the failure surfaces one rehash later, in a
+function that looks unrelated.
+
+---
+
+### Architecture: Whoever ends a weak arm inherits V8's Reset obligation
+
+**Date**: 2026-09-22
+**Lesson**: `v8_Global_ClearWeak` is the only `releaseWeakArm` caller that hands
+the `Global` back, and it was treated like the ones that delete it.
+
+**Why**: when V8 has already queued a first-pass callback (node NEAR_DEATH,
+`IsWeak()` false), the callback WILL run. `releaseWeakArm` detached the record
+and nulled its back-pointer so the callback would do nothing. That is right for
+a disposer - `Reset(); delete;` is on the next line, and the caller's own Reset
+discharges V8's obligation. `ClearWeak` has no such next line, so nothing ever
+reset that node.
+
+**What Happened**:
+
+    # Fatal error in , line 0
+    # Check failed: Handle not reset in first callback.
+    #   See comments on |v8::WeakCallbackInfo|.
+      GlobalHandles::InvokeFirstPassWeakCallbacks
+      Heap::PerformGarbageCollection
+
+`wrapper_cache.zig` disarms on six paths on every DOM wrapper, so all this needs
+is a GC landing between V8 queuing the callback and running it. What made that
+reliable was creating a child context: `registerAllTemplatesOnly` instantiates
+1,263 interface templates and forces a collection in the middle of
+`appendChild`. Four `template/additions-to-the-in-body-insertion-mode/ignore-*`
+files died on it, all of them via `testInIFrame`.
+
+**Fix**: `releaseWeakArm` takes a `WeakArmEnd`. `handle_survives` keeps the
+back-pointer so the queued callback resets the node, and leaves the record in
+`armedWeakData` under that handle - not as an arm (`callback` is nulled, so the
+Zig finalizer cannot run on state the disarmer is tearing down) but so a LATER
+dispose of the same handle can still find it and cut the pointer. Without that
+second half, ClearWeak-then-Dispose in one tick puts `Reset()` on freed memory.
+
+**Takeaway**: **"Release the arm" is two different operations depending on
+whether the handle outlives the call.** V8 verifies the difference and aborts
+the process, so the parameter is not optional documentation.
