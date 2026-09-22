@@ -10,6 +10,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLInputElement = interfaces.HTMLInputElement;
 const ElementImpl = @import("Element.zig");
+const autofill = @import("html").autofill;
 
 pub const State = HTMLInputElement.State;
 
@@ -173,25 +174,40 @@ pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Enumerated, and BOTH defaults are the empty string - unlike the form
-    // element, whose autocomplete defaults to "on". So:
+    // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill
     //
-    //     <input>                      -> ""     (missing default)
-    //     <input autocomplete="on">    -> "on"
-    //     <input autocomplete="off">   -> "off"
-    //     <input autocomplete="foobar">-> ""     (invalid default)
+    // Not a two-value enumeration. "on"/"off" are one branch; the other is an
+    // ordered autofill token list, returned verbatim (lowercased) when it forms
+    // a valid expansion and "" when it does not:
     //
-    // Reflecting an unrecognised value verbatim is wrong: form-autocomplete.html
-    // asserts "" for exactly that case.
+    //     <input>                                -> ""
+    //     <input autocomplete="on">              -> "on"
+    //     <input autocomplete="shipping country">-> "shipping country"
+    //     <input autocomplete="foobar">          -> ""
+    //     <input autocomplete="home country">    -> ""  (country is not a
+    //                                                    contact field)
+    //
+    // An earlier version handled only on/off and reflected anything else
+    // verbatim, which got both `foobar` and `shipping country` wrong in
+    // opposite directions.
     const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
     const entry = elem_internal.findAttribute(null, "autocomplete") orelse
         return runtime.DOMString.initEmpty();
+
     inline for ([_][]const u8{ "on", "off" }) |candidate| {
         if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {
             return runtime.DOMString.initInterned(candidate);
         }
     }
-    return runtime.DOMString.initEmpty();
+
+    const expansion = autofill.parse(entry.value) orelse
+        return runtime.DOMString.initEmpty();
+
+    var buf: [256]u8 = undefined;
+    const serialized = autofill.serialize(expansion, &buf) orelse
+        return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, serialized) catch
+        return error.OutOfMemory;
 }
 
 /// Getter for defaultChecked

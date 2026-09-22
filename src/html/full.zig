@@ -81,6 +81,10 @@ pub const documentClose = core.documentClose;
 // Custom Elements (requires webidl access for CustomElementDefinition)
 // Note: These modules are NOT available from html_core because they access
 // CustomElementDefinition fields which require typed webidl imports.
+/// Autofill field names - shared by input, select and textarea, which
+/// cannot share a helper through impls/ because impls are private to
+/// one another.
+pub const autofill = @import("autofill.zig");
 pub const custom_elements = @import("custom_elements.zig");
 pub const upgrade = @import("upgrade.zig");
 
