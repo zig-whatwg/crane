@@ -897,6 +897,22 @@ pub const WorkerV8Context = struct {
             std.log.warn("Failed to register worker context with context manager: {}", .{err});
         };
 
+        // Record the worker's script URL as this context's document URL.
+        //
+        // This is the BASE URL for relative-URL resolution inside the worker.
+        // Without it `new XMLHttpRequest().open("GET", "resources/x.txt")`
+        // throws SyntaxError before send() is ever reached - the network was
+        // never the broken part. `context_manager` is where the page URL lives
+        // (its own comment says "for fetch relative URL resolution"); the window
+        // path sets it and the worker path never did.
+        //
+        // Must come AFTER the registration above: setDocumentUrl looks the
+        // context up in the manager's table and returns ContextNotFound if it
+        // is not there yet.
+        v8.context_manager.setDocumentUrl(self.context, self.script_url) catch |err| {
+            std.log.warn("Failed to set worker document URL: {}", .{err});
+        };
+
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };

@@ -353,8 +353,20 @@ test "LibcurlBackend - connection refused" {
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 5000,
-        .connect_timeout_ms = 1000,
+        // Generous deliberately. A dead LOCAL port refuses immediately, so
+        // these budgets are not part of what this test asserts - they only
+        // decide whether curl gets far enough to BE refused. At 1000ms this
+        // failed on a loaded machine with
+        //
+        //     expected error.ConnectionRefused, found error.RequestTimeout
+        //     curl error 28: remaining timeout of 999 too small to resolve
+        //                    via SIGALRM method
+        //
+        // i.e. the budget was spent before the connect was attempted, so the
+        // test was measuring machine load rather than error mapping. It still
+        // returns in microseconds on an idle machine.
+        .timeout_ms = 15000,
+        .connect_timeout_ms = 10000,
     };
 
     const result = backend.getBackend().send(allocator, &request);
