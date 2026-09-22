@@ -988,18 +988,30 @@ fn runSendTask(context: ?*anyopaque) void {
     // resets the state, and either means this request is no longer wanted.
     if (!xhr_state.send_flag or xhr_state.ready_state != .OPENED) return;
 
-    // A task runs from the event loop, where NO V8 context is entered and no
-    // HandleScope is open - unlike every other entry point here, which V8 calls
-    // into from JavaScript. Everything downstream creates handles: the events,
-    // wrapping them as objects, and calling the listeners. Without this, the
-    // first one dies at
+    // A task runs from the event loop, where no V8 context is entered - unlike
+    // every other entry point here, which V8 calls into from JavaScript.
+    // `Context.timerHandler` enters the context for the same reason.
     //
-    //     # Fatal error in v8::HandleScope::CreateHandle()
-    //     # Cannot create a handle without a HandleScope
+    // This is DEFENSIVE, and the measurement says so. It was committed as the
+    // fix for three crashes that appeared with async send:
     //
-    // which is a V8 abort, not a Zig panic, so it takes the process and every
-    // other test in the file with it. `Context.timerHandler` enters the context
-    // for exactly this reason; a timer callback is the same shape of work.
+    //     xhr/abort-during-readystatechange.any.js    TIMEOUT -> CRASH
+    //     xhr/abort-event-order.htm                   OK      -> CRASH
+    //     xhr/access-control-and-redirects-async-...  OK      -> CRASH
+    //
+    // all of them `# Fatal error in v8::HandleScope::CreateHandle()`. They are
+    // gone. But removing this again - context enter only, HandleScope only, and
+    // NEITHER - leaves `abort-event-order.htm` crash-free in all three
+    // configurations, 3 runs each. So something else fixed them, most likely
+    // the nine Event subclasses gaining their inherited `InternalState` in the
+    // same window (before that, dispatching a ProgressEvent threw
+    // InvalidStateError and the listener path was never reached).
+    //
+    // Kept anyway, for a reason that does not depend on the crash: without an
+    // entered context, anything downstream that asks V8 for the CURRENT context
+    // gets whatever was entered last, which on a page with iframes is not
+    // necessarily this XHR's. Most `v8_*` wrappers open their own HandleScope,
+    // so that half is belt and braces.
     const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
         log.debug("async send dropped: no V8 context", .{});
         return;
