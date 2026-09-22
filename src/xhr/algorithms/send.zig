@@ -66,6 +66,7 @@ pub fn send(
     body: ?[]const u8,
 ) !void {
     const effective_body = try sendPrologue(state, body);
+    if (!state.synchronous_flag and !sendStart(state, effective_body)) return;
     try sendDispatch(state, effective_body);
 }
 
@@ -124,28 +125,22 @@ pub fn sendPrologue(
     return request_body;
 }
 
-/// Step 11 (async) or step 12 (sync) of send(): fire loadstart and run the
-/// fetch.
-pub fn sendDispatch(
-    state: *XMLHttpRequestState,
-    body: ?[]const u8,
-) !void {
-    if (!state.synchronous_flag) {
-        try sendAsync(state, body);
-    } else {
-        try sendSync(state, body);
-    }
-}
-
-/// Send request asynchronously
+/// Steps 11.1-11.6 of send(): fire loadstart.
 ///
-/// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 11
-fn sendAsync(
-    state: *XMLHttpRequestState,
-    body: ?[]const u8,
-) !void {
-    var processor = ResponseProcessor.init(state);
-
+/// SYNCHRONOUS, and that is the point. `loadstart` is a step of `send()`, not
+/// of the fetch, so it fires before `send()` returns. Deferring it with the
+/// rest of step 11 put it AFTER anything the caller did next:
+///
+///     xhr.send();
+///     xhr.abort();     // fires readystatechange(4), abort, loadend
+///
+/// emitted `readystatechange(4)` first and `loadstart` never, which is what
+/// `xhr/abort-after-send.any.js` reported as
+/// `expected "loadstart(0,0,false)" but got "readystatechange(4)"`.
+///
+/// Returns false when step 11.6 says to stop - a `loadstart` listener called
+/// `abort()` or `open()` - in which case the fetch must not run.
+pub fn sendStart(state: *XMLHttpRequestState, body: ?[]const u8) bool {
     // Step 11.3: requestBodyLength is req's body's length, or 0.
     const request_body_length: u64 = if (body) |b| b.len else 0;
 
@@ -159,9 +154,7 @@ fn sendAsync(
     // Step 11.5: If this's upload complete flag is unset and this's upload
     // listener flag is set, fire loadstart at this's upload object with
     // requestBodyTransmitted (0) and requestBodyLength.
-    var upload_tracker: ?UploadTracker = null;
     if (!state.upload_complete_flag and state.upload_listener_flag) {
-        upload_tracker = UploadTracker.init(@intCast(request_body_length), state.event_sink);
         event_support.fireUploadProgressEvent(state.event_sink, .loadstart, .{
             .lengthComputable = true,
             .loaded = 0,
@@ -170,8 +163,43 @@ fn sendAsync(
     }
 
     // Step 11.6: If this's state is not opened or this's send() flag is unset,
-    // then return. A `loadstart` listener can have called abort() or open().
-    if (state.ready_state != .OPENED or !state.send_flag) return;
+    // then return.
+    return state.ready_state == .OPENED and state.send_flag;
+}
+
+/// Steps 11.7-11.10 (async) or step 12 (sync) of send(): run the fetch.
+///
+/// For an async request the caller has already run `sendStart`; this is the
+/// part that blocks, and the impl runs it from an event-loop task.
+pub fn sendDispatch(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+) !void {
+    if (!state.synchronous_flag) {
+        try sendAsync(state, body);
+    } else {
+        try sendSync(state, body);
+    }
+}
+
+/// Send request asynchronously
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-send()-method steps 11.7-11.10
+fn sendAsync(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+) !void {
+    var processor = ResponseProcessor.init(state);
+
+    const request_body_length: usize = if (body) |b| b.len else 0;
+
+    // The tracker carries the upload's progress accounting. It exists only when
+    // there is an upload to report, which is the same condition step 11.5 used
+    // to decide whether to fire `loadstart` at the upload object.
+    var upload_tracker: ?UploadTracker = null;
+    if (!state.upload_complete_flag and state.upload_listener_flag) {
+        upload_tracker = UploadTracker.init(request_body_length, state.event_sink);
+    }
 
     // Steps 11.7-11.10: run the fetch, feeding the processor.
     //

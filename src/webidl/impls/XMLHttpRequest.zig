@@ -897,7 +897,17 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         return;
     }
 
-    // Step 11, from a task.
+    // Steps 11.1-11.6 are SYNCHRONOUS: `loadstart` is a step of `send()`, not
+    // of the fetch, and must fire before `send()` returns. Deferring it with
+    // the rest of step 11 put it after whatever the caller did next, so
+    // `xhr.send(); xhr.abort();` emitted `readystatechange(4)` first and
+    // `loadstart` never.
+    if (!send_algo.sendStart(xhr_state, effective_body)) {
+        internal.releasePendingBody();
+        return;
+    }
+
+    // Steps 11.7-11.10 - the part that blocks - from a task.
     const event_loop = instance.ctx.getOptionalEventLoop() orelse {
         defer internal.releasePendingBody();
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
