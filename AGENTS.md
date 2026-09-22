@@ -2719,3 +2719,119 @@ edit landing in that window is compiled into some test binaries and not others.
 Stage edits in `tmp/` until it finishes. Also: git worktrees share one stash
 list, so pop by name; and `zig build test` prints "failed command" for passing
 steps that wrote to stderr - judge it by its exit status.
+
+---
+
+### Spec Compliance: window.postMessage had never delivered a message
+
+**Date**: 2026-09-22
+**Lesson**: Three defects were stacked in `Window.call_postMessage`, and the
+first hid the other two. The event it built was never initialized, so
+`dispatchEvent` threw `InvalidStateError` on EVERY call, for every message
+type, from every window.
+
+**Why**: `createPostMessageEvent` built its MessageEvent through `init`, which
+never creates the inherited Event state or sets the initialized flag - the
+stateless-`init` shape from the lesson above, one layer further out. Behind
+it: dispatch was synchronous where step 8 of the window post message steps
+queues a task, and the message was never serialized (step 7) - the event kept
+the argument handle the binding disposes when the call returns.
+
+**What Happened**: 56 `moving-between-documents/` files and about 90 more hung.
+The scripting agent traced the ordering: the child iframe posts to its parent
+while it parses, which in Crane happens inside the parent's `appendChild`,
+before the parent's `addEventListener("message", ...)` line has run. A
+four-case probe - `postMessage` of an object, a string, a number and a
+function - then threw the same `InvalidStateError` for all four, which turned
+"a timing problem" into "this has never worked".
+
+Two more defects in the same event would have surfaced the moment a message
+was delivered: `MessageEvent.get_origin` returned its own field (the binding
+frees a returned `USVString`, so the first read of `e.origin` freed it, the
+second read freed memory, and `deinit` freed it again), and after dispatch the
+event was pulled from the wrapper cache and freed, so
+`await new Promise(r => addEventListener("message", r))` read a freed event.
+
+**Fix**: serialize at the call through a `ValueSerializer::Delegate` that
+throws a "DataCloneError" DOMException (V8's default is a plain Error; Blink
+supplies the same delegate), report code 3 when the exception is already
+pending so the impl returns `error.ExceptionPending`; queue a task on the
+target's loop, holding both windows as (address, slab generation);
+deserialize into the target realm inside a `JsScope`; and hand the event to
+GC, releasing it only if nothing wrapped it - checked by slab generation
+first, since a GC during dispatch may already have collected it. `Task.drop`
+frees a message still queued when the page ends.
+
+**Takeaway**: **When a whole directory hangs on one API, call that API with
+the four plainest arguments before reading any test.** A probe that
+enumerates input types separates "never worked" from "works except when",
+and the two need different fixes.
+
+---
+
+### Architecture: A timer's user_data must be cancelled by whoever frees it
+
+**Date**: 2026-09-22
+**Lesson**: `workerMessageDispatchCallback` was armed as a 0ms timer carrying a
+bare `*DedicatedWorker`, and nothing ever cancelled it, so it fired into freed
+memory in whichever test the same process ran next.
+
+**Why**: The timer manager lives as long as the process's browser; a Worker
+lives as long as its page, or until GC. A dispatch armed as the page ended
+outlived the worker by a whole test file.
+
+**What Happened**: One CRASH in every sharded run of `html/webappapis/timers/`,
+in a file with no worker in it - `negative-setinterval.any.js`, behind
+`cleartimeout-clearinterval.any.js`. Run alone, 5 of 5 were OK. The journal
+said only `SIGABRT` and the runner kept no stderr. The stack was in
+`~/Library/Logs/DiagnosticReports/wpt_runner*.ips`: `KERN_INVALID_ADDRESS at
+0xaaaaaaaaaaaaaaaa` in `processQueuedMessages`, under
+`workerMessageDispatchCallback`, under `NativeTimerManager.poll`, inside the
+NEXT file's `waitForCompletion`. 17 of the day's 179 crash reports carried
+this signature. Where the freed block had been reissued instead of poisoned,
+the callback would have written into whatever object lived there - which is
+what the sweep-only "garbage IFrameIntegration" and NULL `browsing_context`
+crashes look like.
+
+**Fix**: the timer carries the `WorkerV8Context`, which records the armed id,
+and `WorkerV8Context.deinit` cancels it; Worker teardown runs that before
+`DedicatedWorker.deinit`. The callback clears the record the moment it
+fires, so a record still present is a timer that has not fired, and
+`NativeTimerManager.poll` re-checks every due id before firing.
+
+```bash
+ls -t ~/Library/Logs/DiagnosticReports/ | head          # newest first
+python3 -c 'import json,sys; h,b=open(sys.argv[1]).read().split("\n",1); j=json.loads(b);
+print(j["exception"]); t=j["threads"][j.get("faultingThread",0)];
+print("\n".join(f.get("symbol","?") for f in t["frames"][:20]))' <file.ips>
+```
+
+**Takeaway**: **A crash that moves between files in a sharded run and never
+reproduces alone is a callback from the previous file.** macOS keeps the stack
+the runner discarded; read the newest `.ips` before theorising.
+
+---
+
+### Architecture: Every iframe had no event loop and no timer
+
+**Date**: 2026-09-22
+**Lesson**: A child context inherited an event loop only from the parent
+ENTRY's own `V8EventLoop`, which a context the browser registers does not own
+- so every iframe's runtime context had `event_loop = null` and `timer =
+null`, and everything an impl queues from an iframe took its no-loop fallback
+and ran inline.
+
+**What Happened**: `window[0].postMessage(m, "*")` fired before the next line
+could set `window[0].onmessage` (`webmessaging/without-ports/017.html`), and
+an iframe's own deferred events - its load event, its scripts' error events -
+went out before their listeners existed. It was invisible because every
+fallback is "deliver now", which is right often enough to pass.
+
+**Fix**: `context_manager.inheritedEventLoop` takes the parent entry's loop
+when it owns one and otherwise the parent RUNTIME context's loop and timer.
+Both child paths use it.
+
+**Takeaway**: **A "no loop, run it now" fallback is a silent mode switch.
+Grep `getOptionalEventLoop() orelse` and `getOptionalTimer() orelse` and ask
+which contexts actually take the fallback - one probe from inside an iframe
+answers it.**

@@ -283,13 +283,7 @@ fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     DedicatedWorker.flushPendingMessages();
 
     // Schedule message dispatch if there are messages in the outside port queue
-    if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
-        if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
-            if (WorkerV8Context.getTimerInterface()) |timer| {
-                _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
-            }
-        }
-    }
+    scheduleMessageDispatch(ctx.worker_v8_context);
 }
 
 // ============================================================================
@@ -314,11 +308,36 @@ const WorkerErrorDispatchContext = struct {
     allocator: Allocator,
 };
 
+/// Arm a 0ms timer that dispatches the worker's queued messages on the owner's
+/// event loop, unless one is already armed - the callback drains the whole
+/// queue, so one is enough.
+///
+/// The timer carries the WorkerV8Context, which records it so that `deinit`
+/// can disarm it. It used to carry a bare `*DedicatedWorker` that nothing
+/// cancelled: a Worker collected, or torn down with its page, while the timer
+/// was armed left it to fire into freed memory - SIGSEGV at 0xAAAA...AAAA in
+/// `processQueuedMessages`, in whichever test the same process ran next.
+/// One crash per sharded `html/webappapis/timers/` run, in a file with no
+/// worker in it.
+fn scheduleMessageDispatch(wctx: *WorkerV8Context) void {
+    if (wctx.message_dispatch != null) return;
+    const dedicated_worker = wctx.dedicated_worker orelse return;
+    if (dedicated_worker.port_pair.outside_port.message_queue.items.len == 0) return;
+    const timer = WorkerV8Context.getTimerInterface() orelse return;
+    const id = timer.setTimeout(0, workerMessageDispatchCallback, wctx);
+    if (id == 0) return;
+    wctx.message_dispatch = .{ .timer = timer, .id = id };
+}
+
 /// Callback to dispatch worker messages in the main thread context.
 /// This is scheduled after worker timer callbacks flush messages to ensure
 /// messages are processed in a clean V8 HandleScope state.
 fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
-    const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(context_ptr orelse return));
+    const wctx: *WorkerV8Context = @ptrCast(@alignCast(context_ptr orelse return));
+    // Fired: nothing left to cancel, and a message queued from here on arms a
+    // fresh timer.
+    wctx.message_dispatch = null;
+    const dedicated_worker = wctx.dedicated_worker orelse return;
 
     // Process queued messages - this invokes the Worker's onmessage handler
     // We're now in the main isolate context with clean HandleScope state
@@ -406,15 +425,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // Schedule message dispatch if there are messages in the outside port queue
     // This ensures the main thread's event loop processes the messages
-    if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
-        if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
-            if (WorkerV8Context.getTimerInterface()) |timer| {
-                // Schedule a 0ms timer to dispatch messages in the next event loop iteration
-                // This ensures we're back in the main isolate context when dispatching
-                _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
-            }
-        }
-    }
+    scheduleMessageDispatch(ctx.worker_v8_context);
 
     // For intervals, reschedule the timer
     if (ctx.is_interval and !ctx.cancelled) {
@@ -545,6 +556,12 @@ fn getEffectiveWorkerUrl(allocator: std.mem.Allocator, url: []const u8) ![]const
 ///
 /// Creates and manages a V8 isolate and context for a worker.
 /// Each worker gets its own isolate for complete memory isolation.
+/// One armed owner-side message dispatch: the manager it was armed on, and its id.
+const MessageDispatchTimer = struct {
+    timer: runtime.TimerInterface,
+    id: runtime.TimerId,
+};
+
 pub const WorkerV8Context = struct {
     /// V8 Isolate for this worker (separate from main thread)
     isolate: *v8.ffi.Isolate,
@@ -563,6 +580,11 @@ pub const WorkerV8Context = struct {
 
     /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope)
     dedicated_worker: ?*DedicatedWorker = null,
+
+    /// The owner-side timer armed by `scheduleMessageDispatch`, while it is
+    /// armed. `deinit` cancels it: it reaches `dedicated_worker`, which is freed
+    /// right after this context is deinitialized.
+    message_dispatch: ?MessageDispatchTimer = null,
 
     /// Flag to prevent double-deinit (deinit can be called from Worker.deinit and disposeContextCallback)
     is_deinitialized: bool = false,
@@ -689,6 +711,16 @@ pub const WorkerV8Context = struct {
             return;
         }
         self.is_deinitialized = true;
+
+        // Disarm the pending message dispatch before the DedicatedWorker it
+        // reaches is freed. The callback clears this record the moment it
+        // fires, so a record still here is a timer that has not fired, and
+        // clearTimeout removes it from the manager - `poll` re-checks each due
+        // id before firing, so it cannot still run.
+        if (self.message_dispatch) |dispatch| {
+            _ = dispatch.timer.clearTimeout(dispatch.id);
+            self.message_dispatch = null;
+        }
 
         // Clean up worker timer contexts (cancels pending timers, frees memory)
         cleanupWorkerTimerContexts();

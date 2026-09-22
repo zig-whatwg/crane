@@ -123,9 +123,13 @@ pub const TestEventLoop = struct {
     ///
     /// IMPORTANT: This does NOT execute pending microtasks. Any resources
     /// associated with pending microtasks will leak. Always run the event loop
-    /// to completion (via runUntilIdle()) before calling deinit().
+    /// to completion (via runUntilIdle()) before calling deinit(). A pending
+    /// TASK is handed to its `drop`, if it has one, and never run.
     pub fn deinit(self: *Self) void {
         self.microtasks.deinit();
+        for (self.tasks.items()) |task| {
+            if (task.drop) |drop| drop(task.context);
+        }
         self.tasks.deinit();
         self.promise_arena.deinit();
     }

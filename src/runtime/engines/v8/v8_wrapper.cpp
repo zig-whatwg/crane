@@ -2271,6 +2271,9 @@ Global<Context>* v8_Isolate_GetEnteredOrMicrotaskContext(Isolate* isolate) {
     if (ctx.IsEmpty()) {
         return nullptr;
     }
+    // Counted like v8_Isolate_GetCurrentContext's, because v8_Context_Dispose
+    // uncounts whichever it is handed.
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -10562,6 +10565,61 @@ struct ArrayBufferTransferData {
     size_t size;
 };
 
+} // extern "C"
+
+/// HTML StructuredSerializeInternal throws a "DataCloneError" DOMException for
+/// a value it cannot serialize. V8's own default is a plain Error, so the
+/// platform supplies the exception through the serializer's delegate - the
+/// design Blink uses in V8ScriptValueSerializer::ThrowDataCloneError.
+///
+/// V8 also asks the delegate about host objects (platform objects - DOM
+/// nodes and the like, which it sees as API wrappers) and SharedArrayBuffers,
+/// and its defaults for both throw a plain Error too. Neither is serializable
+/// here yet, so both throw DataCloneError, which is what the spec says for a
+/// platform object that is not [Serializable] and for a SharedArrayBuffer
+/// outside a cross-origin-isolated agent cluster.
+class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
+ public:
+    explicit DataCloneErrorDelegate(Isolate* isolate) : isolate_(isolate) {}
+
+    void ThrowDataCloneError(Local<String> message) override {
+        Local<Context> context = isolate_->GetCurrentContext();
+        if (!context.IsEmpty()) {
+            Local<Value> ctor;
+            if (context->Global()
+                    ->Get(context, String::NewFromUtf8Literal(isolate_, "DOMException"))
+                    .ToLocal(&ctor) &&
+                ctor->IsFunction()) {
+                Local<Value> args[] = {message, String::NewFromUtf8Literal(isolate_, "DataCloneError")};
+                Local<Object> exception;
+                if (ctor.As<Function>()->NewInstance(context, 2, args).ToLocal(&exception)) {
+                    isolate_->ThrowException(exception);
+                    return;
+                }
+            }
+        }
+        // No DOMException to construct (a context without the interface): the
+        // message still says what failed. ThrowException replaces anything the
+        // lookup above left pending.
+        isolate_->ThrowException(Exception::Error(message));
+    }
+
+    Maybe<bool> WriteHostObject(Isolate* isolate, Local<Object> object) override {
+        (void)object;
+        ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A platform object could not be cloned."));
+        return Nothing<bool>();
+    }
+
+    Maybe<uint32_t> GetSharedArrayBufferId(Isolate* isolate, Local<SharedArrayBuffer> shared_array_buffer) override {
+        (void)shared_array_buffer;
+        ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A SharedArrayBuffer could not be cloned."));
+        return Nothing<uint32_t>();
+    }
+
+ private:
+    Isolate* isolate_;
+};
+
 /// Serialize a V8 value with ArrayBuffer transfer, returning raw bytes.
 ///
 /// This function:
@@ -10576,14 +10634,18 @@ struct ArrayBufferTransferData {
 /// @param out_size - OUTPUT: Size of serialized data
 /// @param out_arraybuffer_data - OUTPUT: Array of ArrayBufferTransferData (caller provides)
 /// @param error_code - OUTPUT: 0=success, 1=DataCloneError, 2=other error
+/// @param delegate - null for V8's defaults (a plain Error for anything
+///                   uncloneable, reported as code 2); a DataCloneErrorDelegate
+///                   for the spec's exceptions, reported as code 3
 /// @return Pointer to serialized data (caller must free with v8_Free_SerializedBuffer)
-uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
+static uint8_t* serializeWithTransfer(
     Global<Value>* value,
     Global<Value>** transfer_list,
     size_t transfer_count,
     size_t* out_size,
     ArrayBufferTransferData* out_arraybuffer_data,
-    int* error_code
+    int* error_code,
+    ValueSerializer::Delegate* delegate
 ) {
     if (error_code) *error_code = 0;
     if (out_size) *out_size = 0;
@@ -10667,7 +10729,7 @@ uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
     }
 
     // Step 2: Serialize the value using V8's ValueSerializer
-    ValueSerializer serializer(isolate);
+    ValueSerializer serializer(isolate, delegate);
     serializer.WriteHeader();
 
     // Register ArrayBuffers for transfer (tells V8 to use transfer IDs)
@@ -10681,7 +10743,11 @@ uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
         for (auto& d : copied_data) {
             if (d.first) free(d.first);
         }
-        if (error_code) *error_code = 2;
+        // WriteValue fails only by throwing: the delegate's DataCloneError, or
+        // whatever script threw from a getter or a proxy trap mid-walk. With the
+        // delegate that exception is the right one to surface, and code 3 tells
+        // the caller it is already pending.
+        if (error_code) *error_code = delegate ? 3 : 2;
         return nullptr;
     }
 
@@ -10706,6 +10772,44 @@ uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
 
     *out_size = size;
     return data;
+}
+
+extern "C" {
+
+/// Serialize a V8 value with ArrayBuffer transfer, returning raw bytes, with
+/// V8's default exceptions. See serializeWithTransfer.
+uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
+    Global<Value>* value,
+    Global<Value>** transfer_list,
+    size_t transfer_count,
+    size_t* out_size,
+    ArrayBufferTransferData* out_arraybuffer_data,
+    int* error_code
+) {
+    return serializeWithTransfer(value, transfer_list, transfer_count, out_size,
+                                 out_arraybuffer_data, error_code, nullptr);
+}
+
+/// HTML StructuredSerializeWithTransfer, with the exceptions the spec names.
+///
+/// The same wire format as v8_Value_SerializeWithTransfer_CrossIsolate -
+/// v8_Value_DeserializeWithTransfer_CrossIsolate reads either - but a value
+/// that cannot be serialized throws a "DataCloneError" DOMException, and an
+/// exception script throws mid-serialization propagates as it is. Both leave
+/// the exception pending and report error_code 3; the caller must return to
+/// V8 without throwing another. Codes 0-2 are as for the CrossIsolate
+/// function, and code 1 (a bad transfer list) has thrown nothing yet.
+uint8_t* v8_Value_StructuredSerializeWithTransfer(
+    Global<Value>* value,
+    Global<Value>** transfer_list,
+    size_t transfer_count,
+    size_t* out_size,
+    ArrayBufferTransferData* out_arraybuffer_data,
+    int* error_code
+) {
+    DataCloneErrorDelegate delegate(Isolate::GetCurrent());
+    return serializeWithTransfer(value, transfer_list, transfer_count, out_size,
+                                 out_arraybuffer_data, error_code, &delegate);
 }
 
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
@@ -10734,6 +10838,12 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
 
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+
+    // A failure is reported through error_code and never left pending. Every
+    // caller runs from a task or a timer, with no JavaScript frame to receive
+    // an exception, and HTML's answer to a failed deserialize is a
+    // `messageerror` event rather than a throw.
+    TryCatch try_catch(isolate);
 
     Local<Context> ctx = isolate->GetCurrentContext();
     if (ctx.IsEmpty()) {
