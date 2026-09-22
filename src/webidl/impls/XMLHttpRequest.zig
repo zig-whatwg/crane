@@ -24,6 +24,30 @@ const ResponseType = xhr.state_machine.ResponseType;
 // XHR Algorithms
 const open_algo = xhr.open;
 const headers_algo = xhr.headers;
+const send_algo = xhr.send;
+const XHREventType = xhr.XHREventType;
+const EventTargetKind = xhr.EventTargetKind;
+const ProgressEventData = xhr.ProgressEventData;
+
+const log = std.log.scoped(.xhr);
+
+/// The parent interface's generated State. `xhr.onload` and friends are
+/// declared on XMLHttpRequestEventTarget, so the fields live here for BOTH an
+/// XMLHttpRequest and an XMLHttpRequestUpload; `instance.getState` of this type
+/// reaches them on either, because `FlattenedState` puts `base` first.
+///
+/// This reads the generated INTERFACE's State, not the sibling impl - the same
+/// thing every impl does when it touches `state.base.own.*`.
+const EventTargetState = interfaces.XMLHttpRequestEventTarget.State;
+
+comptime {
+    // The aliasing above is load-bearing and silent if it ever stops holding:
+    // a wrong offset would read some other field as a function pointer and
+    // call it. Pin it here rather than discover it in a crash.
+    std.debug.assert(@offsetOf(XMLHttpRequest.State, "base") == 0);
+    std.debug.assert(@offsetOf(interfaces.XMLHttpRequestUpload.State, "base") == 0);
+    std.debug.assert(@offsetOf(EventTargetState, "base") == 0);
+}
 
 // Import pointer_tag for V8 pointer untagging (via v8 module)
 const pointer_tag = @import("v8").pointer_tag;
@@ -58,18 +82,35 @@ pub const InternalState = struct {
     /// V8 isolate for creating/disposing Global handles
     isolate: ?*v8_engine.ffi.Isolate,
 
+    /// The request body, owned for the lifetime of one send().
+    ///
+    /// An async send() hands the bytes to an event-loop TASK, which runs after
+    /// `call_send` has returned and the WebIDL conversion layer has freed its
+    /// copy of the argument. Borrowing it would be a use-after-free by the time
+    /// the request goes out.
+    pending_body: ?[]u8,
+
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
             .onreadystatechange = null,
             .isolate = null,
+            .pending_body = null,
         };
+    }
+
+    fn releasePendingBody(self: *InternalState) void {
+        if (self.pending_body) |b| {
+            self.allocator.free(b);
+            self.pending_body = null;
+        }
     }
 
     pub fn deinitState(self: *InternalState) void {
         // Dispose V8 Global handle to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
+        self.releasePendingBody();
         self.xhr_state.deinit();
     }
 };
@@ -200,12 +241,16 @@ pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_responseURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     const xhr_state = getXHRState(instance);
 
-    // Get URL from response
+    // OWNERSHIP: a getter returning USVString/ByteString/DOMString has its
+    // result FREED by the interface layer (see the `needs_cleanup` defer in
+    // `engines/v8/interface.zig`). Returning a borrowed slice - which this and
+    // `statusText` and `responseText` all did - hands the response's own
+    // storage to `allocator.free`. It only never fired because `call_send`
+    // never produced a response to read.
     if (xhr_state.response) |response| {
         if (response.url()) |url| {
-            // TODO: Serialize URL with exclude fragment flag
-            // For now, return the URL as-is
-            return url;
+            // TODO: Serialize URL with the exclude fragment flag set.
+            return try instance.ctx.allocator.dupe(u8, url);
         }
     }
 
@@ -233,7 +278,9 @@ pub fn get_statusText(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const xhr_state = getXHRState(instance);
 
     if (xhr_state.response) |response| {
-        return response.status_message;
+        if (response.status_message.len == 0) return "";
+        // Owned: see the note on `get_responseURL`.
+        return try instance.ctx.allocator.dupe(u8, response.status_message);
     }
 
     return "";
@@ -256,10 +303,56 @@ pub fn get_responseType(instance: *runtime.Instance) anyerror!enums.XMLHttpReque
 }
 
 /// Getter for response
-/// TODO: Implement full response object handling
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-response-attribute
+///
+/// This returned `error.NotImplemented`, so `xhr.response` THREW for every
+/// response type - including the default empty one, where the spec says to
+/// return the text response.
 pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const xhr_state = getXHRState(instance);
+    const allocator = instance.ctx.allocator;
+
+    // Step 1: If this's response type is the empty string or "text", then
+    // return the empty string if the state is not loading or done, otherwise
+    // the text response.
+    if (xhr_state.response_type == .empty or xhr_state.response_type == .text) {
+        const text = try get_responseText(instance);
+        return .{ .string = .{ .data = text, .owned = text.len > 0 } };
+    }
+
+    // Step 2: If this's state is not done, then return null.
+    if (xhr_state.ready_state != .DONE) return .{ .null = {} };
+
+    // Step 3: If this's response object is failure, then return null.
+    if (xhr_state.response_object == .failure) return .{ .null = {} };
+
+    switch (xhr_state.response_type) {
+        // Step 8: the JSON response. `parse JSON from bytes`; a parse failure
+        // returns null rather than throwing.
+        .json => {
+            if (xhr_state.received_bytes.items.len == 0) return .{ .null = {} };
+            const engine = instance.ctx.getEngine() orelse return .{ .null = {} };
+            const engine_ctx = instance.ctx.getEngineContext() orelse return .{ .null = {} };
+            const parse = engine.parseJson orelse return .{ .null = {} };
+            const parsed = parse(engine_ctx, xhr_state.received_bytes.items) catch return .{ .null = {} };
+            return .{ .handle = .{ .ptr = parsed, .needs_disposal = true, .handle_scope = .global } };
+        },
+        // Steps 5 and 6: ArrayBuffer and Blob.
+        //
+        // TODO: both need a real object - `createArrayBuffer` for the first and
+        // a Blob instance for the second. Returning the bytes as a string would
+        // be a worse answer than null, because script would not be able to tell
+        // it apart from a text response.
+        .arraybuffer, .blob => {
+            _ = allocator;
+            log.debug("response type {s} is not implemented", .{@tagName(xhr_state.response_type)});
+            return .{ .null = {} };
+        },
+        // Step 7: the document response, which needs the HTML/XML parser.
+        .document => return .{ .null = {} },
+        .empty, .text => unreachable, // handled by step 1
+    }
 }
 
 /// Getter for responseText
@@ -281,9 +374,19 @@ pub fn get_responseText(instance: *runtime.Instance) anyerror!runtime.USVString 
         return "";
     }
 
-    // Step 3: Return text response
-    // TODO: Implement proper text decoding with encoding detection
-    return xhr_state.received_bytes.items;
+    // Step 3: Return the result of getting a text response for this.
+    //
+    // Text response step 1: if this's response's body is null, return the empty
+    // string. A network error has a null body.
+    if (xhr_state.isNetworkError()) return "";
+
+    if (xhr_state.received_bytes.items.len == 0) return "";
+
+    // OWNED, not borrowed: the interface layer frees what a USVString getter
+    // returns, and `received_bytes.items` belongs to an ArrayList.
+    //
+    // TODO: decode using the final charset rather than assuming UTF-8.
+    return try instance.ctx.allocator.dupe(u8, xhr_state.received_bytes.items);
 }
 
 /// Getter for responseXML
@@ -458,93 +561,395 @@ fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
     return interfaces.Document.get_URL(doc) catch null;
 }
 
-/// Fire the readystatechange event by invoking the onreadystatechange handler
-/// Per WHATWG XHR spec, this is fired whenever the readyState attribute changes
-fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
-    const internal = getInternal(instance);
-    const isolate = internal.isolate orelse return;
+// =============================================================================
+// Events
+//
+// Spec: https://xhr.spec.whatwg.org/#events
+//
+// `src/xhr/` cannot reach JavaScript - it has no `runtime` import and no V8
+// link. It fires events through an `EventSink`, a two-field vtable, and this is
+// the implementation of it. Each event goes to both places a listener can be:
+//
+//   1. the event listener list, via `EventTarget.dispatchEvent` - this is what
+//      `xhr.addEventListener("load", f)` registers into;
+//   2. the event handler IDL attribute (`xhr.onload = f`), which Crane keeps in
+//      a separate field rather than as a listener.
+//
+// `EventTarget.invokeIdlEventHandler` does (2) for HTMLElement and Window only,
+// by looking in those two impls' own maps, so an XHR handler is invisible to
+// it. Hence the second half here.
+// =============================================================================
 
-    // Get the onreadystatechange handler from Global handle
-    if (internal.onreadystatechange) |global| {
-        // Retrieve Local handle from Global handle
-        const local_value = global.get(isolate) orelse return;
+/// Install the sink so the algorithms in `src/xhr/` can fire at this object.
+fn installEventSink(instance: *runtime.Instance) void {
+    const xhr_state = getXHRState(instance);
+    xhr_state.event_sink = .{ .ctx = @ptrCast(instance), .fire = &fireFromAlgorithms };
+}
 
-        // Get V8 context from the instance's runtime context
-        const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
+/// `EventSink.fire`. `ctx` is the XMLHttpRequest instance.
+fn fireFromAlgorithms(
+    ctx: *anyopaque,
+    target: EventTargetKind,
+    event_type: XHREventType,
+    progress: ?ProgressEventData,
+) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(ctx));
 
-        // Check if it's a function and invoke it
-        if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-            const function: *v8_engine.ffi.Function = @ptrCast(local_value);
-            // Call the callback with no arguments
-            // The readystatechange event doesn't pass an event object in typical XHR usage
-            // Use undefined as the receiver (this) since XHR events don't need a specific this binding
-            const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
-            var empty_args: [0]*v8_engine.ffi.Value = .{};
-            // `v8_Function_Call` ends in `return trackHandle(new
-            // Global<Value>(isolate, result))`, so the CALLER OWNS the result.
-            // Discarding it with `_ =` leaked one Global per XHR event
-            // dispatched. `v8_FreeFunctionCallResult` is not the free for this
-            // one - that belongs to `v8_Function_Call_Safe`, which returns a
-            // different struct.
-            const call_result = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 0, &empty_args);
-            if (call_result) |r| v8_engine.ffi.v8_Global_Dispose(r);
+    const target_instance = switch (target) {
+        .xhr => instance,
+        // An upload event fires at this's upload object. If script has never
+        // read `xhr.upload` there is no upload object, so there is nothing
+        // listening and nothing to create one for.
+        .upload => uploadObjectIfCreated(instance) orelse return,
+    };
+
+    fireAt(target_instance, instance, event_type, progress);
+}
+
+/// This's upload object, but only if it already exists.
+///
+/// `[SameObject]` caching lives in the generated interface (`cached_upload`),
+/// so reading the field is how to ask "has anyone touched `xhr.upload`?"
+/// without creating one.
+fn uploadObjectIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
+    const state = instance.getState(State);
+    return state.own.cached_upload;
+}
+
+/// Build the event object and deliver it to both kinds of listener.
+fn fireAt(
+    target: *runtime.Instance,
+    xhr_instance: *runtime.Instance,
+    event_type: XHREventType,
+    progress: ?ProgressEventData,
+) void {
+    const ctx = target.ctx;
+    const name = event_type.name();
+    const type_string = runtime.DOMString.initInterned(name);
+
+    // ProgressEvent for the seven progress types, plain Event for
+    // readystatechange. Both are non-bubbling and non-cancelable.
+    const event: *runtime.Instance = blk: {
+        if (progress) |p| {
+            const init_dict = dictionaries.ProgressEventInit{
+                .base = .{},
+                .lengthComputable = p.lengthComputable,
+                .loaded = @floatFromInt(p.loaded),
+                .total = @floatFromInt(p.total),
+            };
+            break :blk interfaces.ProgressEvent.call_constructor(
+                ctx,
+                type_string,
+                webidl.Opt(dictionaries.ProgressEventInit).passed(init_dict),
+            ) catch return;
         }
+        break :blk interfaces.Event.call_constructor(
+            ctx,
+            type_string,
+            webidl.Opt(dictionaries.EventInit).notPassed(),
+        ) catch return;
+    };
+
+    // `dispatchEvent` throws unless the event's INITIALIZED flag is set, and
+    // neither constructor sets it - `document.createEvent("Event")` hands back
+    // an uninitialized event on purpose. `initEvent` sets it, and also gives
+    // the event an owned copy of its type string, which is what dispatch
+    // matches listeners on.
+    interfaces.Event.call_initEvent(
+        event,
+        type_string,
+        webidl.Opt(bool).passed(false),
+        webidl.Opt(bool).passed(false),
+    ) catch return;
+
+    // (1) the event listener list.
+    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
+        log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
+    };
+
+    // (2) the event handler IDL attribute.
+    invokeIdlHandler(target, xhr_instance, event, event_type);
+}
+
+/// The raw, still-tagged handler pointer for `event_type` on `target`.
+///
+/// `readystatechange` is XMLHttpRequest's own attribute and is stored as a
+/// Global handle on the impl's internal state; the other seven come from
+/// XMLHttpRequestEventTarget and are stored in the generated State as
+/// `typedefs.EventHandler` - a `*const fn` that is really a TAGGED V8 Global
+/// handle pointer, because that is what the conversion layer produces for a
+/// callback function.
+fn rawIdlHandler(
+    target: *runtime.Instance,
+    xhr_instance: *runtime.Instance,
+    event_type: XHREventType,
+) ?*anyopaque {
+    if (event_type == .readystatechange) {
+        // Only the XHR itself has onreadystatechange.
+        if (target != xhr_instance) return null;
+        const internal = getInternal(xhr_instance);
+        const global = internal.onreadystatechange orelse return null;
+        return @ptrCast(global.ptr);
     }
+
+    const state = target.getState(EventTargetState);
+    const handler: typedefs.EventHandler = switch (event_type) {
+        .loadstart => state.own.onloadstart,
+        .progress => state.own.onprogress,
+        .abort => state.own.onabort,
+        .@"error" => state.own.onerror,
+        .load => state.own.onload,
+        .timeout => state.own.ontimeout,
+        .loadend => state.own.onloadend,
+        .readystatechange => unreachable,
+    };
+
+    // Read the bits WITHOUT materialising the pointer. The stored address has
+    // tag bits in its low two bits, so it is deliberately misaligned, and
+    // @ptrCast/@alignCast on it panics with "incorrect alignment" in a safe
+    // build. A byte copy has no alignment check. Same approach as
+    // `MessagePort.zig` and `HTMLElement.getEventHandler`.
+    const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
+    const addr: usize = @bitCast(bytes);
+    if (addr == 0) return null;
+    return @ptrFromInt(addr & ~@as(usize, 0x3) | (addr & 0x3));
+}
+
+/// Call `xhr.onload = f` and friends with the event.
+///
+/// The previous version of this - `fireReadyStateChangeEvent` - crashed:
+///
+///     panic: load of misaligned address ...
+///     v8_Value_IsFunction -> PersistentBase<Value>::Get(isolate)
+///
+/// It did `global.get(isolate)` to get a LOCAL and passed that to
+/// `v8_Value_IsFunction`, which takes a `Global<Value>*` and calls `Get` on it.
+/// A Local reinterpreted as a Global is read at the wrong offset. Pass the
+/// Global straight through, as `EventTarget.invokeIdlEventHandler` does.
+fn invokeIdlHandler(
+    target: *runtime.Instance,
+    xhr_instance: *runtime.Instance,
+    event: *runtime.Instance,
+    event_type: XHREventType,
+) void {
+    const raw = rawIdlHandler(target, xhr_instance, event_type) orelse return;
+
+    const untagged = pointer_tag.untagPointer(raw);
+    if (untagged.tag != .global_handle and untagged.tag != .untagged) return;
+
+    const callback_global: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+
+    const engine_ctx = target.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // A Local handle is only valid inside a HandleScope, and wrapping the event
+    // creates several.
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
+
+    // Wrap with the event's ACTUAL interface, so a ProgressEvent handler sees
+    // `.loaded` and `.total` rather than a bare Event.
+    const interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
+    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
+        event,
+        interface_name,
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
+    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_global)};
+
+    const result = v8_engine.ffi.v8_Function_Call_Safe(
+        callback_global,
+        v8_context,
+        @ptrCast(undefined_recv),
+        1,
+        @ptrCast(&args),
+    );
+    v8_engine.ffi.v8_FreeFunctionCallResult(result);
+}
+
+/// Fire readystatechange at this XHR.
+fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
+    fireAt(instance, instance, .readystatechange, null);
 }
 
 /// Operation: abort
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-abort()-method
+///
+/// The whole algorithm lives in `xhr.abort`; this only has to make sure the
+/// events it fires can reach script.
 pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     const xhr_state = getXHRState(instance);
-
-    // Step 1: Abort this's fetch controller (TODO: implement FetchController.abort())
-
-    // Step 2: If state is opened with send flag set, headers received, or loading
-    if ((xhr_state.ready_state == .OPENED and xhr_state.send_flag) or
-        xhr_state.ready_state == .HEADERS_RECEIVED or
-        xhr_state.ready_state == .LOADING)
-    {
-        // Run request error steps for abort
-        xhr_state.ready_state = .DONE;
-        xhr_state.send_flag = false;
-        // Set response to network error
-        if (xhr_state.response) |r| r.deinit();
-        xhr_state.response = null;
-        // Fire readystatechange and abort events (TODO)
-
-        // Step 3: If state is done, set to unsent and response to network error
-        // (This is part of the same conditional block per spec)
-        xhr_state.ready_state = .UNSENT;
-    } else if (xhr_state.ready_state == .OPENED) {
-        // If OPENED but send flag not set, just reset to UNSENT
-        xhr_state.ready_state = .UNSENT;
-        if (xhr_state.response) |r| r.deinit();
-        xhr_state.response = null;
-    }
+    installEventSink(instance);
+    xhr.abort.abort(xhr_state);
 }
 
 /// Operation: send
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method
-/// TODO: Implement full send() with Fetch integration
+///
+/// ## Async is a task, not a thread
+///
+/// `fetch.algorithms.fetch` blocks. Running it inline for an async request
+/// would fire `loadstart` .. `loadend` BEFORE `send()` returned, so
+///
+///     xhr.send();
+///     xhr.onload = () => { ... };   // assigned after send(), as tests do
+///
+/// would miss every event. So steps 1-10, which script can observe immediately
+/// (a second `send()` must throw), run inline, and step 11 - loadstart, the
+/// fetch and everything downstream - runs from an event-loop TASK.
+///
+/// That gets ordering right for the common case and is still wrong in one
+/// respect: the task occupies the loop for the duration of the transfer, so two
+/// concurrent XHRs complete in the order they were sent rather than the order
+/// the server answers. Fixing that needs an incremental fetch backend, not a
+/// change here.
+///
+/// With no event loop - a bare realm, or a unit test - it falls back to running
+/// inline, which is better than dropping the request.
 pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
     const xhr_state = getXHRState(instance);
-    _ = body;
+    const internal = getInternal(instance);
 
-    // Step 1: Check state
-    if (xhr_state.ready_state != .OPENED) {
-        return error.InvalidStateError;
+    // Step 5: If one or more event listeners are registered on this's upload
+    // object, then set this's upload listener flag.
+    xhr_state.upload_listener_flag = uploadHasListeners(instance);
+
+    // Own the body for the life of the request: an async send() reads it from a
+    // task, long after the conversion layer has freed its copy.
+    internal.releasePendingBody();
+    if (extractBodyBytes(instance, body)) |bytes| {
+        internal.pending_body = internal.allocator.dupe(u8, bytes) catch return error.OutOfMemory;
     }
 
-    // Step 2: Check send flag
-    if (xhr_state.send_flag) {
-        return error.InvalidStateError;
+    installEventSink(instance);
+
+    // Steps 1-10, inline and synchronously observable.
+    const effective_body = send_algo.sendPrologue(xhr_state, internal.pending_body) catch |err| {
+        internal.releasePendingBody();
+        return err;
+    };
+
+    // Step 12: a sync request blocks here, which is what sync MEANS.
+    if (xhr_state.synchronous_flag) {
+        defer internal.releasePendingBody();
+        send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
+            return switch (err) {
+                error.TimeoutError => error.TimeoutError,
+                error.NetworkError => error.NetworkError,
+                else => err,
+            };
+        };
+        return;
     }
 
-    // TODO: Implement full send() with Fetch integration
-    // For now, just set the send flag
-    xhr_state.send_flag = true;
+    // Step 11, from a task.
+    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
+        defer internal.releasePendingBody();
+        send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
+            log.debug("inline send failed: {s}", .{@errorName(err)});
+        };
+        return;
+    };
+
+    const task = internal.allocator.create(SendTask) catch return error.OutOfMemory;
+    task.* = .{ .instance = instance, .allocator = internal.allocator };
+    event_loop.queueTask(.{ .callback = &runSendTask, .context = @ptrCast(task) });
+}
+
+/// Context for the deferred step 11.
+///
+/// It holds only the INSTANCE, never the body slice: the body lives in
+/// `InternalState.pending_body`, so `open()` or `abort()` between queueing and
+/// running cannot leave this task pointing at freed bytes.
+const SendTask = struct {
+    instance: *runtime.Instance,
+    allocator: std.mem.Allocator,
+};
+
+fn runSendTask(context: ?*anyopaque) void {
+    const task: *SendTask = @ptrCast(@alignCast(context orelse return));
+    const instance = task.instance;
+    const allocator = task.allocator;
+    defer allocator.destroy(task);
+
+    const xhr_state = getXHRState(instance);
+    const internal = getInternal(instance);
+    defer internal.releasePendingBody();
+
+    // Step 11.6, hoisted: between `send()` returning and this task running,
+    // script has had a turn. `abort()` unsets the send() flag and `open()`
+    // resets the state, and either means this request is no longer wanted.
+    if (!xhr_state.send_flag or xhr_state.ready_state != .OPENED) return;
+
+    send_algo.sendDispatch(xhr_state, internal.pending_body) catch |err| {
+        log.debug("async send failed: {s}", .{@errorName(err)});
+    };
+}
+
+/// Step 5: "If one or more event listeners are registered on this's upload
+/// object, then set this's upload listener flag."
+///
+/// KNOWN GAP: this sees the event handler IDL attributes
+/// (`xhr.upload.onprogress = f`) but NOT `xhr.upload.addEventListener(...)`,
+/// because the event listener list lives in EventTarget's private registry and
+/// no interface exposes "does this target have listeners". The flag only
+/// affects whether upload progress events fire and whether a CORS preflight is
+/// forced, so the failure mode is missing upload events, not wrong ones.
+fn uploadHasListeners(instance: *runtime.Instance) bool {
+    const upload = uploadObjectIfCreated(instance) orelse return false;
+    const state = upload.getState(EventTargetState);
+    inline for (.{
+        state.own.onloadstart,
+        state.own.onprogress,
+        state.own.onabort,
+        state.own.onerror,
+        state.own.onload,
+        state.own.ontimeout,
+        state.own.onloadend,
+    }) |handler| {
+        const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
+        const addr: usize = @bitCast(bytes);
+        if (addr != 0) return true;
+    }
+    return false;
+}
+
+/// The bytes of the `body` argument.
+///
+/// Spec step 4 covers Document, Blob, BufferSource, FormData, URLSearchParams
+/// and USVString. Only the string form is handled here; the rest need the body
+/// extraction algorithm, and returning null for them sends no body rather than
+/// sending the wrong one.
+fn extractBodyBytes(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) ?[]const u8 {
+    if (!body.wasPassed()) return null;
+    const value = body.value orelse return null;
+
+    return switch (value) {
+        .undefined, .null => null,
+        .string => |sv| if (sv.data.len > 0) sv.data else null,
+        .handle => |h| blk: {
+            // A JS string arrives as a handle when it was not converted up
+            // front. Anything else is a body type we cannot extract yet.
+            const engine = instance.ctx.getEngine() orelse break :blk null;
+            const engine_ctx = instance.ctx.getEngineContext() orelse break :blk null;
+            const is_string = engine.isString orelse break :blk null;
+            if (!is_string(h.ptr)) {
+                log.debug("send() body is a type whose extraction is not implemented", .{});
+                break :blk null;
+            }
+            const extract = engine.extractString orelse break :blk null;
+            break :blk extract(engine_ctx, h.ptr, instance.ctx.allocator) catch null;
+        },
+        else => null,
+    };
 }
 
 /// Operation: setRequestHeader

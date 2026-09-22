@@ -57,10 +57,28 @@ fn methodIgnoresBody(method: ?[]const u8) bool {
 /// Send request
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method
+///
+/// Steps 1-10 then 11/12 in one call. The WebIDL impl splits them - see
+/// `sendPrologue` - because steps 1-10 must be observable to script the moment
+/// `send()` returns while the transfer itself is deferred to a task.
 pub fn send(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
 ) !void {
+    const effective_body = try sendPrologue(state, body);
+    try sendDispatch(state, effective_body);
+}
+
+/// Steps 1-10 of send(): validate, normalise the body, and set the flags.
+///
+/// Returns the body the request will actually carry - null when step 3 has
+/// discarded it. Everything this does is SYNCHRONOUSLY OBSERVABLE: after it
+/// returns, `xhr.send()` a second time throws, because step 10 has set the
+/// send() flag. That is why it is separable from step 11.
+pub fn sendPrologue(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+) !?[]const u8 {
     // Step 1: If this's state is not opened, throw an "InvalidStateError".
     if (state.ready_state != .OPENED) {
         return error.InvalidStateError;
@@ -103,11 +121,19 @@ pub fn send(
     // Step 10: Set this's send() flag.
     state.send_flag = true;
 
-    // Step 11 / 12: async or sync.
+    return request_body;
+}
+
+/// Step 11 (async) or step 12 (sync) of send(): fire loadstart and run the
+/// fetch.
+pub fn sendDispatch(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+) !void {
     if (!state.synchronous_flag) {
-        try sendAsync(state, request_body);
+        try sendAsync(state, body);
     } else {
-        try sendSync(state, request_body);
+        try sendSync(state, body);
     }
 }
 
