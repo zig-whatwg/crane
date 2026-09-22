@@ -288,7 +288,20 @@ static void freeWeakData(WeakCallbackData* data) {
     g_live_weak_callback_data.fetch_sub(1, std::memory_order_relaxed);
 }
 
-/// End the weak arm on `global`, if it has one, before the Global dies.
+/// What happens to the `Global` once its arm is released.
+///
+/// This is the difference between the two kinds of caller, and V8 cares about
+/// it: whoever ends the arm while a first-pass callback is already queued
+/// inherits the obligation to Reset the node.
+enum class WeakArmEnd {
+    /// The caller Resets and deletes the Global immediately after. Every
+    /// `v8_*_Dispose` in this file does, and so does `resetGlobalHandle`.
+    handle_dying,
+    /// The caller keeps the Global. `v8_Global_ClearWeak` is the only one.
+    handle_survives,
+};
+
+/// End the weak arm on `global`, if it has one.
 ///
 /// Two cases, told apart by `IsWeak()`:
 ///
@@ -296,15 +309,31 @@ static void freeWeakData(WeakCallbackData* data) {
 ///     take the parameter back off the node and free it.
 ///   * not weak - either never armed (we returned already), or the node is
 ///     NEAR_DEATH with a first-pass callback queued for this GC. V8 WILL invoke
-///     that callback with this record, so the record has to outlive us: clear
-///     its back-pointer so it cannot touch the Global we are about to delete,
-///     and let the callback free it.
+///     that callback with this record, so the record has to outlive us. It must
+///     not run the Zig finalizer either way: every caller here is tearing down
+///     the `user_data` in the same breath, which is what made
+///     `wrapper_cache.weakCallback` read a destroyed `CacheEntry`.
+///
+///     What the record keeps is where the two ends differ. `handle_dying` nulls
+///     the back-pointer, because the caller's own `Reset()` discharges V8's
+///     obligation and the Global is about to be freed. `handle_survives` KEEPS
+///     it, because nothing else will ever reset that node - and a first-pass
+///     callback that returns without resetting is fatal:
+///
+///         Check failed: Handle not reset in first callback.
+///           See comments on |v8::WeakCallbackInfo|.
+///           GlobalHandles::InvokeFirstPassWeakCallbacks
+///
+///     `wrapper_cache.zig` disarms on six paths on every DOM wrapper, so this
+///     needs only a GC to land between V8 queuing the callback and running it.
+///     Creating a child context is what made that reliable - registering 1,263
+///     interface templates allocates enough to force a collection mid-`appendChild`.
 ///
 /// An unrecognised state takes the second branch, which costs one 24-byte record
 /// until the callback runs and never costs correctness. That is deliberate: the
 /// cheap answer here is the one that leaks, not the one that frees.
 template <typename T>
-static void releaseWeakArm(Global<T>* global) {
+static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handle_dying) {
     if (!global) return;
     auto& armed = armedWeakData();
     if (armed.empty()) return;
@@ -312,15 +341,34 @@ static void releaseWeakArm(Global<T>* global) {
     if (it == armed.end()) return;
 
     WeakCallbackData* data = it->second;
-    armed.erase(it);
 
     if (global->IsWeak()) {
+        armed.erase(it);
         global->ClearWeak();
         freeWeakData(data);
-    } else {
-        data->handle = nullptr;
-        detachedWeakData().insert(data);
+        return;
     }
+
+    // Detached: V8 still owns this record for the rest of the collection.
+    // The Zig side is going away with the caller, so silence it.
+    data->callback = nullptr;
+    data->user_data = nullptr;
+    detachedWeakData().insert(data);
+
+    if (end == WeakArmEnd::handle_dying) {
+        armed.erase(it);
+        data->handle = nullptr;
+        return;
+    }
+
+    // `handle_survives`: leave the record in `armedWeakData` under this handle.
+    // It is no longer an arm - `callback` is null and nothing will call Zig -
+    // but it is the ONLY way a later `v8_Global_Dispose` of the same handle can
+    // find this record and cut the back-pointer before the Global is deleted.
+    // Drop it here and a ClearWeak-then-Dispose in one tick would leave the
+    // queued callback doing `data->handle->Reset()` on freed memory, which is
+    // the same use-after-free the note above this function describes.
+    // `WeakCallbackWrapper` erases it by handle on its way through.
 }
 
 /// `releaseWeakArm` for a caller that has lost the handle's type. Same cast
@@ -378,6 +426,13 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     // very handle, and it must not find a stale arm to release.
     armedWeakData().erase(static_cast<const void*>(data->handle));
     data->handle->Reset();
+
+    // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
+    // node) leaves the record HERE with its handle intact, precisely so the
+    // Reset above can happen. It nulls `callback`, so the finalizer below is
+    // skipped and this erase is the only cleanup it needs. Erasing a key that
+    // was never inserted is a no-op, so the armed path pays nothing.
+    detachedWeakData().erase(data);
 
     // Call the Zig finalizer with user data
     if (data->callback) {
@@ -719,8 +774,21 @@ public:
         auto it = callbacks_.find(id);
         if (it != callbacks_.end()) {
             it->second.collected = true;
-            // The function Global is already invalid, don't try to reset it
-            // Just mark it so Invoke knows to fail
+
+            // The node is NOT "already invalid": the object is gone, the
+            // persistent slot is still ours, and v8-weak-callback-info.h makes
+            // resetting it in the first-pass callback mandatory -
+            //   Check failed: Handle not reset in first callback.
+            // is a V8_Fatal, not a leak. `weak_registered` goes with it so a
+            // later `ClearWeak` does not try to pull a parameter back off a
+            // node that is no longer weak and no longer holds our record.
+            //
+            // `crane_callback_make_weak` has no callers today, so this has
+            // never fired; it is the same bug `releaseWeakArm` carries, and
+            // leaving one arm of it correct and the other wrong is how it
+            // comes back.
+            it->second.function.Reset();
+            it->second.weak_registered = false;
         }
     }
 
@@ -7630,10 +7698,15 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
 /// come back with it: `PersistentBase::ClearWeak()` is `ClearWeak<void>()` and
 /// drops the record on the floor, which leaked one per call on every DOM
 /// wrapper.
+///
+/// `handle_survives` is what separates this from every other caller: they all
+/// `Reset(); delete;` the Global on the next line, and this one hands it back.
+/// If V8 has already queued the first-pass callback, that makes this record the
+/// only thing left that can reset the node.
 void v8_Global_ClearWeak(void* handle) {
     if (!handle) return;
-    
-    releaseWeakArm(reinterpret_cast<Global<Value>*>(handle));
+
+    releaseWeakArm(reinterpret_cast<Global<Value>*>(handle), WeakArmEnd::handle_survives);
 }
 
 /// Check if a Global handle is weak
