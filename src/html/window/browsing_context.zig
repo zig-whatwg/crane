@@ -270,6 +270,10 @@ pub const SandboxFlags = packed struct {
 
 /// A browsing context is an environment in which Document objects are presented.
 /// Per HTML Standard §7.1.
+/// Contexts discarded by their container while a Window may still point at
+/// them (`BrowsingContext.discard`); freed together by `freeRetired`.
+var retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -346,6 +350,11 @@ pub const BrowsingContext = struct {
     /// Stored as ?InstancePtr to avoid module import conflicts.
     active_window: ?InstancePtr = null,
 
+    /// The container discarded this context while a Window still pointed at
+    /// it (script can hold `iframe.contentWindow` past `iframe.remove()`), so it
+    /// was retired rather than freed. See `discard` and `freeRetired`.
+    orphaned: bool = false,
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -410,6 +419,34 @@ pub const BrowsingContext = struct {
                 }
             }
         }
+    }
+
+    /// Discard this context for its container (HTML "destroy a child
+    /// navigable"): it leaves its parent, closes, and forgets its children - a
+    /// discarded navigable has none - so a Window that script still holds reads
+    /// `closed` true and `length` 0. Returns whether the caller may free it
+    /// now. If a Window was ever active in it, it is retired instead: freeing
+    /// it here left `w.length` reading a freed child list (an @intCast panic in
+    /// Window.get_length), and no Window is told when its context goes, so the
+    /// only safe time to free it is when no Window is left (`freeRetired`).
+    pub fn discard(self: *BrowsingContext) bool {
+        self.removeFromParent();
+        self.close();
+        self.parent = null;
+        self.children.clearRetainingCapacity();
+        if (self.active_window == null) return true;
+        self.orphaned = true;
+        // On OOM, leak rather than free under a reader.
+        retired.append(std.heap.page_allocator, self) catch {};
+        return false;
+    }
+
+    /// Free every retired context. Browser teardown only, after the last Window
+    /// is gone - a retired context is exactly one a Window may still read.
+    pub fn freeRetired() void {
+        for (retired.items) |ctx| ctx.deinit();
+        retired.deinit(std.heap.page_allocator);
+        retired = .empty;
     }
 
     /// Deinitialize and free resources

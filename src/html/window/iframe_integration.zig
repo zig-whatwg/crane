@@ -596,17 +596,14 @@ pub const IFrameIntegration = struct {
         // may still be executing causes use-after-free.
 
         if (self.browsing_context) |ctx| {
-            // Remove from parent's children list BEFORE closing.
-            // This ensures window.frames.length reflects the removal immediately.
-            ctx.removeFromParent();
-            // Close the browsing context (marks as discarded)
-            ctx.close();
-            // Per WHATWG spec §7.3.1.6 "destroy a child navigable":
-            // Destroy the BrowsingContext synchronously. This is deterministic cleanup
-            // following the Chromium pattern, not deferred GC-driven cleanup.
-            // The BC is a Zig-only struct with no V8 references, so this is safe.
-            log.debug("[IFrameIntegration.onRemovedFromDocument] integration={*} -> destroying BC {*}\n", .{ self, ctx });
-            ctx.deinit();
+            // Per WHATWG spec §7.3.1.6 "destroy a child navigable": leave the
+            // parent (window.frames.length reflects the removal immediately),
+            // close, drop the children. Freed synchronously only if no Window
+            // still points at it - script can hold iframe.contentWindow past
+            // iframe.remove(), and that Window reads this struct - otherwise the
+            // Window frees it at teardown (BrowsingContext.discard).
+            log.debug("[IFrameIntegration.onRemovedFromDocument] integration={*} -> discarding BC {*}\n", .{ self, ctx });
+            if (ctx.discard()) ctx.deinit();
             // Set to null to prevent double-free in IFrameIntegration.deinit()
             self.browsing_context = null;
         }

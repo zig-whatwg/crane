@@ -325,6 +325,11 @@ pub const Browser = struct {
             // context being destroyed, which cleans up ShadowRealms created by that context.
             v8.cleanupAll(isolate, self.allocator);
 
+            // Every Window is gone now, so the browsing contexts their
+            // containers retired while a Window might still read them
+            // (BrowsingContext.discard) can finally be freed.
+            @import("html").window.browsing_context.BrowsingContext.freeRetired();
+
             // Final ShadowRealm cleanup - dispose any remaining tracked contexts
             // (safety net) and free the callback data structure.
             // This must happen AFTER cleanupAll() because individual context cleanup
