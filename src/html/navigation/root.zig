@@ -21,6 +21,7 @@ pub const events = @import("events.zig");
 pub const navigable = @import("navigable.zig");
 pub const algorithms = @import("algorithms.zig");
 pub const fetch_integration = @import("fetch_integration.zig");
+pub const document_type = @import("document_type.zig");
 pub const document_creation = @import("document_creation.zig");
 pub const event_dispatcher = @import("event_dispatcher.zig");
 pub const security_policies = @import("security_policies.zig");

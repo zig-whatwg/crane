@@ -165,11 +165,22 @@ hottest paths.
 
 ```bash
 zig fmt src/ tests/ tools/
-PATH=/tmp/sdkshim:$PATH zig build      --cache-dir /tmp/crane-z16-cache
-PATH=/tmp/sdkshim:$PATH zig build test --cache-dir /tmp/crane-z16-cache
+zig build      --cache-dir /tmp/crane-z16-cache
+zig build test --cache-dir /tmp/crane-z16-cache
 ```
 
-`/tmp/sdkshim` is required and does **not** survive a reboot.
+**Do NOT put `/tmp/sdkshim` on PATH.** It was required until the machine
+upgraded to macOS 27 on 2026-09-21. `MacOSX15.sdk` no longer exists, Zig's own
+SDK detection now works, and recreating the shim pointed at `MacOSX27.0.sdk`
+breaks the build outright:
+
+    use of undeclared identifier 'INFINITY'
+      zig/0.16.0/lib/libcxx/include/__random/clamp_to_integral.h:47
+    error: sub-compilation of libcxx failed
+
+The identical build with no shim on PATH has no libcxx error at all. The old
+platform-aware shim is parked at `/tmp/sdkshim.disabled-2026-09-21` in case an
+iOS build ever needs its `--sdk` handling back.
 
 All three must pass. For changes to V8 handle ownership, they are not
 sufficient — see the regression protocol above.

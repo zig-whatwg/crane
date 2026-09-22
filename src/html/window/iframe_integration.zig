@@ -29,6 +29,11 @@ const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
 const encoding_mod = @import("encoding");
 const html_parser = @import("../parser/root.zig");
+// Navigation fetch and the "load a document" MIME routing. Both live in the
+// navigation half of this same module, so an iframe navigates through exactly
+// the machinery a top-level navigation uses.
+const navigation_fetch = @import("../navigation/fetch_integration.zig");
+const document_type = @import("../navigation/document_type.zig");
 const clock = @import("clock");
 const platform_host = @import("host");
 
@@ -50,6 +55,10 @@ pub const IFrameError = error{
     UnsupportedScheme,
     /// Parse error during HTML parsing
     ParseError,
+    /// The response's computed MIME type is one the HTML Standard hands off to
+    /// external software (a download). Not a failure: no Document is committed
+    /// and no load event is owed.
+    ExternalHandoff,
 };
 
 /// State of the iframe's nested browsing context
@@ -228,6 +237,14 @@ pub const IFrameIntegration = struct {
     /// Cached srcdoc content (null if no srcdoc attribute)
     srcdoc_content: ?[]const u8,
 
+    /// MIME type essence of the document the last navigation committed
+    /// (e.g. "text/css"). Null until one commits. Owned.
+    loaded_content_type: ?[]u8,
+
+    /// URL of the document the last navigation committed, after redirects.
+    /// Null until one commits. Owned.
+    loaded_url: ?[]u8,
+
     /// The iframe's name attribute
     name: []const u8,
 
@@ -318,6 +335,8 @@ pub const IFrameIntegration = struct {
             .parent_context = null,
             .src_url = null,
             .srcdoc_content = null,
+            .loaded_content_type = null,
+            .loaded_url = null,
             .name = "",
             .container_origin = Origin.createOpaque(),
             .sandbox_flags = null,
@@ -360,6 +379,12 @@ pub const IFrameIntegration = struct {
         }
         if (self.srcdoc_content) |content| {
             self.allocator.free(content);
+        }
+        if (self.loaded_content_type) |ct| {
+            self.allocator.free(ct);
+        }
+        if (self.loaded_url) |u| {
+            self.allocator.free(u);
         }
         if (self.name.len > 0) {
             self.allocator.free(self.name);
@@ -683,99 +708,145 @@ pub const IFrameIntegration = struct {
         self.state = .ready;
     }
 
-    /// Navigate to src URL
-    /// Per HTML Standard §7.4.2 - Navigate algorithm
+    /// Navigate the iframe's content navigable to `url` - HTML Standard §7.4.6
+    /// "load a document".
     ///
-    /// This function:
-    /// 1. Resolves the URL
-    /// 2. Fetches the content (for file:// URLs, reads from disk)
-    /// 3. Detects encoding (BOM → Content-Type → default UTF-8)
-    /// 4. Parses the HTML content
-    /// 5. Stores the parsed Document in the browsing context
+    /// `url` must already be absolute. Resolving the src attribute against the
+    /// container document belongs to "process the iframe attributes" on the
+    /// element, which is the only place that knows the container document; this
+    /// function has no access to it and will not guess.
+    ///
+    /// Steps:
+    /// 1. Fetch the resource through the navigation fetch
+    ///    (`navigation/fetch_integration.zig`), which reaches the network via
+    ///    the Fetch algorithm and libcurl.
+    /// 2. Take the essence of the response's Content-Type - the "computed type".
+    /// 3. Select a document class for that type and build the Document the spec
+    ///    names for it.
+    /// 4. Record the committed URL and content type so the element can apply
+    ///    them to the Document and fire the load event.
+    ///
+    /// Returns `IFrameError.ExternalHandoff` when the computed type is one the
+    /// spec hands to external software (a download). That is not a failure, but
+    /// it is not a navigation either: no Document is committed and no load event
+    /// is owed.
     pub fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
         self.state = .navigating;
 
-        // Parse the URL to determine origin
-        const new_origin = self.parseOriginFromURL(url);
+        // javascript: URLs are never fetched. Per HTML §7.4.2 the script runs in
+        // the iframe's own realm; only a string result would replace the
+        // document, which Crane does not yet implement.
+        if (std.mem.startsWith(u8, url, "javascript:")) {
+            const script = url["javascript:".len..];
+            if (self.execute_script_callback) |exec| {
+                exec(self.engine_context, script);
+            }
+            self.updateLocationUrl(url);
+            try self.recordCommit(url, "text/html");
+            self.state = .ready;
+            return;
+        }
 
+        // The document origin follows the URL being navigated to, and must be
+        // set before the document exists so same-origin checks on it are right.
+        const new_origin = self.parseOriginFromURL(url);
         if (self.window_proxy) |*proxy| {
             proxy.setDocumentOrigin(new_origin);
         }
 
-        // Determine the URL scheme and fetch content
-        var content: FetchedContent = undefined;
-
-        if (std.mem.startsWith(u8, url, "file://")) {
-            // File URL - read from local filesystem
-            content = self.fetchFileContent(url) catch {
-                self.state = .ready;
-                return IFrameError.FileReadError;
+        var response = navigation_fetch.fetchNavigationResource(self.allocator, url, .{
+            .destination = .iframe,
+            .mode = .navigate,
+            .redirect = .follow,
+        }) catch |err| {
+            self.state = .ready;
+            return switch (err) {
+                error.OutOfMemory => IFrameError.OutOfMemory,
+                error.InvalidUrl => IFrameError.InvalidURL,
+                error.SecurityError => IFrameError.SandboxViolation,
+                else => IFrameError.NavigationFailed,
             };
-        } else if (std.mem.startsWith(u8, url, "data:")) {
-            // data: URL - parse the data URL
-            content = self.parseDataUrl(url) catch {
-                self.state = .ready;
-                return IFrameError.InvalidURL;
-            };
-        } else if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-            // HTTP(S) URLs - not implemented yet, would need fetch API
-            // For now, mark as ready without loading (stub behavior)
-            self.state = .ready;
-            return;
-        } else if (std.mem.startsWith(u8, url, "about:")) {
-            // about: URLs are handled by navigateToAboutBlank
-            self.state = .ready;
-            return;
-        } else if (std.mem.startsWith(u8, url, "javascript:")) {
-            // javascript: URL - execute script and use result as content
-            // Per HTML spec §4.1.2.4, if the script returns a string, it becomes the doc
-            const script = url["javascript:".len..];
+        };
+        defer response.deinit();
 
-            // Execute the script if we have the callback
-            // The result should be used as document content, but for now
-            // we just execute it and create an empty document
-            if (self.execute_script_callback) |exec| {
-                exec(self.engine_context, script);
-            }
-
-            // Update location to the javascript: URL
-            self.updateLocationUrl(url);
+        // A network error is not a document, and neither is a 204/205. Leaving
+        // the previous document in place is what the spec calls for, and it is
+        // also what keeps a failed load from looking like a successful empty one.
+        if (response.is_network_error or !navigation_fetch.shouldNavigationProceed(response.status)) {
             self.state = .ready;
-            return;
-        } else {
-            // Unsupported scheme
-            self.state = .ready;
-            return IFrameError.UnsupportedScheme;
+            return IFrameError.NavigationFailed;
         }
-        defer content.deinit();
 
-        // Use the parse_html_callback if available - this uses DomTreeAdapter
-        // to properly populate the document with parsed content that JavaScript
-        // can access via DOM APIs like getElementById(), querySelector(), etc.
+        const body = response.body orelse "";
+
+        // The computed type. A response with no Content-Type would be sniffed
+        // per mimesniff; until Crane can reach that module from here, an absent
+        // type is treated as HTML, which is what the rest of the engine assumes.
+        const computed = document_type.essence(
+            self.allocator,
+            response.content_type orelse "text/html",
+        ) catch return IFrameError.OutOfMemory;
+        defer self.allocator.free(computed);
+
+        const final_url = if (response.final_url.len > 0) response.final_url else url;
+
+        switch (document_type.classify(computed)) {
+            .html => try self.commitHtmlDocument(body),
+            .text => try self.commitTextDocument(body),
+            .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
+            .xml => try self.commitXmlDocument(),
+            .multipart, .external => {
+                // "Otherwise, proceed onward" - the resource is handed off to
+                // external software. The navigable keeps its current document.
+                self.state = .ready;
+                return IFrameError.ExternalHandoff;
+            },
+        }
+
+        self.updateLocationUrl(final_url);
+        try self.recordCommit(final_url, computed);
+        self.state = .ready;
+    }
+
+    /// Remember what the last navigation committed, so `HTMLIFrameElement` can
+    /// stamp the Document with its URL and content type.
+    fn recordCommit(self: *IFrameIntegration, url: []const u8, content_type: []const u8) IFrameError!void {
+        const new_url = self.allocator.dupe(u8, url) catch return IFrameError.OutOfMemory;
+        errdefer self.allocator.free(new_url);
+        const new_type = self.allocator.dupe(u8, content_type) catch return IFrameError.OutOfMemory;
+
+        if (self.loaded_url) |old| self.allocator.free(old);
+        if (self.loaded_content_type) |old| self.allocator.free(old);
+        self.loaded_url = new_url;
+        self.loaded_content_type = new_type;
+    }
+
+    /// The MIME type essence of the document the last navigation committed, or
+    /// null if none has. Borrowed; valid until the next navigation.
+    pub fn getLoadedContentType(self: *const IFrameIntegration) ?[]const u8 {
+        return self.loaded_content_type;
+    }
+
+    /// The URL of the document the last navigation committed, after redirects.
+    /// Borrowed; valid until the next navigation.
+    pub fn getLoadedUrl(self: *const IFrameIntegration) ?[]const u8 {
+        return self.loaded_url;
+    }
+
+    /// "Loading an HTML document": hand the bytes to the HTML parser.
+    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8) IFrameError!void {
+        // The parse callback runs the scripted parser against the iframe's own
+        // realm, so scripts in the loaded document see its DOM.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                _ = parse_html(self.runtime_context, ctx, content.bytes);
+                _ = parse_html(self.runtime_context, ctx, content);
+                return;
             }
-
-            // Update the iframe's Location URL to reflect the navigated URL
-            self.updateLocationUrl(url);
-
-            self.state = .ready;
-            return;
         }
 
-        // Fallback: Parse without DOM integration (scripts won't have access to parsed DOM)
-        // This path is only used when parse_html_callback is not set.
-        // Detect encoding from BOM and Content-Type
-        const detected_encoding = detectEncoding(content.bytes, content.content_type);
-
-        // Parse the HTML content
-        // Note: For now, we parse but don't create runtime.Instance objects
-        // The tree builder creates TreeNode objects which represent the DOM structure
-        // Full integration with runtime.Instance will be done when we have
-        // Document/Window WebIDL interface implementations
-        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content.bytes) catch {
-            self.state = .ready;
+        // Fallback for a navigable with no realm yet: parse into a detached
+        // tree so at least the scripts run. Nothing can reach this DOM.
+        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content) catch {
             return IFrameError.ParseError;
         };
         defer {
@@ -783,29 +854,131 @@ pub const IFrameIntegration = struct {
             self.allocator.destroy(tree_builder);
         }
 
-        // Store encoding info for potential use by scripts
-        _ = detected_encoding;
-
-        // Create a Document instance using the callback if available.
-        // The callback handles creating the runtime.Instance and linking it
-        // to the BrowsingContext and Window.
         if (self.create_document_callback) |create_doc| {
             if (self.browsing_context) |ctx| {
                 _ = create_doc(self.runtime_context, ctx);
             }
         }
 
-        // Update the iframe's Location URL to reflect the navigated URL.
-        // This must happen before script execution so `location.hash` works.
-        self.updateLocationUrl(url);
-
-        // Execute inline scripts in the parsed document
-        // Per HTML Standard §4.12.1.1, scripts execute in document order
-        // NOTE: We need the V8 context to be created first (via contentWindow access)
-        // The script execution uses the engine_context set by setRealmContext()
         self.executeScriptsInTree(tree_builder.document);
+    }
 
-        self.state = .ready;
+    /// The markup `commitTextDocument` feeds the HTML parser.
+    ///
+    /// Only U+0026 and U+003C are escaped. That is deliberate and it is the
+    /// whole point: those two are the only bytes the tokenizer acts on inside
+    /// RCDATA-like content, so escaping them and nothing else leaves every
+    /// other byte - including U+003E and quotes - exactly as it appeared in the
+    /// response, which is what PLAINTEXT would have done.
+    ///
+    /// The LF immediately after `<pre>` is dropped by the parser's own
+    /// "ignore a newline right after pre" rule, so it costs nothing and keeps
+    /// the shape the spec describes.
+    fn buildTextDocumentMarkup(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        errdefer out.deinit(allocator);
+
+        try out.appendSlice(allocator, "<pre>\n");
+        for (text) |byte| {
+            switch (byte) {
+                '&' => try out.appendSlice(allocator, "&amp;"),
+                '<' => try out.appendSlice(allocator, "&lt;"),
+                else => try out.append(allocator, byte),
+            }
+        }
+        try out.appendSlice(allocator, "</pre>");
+
+        return out.toOwnedSlice(allocator);
+    }
+
+    /// The markup `commitMediaDocument` feeds the HTML parser.
+    ///
+    /// The address goes into an attribute, so U+0026 and U+0022 have to be
+    /// escaped or a query string with `&` or a quote would end the attribute
+    /// early and change which resource is requested.
+    fn buildMediaDocumentMarkup(
+        allocator: std.mem.Allocator,
+        address: []const u8,
+        host_element: document_type.MediaHostElement,
+    ) ![]u8 {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        errdefer out.deinit(allocator);
+
+        const tag = host_element.tagName();
+        try out.appendSlice(allocator, "<");
+        try out.appendSlice(allocator, tag);
+        try out.appendSlice(allocator, " src=\"");
+        for (address) |byte| {
+            switch (byte) {
+                '&' => try out.appendSlice(allocator, "&amp;"),
+                '"' => try out.appendSlice(allocator, "&quot;"),
+                else => try out.append(allocator, byte),
+            }
+        }
+        try out.appendSlice(allocator, "\"");
+
+        // img is void; video and audio need a close tag or the parser keeps the
+        // rest of the document inside them.
+        switch (host_element) {
+            .img => try out.appendSlice(allocator, ">"),
+            .video, .audio => {
+                try out.appendSlice(allocator, " controls></");
+                try out.appendSlice(allocator, tag);
+                try out.appendSlice(allocator, ">");
+            },
+        }
+
+        return out.toOwnedSlice(allocator);
+    }
+
+    /// "Loading a text document" - HTML Standard §7.5.4.
+    ///
+    /// The spec primes the HTML parser with a `pre` start tag and a single LF,
+    /// then switches its tokenizer to the PLAINTEXT state, so the whole rest of
+    /// the byte stream is the text of that one element. Crane's parser cannot be
+    /// primed into PLAINTEXT from outside, so the equivalent markup is
+    /// synthesised instead: escaping U+0026 and U+003C makes every remaining
+    /// byte inert in exactly the way the PLAINTEXT state does, and the LF after
+    /// the start tag is dropped by the parser's own "newline after pre" rule,
+    /// which is why the spec emits it.
+    fn commitTextDocument(self: *IFrameIntegration, text: []const u8) IFrameError!void {
+        const markup = buildTextDocumentMarkup(self.allocator, text) catch {
+            return IFrameError.OutOfMemory;
+        };
+        defer self.allocator.free(markup);
+        try self.commitHtmlDocument(markup);
+    }
+
+    /// "Loading a media document" - HTML Standard §7.5.6.
+    ///
+    /// The response body is not parsed at all. The document is an html/head/body
+    /// skeleton whose body hosts one element - `img`, `video` or `audio` per the
+    /// table in the spec - with its `src` set to the address of the resource.
+    fn commitMediaDocument(
+        self: *IFrameIntegration,
+        address: []const u8,
+        host_element: document_type.MediaHostElement,
+    ) IFrameError!void {
+        const markup = buildMediaDocumentMarkup(self.allocator, address, host_element) catch {
+            return IFrameError.OutOfMemory;
+        };
+        defer self.allocator.free(markup);
+        try self.commitHtmlDocument(markup);
+    }
+
+    /// "Loading an XML document" - HTML Standard §7.5.3.
+    ///
+    /// TODO: Crane has no XML parser (nothing in `src/` implements one), so the
+    /// document is created empty. Its content type and URL are still correct,
+    /// which is what `document.contentType` and `location` report; the tree is
+    /// not. Replace the body of this function with a real XML parse once an XML
+    /// parser exists.
+    fn commitXmlDocument(self: *IFrameIntegration) IFrameError!void {
+        if (self.create_document_callback) |create_doc| {
+            if (self.browsing_context) |ctx| {
+                _ = create_doc(self.runtime_context, ctx);
+            }
+        }
     }
 
     /// Fetch content from a file:// URL

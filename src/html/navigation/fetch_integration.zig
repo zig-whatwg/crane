@@ -17,6 +17,9 @@ const Allocator = std.mem.Allocator;
 // Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
 const fetch = @import("fetch");
 
+// Host platform IO, for file: URLs.
+const host = @import("host");
+
 /// Fetch result for navigation
 pub const NavigationFetchResult = struct {
     allocator: Allocator,
@@ -183,6 +186,10 @@ pub fn fetchNavigationResource(
         return handleJavascriptUrl(allocator, url);
     }
 
+    if (std.mem.startsWith(u8, url, "file:")) {
+        return handleFileUrl(allocator, url);
+    }
+
     // For HTTP(S) URLs, use the fetch module
     return fetchHttpResource(allocator, url, options);
 }
@@ -291,7 +298,9 @@ fn fetchHttpResource(
     }
 
     // Get Content-Type header
-    if (response.header_list.get("content-type")) |ct| {
+    // getFirstValue, not get: `get` takes an allocator and returns an owned
+    // string, and this dupes into `result` immediately afterwards anyway.
+    if (response.header_list.getFirstValue("content-type")) |ct| {
         result.content_type = allocator.dupe(u8, ct) catch {
             return NavigationFetchError.OutOfMemory;
         };
@@ -299,11 +308,13 @@ fn fetchHttpResource(
 
     // Get body bytes
     if (response.body) |body| {
-        if (body.getBytes()) |bytes| {
-            result.body = allocator.dupe(u8, bytes) catch {
-                return NavigationFetchError.OutOfMemory;
-            };
-        }
+        // getBytes returns a slice, not an optional - an empty body is a
+        // zero-length slice, which is a legitimate result and must still be
+        // duped so `result.body` is non-null for a 204 or an empty 200.
+        const bytes = body.getBytes();
+        result.body = allocator.dupe(u8, bytes) catch {
+            return NavigationFetchError.OutOfMemory;
+        };
     }
 
     // Determine cross-origin status
@@ -319,7 +330,7 @@ fn fetchHttpResource(
         "x-frame-options",
     };
     for (security_headers) |header_name| {
-        if (response.header_list.get(header_name)) |value| {
+        if (response.header_list.getFirstValue(header_name)) |value| {
             const owned_name = allocator.dupe(u8, header_name) catch {
                 return NavigationFetchError.OutOfMemory;
             };
@@ -447,6 +458,109 @@ fn handleJavascriptUrl(allocator: Allocator, url: []const u8) NavigationFetchErr
     // javascript: URLs don't return a document through fetch
     // They are executed inline and may produce a new document
     return NavigationFetchError.SecurityError;
+}
+
+/// Maximum bytes read from a file: URL. A navigation response has to be held
+/// whole in memory to be parsed, so the cap is what keeps a stray path from
+/// exhausting the process.
+const max_file_navigation_bytes: usize = 32 * 1024 * 1024;
+
+/// Handle file: URLs.
+///
+/// file: is not a fetch scheme, so this does not go through the Fetch
+/// algorithm: it reads the path and synthesises the response a navigation
+/// needs. The MIME type comes from the file extension, which is the only
+/// supplied type a local file has.
+fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
+    var result = NavigationFetchResult.init(allocator);
+    errdefer result.deinit();
+
+    result.final_url = allocator.dupe(u8, url) catch return NavigationFetchError.OutOfMemory;
+    result.is_network_error = false;
+    result.is_cross_origin = false;
+
+    // file://host/path is not supported; only file:///path and file:/path.
+    const after_scheme = url["file:".len..];
+    const raw_path = if (std.mem.startsWith(u8, after_scheme, "//")) blk: {
+        const authority_and_path = after_scheme[2..];
+        const slash = std.mem.indexOfScalar(u8, authority_and_path, '/') orelse {
+            result.status = 400;
+            return result;
+        };
+        const authority = authority_and_path[0..slash];
+        if (authority.len != 0 and !std.mem.eql(u8, authority, "localhost")) {
+            result.status = 400;
+            return result;
+        }
+        break :blk authority_and_path[slash..];
+    } else after_scheme;
+
+    // Strip any query and fragment: neither is part of a file path.
+    const path_end = std.mem.indexOfAny(u8, raw_path, "?#") orelse raw_path.len;
+    const encoded_path = raw_path[0..path_end];
+
+    const path = percentDecode(allocator, encoded_path) catch return NavigationFetchError.OutOfMemory;
+    defer allocator.free(path);
+
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch {
+        result.status = 404;
+        return result;
+    };
+    defer file.close(io);
+
+    var file_reader = file.reader(io, &.{});
+    const bytes = file_reader.interface.allocRemaining(allocator, .limited(max_file_navigation_bytes)) catch {
+        result.status = 404;
+        return result;
+    };
+    result.body = bytes;
+    result.status = 200;
+    result.ok = true;
+    result.content_type = allocator.dupe(u8, contentTypeFromPath(path)) catch {
+        return NavigationFetchError.OutOfMemory;
+    };
+
+    return result;
+}
+
+/// The supplied MIME type of a local file, from its extension.
+///
+/// mimesniff calls this "determining the supplied MIME type": for a local file
+/// the extension is all there is. Unknown extensions get
+/// "application/octet-stream", which routes to external software rather than
+/// being guessed at.
+pub fn contentTypeFromPath(path: []const u8) []const u8 {
+    const table = [_]struct { ext: []const u8, mime: []const u8 }{
+        .{ .ext = ".html", .mime = "text/html" },
+        .{ .ext = ".htm", .mime = "text/html" },
+        .{ .ext = ".xhtml", .mime = "application/xhtml+xml" },
+        .{ .ext = ".xml", .mime = "text/xml" },
+        .{ .ext = ".svg", .mime = "image/svg+xml" },
+        .{ .ext = ".css", .mime = "text/css" },
+        .{ .ext = ".js", .mime = "text/javascript" },
+        .{ .ext = ".mjs", .mime = "text/javascript" },
+        .{ .ext = ".json", .mime = "application/json" },
+        .{ .ext = ".txt", .mime = "text/plain" },
+        .{ .ext = ".vtt", .mime = "text/vtt" },
+        .{ .ext = ".png", .mime = "image/png" },
+        .{ .ext = ".gif", .mime = "image/gif" },
+        .{ .ext = ".jpg", .mime = "image/jpeg" },
+        .{ .ext = ".jpeg", .mime = "image/jpeg" },
+        .{ .ext = ".bmp", .mime = "image/bmp" },
+        .{ .ext = ".webp", .mime = "image/webp" },
+        .{ .ext = ".ico", .mime = "image/vnd.microsoft.icon" },
+        .{ .ext = ".mp4", .mime = "video/mp4" },
+        .{ .ext = ".webm", .mime = "video/webm" },
+        .{ .ext = ".ogg", .mime = "audio/ogg" },
+        .{ .ext = ".mp3", .mime = "audio/mpeg" },
+        .{ .ext = ".wav", .mime = "audio/wav" },
+    };
+
+    for (table) |row| {
+        if (std.ascii.endsWithIgnoreCase(path, row.ext)) return row.mime;
+    }
+    return "application/octet-stream";
 }
 
 /// Percent-decode a string
