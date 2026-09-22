@@ -44,7 +44,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up reason string if allocated
     const state = instance.getState(State);
     if (state.own.reason.len > 0) {
-        // Note: reason is managed by the event lifecycle
+        instance.ctx.allocator.free(state.own.reason);
+        state.own.reason = "";
     }
 
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
@@ -86,7 +87,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         // CloseEvent-specific properties (in state.own)
         state.own.wasClean = init_dict.wasClean orelse false;
         state.own.code = init_dict.code orelse 0;
-        state.own.reason = init_dict.reason orelse "";
+        // The dictionary's string is freed by the binding once the constructor
+        // returns (freeConvertedArg), so the event keeps its own copy - reading
+        // the borrowed slice later was a memcpy from freed memory in
+        // websockets/interfaces/CloseEvent/constructor.html.
+        state.own.reason = if (init_dict.reason) |r|
+            (if (r.len > 0) try ctx.allocator.dupe(u8, r) else "")
+        else
+            "";
     } else {
         // Defaults per spec
         state.base.own.bubbles = false;
@@ -187,7 +195,8 @@ pub fn createCloseEvent(
     state.own.wasClean = was_clean;
     state.own.code = code;
     // Copy reason to allocator for ownership
-    state.own.reason = if (reason.len > 0) try allocator.dupe(u8, reason) else "";
+    // Same allocator deinit frees with.
+    state.own.reason = if (reason.len > 0) try ctx.allocator.dupe(u8, reason) else "";
 
     return instance;
 }
