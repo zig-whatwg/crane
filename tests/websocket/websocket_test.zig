@@ -330,3 +330,93 @@ test "WebSocketConnection - invalid state operations" {
     try testing.expectError(error.InvalidState, conn.sendText("Hello"));
     try testing.expectError(error.InvalidState, conn.sendBinary("binary"));
 }
+
+// =============================================================================
+// Reachability of the handshake path
+//
+// `connect` and everything it calls sat UNANALYSED until the WebSocket impl
+// started calling them: nothing in this file, and nothing in `src/websocket/`,
+// referenced `CurlWebSocket.connect`, so the compiler never looked inside it.
+// It contained a call to `std.fmt.allocPrintZ`, removed in Zig 0.16, and
+// `zig build test` stayed green over it for the whole migration - the exact
+// shape of AGENTS.md's "a re-export does not mean the code is compiled".
+//
+// Referencing the functions is the test. Zig analyses what is REFERENCED, and
+// `std.testing.refAllDecls` does not recurse into imported namespaces, so the
+// reference has to be explicit and it has to live in a module that is wired
+// into `zig build test`.
+// =============================================================================
+
+test "curl backend: the handshake and frame paths are analysed" {
+    const CurlWebSocket = websocket.curl_backend.CurlWebSocket;
+
+    _ = &CurlWebSocket.connect;
+    _ = &CurlWebSocket.sendText;
+    _ = &CurlWebSocket.sendBinary;
+    _ = &CurlWebSocket.sendClose;
+    _ = &CurlWebSocket.sendPing;
+    _ = &CurlWebSocket.sendPong;
+    _ = &CurlWebSocket.receive;
+}
+
+test "curl backend: a protocol list is joined with exactly N-1 commas" {
+    // The join is sized exactly, and `deinit` frees it at that same length -
+    // an over-reservation here is an allocator contract violation, not a leak,
+    // and `std.testing.allocator` reports it as a size mismatch on free.
+    const CurlWebSocket = websocket.curl_backend.CurlWebSocket;
+
+    const two = try CurlWebSocket.init(
+        testing.allocator,
+        "ws://example.com/echo",
+        &[_][]const u8{ "echo", "chat" },
+    );
+    defer two.deinit();
+    try testing.expectEqualStrings("echo,chat", two.protocols.?);
+
+    const one = try CurlWebSocket.init(
+        testing.allocator,
+        "ws://example.com/echo",
+        &[_][]const u8{"echo"},
+    );
+    defer one.deinit();
+    try testing.expectEqualStrings("echo", one.protocols.?);
+
+    // No protocols at all must stay null: an empty Sec-WebSocket-Protocol
+    // header is not the same request as no header.
+    const none = try CurlWebSocket.init(testing.allocator, "ws://example.com/echo", null);
+    defer none.deinit();
+    try testing.expect(none.protocols == null);
+
+    const empty = try CurlWebSocket.init(
+        testing.allocator,
+        "ws://example.com/echo",
+        &[_][]const u8{},
+    );
+    defer empty.deinit();
+    try testing.expect(empty.protocols == null);
+}
+
+test "connect: a failed handshake frees the backend exactly once" {
+    // `connect` takes the backend under an `errdefer` and then ALSO deinit'd it
+    // in the failure branch, so every failed handshake freed it twice. Port 9
+    // (discard) refuses a WebSocket upgrade, which is the ordinary case - a
+    // blocked port, a refused connection, a bad host. Under
+    // `std.testing.allocator` the second free is reported instead of being left
+    // to corrupt the heap.
+    var conn = try websocket.WebSocketConnection.init(
+        testing.allocator,
+        "ws://127.0.0.1:9/echo",
+    );
+    defer conn.deinit();
+
+    try testing.expectError(error.HandshakeFailed, conn.connect(null));
+
+    // "Fail the WebSocket connection": CLOSED, abnormal closure, and no backend
+    // left for `deinit` to free a third time.
+    try testing.expectEqual(websocket.ConnectionState.CLOSED, conn.state);
+    try testing.expectEqual(
+        @as(?u16, websocket.CloseCodes.ABNORMAL_CLOSURE),
+        conn.close_code,
+    );
+    try testing.expect(conn.backend == null);
+}

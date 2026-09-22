@@ -1723,3 +1723,88 @@ it with identical results.
 crashes like any other.** "NO REPORT" now means the run never produced one,
 not that the exit destroyed it - and a crash in teardown still exits non-zero,
 so it is not hidden either, only no longer paid for with the data.
+||||||| 594336700
+
+---
+
+### Architecture: A timer callback has no HandleScope
+
+**Date**: 2026-09-22
+**Lesson**: Any code path that reaches V8 without being called FROM JavaScript must open its own `HandleScope`.
+
+**Why**: V8 opens a scope around a callback it invokes, so an impl reached from
+script always has one. A libuv timer callback is entered from the event loop,
+not from V8, and `HandleScope::CreateHandle` does not fail politely without one:
+
+    # Fatal error in v8::HandleScope::CreateHandle()
+    # Cannot create a handle without a HandleScope
+
+That is an abort. The journal records one CRASH row with zero subtests and no
+message pointing anywhere near the cause.
+
+**What Happened**: `WebSocket`'s pump runs as a self-rearming one-shot timer so
+that frames are drained on each turn of the event loop. Nothing in the pump asks
+V8 for a Local directly - `EventTarget.dispatchEvent` does, several frames down,
+when it wraps the event to hand to a listener. So the code read as pure Zig and
+died on its first dispatch.
+
+**Fix**: one scope at the timer entry point, wrapping the whole turn:
+
+```zig
+const isolate = ffi.v8_Isolate_GetCurrent() orelse ...;
+const scope = ffi.v8_HandleScope_New(isolate) orelse ...;
+defer ffi.v8_HandleScope_Dispose(scope);
+```
+
+Nested scopes (`invokeIdlHandler` opens its own) are fine, and Globals created
+inside outlive it, so wrapping the whole turn costs nothing.
+
+**Takeaway**: **Ask who called you, not what you touch.** If the answer is "the
+event loop" rather than "script", the scope is yours to open - and grep for
+`setTimeout(` with a Zig callback before trusting any impl that reaches V8.
+
+---
+
+### Spec Compliance: A stub that returns `undefined` takes unrelated suites down with it
+
+**Date**: 2026-09-22
+**Lesson**: An impl that returns `undefined` where its IDL says `sequence<T>` breaks every script that chains off the result, not just its own tests.
+
+**Why**: There is no marshalling layer - an impl's return value IS the JS return
+value. `undefined` has no `.indexOf`, no `.length`, no iterator, so the caller
+gets a TypeError at a line that has nothing to do with the stub.
+
+**What Happened**: `URLSearchParams.call_getAll` was
+
+```zig
+// For now return undefined - full array support requires V8 array creation
+// TODO: Create V8 array with string values
+return .undefined;
+```
+
+`websockets/constants.sub.js` line 27 is
+`params.getAll("wpt_flags").indexOf(flag)`, inside `url_has_flag`, which line 6
+calls - eleven lines BEFORE `const SCHEME_DOMAIN_PORT`. The TypeError aborted
+the script with that binding created but uninitialised, so every
+`websockets/*.any.js` that includes it then died in `CreateWebSocket` with
+`ReferenceError: Cannot access 'SCHEME_DOMAIN_PORT' before initialization`.
+
+45 files, window AND worker, none of which ever constructed a WebSocket. The
+whole WebSocket surface read as "untested"; it was unreachable. The one test
+that named the real defect, `url/urlsearchparams-getall.any.js`, was sitting at
+`passed 0, failed 4` in a different directory.
+
+Note the two shapes it presented as: the worker runs reported ERROR, because
+`importScripts` propagates the throw to the harness, while the window runs
+reported TIMEOUT, because a failed `<script>` tag does not - same cause, two
+statuses, neither naming it.
+
+**Fix**: build the array (`v8_Array_New` + `v8_Array_Set`, disposing each
+element Global after `Set` takes its own reference). The no-match case returns
+an EMPTY array, not undefined - that is what the spec's "empty list" means.
+
+**Takeaway**: **A stub returning `undefined` is not a smaller version of the
+feature, it is a trap for its callers.** When a whole directory fails before
+reaching the code under test, read the failing SCRIPT top to bottom and find the
+first call that leaves the file - the defect is usually in another subsystem
+that has its own quietly-failing test.

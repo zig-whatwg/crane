@@ -175,7 +175,16 @@ pub const CurlWebSocket = struct {
         defer if (headers) |h| curl.slist_free_all(h);
 
         if (self.protocols) |protos| {
-            const header = try std.fmt.allocPrintZ(self.allocator, "Sec-WebSocket-Protocol: {s}", .{protos});
+            // `allocPrintZ` is gone in Zig 0.16. This line had never been
+            // compiled: nothing reached `connect` with a protocol list until
+            // the WebSocket impl started passing one, so the branch sat
+            // unanalysed exactly as AGENTS.md describes for `src/websocket/`.
+            const header = try std.fmt.allocPrintSentinel(
+                self.allocator,
+                "Sec-WebSocket-Protocol: {s}",
+                .{protos},
+                0,
+            );
             defer self.allocator.free(header);
 
             headers = curl.slist_append(headers, header.ptr);

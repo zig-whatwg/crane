@@ -469,24 +469,69 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    const allocator = instance.ctx.allocator;
 
-    // Count matching values first
-    var count: usize = 0;
+    // The return type is `sequence<USVString>`, and an impl's return value IS
+    // the JavaScript return value - nothing marshals it on the way out
+    // (AGENTS.md, "An impl's return value is the JS return value, verbatim").
+    // So a real V8 array has to be built here, including for no matches: the
+    // spec's answer is an EMPTY LIST, and `undefined` is what this used to
+    // return for both cases.
+    //
+    // That is not a cosmetic difference. `websockets/constants.sub.js` opens
+    // with `params.getAll("wpt_flags").indexOf(flag)`, which threw a TypeError
+    // on the undefined, aborting the script before it could initialise
+    // `SCHEME_DOMAIN_PORT` - so every `websockets/*.any.js` that includes it
+    // failed in `CreateWebSocket` with a TDZ error, in both window and worker,
+    // before any WebSocket was constructed.
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+
+    // Own HandleScope. Not every path that reaches an impl has one: a worker's
+    // `importScripts()` evaluates the fetched script without opening one, and
+    // `HandleScope::CreateHandle` ABORTS rather than failing when there is no
+    // scope, taking the process and every remaining test file with it. This
+    // stub used to return `undefined` and create no handles at all, so the gap
+    // only became reachable once it started building a real array.
+    //
+    // Safe to close here: every `v8_*` constructor in this function returns a
+    // Global, which outlives the scope by construction.
+    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return error.NotImplemented;
+    defer v8.ffi.v8_HandleScope_Dispose(scope);
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+    defer v8.ffi.v8_Context_Dispose(context);
+
+    // Count first so the array is created at its final length.
+    var count: u32 = 0;
     for (0..internal.list.len) |i| {
         const tuple = internal.list.get(i).?;
-        if (std.mem.eql(u8, tuple.name, name)) {
-            count += 1;
-        }
+        if (std.mem.eql(u8, tuple.name, name)) count += 1;
     }
 
-    // Return undefined for no matches (caller should convert to empty array)
-    if (count == 0) return .undefined;
+    // `v8_Array_New` hands back a Global<Array>* the caller owns; returning it
+    // inside the JSValue transfers that ownership onward.
+    const array = v8.ffi.v8_Array_New(isolate, @intCast(count));
 
-    // For now return undefined - full array support requires V8 array creation
-    // TODO: Create V8 array with string values
-    _ = allocator;
-    return .undefined;
+    var index: u32 = 0;
+    for (0..internal.list.len) |i| {
+        const tuple = internal.list.get(i).?;
+        if (!std.mem.eql(u8, tuple.name, name)) continue;
+
+        // `v8_String_NewFromUtf8` allocates a Global the caller owns. The array
+        // takes its own reference in `Set`, so this one is released at the end
+        // of the iteration; leaving it would leak one handle per value.
+        const value = v8.ffi.v8_String_NewFromUtf8(
+            isolate,
+            tuple.value.ptr,
+            @intCast(tuple.value.len),
+        ) orelse continue;
+        defer v8.ffi.v8_Value_Dispose(@ptrCast(value));
+
+        _ = v8.ffi.v8_Array_Set(array, context, index, @ptrCast(value));
+        index += 1;
+    }
+
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
 }
 
 /// has method
