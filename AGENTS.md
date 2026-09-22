@@ -1151,7 +1151,6 @@ remainder, dropping the first not-done path - that is the one it hung on.
 running.** The per-file ceiling is not a guarantee; budget for one pathological
 file stalling a batch indefinitely, and check liveness by output rather than by
 process.
-||||||| a9e0ddd0f
 
 ---
 
@@ -1723,7 +1722,6 @@ it with identical results.
 crashes like any other.** "NO REPORT" now means the run never produced one,
 not that the exit destroyed it - and a crash in teardown still exits non-zero,
 so it is not hidden either, only no longer paid for with the data.
-||||||| 594336700
 
 ---
 
@@ -1852,7 +1850,6 @@ exit crash is the same hazard from the other side - the exit sweep reading
 act on whoever lives there now.** The order of failures is: bulk-freed slot ->
 reissued -> stale weak callback -> `remove` on the newcomer. Any fix has to
 break that chain at the callback, not at the allocator.
-||||||| 594336700
 
 ---
 
