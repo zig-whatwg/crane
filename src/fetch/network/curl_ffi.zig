@@ -118,6 +118,8 @@ pub const CURLE_OUT_OF_MEMORY = c.CURLE_OUT_OF_MEMORY;
 pub const CURLOPT_URL = c.CURLOPT_URL;
 /// Custom HTTP method (e.g., "DELETE", "PATCH")
 pub const CURLOPT_CUSTOMREQUEST = c.CURLOPT_CUSTOMREQUEST;
+/// Do the transfer without a response body - how libcurl makes a HEAD request
+pub const CURLOPT_NOBODY = c.CURLOPT_NOBODY;
 
 // Headers
 /// Linked list of headers

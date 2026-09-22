@@ -187,8 +187,13 @@ pub const TestServer = struct {
             return;
         }
 
+        // A HEAD request is answered like the GET it stands for, minus the
+        // body: RFC 9110 9.3.2 - the same header fields, Content-Length
+        // included, and no content.
+        const is_head = std.mem.eql(u8, method, "HEAD");
+
         // Route to HTTP handler
-        const response = routeRequest(allocator, method, path) catch |err| {
+        const response = routeRequest(allocator, if (is_head) "GET" else method, path) catch |err| {
             std.debug.print("Route error: {}\n", .{err});
             return sendResponse(io, stream, 500, "Internal Server Error", "text/plain", "Internal Server Error");
         };
@@ -196,6 +201,9 @@ pub const TestServer = struct {
 
         if (response.location) |location| {
             return sendRedirect(io, stream, response.status, response.status_text, location);
+        }
+        if (is_head) {
+            return sendHeadResponse(io, stream, response.status, response.status_text, response.content_type, response.body.len);
         }
         try sendResponse(io, stream, response.status, response.status_text, response.content_type, response.body);
     }
@@ -599,6 +607,16 @@ pub const TestServer = struct {
     fn sendRedirect(io: Io, stream: net.Stream, status: u16, status_text: []const u8, location: []const u8) !void {
         var response_buf: [1024]u8 = undefined;
         const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nLocation: {s}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", .{ status, status_text, location }) catch return error.ResponseTooLarge;
+
+        try writeAllToStream(io, stream, response);
+    }
+
+    /// The response to HEAD: GET's header fields - Content-Length announcing
+    /// the body a GET would have carried - and no body. A client that waits
+    /// for those bytes waits until the connection closes.
+    fn sendHeadResponse(io: Io, stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, content_length: usize) !void {
+        var response_buf: [1024]u8 = undefined;
+        const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\nX-Test-Header: test-value\r\n\r\n", .{ status, status_text, content_type, content_length }) catch return error.ResponseTooLarge;
 
         try writeAllToStream(io, stream, response);
     }
