@@ -56,6 +56,10 @@ pub const InternalState = struct {
     owns_binary: bool = false,
     /// Whether we own the origin string (should free on deinit)
     owns_origin: bool = false,
+    /// Whether `data` is a Global handle this event disposes on deinit. Only
+    /// `createPostMessageEvent` hands one over; every other path stores a
+    /// handle that somebody else frees.
+    owns_data_handle: bool = false,
     /// Transferred MessagePort instances (stored as Zig instances, not V8 objects)
     /// These get wrapped fresh when get_ports is called to ensure correct prototype chain
     transferred_ports: [16]*runtime.Instance = undefined,
@@ -85,6 +89,14 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     var state = instance.getState(State);
+
+    // A deserialized postMessage payload: the one Global this event owns.
+    if (state.own._internal) |internal| {
+        if (internal.owns_data_handle and state.own.data == .handle) {
+            @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(state.own.data.handle.ptr)));
+        }
+        internal.owns_data_handle = false;
+    }
 
     // Clean up the cloned JSValue data (if it's an owned string)
     // This was cloned in call_constructor to take ownership using ctx.allocator
@@ -156,7 +168,17 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             try data.clone(ctx.allocator)
         else
             runtime.JSValue.jsUndefined;
-        state.own.origin = init_dict.origin orelse "";
+        // The dictionary's string is freed when the constructor returns.
+        if (init_dict.origin) |origin| {
+            if (origin.len > 0) {
+                state.own.origin = try ctx.allocator.dupe(u8, origin);
+                if (state.own._internal) |internal| internal.owns_origin = true;
+            } else {
+                state.own.origin = "";
+            }
+        } else {
+            state.own.origin = "";
+        }
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
         // source and ports require more complex handling
         state.own.source = null;
@@ -211,7 +233,11 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     log.debug("[MessageEvent.get_origin] value=\"{s}\"\n", .{state.own.origin});
-    return state.own.origin;
+    // The binding frees a returned USVString, so it gets a copy. Returning the
+    // field itself freed it on the first read of `e.origin`; the second read
+    // was a use-after-free and `deinit` then freed it again.
+    if (state.own.origin.len == 0) return "";
+    return instance.ctx.allocator.dupe(u8, state.own.origin);
 }
 
 /// Getter for lastEventId
@@ -402,17 +428,17 @@ pub fn createBinaryMessageEvent(
     return instance;
 }
 
-/// Create a MessageEvent for postMessage
-/// Spec: https://html.spec.whatwg.org/multipage/web-messaging.html#posting-messages
+/// Create the MessageEvent that HTML's "window post message steps" fire:
+/// `message` at step 8.7, or `messageerror` when deserialization fails at
+/// step 8.4.
 ///
-/// This creates a trusted MessageEvent with:
-/// - type = "message"
-/// - data = the posted message
-/// - origin = the posting window's origin
-/// - source = the posting window (WindowProxy)
+/// Takes ownership of `data` if it succeeds - an owned string is freed, and a
+/// Global handle disposed, when the event is. If it fails the caller still
+/// owns `data`: everything that can fail happens before `data` is stored.
 pub fn createPostMessageEvent(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
+    event_type: []const u8,
     data: runtime.JSValue,
     origin_str: []const u8,
     source_window: ?*runtime.Instance,
@@ -422,8 +448,9 @@ pub fn createPostMessageEvent(
 
     const state = instance.getState(State);
 
-    // Set event type to "message" (Event fields in state.base.own)
-    state.base.own.type = runtime.DOMString.initInterned("message");
+    // Event fields (state.base.own). `event_type` is a literal, so interning
+    // it borrows nothing that can go away.
+    state.base.own.type = runtime.DOMString.initInterned(event_type);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true; // Browser-initiated
     state.base.own.target = null;
@@ -438,20 +465,26 @@ pub fn createPostMessageEvent(
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
 
-    // MessageEvent-specific fields (in state.own)
-    // Clone the JSValue data to ensure we own it
-    state.own.data = try data.clone(ctx.allocator);
+    // MessageEvent fields (state.own)
+    state.own.data = runtime.JSValue.jsUndefined;
     state.own.origin = try allocator.dupe(u8, origin_str);
+    if (state.own._internal) |internal| internal.owns_origin = true;
     state.own.lastEventId = runtime.DOMString.initEmpty();
-
-    // Mark that we own the origin string (allocated above)
-    if (state.own._internal) |internal| {
-        internal.owns_origin = true;
-    }
 
     // Set source to the posting window (WindowProxy)
     // MessageEventSource is a tagged union type that can be WindowProxy, MessagePort, or ServiceWorker
     state.own.source = if (source_window) |sw| typedefs.MessageEventSource{ .window_proxy = @ptrCast(sw) } else null;
+
+    // The inherited Event internal state and its initialized flag. Without
+    // them dispatchEvent throws InvalidStateError - which is what every
+    // window.postMessage call did, synchronously, before this line existed.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+
+    // Nothing can fail from here, so the event takes `data`.
+    state.own.data = data;
+    if (data == .handle) {
+        if (state.own._internal) |internal| internal.owns_data_handle = true;
+    }
 
     return instance;
 }

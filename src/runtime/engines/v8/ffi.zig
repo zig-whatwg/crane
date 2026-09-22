@@ -869,6 +869,23 @@ pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
     error_code: *c_int,
 ) ?[*]u8;
 
+/// HTML StructuredSerializeWithTransfer: the same bytes as
+/// `v8_Value_SerializeWithTransfer_CrossIsolate`, with the spec's exceptions.
+/// error_code 3 means an exception is PENDING - a "DataCloneError"
+/// DOMException, or whatever script threw during serialization - so the caller
+/// returns `error.ExceptionPending` rather than throwing a second one. Code 1 (a
+/// bad transfer list) has thrown nothing. Free the result with
+/// `v8_Free_SerializedBuffer`; `v8_Value_DeserializeWithTransfer_CrossIsolate`
+/// reads it.
+pub extern fn v8_Value_StructuredSerializeWithTransfer(
+    value: *Value,
+    transfer_list: [*]*Value,
+    transfer_count: usize,
+    out_size: *usize,
+    out_arraybuffer_data: [*]ArrayBufferTransferData,
+    error_code: *c_int,
+) ?[*]u8;
+
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 /// This is called in the DESTINATION isolate to recreate values.
 /// Parameters:

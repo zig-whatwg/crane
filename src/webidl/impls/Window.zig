@@ -2880,95 +2880,306 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 }
 
 /// Operation: postMessage
-/// Spec: https://html.spec.whatwg.org/multipage/web-messaging.html#posting-messages
+/// Spec: HTML "window post message steps"
+/// https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps
 ///
-/// Posts a message to the target window. The message is delivered asynchronously
-/// via a MessageEvent dispatched on the target window.
-///
-/// Parameters:
-/// - message: The data to send (will be cloned)
-/// - targetOrigin: "*" for any, "/" for same-origin, or specific origin
-/// - transfer: Transferable objects (not yet implemented)
+/// The message is serialized NOW (step 7) and delivered by a TASK (step 8),
+/// and both halves are observable. A synchronous dispatch fires before a
+/// listener added later in the same script exists - and the usual way a page
+/// talks to its iframe is `appendChild(iframe)` then
+/// `addEventListener("message", ...)`, while Crane loads the iframe inside
+/// `appendChild`, so the child posts before its parent has listened. And a
+/// message that is not a copy lets the poster change what the receiver reads.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = transfer; // TODO: Implement transferable objects
+    _ = transfer; // TODO: step 6 - transferable objects
 
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Get V8 isolate and context
+    // Step 2: the incumbent settings object. Its global - the posting window,
+    // not the target - supplies the event's origin and source (steps 8.2 and
+    // 8.3). The entered context is the caller's: the iframe's, for
+    // `parent.postMessage(...)`.
     const v8 = @import("v8");
     const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-
-    // Get the incumbent context (the context that initiated this call)
-    // Per HTML spec, MessageEvent.source should be the Window of the "incumbent settings object"
-    // which is the context from which postMessage was called, not the target context.
-    // GetEnteredOrMicrotaskContext returns the context that was most recently entered,
-    // which is the caller's context (e.g., iframe's context when calling parent.postMessage).
-    const v8_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(v8_isolate) orelse
+    const incumbent_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(v8_isolate) orelse
         v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return error.InvalidStateError;
-
-    // Get the source window from the incumbent context
-    const source_window = v8.context_manager.getWindowForContext(v8_ctx);
+    defer v8.ffi.v8_Context_Dispose(incumbent_ctx);
+    const source_window = v8.context_manager.getWindowForContext(incumbent_ctx);
     const source_origin: []const u8 = if (source_window) |sw|
         if (getInternal(sw)) |sw_internal| sw_internal.origin else "null"
     else
         "null";
 
-    // Validate targetOrigin against target window's origin
-    // Per spec: "*" allows any origin, "/" means same-origin with source
-    if (!std.mem.eql(u8, targetOrigin, "*")) {
-        const target_origin = internal.origin;
+    // Steps 3-5.
+    const target_origin = try TargetOrigin.resolve(allocator, instance, targetOrigin, source_window, source_origin);
+    errdefer target_origin.deinit(allocator);
 
-        if (std.mem.eql(u8, targetOrigin, "/")) {
-            // "/" means same-origin with source window
-            if (!std.mem.eql(u8, source_origin, target_origin)) {
-                // Silently fail per spec (no error thrown)
-                return;
-            }
-        } else {
-            // Specific origin - must match exactly
-            if (!std.mem.eql(u8, targetOrigin, target_origin)) {
-                // Silently fail per spec (no error thrown)
-                return;
-            }
+    // Step 7: StructuredSerializeWithTransfer(message, transfer). Rethrow any
+    // exceptions - which the serializer has already thrown, as the spec's
+    // DataCloneError or as whatever script threw mid-walk.
+    var serialized = try SerializedMessage.serialize(allocator, message);
+    errdefer serialized.deinit(allocator);
+
+    const origin = try allocator.dupe(u8, source_origin);
+    errdefer allocator.free(origin);
+
+    const posted = try allocator.create(PostedMessage);
+    posted.* = .{
+        .allocator = allocator,
+        .target = instance,
+        .target_generation = runtime.SlabAllocator.generationOf(instance),
+        .target_origin = target_origin,
+        .origin = origin,
+        .source = source_window,
+        .source_generation = if (source_window) |sw| runtime.SlabAllocator.generationOf(sw) else 0,
+        .message = serialized,
+    };
+
+    // Step 8: queue a global task on the posted message task source given
+    // targetWindow.
+    const loop = instance.ctx.getOptionalEventLoop() orelse {
+        // No loop to queue on (a context built for tests): the message is
+        // still owed, so deliver it now rather than lose it.
+        runPostedMessage(posted);
+        return;
+    };
+    loop.queueTask(.{ .callback = &runPostedMessage, .context = posted, .drop = &dropPostedMessage });
+}
+
+/// What `targetOrigin` names: steps 3-5 of the window post message steps.
+const TargetOrigin = union(enum) {
+    /// "*": any origin.
+    any,
+    /// An origin's ASCII serialization. Owned.
+    origin: []const u8,
+
+    fn resolve(
+        allocator: Allocator,
+        target_window: *runtime.Instance,
+        target_origin: []const u8,
+        incumbent_window: ?*runtime.Instance,
+        incumbent_origin: []const u8,
+    ) !TargetOrigin {
+        if (std.mem.eql(u8, target_origin, "*")) return .any;
+
+        // Step 4: "/" is the incumbent's own origin. An opaque origin
+        // serializes as "null" and is same origin only with itself, which a
+        // serialization cannot say - except in the case that needs no
+        // comparison at all, a window posting to itself.
+        if (std.mem.eql(u8, target_origin, "/")) {
+            if (std.mem.eql(u8, incumbent_origin, "null") and incumbent_window == target_window) return .any;
+            return .{ .origin = try allocator.dupe(u8, incumbent_origin) };
+        }
+
+        // Step 5: parse it as a URL and keep only its origin. Failure is a
+        // SyntaxError - thrown, where a mismatch below is silent.
+        const url = (interfaces.URL.call_static_parse(target_window, target_origin, webidl.Opt(runtime.USVString).notPassed()) catch
+            return error.SyntaxError) orelse return error.SyntaxError;
+        defer runtime.Instance.deinit(url);
+        // The getter clones into the URL's context allocator; this frees it.
+        const serialized = try interfaces.URL.get_origin(url);
+        defer url.ctx.allocator.free(serialized);
+        return .{ .origin = try allocator.dupe(u8, serialized) };
+    }
+
+    fn deinit(self: TargetOrigin, allocator: Allocator) void {
+        switch (self) {
+            .any => {},
+            .origin => |o| allocator.free(o),
         }
     }
 
-    // Create and dispatch MessageEvent
-    // Per spec, the event should be queued as a task, but for simplicity
-    // we dispatch synchronously (which still works for testharness.js)
-    const MessageEventImpl = @import("MessageEvent.zig");
+    /// Step 8.1: does the target document's origin match?
+    fn admits(self: TargetOrigin, document_origin: []const u8) bool {
+        return switch (self) {
+            .any => true,
+            // "null" is an opaque origin, same origin with nothing a
+            // serialization can name.
+            .origin => |o| !std.mem.eql(u8, o, "null") and std.mem.eql(u8, o, document_origin),
+        };
+    }
+};
 
-    const event = try MessageEventImpl.createPostMessageEvent(
-        instance.ctx.allocator,
-        instance.ctx,
-        message,
-        source_origin,
-        source_window,
-    );
+/// StructuredSerializeWithTransfer's result (step 7), held until the task
+/// deserializes it in the target realm (step 8.4).
+const SerializedMessage = union(enum) {
+    undefined,
+    null,
+    boolean: bool,
+    number: f64,
+    /// Owned.
+    string: []const u8,
+    /// V8's wire format, malloc'd by the serializer.
+    bytes: []u8,
 
-    // Dispatch the event on the target window (instance)
-    // Use EventTarget's dispatchEvent which invokes registered listeners
-    _ = try EventTargetImpl.call_dispatchEvent(instance, event);
-
-    // Clean up the MessageEvent after dispatch completes
-    // We must manually clean up because:
-    // 1. The event is wrapped during dispatch and added to the wrapper cache
-    // 2. During context teardown, deinitWithoutCallbacks() is used which doesn't call deinit
-    // 3. This leaves the cloned data and origin string leaked
-    //
-    // By removing from the wrapper cache and calling deinit ourselves, we ensure
-    // the resources are freed immediately after dispatch while still in a safe state.
-    const v8_engine = @import("v8");
-    if (event.ctx.getV8WrapperCacheStorage()) |cache_storage| {
-        const WrapperCache = v8_engine.WrapperCache;
-        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-
-        // Remove from cache (disposes V8 handle and prevents double-free during teardown)
-        _ = cache.remove(event);
+    /// Step 7. Primitives and strings arrive already converted; an object goes
+    /// through V8's serializer, which throws the DataCloneError itself.
+    fn serialize(allocator: Allocator, value: runtime.JSValue) !SerializedMessage {
+        return switch (value) {
+            .undefined => .undefined,
+            .null => .null,
+            .boolean => |b| .{ .boolean = b },
+            .number => |n| .{ .number = n },
+            .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
+            .handle => |h| blk: {
+                const v8 = @import("v8");
+                var no_transfer: [1]*v8.ffi.Value = undefined;
+                var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
+                var size: usize = 0;
+                var code: c_int = 0;
+                const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
+                    @ptrCast(@alignCast(h.ptr)),
+                    &no_transfer,
+                    0,
+                    &size,
+                    &no_buffers,
+                    &code,
+                ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
+                break :blk .{ .bytes = bytes[0..size] };
+            },
+            // A platform object the binding handed over unwrapped. None is
+            // [Serializable] here yet.
+            .instance => error.DataCloneError,
+        };
     }
 
-    // Now safe to call deinit - event is no longer in wrapper cache
-    MessageEventImpl.deinit(event);
+    /// Step 8.4, into the realm the caller has entered. The value is OWNED - a
+    /// string or a Global - and `createPostMessageEvent` takes it.
+    fn deserialize(self: *SerializedMessage) !runtime.JSValue {
+        switch (self.*) {
+            .undefined => return runtime.JSValue.jsUndefined,
+            .null => return runtime.JSValue.jsNull,
+            .boolean => |b| return runtime.JSValue.fromBoolean(b),
+            .number => |n| return runtime.JSValue.fromNumber(n),
+            .string => |s| {
+                self.* = .undefined; // moved into the value
+                return .{ .string = .{ .data = s, .owned = true } };
+            },
+            .bytes => |b| {
+                const v8 = @import("v8");
+                const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
+                var code: c_int = 0;
+                const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
+                    return error.DataCloneError;
+                return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
+            },
+        }
+    }
+
+    fn deinit(self: *SerializedMessage, allocator: Allocator) void {
+        switch (self.*) {
+            .string => |s| allocator.free(s),
+            .bytes => |b| @import("v8").ffi.v8_Free_SerializedBuffer(b.ptr),
+            else => {},
+        }
+        self.* = .undefined;
+    }
+
+    /// Release a deserialized value that no event took.
+    fn release(allocator: Allocator, value: runtime.JSValue) void {
+        switch (value) {
+            .string => |s| if (s.owned) allocator.free(s.data),
+            .handle => |h| @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
+            else => {},
+        }
+    }
+};
+
+/// A posted message waiting for its task: everything step 8 closes over.
+///
+/// Both windows are held as (address, slab generation), never as bare
+/// pointers: nothing keeps either alive while the task is queued, and the slab
+/// REUSES a freed Instance's address.
+const PostedMessage = struct {
+    allocator: Allocator,
+    target: *runtime.Instance,
+    target_generation: u64,
+    target_origin: TargetOrigin,
+    /// Step 8.2: the serialization of the incumbent's origin. Owned.
+    origin: []const u8,
+    /// Step 8.3: the incumbent's window.
+    source: ?*runtime.Instance,
+    source_generation: u64,
+    message: SerializedMessage,
+
+    fn destroy(self: *PostedMessage) void {
+        self.target_origin.deinit(self.allocator);
+        self.allocator.free(self.origin);
+        self.message.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
+/// `Task.drop`: the page ended with the message still queued.
+fn dropPostedMessage(context: ?*anyopaque) void {
+    const posted: *PostedMessage = @ptrCast(@alignCast(context orelse return));
+    posted.destroy();
+}
+
+/// Step 8's task.
+fn runPostedMessage(context: ?*anyopaque) void {
+    const posted: *PostedMessage = @ptrCast(@alignCast(context orelse return));
+    defer posted.destroy();
+
+    // The window was collected and its slot reissued: nobody is left to hear it.
+    const target = posted.target;
+    if (runtime.SlabAllocator.generationOf(target) != posted.target_generation) return;
+    const internal = getInternal(target) orelse return;
+
+    // Step 8.1.
+    if (!posted.target_origin.admits(internal.origin)) return;
+
+    // A task runs from the event loop, not from V8: there is no HandleScope
+    // and no entered context unless it opens them, and wrapping the event for
+    // a listener without them is a V8 CHECK (SIGTRAP), not an error. Entering
+    // the TARGET's context also makes it the realm step 8.4 deserializes into.
+    // A null scope means that context is gone.
+    const v8 = @import("v8");
+    const scope = v8.JsScope.init(target.ctx) orelse return;
+    defer scope.deinit();
+
+    // Step 8.3.
+    const source: ?*runtime.Instance = if (posted.source) |sw|
+        (if (runtime.SlabAllocator.generationOf(sw) == posted.source_generation) sw else null)
+    else
+        null;
+
+    // Steps 8.4-8.5. A value that will not deserialize is a messageerror.
+    const data = posted.message.deserialize() catch {
+        fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, source);
+        return;
+    };
+
+    // Step 8.7.
+    fireMessageEvent(target, "message", data, posted.origin, source);
+}
+
+/// Fire `event_type` at `target` as a MessageEvent that takes `data`.
+fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, source: ?*runtime.Instance) void {
+    const v8 = @import("v8");
+    const MessageEventImpl = @import("MessageEvent.zig");
+    const event = MessageEventImpl.createPostMessageEvent(target.ctx.allocator, target.ctx, event_type, data, origin, source) catch {
+        SerializedMessage.release(target.ctx.allocator, data);
+        return;
+    };
+    const generation = runtime.SlabAllocator.generationOf(event);
+
+    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+
+    // Who owns the event now. A GC during the dispatch may already have
+    // collected it, once the last listener let go of the wrapper - then its
+    // slot has moved on. A listener that kept it left a wrapper in the cache,
+    // and V8 frees it when that dies. Only an event nothing ever wrapped is
+    // still ours. Freeing it regardless is what this code used to do, and
+    // `await new Promise(r => addEventListener("message", r))` then read the
+    // event after it was gone.
+    if (runtime.SlabAllocator.generationOf(event) != generation) return;
+    if (event.ctx.getV8WrapperCacheStorage()) |cache_storage| {
+        const cache: *v8.WrapperCache = @ptrCast(@alignCast(cache_storage));
+        if (cache.get(event) != null) return;
+    }
+    runtime.Instance.deinit(event);
 }
 
 /// Operation: showDirectoryPicker
