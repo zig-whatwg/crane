@@ -745,12 +745,24 @@ fn createElementNode(
     const is_script = std.mem.eql(u8, local_name, "script") and
         tree_node.namespace == .html;
 
-    // Create the appropriate element type
-    const element = if (is_script)
-        interfaces.HTMLScriptElement.init(allocator, ctx) catch return error.OutOfMemory
+    // Create the element with the interface its local name and namespace call
+    // for - HTML "create an element for a token" looks the element interface
+    // up exactly as `createElement` does. This path serves innerHTML,
+    // outerHTML, insertAdjacentHTML and document.write, and it used to make
+    // every non-script element a plain Element: `div.innerHTML = "<iframe>"`
+    // produced an Element answering to `getElementsByTagName("iframe")`, and
+    // the first caller that trusted the tag name and read HTMLIFrameElement
+    // state out of it (the page load's iframe initialisation) faulted on
+    // whatever bytes happened to sit where that state should be.
+    // `parser_script_execution.createHTMLElement` is the factory the document
+    // parser's adapter already uses, so both parsers now agree.
+    const element = if (tree_node.namespace == .html)
+        parser_script_execution.createHTMLElement(allocator, ctx, local_name) catch return error.OutOfMemory
     else
         interfaces.Element.init(allocator, ctx) catch return error.OutOfMemory;
-    errdefer if (is_script) interfaces.HTMLScriptElement.deinit(element) else interfaces.Element.deinit(element);
+    // Whatever interface it got, an element that never made it into the tree
+    // is released through its own vtable.
+    errdefer NodeImpl.deinitNodeByType(element);
 
     // Set node type
     NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch return error.InvalidStateError;

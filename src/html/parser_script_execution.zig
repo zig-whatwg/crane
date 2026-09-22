@@ -655,8 +655,9 @@ pub const DomTreeAdapter = struct {
 
 /// Create an HTML element with the correct interface based on tag name.
 /// This factory ensures HTMLIFrameElement is created for "iframe", HTMLDivElement for "div", etc.
-/// Used by DomTreeAdapter.createElementNode() during HTML parsing.
-fn createHTMLElement(
+/// Used by DomTreeAdapter.createElementNode() during HTML parsing, and by
+/// HTMLParser's fragment path (innerHTML, document.write).
+pub fn createHTMLElement(
     allocator: Allocator,
     ctx: runtime.Context,
     local_name: []const u8,
