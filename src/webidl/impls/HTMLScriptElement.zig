@@ -186,6 +186,15 @@ pub const InternalState = struct {
     /// Cached script source text (for inline scripts)
     cached_source_text: ?[]const u8,
 
+    /// The URL an external script was fetched from, owned here.
+    ///
+    /// The script's base URL has to outlive "prepare the script element": a
+    /// deferred, async or parser-blocking script executes long after the
+    /// preparation that resolved its `src` has returned, and the resolved URL
+    /// used to be freed on that return, leaving `ClassicScript.base_url`
+    /// pointing into freed memory by the time the script ran.
+    script_url: ?[]const u8,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -200,6 +209,7 @@ pub const InternalState = struct {
             .result = .uninitialized,
             .steps_to_run_when_ready = null,
             .cached_source_text = null,
+            .script_url = null,
         };
     }
 
@@ -207,6 +217,9 @@ pub const InternalState = struct {
         // Free cached source text if allocated
         if (self.cached_source_text) |text| {
             self.allocator.free(text);
+        }
+        if (self.script_url) |url| {
+            self.allocator.free(url);
         }
     }
 };
@@ -421,6 +434,23 @@ pub fn getCachedSourceText(instance: *runtime.Instance) ?[]const u8 {
         return internal.cached_source_text;
     }
     return null;
+}
+
+/// Record the URL an external script comes from, taking a copy the element
+/// owns. Returns the element's copy - the one a script result may point at -
+/// or null when the element has no internal state.
+pub fn setScriptUrl(instance: *runtime.Instance, url: []const u8) !?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    const owned = try internal.allocator.dupe(u8, url);
+    if (internal.script_url) |old| internal.allocator.free(old);
+    internal.script_url = owned;
+    return owned;
+}
+
+/// The URL recorded by `setScriptUrl`, if any.
+pub fn getScriptUrl(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.script_url;
 }
 
 // =============================================================================

@@ -852,13 +852,14 @@ pub fn get_onended(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
 }
 
 /// Getter for onerror
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#handler-onerror
+/// Stored with every other handler, under "error" - see `set_onerror`.
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.OnErrorEventHandler {
-    // OnErrorEventHandler is a special variant
-    const internal = getInternalState(instance) orelse return null;
-    // Note: OnErrorEventHandler has a different signature than EventHandler
-    // For now, return from the same storage (simplified)
-    _ = internal;
-    return null;
+    const handler = getEventHandler(instance, "error");
+    // Same representation (a tagged V8 function handle), different typedef -
+    // the same cast `Window.get_onerror` makes.
+    return @as(typedefs.OnErrorEventHandler, @ptrCast(handler));
 }
 
 /// Getter for onfocus
@@ -1587,10 +1588,22 @@ pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) an
     try setEventHandler(instance, "ended", value);
 }
 
+/// Setter for onerror
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#handler-onerror
+///
+/// This was a no-op, so `script.onerror = fn` - and `img.onerror`, and every
+/// other element's - was silently dropped, and a page waiting on an element's
+/// error event through the handler attribute waited out the harness timeout.
+///
+/// `OnErrorEventHandler` differs from `EventHandler` only in the callback's
+/// declared signature; both arrive as the same tagged V8 function handle, so
+/// the handler lives in the same map under "error", exactly as
+/// `Window.set_onerror` stores it. Which argument convention to call it with
+/// is decided at invocation time by the event and its target (the event
+/// handler processing algorithm), not by where it is stored.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    // OnErrorEventHandler has special signature, simplified storage
-    _ = instance;
-    _ = value;
+    try setEventHandler(instance, "error", @as(typedefs.EventHandler, @ptrCast(value)));
 }
 
 pub fn set_onfocus(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {

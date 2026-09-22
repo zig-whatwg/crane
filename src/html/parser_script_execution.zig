@@ -182,40 +182,32 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
     const src_attr = getScriptSrcAttribute(script_tree_node);
 
     if (src_attr) |src_url| {
-        // External script - try to load via script loader
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
-        HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
-        // Try to load the external script
-        if (ctx.loadExternalScript(src_url)) |external_content| {
-            // Free the loaded content when we're done (cacheSourceText duplicates it)
-            defer ctx.allocator.free(external_content);
-
-            // Successfully loaded - execute the external script content
-            if (external_content.len == 0) {
-                return; // Empty script
+        // Hand the element whatever the loader fetched, EMPTY included: an
+        // empty script is still a script, which runs (doing nothing) and still
+        // fires load at its element.
+        //
+        // Whether or not the loader succeeded, the element goes through
+        // "prepare the script element". That is where an empty or unparseable
+        // src queues its error event, and where a failed fetch becomes a null
+        // result that executing the element turns into one. Returning early
+        // here - as this did on every failure - meant no error event could
+        // ever fire for a parser-inserted script, and a page waiting on one
+        // hung. The spec has no path on which a script with a src is dropped
+        // without either load or error.
+        if (src_url.len > 0) {
+            if (ctx.loadExternalScript(src_url)) |external_content| {
+                defer ctx.allocator.free(external_content);
+                HTMLScriptElementImpl.cacheSourceText(script_element, external_content) catch return;
             }
-
-            // Cache the external script content (this duplicates external_content)
-            HTMLScriptElementImpl.cacheSourceText(script_element, external_content) catch {
-                return;
-            };
-
-            // Set the insertion point before script execution
-            setInsertionPointForScript(ctx);
-            defer clearInsertionPointAfterScript(ctx);
-
-            // Execute via the standard preparation path
-            _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {
-                // Script preparation failed - continue anyway
-            };
-            return;
-        } else {
-            // Script loader not available or failed to load
-            // This is not necessarily an error - the test might not need this script
-            // Just skip execution
-            return;
         }
+
+        setInsertionPointForScript(ctx);
+        defer clearInsertionPointAfterScript(ctx);
+
+        _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
+        return;
     }
 
     // Step 4: Inline script - execute via script_execution module
