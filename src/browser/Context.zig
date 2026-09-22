@@ -171,6 +171,36 @@ fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
     v8.native_timer.nesting_level = 0;
 }
 
+/// Invoke a timer or animation frame callback, reporting what it throws.
+///
+/// HTML's timer initialization steps and "run the animation frame callbacks"
+/// invoke the callback with "report": an exception is REPORTED for the
+/// global - an ErrorEvent at the Window, `window.onerror` - not printed and
+/// dropped, which is all `v8_Function_Call` did. It also returned an owned
+/// Global for the result that every caller here threw away.
+fn invokeReporting(
+    context: *v8.ffi.Context,
+    function: *v8.ffi.Function,
+    receiver: anytype,
+    args: []const *v8.ffi.Value,
+) void {
+    var threw = false;
+    const completion = v8.ffi.v8_Function_CallCatching(
+        context,
+        @ptrCast(function),
+        @ptrCast(receiver),
+        @intCast(args.len),
+        args.ptr,
+        &threw,
+    ) orelse return;
+    defer v8.ffi.v8_Global_Dispose(completion);
+    if (!threw) return;
+
+    const report = html_mod.report_exception;
+    const window = report.globalForContext(context) orelse return;
+    _ = report.reportException(window, completion, .{});
+}
+
 /// Apply the clamping half of the timer initialisation steps.
 ///
 /// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
@@ -421,8 +451,7 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
         defer data.executing = false;
 
         // Invoke the V8 function (stored directly, not via persistent handle)
-        var empty_args: [1]*v8.ffi.Value = undefined;
-        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+        invokeReporting(context, data.callback_fn, global, &.{});
     }
 
     // Run microtasks after the timer callback (per event loop semantics)
@@ -483,8 +512,7 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         defer data.executing = false;
 
         // Invoke the V8 function
-        var empty_args: [1]*v8.ffi.Value = undefined;
-        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+        invokeReporting(context, data.callback_fn, global, &.{});
     }
 
     // Run microtasks after the timer callback
@@ -2005,10 +2033,7 @@ fn animationFrameHandler(_: ?*anyopaque) void {
         // Global is disposed whether it ran or was cancelled.
         defer entry.deinit();
         if (entry.cancelled) continue;
-        var args: [1]*v8.ffi.Value = .{@ptrCast(ts_global)};
-        // v8_Function_Call also returns an OWNED Global<Value> for the result.
-        const result = v8.ffi.v8_Function_Call(entry.callback_fn, context, @ptrCast(global), 1, &args);
-        if (result) |r| v8.ffi.v8_Global_Dispose(r);
+        invokeReporting(context, entry.callback_fn, global, &.{@ptrCast(ts_global)});
     }
 
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -2163,8 +2188,7 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
             info.setReturnValue(@ptrCast(result));
             return;
         };
-        var empty_args: [1]*v8.ffi.Value = undefined;
-        _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+        invokeReporting(context, callback_fn, global, &.{});
         const result = v8.ffi.v8_Integer_New(isolate, 1);
         info.setReturnValue(@ptrCast(result));
         return;
