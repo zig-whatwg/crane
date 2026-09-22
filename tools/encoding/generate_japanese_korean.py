@@ -2,6 +2,10 @@
 """Generate Japanese and Korean encoding index files from WHATWG encoding indexes."""
 
 import urllib.request
+from pathlib import Path
+
+# Output goes under the repository's src/encoding, wherever this is run from.
+ENCODING_SRC = Path(__file__).resolve().parents[2] / "src" / "encoding"
 
 # Index URLs from WHATWG Encoding Standard
 JIS0208_INDEX_URL = "https://encoding.spec.whatwg.org/index-jis0208.txt"
@@ -28,8 +32,16 @@ def parse_index(content):
             entries.append((pointer, code_point))
     return entries
 
-def generate_index_zig(entries, index_name, description, max_pointer):
-    """Generate Zig source for an index."""
+def generate_index_zig(entries, index_name, description):
+    """Generate Zig source for an index.
+
+    The array runs to the index's LAST pointer. It used to take a hardcoded
+    max_pointer, and the values passed for jis0208 and euc-kr were both short
+    of the data: every pointer past them - JIS X 0208's NEC and IBM extension
+    rows (7940-11103) and most of EUC-KR's hanja (17920-23749) - was silently
+    dropped, so those characters could be neither decoded nor encoded.
+    """
+    max_pointer = max(pointer for pointer, _ in entries)
     # Create full array with zeros, then fill in entries
     full_array = [0] * (max_pointer + 1)
     for pointer, code_point in entries:
@@ -103,9 +115,8 @@ def main():
         jis0208_entries,
         "jis0208",
         "https://encoding.spec.whatwg.org/#index-jis0208",
-        7939
     )
-    with open('src/japanese/jis0208_index.zig', 'w') as f:
+    with open(ENCODING_SRC / 'japanese' / 'jis0208_index.zig', 'w') as f:
         f.write(jis0208_code)
     print(f"Generated jis0208_index.zig ({len(jis0208_code)} bytes)")
     
@@ -120,9 +131,8 @@ def main():
         jis0212_entries,
         "jis0212",
         "https://encoding.spec.whatwg.org/#index-jis0212",
-        7939
     )
-    with open('src/japanese/jis0212_index.zig', 'w') as f:
+    with open(ENCODING_SRC / 'japanese' / 'jis0212_index.zig', 'w') as f:
         f.write(jis0212_code)
     print(f"Generated jis0212_index.zig ({len(jis0212_code)} bytes)")
     
@@ -138,7 +148,7 @@ def main():
         "iso-2022-jp-katakana",
         "https://encoding.spec.whatwg.org/#index-iso-2022-jp-katakana"
     )
-    with open('src/japanese/iso2022jp_katakana_index.zig', 'w') as f:
+    with open(ENCODING_SRC / 'japanese' / 'iso2022jp_katakana_index.zig', 'w') as f:
         f.write(katakana_code)
     print(f"Generated iso2022jp_katakana_index.zig ({len(katakana_code)} bytes)")
     
@@ -153,9 +163,8 @@ def main():
         euc_kr_entries,
         "euc-kr",
         "https://encoding.spec.whatwg.org/#index-euc-kr",
-        17919
     )
-    with open('src/korean/euc_kr_index.zig', 'w') as f:
+    with open(ENCODING_SRC / 'korean' / 'euc_kr_index.zig', 'w') as f:
         f.write(euc_kr_code)
     print(f"Generated euc_kr_index.zig ({len(euc_kr_code)} bytes)")
     

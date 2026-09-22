@@ -76,18 +76,25 @@ pub const Encoder = struct {
     /// Find pointer using O(log n) binary search instead of O(n) linear scan.
     /// This provides ~500x speedup for encoding operations.
     /// Falls back to linear scan if reverse index not initialized.
+    /// Step 7: the index Shift_JIS pointer - index jis0208 without the
+    /// NEC-selected IBM extensions (pointers 8272 to 8835).
     fn findPointer(code_point: u21) ?u32 {
-        if (reverse_index.findJis0208Pointer(code_point)) |ptr| {
+        if (reverse_index.findShiftJisPointer(code_point)) |ptr| {
             return @intCast(ptr);
         }
         return null;
     }
 
-    pub fn encode(_: *Encoder, code_point: u21) !?[2]u8 {
-        if (code_point < 0x80) {
+    /// The shift_jis encoder's handler (Encoding § 13.3.2) for one code point.
+    pub fn encode(_: *Encoder, code_point_in: u21) !?[2]u8 {
+        var code_point = code_point_in;
+
+        // Step 2: ASCII, and U+0080, are themselves.
+        if (code_point < 0x80 or code_point == 0x80) {
             return .{ @intCast(code_point), 0 };
         }
 
+        // Steps 3-4.
         if (code_point == 0x00A5) {
             return .{ 0x5C, 0 };
         }
@@ -96,16 +103,15 @@ pub const Encoder = struct {
             return .{ 0x7E, 0 };
         }
 
+        // Step 5: halfwidth katakana are single bytes.
         if (code_point >= 0xFF61 and code_point <= 0xFF9F) {
             return .{ @intCast(code_point - 0xFF61 + 0xA1), 0 };
         }
 
-        if (code_point == 0x2212) {
-            if (findPointer(code_point)) |_| {} else {
-                return .{ 0x81, 0x7C };
-            }
-        }
+        // Step 6: U+2212 MINUS SIGN is encoded as U+FF0D.
+        if (code_point == 0x2212) code_point = 0xFF0D;
 
+        // Steps 7-13.
         if (findPointer(code_point)) |pointer| {
             const lead: u32 = pointer / 188;
             const lead_offset: u8 = if (lead < 0x1F) 0x81 else 0xC1;
