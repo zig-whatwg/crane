@@ -127,9 +127,17 @@ pub fn fetch(
     // Steps 11.9.3-11.9.9: move to headers received and read the length.
     if (!processor.processResponse()) return;
 
+    // Re-read the response rather than unwrapping the one from before
+    // `processResponse`: that call fires `readystatechange`, and a listener is
+    // free to call `abort()` or `open()`, either of which sets the response to
+    // a network error - which here means NULL. `processResponse` returning true
+    // already rules that out via the state check, so this is belt and braces
+    // against a `.?` that would panic rather than fail a subtest.
+    const response_now = state.response orelse return;
+
     // Step 11.9.7: If this's response's body is null, run handle response
     // end-of-body and return. A 204/304 legitimately has no body.
-    const response_body = state.response.?.body orelse {
+    const response_body = response_now.body orelse {
         processor.processResponseEndOfBody();
         return;
     };

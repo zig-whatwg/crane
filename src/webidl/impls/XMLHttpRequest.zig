@@ -174,9 +174,15 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store V8 isolate for Global handle management
+    // Store V8 isolate for Global handle management.
+    //
+    // NOT `ctx.getEngineContextAs(Isolate)`: `engine_ctx` is a
+    // `Global<Context>*`, and that call just reinterprets it, so `internal
+    // .isolate` used to be the CONTEXT wearing an Isolate's type. Every use of
+    // it - `global.get(isolate)`, `v8_Undefined(isolate)` - was reading a
+    // Context as an Isolate.
     const internal = getInternal(instance);
-    internal.isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate);
+    internal.isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()
@@ -981,6 +987,35 @@ fn runSendTask(context: ?*anyopaque) void {
     // script has had a turn. `abort()` unsets the send() flag and `open()`
     // resets the state, and either means this request is no longer wanted.
     if (!xhr_state.send_flag or xhr_state.ready_state != .OPENED) return;
+
+    // A task runs from the event loop, where NO V8 context is entered and no
+    // HandleScope is open - unlike every other entry point here, which V8 calls
+    // into from JavaScript. Everything downstream creates handles: the events,
+    // wrapping them as objects, and calling the listeners. Without this, the
+    // first one dies at
+    //
+    //     # Fatal error in v8::HandleScope::CreateHandle()
+    //     # Cannot create a handle without a HandleScope
+    //
+    // which is a V8 abort, not a Zig panic, so it takes the process and every
+    // other test in the file with it. `Context.timerHandler` enters the context
+    // for exactly this reason; a timer callback is the same shape of work.
+    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
+        log.debug("async send dropped: no V8 context", .{});
+        return;
+    };
+    v8_engine.ffi.v8_Context_Enter(v8_context);
+    defer v8_engine.ffi.v8_Context_Exit(v8_context);
+
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        log.debug("async send dropped: no current isolate", .{});
+        return;
+    };
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        log.debug("async send dropped: could not open a HandleScope", .{});
+        return;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
 
     send_algo.sendDispatch(xhr_state, internal.pending_body) catch |err| {
         log.debug("async send failed: {s}", .{@errorName(err)});
