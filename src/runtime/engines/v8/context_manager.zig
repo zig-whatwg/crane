@@ -56,6 +56,33 @@ const shadow_realm = @import("shadow_realm.zig");
 const host = @import("host");
 
 /// Context mapping entry
+/// The event loop and timer a child context inherits from its parent.
+const InheritedEventLoop = struct {
+    timer: ?runtime.TimerInterface = null,
+    event_loop: ?@import("event_loop").EventLoop = null,
+};
+
+/// A context that owns a `V8EventLoop` hands out that loop's interfaces. A
+/// context the browser REGISTERED owns none - its entry's `event_loop` is null -
+/// but its runtime context carries the browser's loop and timer, and that is
+/// where a child has to look.
+///
+/// Reading only the entry's field gave every iframe no event loop and no timer,
+/// so everything an impl queued from an iframe ran inline instead: a task, a
+/// microtask, a timer-backed dispatch. `window[0].postMessage(m, "*")` fired
+/// before the next line could set `window[0].onmessage`
+/// (webmessaging/without-ports/017.html), and an iframe's own load event went
+/// out before its listener existed.
+fn inheritedEventLoop(parent_entry: *const ContextEntry) InheritedEventLoop {
+    if (parent_entry.event_loop) |loop| {
+        return .{ .timer = loop.timerInterface(), .event_loop = loop.eventLoop() };
+    }
+    return .{
+        .timer = parent_entry.runtime_ctx.timer,
+        .event_loop = parent_entry.runtime_ctx.event_loop,
+    };
+}
+
 pub const ContextEntry = struct {
     /// V8 context pointer (key)
     v8_ctx: *v8.Context,
@@ -1859,12 +1886,9 @@ fn createWindowForExistingBrowsingContext(
     _ = realm.populateIntrinsics();
 
     // 6. Create runtime context data
-    var timer_interface: ?runtime.TimerInterface = null;
-    var event_loop_interface: ?@import("event_loop").EventLoop = null;
-    if (parent_entry.event_loop) |parent_ev_loop| {
-        timer_interface = parent_ev_loop.timerInterface();
-        event_loop_interface = parent_ev_loop.eventLoop();
-    }
+    const inherited = inheritedEventLoop(parent_entry);
+    const timer_interface = inherited.timer;
+    const event_loop_interface = inherited.event_loop;
 
     var ctx_data = runtime.ContextData.init(allocator, .{
         .colored = false,
@@ -2549,15 +2573,12 @@ pub fn createChildContext(
 
     // 6. Create runtime context data
     // Optionally inherit event loop from parent
-    var timer_interface: ?runtime.TimerInterface = null;
-    var event_loop_interface: ?@import("event_loop").EventLoop = null;
-
-    if (options.inherit_event_loop) {
-        if (parent_entry.event_loop) |parent_ev_loop| {
-            timer_interface = parent_ev_loop.timerInterface();
-            event_loop_interface = parent_ev_loop.eventLoop();
-        }
-    }
+    const inherited: InheritedEventLoop = if (options.inherit_event_loop)
+        inheritedEventLoop(parent_entry)
+    else
+        .{};
+    const timer_interface = inherited.timer;
+    const event_loop_interface = inherited.event_loop;
 
     var ctx_data = try runtime.ContextData.init(allocator, .{
         .colored = false,
