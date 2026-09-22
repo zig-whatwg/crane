@@ -354,15 +354,32 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
             const parsed = parse(engine_ctx, xhr_state.received_bytes.items) catch return .{ .null = {} };
             return .{ .handle = .{ .ptr = parsed, .needs_disposal = true, .handle_scope = .global } };
         },
-        // Steps 5 and 6: ArrayBuffer and Blob.
+        // Step 5: the ArrayBuffer response. "Set this's response object to a
+        // new ArrayBuffer object representing this's received bytes. If this
+        // throws an exception, then set this's response object to failure and
+        // return null."
+        .arraybuffer => {
+            const engine = instance.ctx.getEngine() orelse return .{ .null = {} };
+            const engine_ctx = instance.ctx.getEngineContext() orelse return .{ .null = {} };
+            const create = engine.createArrayBuffer orelse return .{ .null = {} };
+            const buffer = create(engine_ctx, xhr_state.received_bytes.items) catch {
+                // The spec's "if this throws" branch: remember the failure, so
+                // a second read returns null at step 3 rather than retrying an
+                // allocation that has already failed once.
+                xhr_state.response_object = .failure;
+                return .{ .null = {} };
+            };
+            return .{ .handle = .{ .ptr = buffer, .needs_disposal = true, .handle_scope = .global } };
+        },
+        // Step 6: the Blob response.
         //
-        // TODO: both need a real object - `createArrayBuffer` for the first and
-        // a Blob instance for the second. Returning the bytes as a string would
-        // be a worse answer than null, because script would not be able to tell
-        // it apart from a text response.
-        .arraybuffer, .blob => {
+        // TODO: needs a Blob instance carrying the received bytes with its type
+        // set to the final MIME type. Returning the bytes as a string would be
+        // a worse answer than null, because script could not tell it apart from
+        // a text response.
+        .blob => {
             _ = allocator;
-            log.debug("response type {s} is not implemented", .{@tagName(xhr_state.response_type)});
+            log.debug("blob response type is not implemented", .{});
             return .{ .null = {} };
         },
         // Step 7: the document response, which needs the HTML/XML parser.
