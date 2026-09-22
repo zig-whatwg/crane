@@ -1822,18 +1822,22 @@ pub const Context = struct {
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
         if (run_result.error_info) |err_info| {
-            // Print detailed error information
+            // At warn, not debug: evaluateScript runs host-injected code (the
+            // WPT harness, its setup), never page scripts, so an exception here
+            // is a runner-level failure - and the runner logs at warn, so a
+            // debug line left it reported as a bare `error.RuntimeError`.
+            log.warn("evaluateScript: script threw ({d} bytes of source)", .{script.len});
             if (err_info.message) |msg| {
-                log.debug("Script runtime error: {s}\n", .{msg});
+                log.warn("Script runtime error: {s}", .{msg});
             }
             if (err_info.source_line) |line| {
-                log.debug("  Source line: {s}\n", .{line});
+                log.warn("  Source line: {s}", .{line});
             }
             if (err_info.resource_name) |name| {
-                log.debug("  Resource: {s}:{d}:{d}\n", .{ name, err_info.line_number, err_info.column_number });
+                log.warn("  Resource: {s}:{d}:{d}", .{ name, err_info.line_number, err_info.column_number });
             }
             if (err_info.stack_trace) |stack| {
-                log.debug("  Stack trace:\n{s}\n", .{stack});
+                log.warn("  Stack trace:\n{s}", .{stack});
             }
             return error.RuntimeError;
         }
