@@ -1839,7 +1839,11 @@ It was not `ArenaAllocator.get()`: that pointer was identical on every one of
 the 106 logged calls, before and after. The `|*g|` rewrite stays because it
 cannot be less correct, but it fixed nothing and the commit says so.
 
-**Fix**: none yet. It needs identity, not an address: either the slot records a
+**Fix**: the slab stamps a generation per slot and the wrapper cache refuses a
+mismatch (644f5e44d) - that closed connected-callbacks' teardown crash.
+Document-createElement's SEGV survived it: its actor was a size-mismatched
+state free (next lesson but one), not a stale callback. The reasoning below is
+kept as written. It needs identity, not an address: either the slot records a
 generation the slab stamps on every alloc and `remove` refuses a mismatch, or
 weak callbacks for bulk-freed instances are cancelled when the slot is freed.
 Both are registry/slab design changes. `custom-elements/connected-callbacks.html`'s
@@ -2122,3 +2126,102 @@ report states the composition on the page.
 **Takeaway**: **Before a tally becomes a denominator, ask how many times the thing
 was counted. A sum over runs is a count of RESULTS; a denominator needs a count of
 THINGS, and the ratio between them was 12x here with a green report either way.**
+
+---
+
+### Architecture: `Instance.init` sizes the state by the caller's type; `onObjectFreed` frees it by the vtable's
+
+**Date**: 2026-09-22
+**Lesson**: `Instance.init(allocator, StateType, vtable, ctx)` allocates
+`@sizeOf(StateType)`; `gc_integration.onObjectFreed` frees
+`vtable.state_size`. Pass a subtype's vtable with a parent's State and the
+arena's size-class free list is poisoned, not leaked.
+
+**Why**: `Node.cloneSingleNode` fell through, for every node type it did not
+handle, to `Instance.init(allocator, State, node.vtable, ...)` - Node's State
+under the node's own vtable. A cloned Document therefore had a `Node.State`
+sized block (small class) that was later returned to the arena as Document's
+1080 bytes (the 1024 class). The next `Document.InternalState` was carved from
+that block and overlapped whatever lived after the small one; its neighbours'
+ordinary writes zeroed the new document's allocator, and `Node.init` faulted
+at 0x0 under `createElement`. The clone also had no registry state, so
+`createElement` on it could only throw.
+
+**What Happened**: three rounds of instrumentation, each ruling out a
+theory that fit the symptom:
+
+1. The generation stamp (previous lesson) - correct, and closed a different
+   crash, but this document's callback saw its own generation.
+2. Tagging `Document.init/deinit` and the Document registry - between the
+   new document's init and the fault there was no deinit, no `remove`, no
+   double free. The registry was not the actor.
+3. Logging every arena pop and push with the block address named it in one
+   run: `[onObjectFreed] DOC ... state=@X state_size=1080`, `push class=7 @X`,
+   `pop class=7 @X`, `createIn ... block=@X`, then `[createElement]`
+   `alloc_vtable=0x...` followed by `alloc_vtable=0x0` with **no allocator
+   event between**. A block that changes with no allocator event is being
+   written through somebody else's pointer, and "somebody else" is whoever
+   owns the memory the undersized block overlaps.
+
+A `dumpCurrentStackTrace(.{})` at `Instance.init` for `vtable.name ==
+"Document"` then grouped 15 creations into 6 stacks; the 3 that never
+reached `Document.init` were all `Node.cloneSingleNode`. Note the Zig 0.16
+signature takes a `StackUnwindOptions` struct, not a start address.
+
+**Fix**: DOM §4.4 "clone a single node" step 3 - the copy implements the same
+interfaces as node - as typed branches: Document via `interfaces.Document.init`,
+DocumentType via the owner's `DOMImplementation.createDocumentType`, Attr via
+`createAttributeNS` + `set_value`, DocumentFragment via
+`createDocumentFragment`. The fallthrough now returns `error.NotSupported`
+rather than sizing a State it cannot know. Stated deviation: a cloned
+Document keeps `Document.init`'s defaults for encoding, content type, URL,
+origin, type and mode - those are Document internals with no interface
+delegate to set them, and an impl-to-impl call is not allowed in new code.
+`custom-elements/Document-createElement.html`: CRASH -> OK.
+
+**Takeaway**: **A block that changes with no allocator event is being written
+through a pointer that was never yours. Trace the BLOCK - every pop and push
+of its address - before theorising about the object; and never hand
+`Instance.init` a State type that is not the vtable's own.**
+
+---
+
+### Spec Compliance: The top-level `Location` and `document.URL` were never set
+
+**Date**: 2026-09-22
+**Lesson**: In every top-level test page `location.href` read `"about:blank"`,
+`location.pathname` `"blank"`, `location.search` `""`, and `document.URL` `""`.
+
+**Why**: `Context.zig` creates the window's Location at context init, and
+`Location.init` parses `about:blank` into it; nothing ever updated it on
+navigation (`Context.setUrl` ends in `_ = self.location_instance;`). Only
+iframes called `Location.setURLFromString`. `document.URL` read
+`Document.InternalState.url`, which the parser never set; the navigation
+recorded its URL in the context entry (`context_manager.setDocumentUrl`) and
+that is where it stayed - XHR read it from there, the DOM did not.
+
+**What Happened**: it hid in plain sight because nothing threw. Two costs
+were measured before anyone looked at the value: (1) every
+`<meta name="variant">` file ran ALL of its tests on every variant, because
+`/common/subset-tests.js` reads `location.search` to pick its slice - a
+24-variant encoding file reported 554,328 subtests for 23,097 declared and
+cost 2,615s of wall clock; (2) the progress report's "subtests passing" was
+inflated 12x by the same fan-out. Every test deriving a URL from
+`location.href` was running against nothing.
+
+**Fix**: spec-shaped, no new impls-boundary calls. HTML §7.10.1: a Location's
+url is its relevant Document's URL - so `Location.getURL` refreshes from
+`interfaces.Window.get_document` -> `interfaces.Document.get_URL` (re-parsing
+only when the string changes; the getter clones into the DOCUMENT's context
+allocator, free it with that). HTML "create and initialize a Document object":
+the document's URL is the navigation's, so a document that HAS a default view
+takes the URL the context recorded (`instance.ctx.getEngineContextAs` -
+its own context, not the current one, so `iframe.contentDocument.URL` is the
+iframe's). A document with no view (createHTMLDocument, DOMParser) keeps its
+own. Probe `tests/wpt/crane/location-probe.html?probe=1`: 0/4 -> 4/4.
+
+**Takeaway**: **Probe the values a whole class of tests depends on before
+reading their failures.** One four-line test page answered what a 2,000-file
+scoreboard could not: the tests were not failing, they were never asked the
+question.
+

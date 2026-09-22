@@ -1287,51 +1287,95 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             try setOwnerDocument(copy, owner);
             return copy;
         },
+        // DOM §4.4 "clone a single node" step 3: "let copy be a node that
+        // implements the same interfaces as node". Each type below used to fall
+        // through to `Instance.init(allocator, State, node.vtable, ...)` - Node's
+        // State under the subtype's vtable. `onObjectFreed` later freed that block
+        // at the vtable's LARGER state_size, so an undersized block landed on the
+        // arena's 1024-byte free list; the next Document.InternalState was carved
+        // from it and overlapped its live neighbours. That was the SEGV at 0x0 in
+        // Node.init under custom-elements/Document-createElement.html.
+        NodeType.DOCUMENT_NODE => {
+            // "Document: set copy's encoding, content type, URL, origin, type,
+            // and mode to those of node." The copy is a real Document, with its
+            // registry state, so createElement and friends work on it. The six
+            // fields are Document internals with no interface delegate to set
+            // them, so they keep Document.init's defaults - a stated deviation.
+            // TODO(dom-clone): a codegen-generated `cloneInternalsFrom` delegate
+            // is the boundary-clean way to copy them.
+            return try interfaces.Document.init(allocator, node.ctx);
+        },
+        NodeType.DOCUMENT_TYPE_NODE => {
+            // "DocumentType: set copy's name, public ID, and system ID to those
+            // of node." Built by the owner's DOMImplementation, which is the one
+            // factory the interfaces expose for a doctype.
+            const owner = document orelse node_internal.owner_document orelse
+                return error.InvalidStateError;
+            const instance_allocator = node.ctx.allocator;
+            // Getters clone; the caller frees (AGENTS.md, "Interface getters clone").
+            var name = try interfaces.DocumentType.get_name(node);
+            defer name.deinit(instance_allocator);
+            var public_id = try interfaces.DocumentType.get_publicId(node);
+            defer public_id.deinit(instance_allocator);
+            var system_id = try interfaces.DocumentType.get_systemId(node);
+            defer system_id.deinit(instance_allocator);
+            const implementation = try interfaces.Document.get_implementation(owner);
+            const copy = try interfaces.DOMImplementation.call_createDocumentType(
+                implementation,
+                name,
+                public_id,
+                system_id,
+            );
+            try setOwnerDocument(copy, owner);
+            return copy;
+        },
+        NodeType.ATTRIBUTE_NODE => {
+            // "Attr: set copy's namespace, namespace prefix, local name, and
+            // value to those of node." createAttributeNS takes the qualified
+            // name, so the prefix travels as "prefix:local".
+            const owner = document orelse node_internal.owner_document orelse
+                return error.InvalidStateError;
+            const instance_allocator = node.ctx.allocator;
+            var namespace = try interfaces.Attr.get_namespaceURI(node);
+            defer if (namespace) |*n| n.deinit(instance_allocator);
+            var prefix = try interfaces.Attr.get_prefix(node);
+            defer if (prefix) |*pfx| pfx.deinit(instance_allocator);
+            var local_name = try interfaces.Attr.get_localName(node);
+            defer local_name.deinit(instance_allocator);
+            var value = try interfaces.Attr.get_value(node);
+            defer value.deinit(instance_allocator);
+            var qualified_buf: ?[]u8 = null;
+            defer if (qualified_buf) |b| instance_allocator.free(b);
+            const qualified_name = if (if (prefix) |pfx| (if (pfx.asSlice().len > 0) pfx else null) else null) |pfx| blk: {
+                const joined = try std.fmt.allocPrint(
+                    instance_allocator,
+                    "{s}:{s}",
+                    .{ pfx.asSlice(), local_name.asSlice() },
+                );
+                qualified_buf = joined;
+                break :blk runtime.DOMString.initInterned(joined);
+            } else local_name;
+            const copy = try interfaces.Document.call_createAttributeNS(owner, namespace, qualified_name);
+            try interfaces.Attr.set_value(copy, value);
+            try setOwnerDocument(copy, owner);
+            return copy;
+        },
+        NodeType.DOCUMENT_FRAGMENT_NODE => {
+            // "Otherwise: do nothing." A fragment carries no fields; it only has
+            // to be a fragment of the right document.
+            const owner = document orelse node_internal.owner_document orelse
+                return error.InvalidStateError;
+            const copy = try interfaces.Document.call_createDocumentFragment(owner);
+            try setOwnerDocument(copy, owner);
+            return copy;
+        },
         else => {},
     }
 
-    // Create new instance based on node type
-    // For now, create a basic Node - specific types will override via their own init
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-
-    // Create a new instance of the same type
-    // This is simplified - full implementation would dispatch based on node_type
-    const copy = try runtime.Instance.init(allocator, State, node.vtable, node.ctx);
-    errdefer runtime.Instance.deinit(copy);
-
-    // Initialize internal state for copy in the global registry
-    // (getInternal() uses the registry, not state._internal)
-    // The registry owns this block, so `Registry.remove` returns it to
-    // the arena. With `set` it was dropped from the map and held to
-    // process exit - measured at 904 bytes per discarded element.
-    const copy_internal = try Registry.createIn(copy, ArenaAllocator.get());
-    copy_internal.* = InternalState.init(allocator);
-
-    // Copy node properties
-    copy_internal.node_type = node_internal.node_type;
-    copy_internal.owner_document = document orelse node_internal.owner_document;
-
-    // Copy local_name if present
-    if (node_internal.local_name) |name| {
-        copy_internal.local_name = try name.clone(allocator);
-    }
-
-    // Copy namespace_uri if present
-    if (node_internal.namespace_uri) |uri| {
-        copy_internal.namespace_uri = try uri.clone(allocator);
-    }
-
-    // Copy prefix if present
-    if (node_internal.prefix) |p| {
-        copy_internal.prefix = try p.clone(allocator);
-    }
-
-    // Copy node_value for CharacterData nodes
-    if (node_internal.node_value) |val| {
-        copy_internal.node_value = try val.clone(allocator);
-    }
-
-    return copy;
+    // Every interface the algorithm names is handled above. Anything else has
+    // a State this function cannot size, and sizing it as Node's State is the
+    // corruption described at DOCUMENT_NODE - so it is refused, not guessed.
+    return error.NotSupported;
 }
 
 /// Operation: normalize
