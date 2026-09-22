@@ -2,6 +2,29 @@
 //!
 //! XMLHttpRequestEventTarget provides event handler properties for XHR events.
 //! Spec: https://xhr.spec.whatwg.org/#xmlhttprequesteventtarget
+//!
+//! ## What these fields actually hold
+//!
+//! `typedefs.EventHandler` is `?*const fn (*Instance) JSValue`, but nothing of
+//! that shape is ever stored in it. The V8 conversion layer creates a
+//! `Global<Value>` for the assigned function and TAGS the pointer, so the field
+//! holds a deliberately misaligned address whose low two bits are a tag.
+//! Reading it back needs a byte copy - `@ptrCast`/`@alignCast` panic with
+//! "incorrect alignment" in a safe build.
+//!
+//! `src/webidl/impls/XMLHttpRequest.zig` is what invokes them, through
+//! `interfaces.XMLHttpRequestEventTarget.State`, which reaches these fields on
+//! an XMLHttpRequest and on an XMLHttpRequestUpload alike.
+//!
+//! ## Known leak, deliberately not fixed here
+//!
+//! Overwriting one of these fields drops the previous Global without disposing
+//! it, so `xhr.onload = a; xhr.onload = b` leaks one handle.
+//! `WebSocket.set_onopen` disposes the old one; `HTMLElement.setEventHandler`
+//! does not. Adding disposal needs PROOF that nothing else holds that Global -
+//! the conversion layer hands the same tagged pointer back out of the getter -
+//! and AGENTS.md is explicit that guessing here has shipped use-after-frees
+//! twice. Recorded rather than guessed at.
 
 const std = @import("std");
 const runtime = @import("runtime");

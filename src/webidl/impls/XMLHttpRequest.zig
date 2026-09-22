@@ -82,6 +82,9 @@ pub const InternalState = struct {
     /// V8 isolate for creating/disposing Global handles
     isolate: ?*v8_engine.ffi.Isolate,
 
+    /// The token shared with a queued send task, if one is outstanding.
+    send_token: ?*SendToken,
+
     /// The request body, owned for the lifetime of one send().
     ///
     /// An async send() hands the bytes to an event-loop TASK, which runs after
@@ -96,8 +99,18 @@ pub const InternalState = struct {
             .allocator = allocator,
             .onreadystatechange = null,
             .isolate = null,
+            .send_token = null,
             .pending_body = null,
         };
+    }
+
+    /// Cancel and release the outstanding send task's token, if any.
+    fn cancelPendingSend(self: *InternalState) void {
+        if (self.send_token) |token| {
+            token.cancelled = true;
+            token.release();
+            self.send_token = null;
+        }
     }
 
     fn releasePendingBody(self: *InternalState) void {
@@ -110,6 +123,9 @@ pub const InternalState = struct {
     pub fn deinitState(self: *InternalState) void {
         // Dispose V8 Global handle to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
+        // Before anything else: a task queued by an async send() is about to
+        // run against an instance that is going away.
+        self.cancelPendingSend();
         self.releasePendingBody();
         self.xhr_state.deinit();
     }
@@ -512,13 +528,10 @@ pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictio
 /// Step 16: "Fire an event named readystatechange at this."
 pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
     const xhr_state = getXHRState(instance);
-    const internal = getInternal(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
-    // settings object". The base URL is the relevant global object's associated
-    // Document's URL.
+    // settings object". Borrowed from the context entry - not ours to free.
     const base_url = relevantBaseURL(instance);
-    defer if (base_url) |b| internal.allocator.free(b);
 
     // Call the open algorithm
     open_algo.open(
@@ -543,22 +556,37 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
     fireReadyStateChangeEvent(instance);
 }
 
-/// This's relevant settings object's API base URL: the relevant global object's
-/// associated Document's URL.
+/// This's relevant settings object's API base URL.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
-/// Returns an owned string, or null when there is no Document to ask - a bare
-/// realm, or a worker, where a relative URL then legitimately fails to parse.
-/// Same shape as `DOMParser.call_parseFromString`, and it goes through
-/// `interfaces`, never another impl.
+/// ## Where the page URL actually lives
+///
+/// NOT on the Document and NOT on the Location. Both were measured in a WPT
+/// [window] run:
+///
+///     document.URL   = ''
+///     location.href  = 'about:blank'
+///
+/// `Context.loadHTML` records the URL in three places -
+/// `context_manager.setDocumentUrl`, `Context.url`, and the Window's origin -
+/// and `Context.setUrl`'s own comment says it does not reach Location
+/// ("Direct impl access would require Location.setHref which isn't currently
+/// exposed"). Nothing sets `Document`'s URL outside `DOMParser`, which reads it
+/// from the realm and so inherits the same emptiness.
+///
+/// The one place that IS populated is `context_manager`, whose comment says
+/// exactly what it is for: "Set the document URL in context_manager for fetch
+/// relative URL resolution". A worker context has no entry, which is correct -
+/// a worker's base URL is its script URL, which is a separate lookup.
+///
+/// Returns a BORROWED slice owned by the context entry, so the caller must not
+/// free it.
 fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
-    const realm = instance.ctx.realm orelse return null;
-    const window_ptr = realm.global_object orelse return null;
-    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-
-    const doc = interfaces.Window.get_document(window_instance) catch return null;
-    return interfaces.Document.get_URL(doc) catch null;
+    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
+    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    if (url.len == 0) return null;
+    return url;
 }
 
 // =============================================================================
@@ -712,7 +740,9 @@ fn rawIdlHandler(
     const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
     const addr: usize = @bitCast(bytes);
     if (addr == 0) return null;
-    return @ptrFromInt(addr & ~@as(usize, 0x3) | (addr & 0x3));
+    // `*anyopaque` has alignment 1, so the tag bits survive the round trip and
+    // `untagPointer` can still read them.
+    return @ptrFromInt(addr);
 }
 
 /// Call `xhr.onload = f` and friends with the event.
@@ -859,29 +889,65 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         return;
     };
 
-    const task = internal.allocator.create(SendTask) catch return error.OutOfMemory;
-    task.* = .{ .instance = instance, .allocator = internal.allocator };
-    event_loop.queueTask(.{ .callback = &runSendTask, .context = @ptrCast(task) });
+    // One reference for the task, one for the InternalState that can cancel it.
+    internal.cancelPendingSend();
+    const token = internal.allocator.create(SendToken) catch return error.OutOfMemory;
+    token.* = .{
+        .refs = 2,
+        .cancelled = false,
+        .instance = instance,
+        .allocator = internal.allocator,
+    };
+    internal.send_token = token;
+    event_loop.queueTask(.{ .callback = &runSendTask, .context = @ptrCast(token) });
 }
 
-/// Context for the deferred step 11.
+/// The handle a queued send task holds on its XMLHttpRequest.
 ///
-/// It holds only the INSTANCE, never the body slice: the body lives in
-/// `InternalState.pending_body`, so `open()` or `abort()` between queueing and
-/// running cannot leave this task pointing at freed bytes.
-const SendTask = struct {
+/// The task runs AFTER `call_send` returns, and nothing keeps the XHR alive
+/// across that gap - the spec's "an XHR with an outstanding request stays
+/// alive" is not something this GC knows. If V8 collects the wrapper first, the
+/// Instance handle goes back to the slab and is REUSED, so a task holding a
+/// bare `*Instance` would run `send()` against whatever object took its place.
+/// A recycled Instance still LOOKS like one, which is the failure mode
+/// AGENTS.md records for `InstanceRegistry.createIn`: the read succeeds and
+/// corrupts a neighbour.
+///
+/// So the instance pointer is only ever dereferenced through a token that both
+/// sides own. `deinitState` sets `cancelled` and drops its reference; the task
+/// checks the flag before touching anything and drops its own. Whichever runs
+/// second frees the token. Single-threaded - the event loop - so a plain
+/// counter is enough.
+const SendToken = struct {
+    refs: u8,
+    cancelled: bool,
     instance: *runtime.Instance,
     allocator: std.mem.Allocator,
+
+    fn release(self: *SendToken) void {
+        self.refs -= 1;
+        if (self.refs == 0) self.allocator.destroy(self);
+    }
 };
 
 fn runSendTask(context: ?*anyopaque) void {
-    const task: *SendTask = @ptrCast(@alignCast(context orelse return));
-    const instance = task.instance;
-    const allocator = task.allocator;
-    defer allocator.destroy(task);
+    const token: *SendToken = @ptrCast(@alignCast(context orelse return));
+    defer token.release();
 
+    // The XHR was collected, or a later send() superseded this one.
+    if (token.cancelled) return;
+
+    const instance = token.instance;
     const xhr_state = getXHRState(instance);
     const internal = getInternal(instance);
+
+    // This token has now been consumed, so `deinitState` must not cancel it a
+    // second time.
+    if (internal.send_token == token) {
+        internal.send_token = null;
+        token.release();
+    }
+
     defer internal.releasePendingBody();
 
     // Step 11.6, hoisted: between `send()` returning and this task running,
