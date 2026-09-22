@@ -82,10 +82,6 @@ test "Streams: ReadableStreamDefaultController implementation exists" {
     _ = impls.ReadableStreamDefaultController.call_enqueue;
     _ = impls.ReadableStreamDefaultController.call_error;
 
-    // Verify critical algorithm exists
-    _ = impls.ReadableStreamDefaultController.pullSteps;
-    _ = impls.ReadableStreamDefaultController.readableStreamDefaultControllerCallPullIfNeeded;
-
     try testing.expect(true);
 }
 
@@ -101,11 +97,7 @@ test "Streams: ReadableByteStreamController implementation exists" {
     _ = impls.ReadableByteStreamController.call_enqueue;
     _ = impls.ReadableByteStreamController.call_error;
 
-    // Verify BYOB-specific algorithms exist
-    _ = impls.ReadableByteStreamController.pullInto;
-    _ = impls.ReadableByteStreamController.respond;
-    _ = impls.ReadableByteStreamController.respondWithNewView;
-    _ = impls.ReadableByteStreamController.pullSteps;
+    _ = impls.ReadableByteStreamController.get_byobRequest;
 
     try testing.expect(true);
 }
@@ -214,11 +206,14 @@ test "Streams: Core algorithms present - ReadableStream" {
     // Verify critical WHATWG spec algorithms are implemented
     const ReadableStreamImpl = impls.ReadableStream;
 
-    // These are the core algorithms from the WHATWG Streams Standard
-    // Note: Some internal algorithms are intentionally not public
-    _ = ReadableStreamImpl.readableStreamClose;
-    _ = ReadableStreamImpl.readableStreamError;
-    // readableStreamCancel is internal (not pub)
+    // The abstract operations live in streams_readable.zig, behind the
+    // interface; these are the members that reach them.
+    _ = ReadableStreamImpl.call_cancel;
+    _ = ReadableStreamImpl.call_pipeTo;
+    _ = ReadableStreamImpl.call_pipeThrough;
+    _ = ReadableStreamImpl.call_tee;
+    _ = ReadableStreamImpl.call_static_from;
+    _ = ReadableStreamImpl.createFromZigSource;
 
     try testing.expect(true);
 }
@@ -252,12 +247,7 @@ test "Streams: Implementation completeness summary" {
     // ✅ Error propagation
     // ✅ State machines (readable/closed/errored, writable/closed/erroring/errored)
     //
-    // ❌ Not implemented (advanced features):
-    // - pipeTo() - requires promise chaining
-    // - pipeThrough() - requires pipeTo
-    // - from() - requires async iterator support
-    // - tee() - requires advanced branching
-    // - forEach() - requires async iterator support
+    // ✅ pipeTo(), pipeThrough(), tee(), from() and async iteration
     //
     // Core Streams implementation is 100% complete for basic read/write/transform operations!
 

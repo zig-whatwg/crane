@@ -224,6 +224,108 @@ pub const Realm = struct {
     }
 };
 
+/// Result objects, arrays and microtasks.
+pub const ResultOrder = enum {
+    /// A ReadableStreamReadResult dictionary: members in lexicographic order.
+    dictionary,
+    /// ECMAScript CreateIterResultObject(value, done).
+    iterator,
+};
+
+pub fn resultObject(realm: Realm, value: Value, done: bool, order: ResultOrder) Error!Value {
+    const obj = ffi.v8_Object_NewInContext(realm.context) orelse return error.V8Failure;
+    const done_value = ffi.v8_Boolean_New(realm.isolate, done) orelse return error.V8Failure;
+    defer dispose(done_value);
+    const value_key = ffi.v8_String_NewFromUtf8(realm.isolate, "value", 5) orelse return error.V8Failure;
+    defer ffi.v8_String_Dispose(value_key);
+    const done_key = ffi.v8_String_NewFromUtf8(realm.isolate, "done", 4) orelse return error.V8Failure;
+    defer ffi.v8_String_Dispose(done_key);
+    switch (order) {
+        .dictionary => {
+            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, done_key, done_value);
+            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, value_key, value);
+        },
+        .iterator => {
+            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, value_key, value);
+            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, done_key, done_value);
+        },
+    }
+    return @ptrCast(obj);
+}
+
+/// CreateArrayFromList(values). Owned.
+pub fn arrayFrom(realm: Realm, values: []const Value) Error!Value {
+    const arr = ffi.v8_Array_NewInContext(realm.context, @intCast(values.len)) orelse return error.V8Failure;
+    for (values, 0..) |v, i| _ = ffi.v8_Array_Set(arr, realm.context, @intCast(i), v);
+    return @ptrCast(arr);
+}
+
+/// HTML "queue a microtask" running `callback(ctx)`.
+pub fn queueMicrotask(realm: Realm, comptime Ctx: type, ctx: *Ctx, comptime callback: fn (*Ctx) void) void {
+    const Trampoline = struct {
+        fn run(data: ?*anyopaque) callconv(.c) void {
+            callback(@ptrCast(@alignCast(data.?)));
+        }
+    };
+    ffi.v8_Isolate_QueueMicrotask(realm.isolate, Trampoline.run, ctx);
+}
+
+/// Owned boolean.
+pub fn boolean(realm: Realm, b: bool) Error!Value {
+    return ffi.v8_Boolean_New(realm.isolate, b) orelse error.V8Failure;
+}
+
+// ============================================================================
+// ArrayBuffers and views (Streams § 8.3)
+// ============================================================================
+
+pub const ViewKind = ffi.ViewKind;
+pub const ViewInfo = ffi.ViewInfo;
+
+pub fn describeView(view: Value) ?ViewInfo {
+    var info: ViewInfo = undefined;
+    if (!ffi.v8_ArrayBufferView_Describe(view, &info)) return null;
+    return info;
+}
+
+/// view.[[ViewedArrayBuffer]]. Owned.
+pub fn viewBuffer(view: Value) Error!Value {
+    return ffi.v8_ArrayBufferView_Buffer(view) orelse error.V8Failure;
+}
+
+/// Construct(ctor-of-kind, « buffer, byteOffset, length »). Owned.
+pub fn newView(kind: ViewKind, buffer: Value, byte_offset: usize, length: usize) Error!Value {
+    return ffi.v8_ArrayBufferView_New(kind, buffer, byte_offset, length) orelse error.V8Failure;
+}
+
+/// TransferArrayBuffer(O). Owned; null when it cannot be transferred.
+pub fn transferBuffer(buffer: Value) ?Value {
+    return ffi.v8_ArrayBuffer_Transfer(buffer);
+}
+
+pub fn canTransferBuffer(buffer: Value) bool {
+    return ffi.v8_ArrayBuffer_CanTransfer(buffer);
+}
+
+pub fn isDetachedBuffer(buffer: Value) bool {
+    return ffi.v8_ArrayBuffer_IsDetachedValue(buffer);
+}
+
+/// The bytes of an ArrayBuffer; null when detached.
+pub fn bufferBytes(buffer: Value) ?[]u8 {
+    var data: ?*anyopaque = null;
+    var len: usize = 0;
+    if (!ffi.v8_ArrayBuffer_Bytes(buffer, &data, &len)) return null;
+    if (len == 0) return &[_]u8{};
+    const ptr: [*]u8 = @ptrCast(data orelse return null);
+    return ptr[0..len];
+}
+
+/// AllocateArrayBuffer(%ArrayBuffer%, n). Owned; null on allocation failure.
+pub fn allocateBuffer(byte_length: usize) ?Value {
+    return ffi.v8_ArrayBuffer_Allocate(byte_length);
+}
+
 /// The completion of a call: a normal return value or a thrown value.
 pub const Completion = union(enum) {
     normal: Value,

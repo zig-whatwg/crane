@@ -1,924 +1,118 @@
-//! Implementation for TransformStream interface
+//! TransformStream Implementation
 //!
-//! Spec: https://streams.spec.whatwg.org/#ts-class
+//! WHATWG Streams Standard § 6.2: https://streams.spec.whatwg.org/#ts-class
 //!
-//! Represents a transformation that consists of a pair of streams.
+//! The IDL surface only; the slots and algorithms are in `streams_transform.zig`.
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8_engine = @import("v8");
-const v8 = v8_engine;
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const TransformStream = interfaces.TransformStream;
+const js = @import("streams_js.zig");
+const sw = @import("streams_writable.zig");
+const st = @import("streams_transform.zig");
 
-// Import streams infrastructure
-const streams_common = @import("streams_common");
-const JSValue = streams_common.JSValue;
-const Promise = streams_common.Promise;
-const AsyncPromise = @import("streams_async_promise").AsyncPromise;
-const event_loop_module = @import("streams_event_loop");
+pub const State = interfaces.TransformStream.State;
+pub const InternalState = st.Stream;
 
-pub const State = TransformStream.State;
-
-pub const ImplError = error{
-    NotImplemented,
-    TypeError,
-    RangeError,
-    OutOfMemory,
-    InvalidState,
-};
-
-/// Internal state for TransformStream
-///
-/// Spec: § 6.1.2 "Internal slots"
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-
-    /// [[backpressure]]: boolean - whether backpressure signal has been sent
-    backpressure: bool,
-
-    /// [[backpressureChangePromise]]: Promise that resolves when backpressure changes
-    /// Spec: § 6.1.2 Internal slots
-    backpressureChangePromise: ?Promise(void),
-
-    /// [[readable]]: ReadableStream representing the readable side
-    readableStream: ?*runtime.Instance,
-
-    /// [[writable]]: WritableStream representing the writable side
-    writableStream: ?*runtime.Instance,
-
-    /// [[controller]]: TransformStreamDefaultController
-    controller: ?*runtime.Instance,
-
-    /// V8 context for callback invocation
-    isolate: ?*anyopaque,
-    v8_context: ?*anyopaque,
-
-    /// Event loop for async operations
-    event_loop: event_loop_module.EventLoop,
-
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Clean up is handled by WritableStream and ReadableStream deinit
-        allocator.destroy(self);
-    }
-};
-
-/// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // InternalState is set up by constructor
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
+    if (state.own._internal) |slots| {
+        state.own._internal = null;
+        slots.deinit();
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Constructor implementation
-///
-/// Spec: § 6.1 "The new TransformStream(transformer, writableStrategy, readableStrategy) constructor steps"
-///
-/// This is called when the interface is constructed from JavaScript
+/// `new TransformStream(transformer, writableStrategy, readableStrategy)` - § 6.2.4.
 pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &TransformStream.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Initialize InternalState
-    const state = instance.getState(State);
-    const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
-
-    // Get event loop from context
-    const loop = try ctx.getEventLoop();
-
-    internal.* = InternalState{
-        .allocator = ctx.allocator,
-        .backpressure = false,
-        .backpressureChangePromise = null,
-        .readableStream = null,
-        .writableStream = null,
-        .controller = null,
-        .isolate = ctx.engine_ctx,
-        .v8_context = null,
-        .event_loop = loop,
-    };
-
-    state.own._internal = internal;
-
-    // Spec step 1: If transformer is missing, set it to null (handled by caller)
-
-    // Spec step 2: Let transformerDict be transformer, converted to IDL type Transformer
-    // (transformer will be passed to setUpTransformStreamDefaultControllerFromTransformer)
-
-    // Spec step 3-4: If transformerDict["readableType"] or ["writableType"] exists, throw RangeError
-    // (Reserved for future use - not implemented yet)
-
-    // Spec step 5: Let readableHighWaterMark be ? ExtractHighWaterMark(readableStrategy, 0)
-    const readable_strategy = if (readableStrategy.was_passed) readableStrategy.value else dictionaries.QueuingStrategy{};
-    const readable_hwm = extractHighWaterMark(&readable_strategy, 0.0) catch {
-        ctx.allocator.destroy(internal);
-        deinit(instance);
-        return error.RangeError;
-    };
-
-    // Spec step 6: Let readableSizeAlgorithm be ! ExtractSizeAlgorithm(readableStrategy)
-    // (Using default for now)
-
-    // Spec step 7: Let writableHighWaterMark be ? ExtractHighWaterMark(writableStrategy, 1)
+    const realm = try js.Realm.ofContext(ctx);
     const writable_strategy = if (writableStrategy.was_passed) writableStrategy.value else dictionaries.QueuingStrategy{};
-    const writable_hwm = extractHighWaterMark(&writable_strategy, 1.0) catch {
-        ctx.allocator.destroy(internal);
-        deinit(instance);
-        return error.RangeError;
+    const readable_strategy = if (readableStrategy.was_passed) readableStrategy.value else dictionaries.QueuingStrategy{};
+
+    // Step 1: If transformer is missing, set it to null. It is typed
+    // `object`: undefined is "missing", any other non-object throws.
+    var transformer_object: ?js.Value = null;
+    defer js.disposeOptional(&transformer_object);
+    if (transformer.was_passed) switch (transformer.value) {
+        .undefined => {},
+        .handle => {
+            const value = try realm.fromRuntime(transformer.value);
+            if (!js.isObject(value)) {
+                js.dispose(value);
+                return error.TypeError;
+            }
+            transformer_object = value;
+        },
+        else => return error.TypeError,
     };
 
-    // Spec step 8: Let writableSizeAlgorithm be ! ExtractSizeAlgorithm(writableStrategy)
-    // (Using default for now)
+    // Steps 2-4: convert; readableType or writableType is a RangeError.
+    const dict = try st.convertTransformer(realm, ctx.allocator, transformer_object);
+    var owned_dict: ?*st.JsTransformer = dict;
+    errdefer if (owned_dict) |d| st.JsTransformer.vtable.deinit(d, ctx.allocator);
 
-    // Spec step 9: Let startPromise be a new promise
-    const start_promise = Promise(void).pending();
+    // Steps 5-8: the two strategies.
+    const readable_hwm = try sw.extractHighWaterMark(readable_strategy, 0);
+    var readable_size = try sw.extractSizeAlgorithm(readable_strategy);
+    errdefer if (readable_size == .callback) js.dispose(readable_size.callback);
+    const writable_hwm = try sw.extractHighWaterMark(writable_strategy, 1);
+    var writable_size = try sw.extractSizeAlgorithm(writable_strategy);
+    errdefer if (writable_size == .callback) js.dispose(writable_size.callback);
 
-    // Spec step 10: Perform ! InitializeTransformStream(this, startPromise, writableHighWaterMark, writableSizeAlgorithm, readableHighWaterMark, readableSizeAlgorithm)
-    try initializeTransformStream(instance, internal, ctx.allocator, ctx, start_promise, writable_hwm, readable_hwm);
+    // Step 9: Let startPromise be a new promise.
+    const start_promise = try js.Deferred.init(realm);
+    const start_handle = try js.clone(start_promise.promise);
+    defer js.dispose(start_handle);
 
-    // Spec step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict)
-    //
-    // The transformer parameter is a v8.JSValue that can be:
-    // - undefined/null: No transformer, use default algorithms
-    // - local/global: A V8 Object with transform/flush/cancel methods
-    // - instance: A Zig runtime.Instance (should not happen, would be a bug)
-    //
-    // We need to extract the V8 object pointer from the JSValue, not blindly cast.
-    // Passing a non-V8 pointer (like a Zig stack address) to V8 FFI will cause
-    // misaligned pointer segfaults. See whatwg-lbw51 for details.
-    if (transformer.was_passed) {
-        const js_value = transformer.value;
-        switch (js_value) {
-            .undefined, .null => {
-                // No transformer - use default algorithms (skip setup)
+    // Step 10: Perform ! InitializeTransformStream(this, startPromise, ...).
+    const instance = try st.newStream(ctx);
+    const sizes_taken = .{ writable_size, readable_size };
+    writable_size = .one;
+    readable_size = .one;
+    try st.initialize(realm, instance, start_promise, writable_hwm, sizes_taken[0], readable_hwm, sizes_taken[1]);
+
+    // Step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict).
+    const controller = try st.newController(ctx, instance, .{ .ctx = dict, .vtable = &st.JsTransformer.vtable });
+    owned_dict = null;
+    try st.setUpController(realm, instance, controller);
+
+    // Steps 12-13: resolve startPromise with the result of start(), or undefined.
+    const slots = st.streamOf(instance).?;
+    if (dict.start) |start_fn| {
+        switch (try realm.call(start_fn, dict.this, &.{try realm.wrap(controller)})) {
+            .normal => |v| {
+                defer js.dispose(v);
+                slots.start_promise.?.resolve(realm, v);
             },
-            .handle => |engine_handle| {
-                // Engine handle (V8 object reference) - set up controller
-                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, ctx.allocator, ctx, engine_handle.ptr);
-            },
-            .instance => {
-                // A Zig runtime.Instance - this should not be passed as a transformer.
-                // Skip setup to avoid passing a Zig pointer to V8 FFI.
-                // This would be a caller bug, but we handle it gracefully.
-            },
-            else => {
-                // Other types (boolean, number, string) are not valid transformers
-                // Skip setup - they can't have transform/flush/cancel methods
+            .thrown => |e| {
+                defer js.dispose(e);
+                return realm.throwValue(e);
             },
         }
+    } else {
+        slots.start_promise.?.resolveUndefined(realm);
     }
-
-    // Spec step 12-13: If transformerDict["start"] exists, resolve startPromise with result of invoking it
-    // Otherwise, resolve startPromise with undefined
-    // For now, we resolve immediately (no start callback)
-    // The backpressureChangePromise was set by setBackpressure in initializeTransformStream
-
     return instance;
 }
 
-/// ExtractHighWaterMark helper
-///
-/// Spec: § 9.2.2 "ExtractHighWaterMark(strategy, defaultHWM)"
-fn extractHighWaterMark(strategy: *const dictionaries.QueuingStrategy, default_hwm: f64) !f64 {
-    if (strategy.highWaterMark) |hwm| {
-        if (std.math.isNan(hwm) or hwm < 0) {
-            return error.RangeError;
-        }
-        return hwm;
-    }
-    return default_hwm;
-}
-
-/// InitializeTransformStream
-///
-/// Spec: § 6.3.3 "InitializeTransformStream(stream, startPromise, writableHighWaterMark, writableSizeAlgorithm, readableHighWaterMark, readableSizeAlgorithm)"
-fn initializeTransformStream(
-    instance: *runtime.Instance,
-    internal: *InternalState,
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    start_promise: Promise(void),
-    writable_hwm: f64,
-    readable_hwm: f64,
-) !void {
-    _ = start_promise; // Will be used for start algorithm
-
-    // Spec step 1: Let startAlgorithm be an algorithm that returns startPromise
-    // (Simplified: we'll use a resolved promise)
-
-    // Spec step 2-4: Create write, abort, close algorithms that delegate to TransformStream
-    // These are created inline when setting up the WritableStream
-
-    // Spec step 5: Set stream.[[writable]] to ! CreateWritableStream(...)
-    internal.writableStream = try createWritableStreamForTransform(instance, allocator, ctx, writable_hwm);
-    _ = start_promise; // Start promise will be resolved after controller setup
-
-    // Spec step 6-7: Create pull, cancel algorithms that delegate to TransformStream
-
-    // Spec step 8: Set stream.[[readable]] to ! CreateReadableStream(...)
-    internal.readableStream = try createReadableStreamForTransform(instance, allocator, ctx, readable_hwm);
-
-    // Spec step 9: Set stream.[[backpressure]] and stream.[[backpressureChangePromise]] to undefined
-    internal.backpressure = false; // Will be set properly by setBackpressure
-    internal.backpressureChangePromise = null;
-
-    // Spec step 10: Perform ! TransformStreamSetBackpressure(stream, true)
-    // Note: setBackpressure asserts that backpressure != new value, so we need special handling for initialization
-    // Set directly without assertion for initialization
-    internal.backpressureChangePromise = Promise(void).pending();
-    internal.backpressure = true;
-
-    // Spec step 11: Set stream.[[controller]] to undefined
-    // (Will be set by SetUpTransformStreamDefaultController)
-    internal.controller = null;
-}
-
-/// Create a WritableStream for the TransformStream's writable side
-///
-/// Spec: § 6.3.3 step 5 - CreateWritableStream with transform sink algorithms
-fn createWritableStreamForTransform(
-    transform_stream: *runtime.Instance,
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    writable_hwm: f64,
-) !*runtime.Instance {
-    _ = transform_stream;
-    _ = allocator;
-    // CreateWritableStream with a sink that accepts every chunk and does
-    // nothing - the writable side has never forwarded to the transformer.
-    // TODO(streams): the TransformStream sink algorithms of § 6.4.
-    const sw = @import("streams_writable.zig");
-    const realm = try @import("streams_js.zig").Realm.ofContext(ctx);
-    return sw.createWritableStream(realm, ctx, sw.noop_sink, writable_hwm, .one);
-}
-
-/// Create a ReadableStream for the TransformStream's readable side
-///
-/// Spec: § 6.3.3 step 8 - CreateReadableStream with transform source algorithms
-fn createReadableStreamForTransform(
-    transform_stream: *runtime.Instance,
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    readable_hwm: f64,
-) !*runtime.Instance {
-    // Create ReadableStream instance
-    const readable = try interfaces.ReadableStream.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(readable);
-
-    const readable_state = readable.getState(interfaces.ReadableStream.State);
-
-    // Get event loop from context
-    const loop = try ctx.getEventLoop();
-
-    // Import ReadableStream internal types
-    const ReadableStreamImpl = @import("ReadableStream.zig");
-
-    // Create ReadableStreamDefaultController for this stream
-    const controller = try interfaces.ReadableStreamDefaultController.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(controller);
-
-    // Create internal state for ReadableStream
-    const readable_internal = try allocator.create(ReadableStreamImpl.InternalState);
-    errdefer allocator.destroy(readable_internal);
-
-    readable_internal.* = ReadableStreamImpl.InternalState{
-        .controller = controller,
-        .reader = .none,
-        .state = .readable,
-        .stored_error = .none, // Type-safe StoredError
-        .detached = false,
-        .disturbed = false,
-        .event_loop = loop,
-        .allocator = allocator,
-    };
-
-    readable_state.own._internal = readable_internal;
-
-    // Set up controller with pull/cancel algorithms that delegate to TransformStream
-    const ReadableControllerImpl = @import("ReadableStreamDefaultController.zig");
-    const controller_state = controller.getState(interfaces.ReadableStreamDefaultController.State);
-
-    // Create controller internal state
-    const controller_internal = try allocator.create(ReadableControllerImpl.InternalState);
-    errdefer allocator.destroy(controller_internal);
-
-    const queue_mod = @import("streams_queue");
-    controller_internal.* = ReadableControllerImpl.InternalState{
-        .stream = readable,
-        .queue = queue_mod.QueueWithSizes.init(allocator),
-        .queue_total_size = 0.0,
-        .started = true, // TransformStream starts immediately
-        .close_requested = false,
-        .pull_again = false,
-        .pulling = false,
-        .strategy_size_algorithm = null,
-        .strategy_hwm = readable_hwm,
-        .start_algorithm = null, // TransformStream handles start internally
-        .pull_algorithm = null, // Will use transform's pull
-        .cancel_algorithm = null, // Will use transform's cancel
-        .allocator = allocator,
-    };
-
-    controller_state.own._internal = controller_internal;
-
-    // Store transform stream reference for pull/cancel delegation
-    // This is done through the controller's cancel algorithm context
-    _ = transform_stream; // The algorithms will capture this
-
-    return readable;
-}
-
-/// SetUpTransformStreamDefaultControllerFromTransformer
-///
-/// Spec: § 6.3.4 "SetUpTransformStreamDefaultControllerFromTransformer(stream, transformer, transformerDict)"
-///
-/// IMPORTANT: The `transformer` parameter MUST be a valid V8 Object pointer.
-/// Do NOT pass Zig pointers (stack variables, heap allocations, runtime.Instance, etc.)
-/// as they will be incorrectly cast to V8 Objects and cause misaligned pointer segfaults.
-///
-/// The caller (call_constructor) is responsible for:
-/// 1. Validating that transformer is a V8 JSValue with .local or .global variant
-/// 2. Extracting the raw V8 pointer from the JSValue
-/// 3. NOT calling this function if transformer is undefined/null/non-V8
-fn setUpTransformStreamDefaultControllerFromTransformer(
-    instance: *runtime.Instance,
-    internal: *InternalState,
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    transformer: *const anyopaque,
-) !void {
-    // Create TransformStreamDefaultController instance
-    const controller = try interfaces.TransformStreamDefaultController.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(controller);
-
-    const ControllerImpl = @import("TransformStreamDefaultController.zig");
-    const controller_state = controller.getState(interfaces.TransformStreamDefaultController.State);
-
-    // Create controller internal state
-    const controller_internal = try allocator.create(ControllerImpl.InternalState);
-    errdefer allocator.destroy(controller_internal);
-
-    controller_internal.* = ControllerImpl.InternalState{
-        .allocator = allocator,
-        .stream = instance,
-        .transformAlgorithm = streams_common.defaultTransformAlgorithm(),
-        .flushAlgorithm = streams_common.defaultFlushAlgorithm(),
-        .cancelAlgorithm = streams_common.defaultCancelAlgorithm(),
-        .finishPromise = null,
-        .isolate = v8_engine.ffi.v8_Isolate_GetCurrent(), // not getEngineContextAs: that is a Global<Context>*
-        .v8_context = null,
-        // Initialize V8 Global handles to null - will be set below if transformer has callbacks
-        .flush_algorithm_v8 = null,
-        .transform_algorithm_v8 = null,
-        .cancel_algorithm_v8 = null,
-    };
-
-    // Extract transformer callbacks and create Global handles
-    // The transformer dictionary can have: transform, flush, cancel methods
-    const v8_ffi = v8_engine.ffi;
-    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse {
-        // No V8 isolate available - use default algorithms (stub mode)
-        controller_state.own._internal = controller_internal;
-        internal.controller = controller;
-        return;
-    };
-
-    const v8_context = v8_ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        controller_state.own._internal = controller_internal;
-        internal.controller = controller;
-        return;
-    };
-
-    // Store V8 context in controller
-    controller_internal.v8_context = v8_context;
-
-    // The transformer parameter is a V8 object pointer (passed as *const anyopaque)
-    // Cast to *ffi.Object for V8 API calls
-    const v8_obj: *v8_ffi.Object = @ptrCast(@constCast(transformer));
-
-    // Extract 'transform' callback property and convert to Global handle
-    // Local handles become invalid after HandleScope ends, so we must create Global handles
-    const transform_key = v8_ffi.v8_String_NewFromUtf8(isolate, "transform", 9) orelse {
-        controller_state.own._internal = controller_internal;
-        internal.controller = controller;
-        return;
-    };
-    if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(transform_key))) |transform_val| {
-        if (!v8_ffi.v8_Value_IsNullOrUndefined(transform_val)) {
-            // Create Global handle to persist the callback past HandleScope
-            if (v8_engine.GlobalHandle.create(isolate, transform_val)) |global_handle| {
-                controller_internal.transform_algorithm_v8 = global_handle;
-            }
-        }
-    }
-
-    // Extract 'flush' callback property and convert to Global handle
-    const flush_key = v8_ffi.v8_String_NewFromUtf8(isolate, "flush", 5) orelse {
-        controller_state.own._internal = controller_internal;
-        internal.controller = controller;
-        return;
-    };
-    if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(flush_key))) |flush_val| {
-        if (!v8_ffi.v8_Value_IsNullOrUndefined(flush_val)) {
-            if (v8_engine.GlobalHandle.create(isolate, flush_val)) |global_handle| {
-                controller_internal.flush_algorithm_v8 = global_handle;
-            }
-        }
-    }
-
-    // Extract 'cancel' callback property and convert to Global handle
-    const cancel_key = v8_ffi.v8_String_NewFromUtf8(isolate, "cancel", 6) orelse {
-        controller_state.own._internal = controller_internal;
-        internal.controller = controller;
-        return;
-    };
-    if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(cancel_key))) |cancel_val| {
-        if (!v8_ffi.v8_Value_IsNullOrUndefined(cancel_val)) {
-            if (v8_engine.GlobalHandle.create(isolate, cancel_val)) |global_handle| {
-                controller_internal.cancel_algorithm_v8 = global_handle;
-            }
-        }
-    }
-
-    controller_state.own._internal = controller_internal;
-
-    // Spec step 4: Set stream.[[controller]] to controller
-    internal.controller = controller;
-}
-
-/// Getter for readable
+/// `readable` - § 6.2.4: Return this.[[readable]].
 pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.readableStream orelse error.InvalidState;
+    const stream = st.streamOf(instance) orelse return error.TypeError;
+    return stream.readable orelse error.InvalidStateError;
 }
 
-/// Getter for writable
+/// `writable` - § 6.2.4: Return this.[[writable]].
 pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.writableStream orelse error.InvalidState;
-}
-
-// ============================================================================
-// Internal Helper Methods
-// ============================================================================
-
-/// TransformStreamError(stream, e)
-///
-/// Spec: § 6.3.1 "Error both sides of the transform stream"
-pub fn errorStream(instance: *runtime.Instance, e: JSValue) void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-
-    // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
-    if (internal.readableStream) |readable| {
-        const readable_state = readable.getState(@import("interfaces").ReadableStream.State);
-        if (readable_state.own._internal) |readable_internal| {
-            const ReadableStreamImpl = @import("ReadableStream.zig");
-            // Convert JSValue to anyopaque for ReadableStream API
-            const error_ptr: *const anyopaque = @ptrCast(&e);
-            ReadableStreamImpl.readableStreamError(readable_internal, error_ptr);
-        }
-    }
-
-    // Spec step 2: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, e)
-    errorWritableAndUnblockWrite(instance, e);
-}
-
-/// TransformStreamErrorWritableAndUnblockWrite(stream, e)
-///
-/// Spec: § 6.3.1 "Error writable side and unblock write"
-pub fn errorWritableAndUnblockWrite(instance: *runtime.Instance, e: JSValue) void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-
-    // Spec step 1: Perform ! TransformStreamDefaultControllerClearAlgorithms(stream.[[controller]])
-    if (internal.controller) |controller| {
-        const ControllerImpl = @import("TransformStreamDefaultController.zig");
-        ControllerImpl.clearAlgorithms(controller);
-    }
-
-    // Spec step 2: Perform ! WritableStreamDefaultControllerErrorIfNeeded(stream.[[writable]].[[controller]], e)
-    if (internal.writableStream) |writable| {
-        const WritableStreamImpl = @import("WritableStream.zig");
-        // Convert streams_common.JSValue to runtime.JSValue for WritableStream API
-        const runtime_js_value: runtime.JSValue = switch (e) {
-            .undefined => runtime.JSValue.jsUndefined,
-            .null => runtime.JSValue.jsNull,
-            .boolean => |b| runtime.JSValue.fromBoolean(b),
-            .number => |n| runtime.JSValue.fromNumber(n),
-            .string => |s| runtime.JSValue.fromStringRef(s),
-            .managed_handle => |mh| runtime.JSValue.fromHandleNonOwning(mh.get()),
-            .bytes => runtime.JSValue.jsUndefined, // No direct equivalent
-            .object => runtime.JSValue.jsUndefined,
-            .close_sentinel => runtime.JSValue.jsUndefined,
-            .error_value => runtime.JSValue.jsUndefined, // TODO: Convert error properly
-        };
-        WritableStreamImpl.writableStreamStartErroring(writable, runtime_js_value);
-    }
-
-    // Spec step 3: Perform ! TransformStreamUnblockWrite(stream)
-    unblockWrite(instance);
-}
-
-/// TransformStreamSetBackpressure(stream, backpressure)
-///
-/// Spec: § 6.3.1 "Set backpressure signal"
-pub fn setBackpressure(instance: *runtime.Instance, backpressure: bool) void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-
-    // Spec step 1: Assert: stream.[[backpressure]] is not backpressure
-    std.debug.assert(internal.backpressure != backpressure);
-
-    // Spec step 2: If stream.[[backpressureChangePromise]] is not undefined,
-    //              resolve stream.[[backpressureChangePromise]] with undefined
-    if (internal.backpressureChangePromise) |*promise| {
-        if (promise.isPending()) {
-            promise.fulfill({});
-        }
-    }
-
-    // Spec step 3: Set stream.[[backpressureChangePromise]] to a new promise
-    internal.backpressureChangePromise = Promise(void).pending();
-
-    // Spec step 4: Set stream.[[backpressure]] to backpressure
-    internal.backpressure = backpressure;
-}
-
-/// TransformStreamUnblockWrite(stream)
-///
-/// Spec: § 6.3.1 "Unblock write if backpressure is true"
-pub fn unblockWrite(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-
-    // Spec step 1: If stream.[[backpressure]] is true, perform ! TransformStreamSetBackpressure(stream, false)
-    if (internal.backpressure) {
-        setBackpressure(instance, false);
-    }
-}
-
-// ============================================================================
-// Default Sink Algorithms (Writable Side)
-// ============================================================================
-
-/// TransformStreamDefaultSinkWriteAlgorithm(stream, chunk)
-///
-/// Spec: § 6.3.4 "Default sink write algorithm"
-///
-/// Spec Algorithm:
-/// 1. Assert: stream.[[writable]].[[state]] is "writable".
-/// 2. Let controller be stream.[[controller]].
-/// 3. If stream.[[backpressure]] is true,
-///    3.1 Let backpressureChangePromise be stream.[[backpressureChangePromise]].
-///    3.2 Assert: backpressureChangePromise is not undefined.
-///    3.3 Return the result of reacting to backpressureChangePromise with the following
-///        fulfillment steps:
-///        - Return ! TransformStreamDefaultControllerPerformTransform(controller, chunk).
-/// 4. Return ! TransformStreamDefaultControllerPerformTransform(controller, chunk).
-pub fn defaultSinkWriteAlgorithm(instance: *runtime.Instance, chunk: JSValue) Promise(void) {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Invalid stream state") catch unreachable);
-
-    // Spec step 2: Let controller be stream.[[controller]]
-    const controller = internal.controller orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Controller not initialized") catch unreachable);
-
-    // Spec step 3: If stream.[[backpressure]] is true
-    if (internal.backpressure) {
-        // Spec step 3.1: Let backpressureChangePromise be stream.[[backpressureChangePromise]]
-        if (internal.backpressureChangePromise) |*backpressure_promise| {
-            // Spec step 3.2: Assert: backpressureChangePromise is not undefined (checked above)
-
-            // Spec step 3.3: Return the result of reacting to backpressureChangePromise
-            // with fulfillment steps that perform the transform.
-            //
-            // Implementation note: Since we're using synchronous Promise semantics,
-            // we need to handle this differently. If backpressure is applied and the
-            // promise is pending, we should return a pending promise that will eventually
-            // resolve when backpressure is released.
-            //
-            // For the simplified implementation:
-            // - If the promise is already fulfilled (backpressure was released), proceed with transform
-            // - If the promise is pending, return a pending promise (write will be queued)
-            if (backpressure_promise.isPending()) {
-                // Return a pending promise - the write will be retried when backpressure releases
-                // In a full async implementation, this would chain to the transform
-                return Promise(void).pending();
-            }
-            // Backpressure was released, fall through to perform transform
-        }
-    }
-
-    // Spec step 4: Return ! TransformStreamDefaultControllerPerformTransform(controller, chunk)
-    const ControllerImpl = @import("TransformStreamDefaultController.zig");
-    return ControllerImpl.performTransform(controller, chunk);
-}
-
-/// TransformStreamDefaultSinkAbortAlgorithm(stream, reason)
-///
-/// Spec: § 6.3.4 "Default sink abort algorithm"
-pub fn defaultSinkAbortAlgorithm(instance: *runtime.Instance, reason: JSValue) Promise(void) {
-    // Spec step 1: Perform ! TransformStreamError(stream, reason)
-    errorStream(instance, reason);
-
-    // Spec step 2: Return a promise resolved with undefined
-    return Promise(void).fulfilled({});
-}
-
-/// Context for flush callback
-const FlushCallbackContext = struct {
-    stream: *runtime.Instance,
-    controller: *runtime.Instance,
-    readable: *runtime.Instance,
-    result_promise: *AsyncPromise(void),
-    allocator: std.mem.Allocator,
-};
-
-/// Callback for flush promise fulfillment
-fn onFlushFulfilled(ctx_ptr: *anyopaque) void {
-    const ctx: *FlushCallbackContext = @ptrCast(@alignCast(ctx_ptr));
-    defer ctx.allocator.destroy(ctx);
-
-    const ControllerImpl = @import("TransformStreamDefaultController.zig");
-    const ReadableStreamImpl = @import("ReadableStream.zig");
-
-    // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
-    ControllerImpl.clearAlgorithms(ctx.controller);
-
-    // Spec step 5 fulfillment: Check readable state and close
-    const readable_state = ctx.readable.getState(interfaces.ReadableStream.State);
-
-    if (readable_state.own._internal) |readable_internal| {
-        // Spec step 5.1: If readable.[[state]] is "errored", throw readable.[[storedError]]
-        if (readable_internal.state == .errored) {
-            const exception = webidl.errors.Exception.typeError(ctx.allocator, "Readable stream is errored") catch {
-                ctx.result_promise.fulfill({});
-                return;
-            };
-            ctx.result_promise.reject(exception);
-            return;
-        }
-
-        // Spec step 5.2: Perform ! ReadableStreamDefaultControllerClose(readable.[[controller]])
-        ReadableStreamImpl.closeInternal(ctx.readable);
-    }
-
-    ctx.result_promise.fulfill({});
-}
-
-/// Callback for flush promise rejection
-fn onFlushRejected(ctx_ptr: *anyopaque, reason: *v8_engine.ffi.Value) void {
-    const ctx: *FlushCallbackContext = @ptrCast(@alignCast(ctx_ptr));
-    defer ctx.allocator.destroy(ctx);
-
-    const ControllerImpl = @import("TransformStreamDefaultController.zig");
-
-    // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
-    ControllerImpl.clearAlgorithms(ctx.controller);
-
-    // Spec step 5 rejection: TransformStreamError(stream, r)
-    _ = reason; // TODO: Convert V8 reason to JSValue
-    const error_value = JSValue{ .string = "Flush algorithm failed" };
-    errorStream(ctx.stream, error_value);
-
-    // Reject with the error
-    const exception = webidl.errors.Exception.typeError(ctx.allocator, "Flush algorithm rejected") catch {
-        ctx.result_promise.fulfill({});
-        return;
-    };
-    ctx.result_promise.reject(exception);
-}
-
-/// TransformStreamDefaultSinkCloseAlgorithm(stream)
-///
-/// Spec: § 6.3.4 "Default sink close algorithm"
-///
-/// Spec Algorithm:
-/// 1. Let readable be stream.[[readable]].
-/// 2. Let controller be stream.[[controller]].
-/// 3. Let flushPromise be the result of performing controller.[[flushAlgorithm]].
-/// 4. Perform ! TransformStreamDefaultControllerClearAlgorithms(controller).
-/// 5. Return the result of reacting to flushPromise:
-///    - If flushPromise was fulfilled:
-///      1. If readable.[[state]] is "errored", throw readable.[[storedError]].
-///      2. Perform ! ReadableStreamDefaultControllerClose(readable.[[controller]]).
-///    - If flushPromise was rejected with reason r:
-///      1. Perform ! TransformStreamError(stream, r).
-///      2. Throw readable.[[storedError]].
-pub fn defaultSinkCloseAlgorithm(instance: *runtime.Instance) !*AsyncPromise(void) {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const allocator = internal.allocator;
-    const event_loop = internal.event_loop;
-
-    // Spec step 1: Let readable be stream.[[readable]]
-    const readable = internal.readableStream orelse return error.InvalidState;
-
-    // Spec step 2: Let controller be stream.[[controller]]
-    const controller = internal.controller orelse return error.InvalidState;
-
-    const ControllerImpl = @import("TransformStreamDefaultController.zig");
-    const controller_state = controller.getState(interfaces.TransformStreamDefaultController.State);
-    const controller_internal = controller_state.own._internal orelse return error.InvalidState;
-
-    // Spec step 3: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
-    // Check if we have V8 context and a V8 flush function (runtime mode)
-    if (internal.isolate) |isolate| {
-        if (internal.v8_context) |v8_ctx| {
-            if (controller_internal.flush_algorithm_v8) |flush_global| {
-                // Get Local from Global handle for this invocation
-                const flush_value = flush_global.get(isolate) orelse {
-                    // Global handle is invalid - use default flush
-                    ControllerImpl.clearAlgorithms(controller);
-                    const promise = try AsyncPromise(void).init(allocator, event_loop);
-                    promise.fulfill({});
-                    return promise;
-                };
-
-                // Verify it's a function
-                if (!v8_engine.ffi.v8_Value_IsFunction(flush_value)) {
-                    ControllerImpl.clearAlgorithms(controller);
-                    const promise = try AsyncPromise(void).init(allocator, event_loop);
-                    promise.fulfill({});
-                    return promise;
-                }
-                const flush_function: *v8_engine.ffi.Function = @ptrCast(flush_value);
-                const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(v8_ctx));
-
-                // Get controller as V8 object to pass to flush(controller)
-                // For now, pass undefined since flush() may not need controller
-                const controller_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse return error.InvalidState;
-
-                // Invoke flush_algorithm(controller) → Promise<void>
-                var flush_promise = v8_engine.streams_callbacks.invokeFlushAlgorithm(
-                    isolate,
-                    v8_context,
-                    flush_function,
-                    @ptrCast(controller_v8),
-                ) catch {
-                    // On error, clear algorithms and return rejected promise
-                    ControllerImpl.clearAlgorithms(controller);
-                    const promise = try AsyncPromise(void).init(allocator, event_loop);
-                    const exception = try webidl.errors.Exception.typeError(allocator, "Flush algorithm invocation failed");
-                    promise.reject(exception);
-                    return promise;
-                };
-                defer flush_promise.deinit();
-
-                // Create AsyncPromise to track result
-                const result_promise = try AsyncPromise(void).init(allocator, event_loop);
-
-                // Create callback context
-                const flush_ctx = try allocator.create(FlushCallbackContext);
-                flush_ctx.* = .{
-                    .stream = instance,
-                    .controller = controller,
-                    .readable = readable,
-                    .result_promise = result_promise,
-                    .allocator = allocator,
-                };
-
-                // Create V8 callbacks for Promise handlers
-                const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
-                    allocator,
-                    isolate,
-                    v8_context,
-                    onFlushFulfilled,
-                    flush_ctx,
-                ) catch {
-                    allocator.destroy(flush_ctx);
-                    ControllerImpl.clearAlgorithms(controller);
-                    result_promise.fulfill({});
-                    return result_promise;
-                };
-                defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
-
-                const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
-                    allocator,
-                    isolate,
-                    v8_context,
-                    onFlushRejected,
-                    flush_ctx,
-                ) catch {
-                    allocator.destroy(flush_ctx);
-                    ControllerImpl.clearAlgorithms(controller);
-                    result_promise.fulfill({});
-                    return result_promise;
-                };
-                defer v8_engine.ffi.v8_Function_Dispose(onRejected);
-
-                // Chain Promise handlers
-                _ = flush_promise.then(onFulfilled, onRejected) catch {
-                    allocator.destroy(flush_ctx);
-                    ControllerImpl.clearAlgorithms(controller);
-                    result_promise.fulfill({});
-                    return result_promise;
-                };
-
-                // Note: Don't clear algorithms here - let the callback do it after promise settles
-                return result_promise;
-            }
-        }
-    }
-
-    // Non-V8 mode: Use synchronous flush algorithm (testing/fallback mode)
-    var flush_result = Promise(void).fulfilled({});
-    if (controller_state.own._internal) |ctrl_internal| {
-        flush_result = ctrl_internal.flushAlgorithm.call();
-    }
-
-    // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
-    ControllerImpl.clearAlgorithms(controller);
-
-    // Create AsyncPromise for the result
-    const result_promise = try AsyncPromise(void).init(allocator, event_loop);
-
-    // Spec step 5: Return the result of reacting to flushPromise
-    if (flush_result.isRejected()) {
-        // Spec step 5 rejection: TransformStreamError(stream, r) and throw
-        const error_value = JSValue{ .string = "Flush algorithm failed" };
-        errorStream(instance, error_value);
-        const exception = try webidl.errors.Exception.typeError(allocator, "Flush failed");
-        result_promise.reject(exception);
-        return result_promise;
-    }
-
-    // Spec step 5 fulfillment: Check readable state and close
-    const ReadableStreamImpl = @import("ReadableStream.zig");
-    const readable_state = readable.getState(interfaces.ReadableStream.State);
-
-    if (readable_state.own._internal) |readable_internal| {
-        // Spec step 5.1: If readable.[[state]] is "errored", throw readable.[[storedError]]
-        if (readable_internal.state == .errored) {
-            const exception = try webidl.errors.Exception.typeError(allocator, "Readable stream is errored");
-            result_promise.reject(exception);
-            return result_promise;
-        }
-
-        // Spec step 5.2: Perform ! ReadableStreamDefaultControllerClose(readable.[[controller]])
-        ReadableStreamImpl.closeInternal(readable);
-    }
-
-    result_promise.fulfill({});
-    return result_promise;
-}
-
-// ============================================================================
-// Default Source Algorithms (Readable Side)
-// ============================================================================
-
-/// TransformStreamDefaultSourcePullAlgorithm(stream)
-///
-/// Spec: § 6.3.5 "Default source pull algorithm"
-pub fn defaultSourcePullAlgorithm(instance: *runtime.Instance) Promise(void) {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Invalid stream state") catch unreachable);
-
-    // Spec step 1: Assert: stream.[[backpressure]] is true
-    std.debug.assert(internal.backpressure);
-
-    // Spec step 2: Assert: stream.[[backpressureChangePromise]] is not undefined
-    // Spec step 3: Perform ! TransformStreamSetBackpressure(stream, false)
-    setBackpressure(instance, false);
-
-    // Spec step 4: Return stream.[[backpressureChangePromise]]
-    if (internal.backpressureChangePromise) |promise| {
-        return promise;
-    }
-
-    return Promise(void).fulfilled({});
-}
-
-/// TransformStreamDefaultSourceCancelAlgorithm(stream, reason)
-///
-/// Spec: § 6.3.5 "Default source cancel algorithm"
-pub fn defaultSourceCancelAlgorithm(instance: *runtime.Instance, reason: JSValue) Promise(void) {
-    // Spec step 1: Perform ! TransformStreamError(stream, reason)
-    errorStream(instance, reason);
-
-    // Spec step 2: Return a promise resolved with undefined
-    return Promise(void).fulfilled({});
+    const stream = st.streamOf(instance) orelse return error.TypeError;
+    return stream.writable orelse error.InvalidStateError;
 }
