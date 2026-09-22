@@ -104,6 +104,11 @@ const CacheEntry = struct {
     /// Used to detect if instance address was reused for the SAME type.
     /// Even if vtable matches, if state differs, it's a different instance.
     original_state: *anyopaque,
+
+    /// Slab generation of `instance` when this entry was made. A stale entry -
+    /// one whose instance was freed and its slot reissued before the weak
+    /// callback ran - differs here even when vtable and state match.
+    original_generation: u64,
 };
 
 /// Dispose an entry's V8 handle, first dropping any alias to it.
@@ -143,6 +148,19 @@ fn disposeEntryWrapper(entry: *CacheEntry) void {
 /// 4. Remove entry from cache HashMap
 /// 5. Dispose the V8 Global<Object>* handle
 /// 6. Free the CacheEntry
+/// True when the slab slot behind `entry.instance` no longer holds the
+/// instance this entry was created for: freed (generation reads dead) or
+/// reissued to a newcomer (a later generation). The vtable/state comparison
+/// alone cannot see a same-type newcomer whose state block was recycled at
+/// the same address - the case in which a stale callback's `Registry.remove`
+/// evicted a live document's entry (AGENTS.md, "A stale weak callback's
+/// `Registry.remove` evicts the LIVE entry at a recycled address").
+fn slotReissued(entry: *const CacheEntry) bool {
+    return entry.instance.vtable != entry.original_vtable or
+        entry.instance.state != entry.original_state or
+        runtime.SlabAllocator.generationOf(entry.instance) != entry.original_generation;
+}
+
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 
@@ -212,8 +230,8 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         // - If vtable differs, the address was reused for a different type
         // - If state differs (even with same vtable), it's a new instance of same type
         log.debug("[weakCallback] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
-        if (entry.instance.vtable != entry.original_vtable or entry.instance.state != entry.original_state) {
-            log.debug("[weakCallback] INSTANCE REUSED: instance={*} - vtable/state mismatch, skipping cleanup", .{entry.instance});
+        if (slotReissued(entry)) {
+            log.debug("[weakCallback] INSTANCE REUSED: instance={*} - vtable/state/generation mismatch, skipping cleanup", .{entry.instance});
             // Don't call onObjectFreed - the instance at this address is different
             disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
@@ -388,7 +406,7 @@ pub const WrapperCache = struct {
             // at this address is different from what we cached, we must NOT call onObjectFreed
             // as it would deinit the wrong object.
             const is_started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
-            const is_reused = entry.instance.vtable != entry.original_vtable or entry.instance.state != entry.original_state;
+            const is_reused = slotReissued(entry);
             if (entry.instance_already_cleaned) {
                 skipped_cleaned += 1;
                 if (is_iframe) {
@@ -531,6 +549,7 @@ pub const WrapperCache = struct {
             .cache = self,
             .original_vtable = instance.vtable,
             .original_state = instance.state,
+            .original_generation = runtime.SlabAllocator.generationOf(instance),
         };
 
         // Store in HashMap.

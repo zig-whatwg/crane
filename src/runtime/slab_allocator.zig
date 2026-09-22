@@ -17,10 +17,19 @@ const VTable = @import("instance.zig").VTable;
 
 /// Slab allocator for fixed-size Instance structs
 pub const SlabAllocator = struct {
-    /// Slot data - raw bytes that can hold either Instance or free list pointer
-    /// Slot is exactly 24 bytes, same as Instance
-    const Slot = struct {
-        data: [24]u8 align(@alignOf(Instance)),
+    /// Slot data - raw bytes that can hold either Instance or free list pointer,
+    /// followed by the slot's generation. `extern` pins `data` at offset 0, which
+    /// is what `asInstance` and `free` rely on.
+    const Slot = extern struct {
+        data: [24]u8,
+        /// Identity of whatever occupies this slot. Stamped from a monotonic
+        /// counter on every alloc and set to `dead_generation` on free, so a
+        /// holder that recorded the value when it took the Instance can tell
+        /// "still mine" from "freed" and from "reissued to someone else". The
+        /// address alone cannot: the slab recycles it, and a same-type
+        /// newcomer whose state block was recycled too is indistinguishable
+        /// by vtable and state.
+        generation: u64,
 
         /// Get this slot as an Instance pointer
         fn asInstance(self: *Slot) *Instance {
@@ -49,6 +58,8 @@ pub const SlabAllocator = struct {
 
         /// Initialize a new slab with all slots in free list
         fn init(self: *Slab) void {
+            // A slot nobody has issued yet reads dead
+            for (&self.slots) |*slot| slot.generation = dead_generation;
             // Link all slots together in free list
             var i: usize = 0;
             while (i < SLOTS_PER_SLAB - 1) : (i += 1) {
@@ -76,6 +87,11 @@ pub const SlabAllocator = struct {
     total_slabs: usize,
     total_allocated: usize,
     total_freed: usize,
+    /// Next generation to stamp; never reused within a process
+    next_generation: u64,
+
+    /// What `generationOf` reads for a slot that is free (or never issued)
+    pub const dead_generation: u64 = 0;
 
     /// Global instance
     var global: ?SlabAllocator = null;
@@ -89,6 +105,7 @@ pub const SlabAllocator = struct {
             .total_slabs = 0,
             .total_allocated = 0,
             .total_freed = 0,
+            .next_generation = dead_generation + 1,
         };
     }
 
@@ -134,16 +151,7 @@ pub const SlabAllocator = struct {
             // Remove from free list
             self.free_list = slot.getNextFree();
 
-            // Get instance pointer and initialize it
-            const inst = slot.asInstance();
-            inst.* = Instance{
-                .vtable = vtable,
-                .state = undefined, // Caller will set this
-                .ctx = undefined, // Caller will set this
-            };
-
-            self.total_allocated += 1;
-            return inst;
+            return self.issue(slot, vtable);
         }
 
         // No free slots - allocate a new slab
@@ -164,21 +172,40 @@ pub const SlabAllocator = struct {
         // Add remaining slots to free list
         self.free_list = slot.getNextFree();
 
-        // Get instance pointer and initialize it
+        return self.issue(slot, vtable);
+    }
+
+    /// Hand `slot` out as a fresh Instance under a generation no earlier
+    /// occupant of that address ever carried.
+    fn issue(self: *SlabAllocator, slot: *Slot, vtable: *const VTable) *Instance {
+        slot.generation = self.next_generation;
+        self.next_generation += 1;
+
         const inst = slot.asInstance();
         inst.* = Instance{
             .vtable = vtable,
-            .state = undefined,
-            .ctx = undefined,
+            .state = undefined, // Caller will set this
+            .ctx = undefined, // Caller will set this
         };
 
         self.total_allocated += 1;
         return inst;
     }
 
+    /// The generation stamped on the slot holding `inst`, or `dead_generation`
+    /// once it has been freed. Valid only for Instances the slab issued, which
+    /// is every one `Instance.init` creates. A holder compares this against the
+    /// value it read at acquisition to learn whether the address still means
+    /// its instance.
+    pub fn generationOf(inst: *const Instance) u64 {
+        const slot: *const Slot = @ptrCast(inst);
+        return slot.generation;
+    }
+
     /// Free an Instance (return slot to free list)
     pub fn free(self: *SlabAllocator, inst: *Instance) void {
         const slot: *Slot = @ptrCast(inst);
+        slot.generation = dead_generation;
 
         // Add to free list
         slot.setNextFree(self.free_list);
@@ -210,23 +237,23 @@ pub const SlabAllocator = struct {
 
 // Compile-time verification
 comptime {
-    // Verify Slot is same size as Instance (24 bytes)
-    const slot_size = @sizeOf(SlabAllocator.Slot);
-    const instance_size = @sizeOf(Instance);
-    if (slot_size != instance_size) {
-        @compileError(std.fmt.comptimePrint(
-            "Slot size ({d}) must equal Instance size ({d})",
-            .{ slot_size, instance_size },
-        ));
+    // The Instance occupies the slot's first 24 bytes exactly - `asInstance`,
+    // `free` and `generationOf` all cast between the two - and the generation
+    // sits after it. `extern` layout is what pins `data` at offset 0.
+    const Slot = SlabAllocator.Slot;
+    if (@offsetOf(Slot, "data") != 0) @compileError("Slot.data must be at offset 0");
+    if (@sizeOf(Instance) != 24) {
+        @compileError(std.fmt.comptimePrint("Instance is {d} bytes; Slot.data holds 24", .{@sizeOf(Instance)}));
+    }
+    if (@alignOf(Slot) < @alignOf(Instance)) @compileError("Slot must be at least Instance-aligned");
+    if (@sizeOf(Slot) != 32) {
+        @compileError(std.fmt.comptimePrint("Slot size ({d}) must be 32: 24 bytes of Instance plus the generation", .{@sizeOf(Slot)}));
     }
 
-    // Verify Slab size is reasonable (6KB for 24-byte instances)
+    // Verify Slab size is reasonable (8KB for 32-byte slots)
     const slab_size = @sizeOf(SlabAllocator.Slab);
-    if (slab_size > 6144 + 64) { // Allow some overhead
-        @compileError(std.fmt.comptimePrint(
-            "Slab size too large: {d} bytes (expected ~6KB)",
-            .{slab_size},
-        ));
+    if (slab_size > 8192 + 64) { // Allow some overhead
+        @compileError(std.fmt.comptimePrint("Slab size ({d}) is unexpectedly large", .{slab_size}));
     }
 }
 
