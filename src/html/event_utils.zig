@@ -112,7 +112,28 @@ pub fn fireEvent(
     bubbles: bool,
     cancelable: bool,
 ) !bool {
-    // If no context, create a null context for testing
+    // A context synthesised on the STACK, and handed to the event as its own.
+    //
+    // `Event.call_constructor` stores `actual_ctx` in `instance.ctx`, so the
+    // event ends up holding a pointer into this frame. `ContextEntry` is
+    // heap-allocated precisely because `instance.ctx` points into it (see the
+    // comment on `ManagerState.contexts`), and cfa5c0b52 had to stop freeing
+    // those entries under live Instances for exactly this reason. A stale
+    // `instance.ctx` reads back as 0xAAAA_AAAA_AAAA_AAAA - non-null, so `orelse`
+    // passes it through, and 2 mod 4, so the next `@alignCast` panics.
+    //
+    // It is safe here for ONE reason, which is not the defer ordering:
+    // `dispatchEvent` below invokes no listeners. It sets the dispatch flags,
+    // reads the canceled flag, and returns. The event is never handed to script,
+    // never wrapped by V8, and never entered into a wrapper cache, so nothing
+    // that outlives this frame can be holding it. The defers are ordered
+    // correctly on top of that - `Event.deinit` is registered second, so it runs
+    // before `ctx_data.deinit` - but ordering alone would not save a wrapper
+    // that escaped.
+    //
+    // IF `dispatchEvent` EVER INVOKES A LISTENER, THIS HAS TO GO. A V8 wrapper
+    // outliving the call leaves `instance.ctx` pointing at a dead stack slot.
+    // Pinned by tests/html/event_utils_null_context_test.zig.
     var ctx_data: runtime.ContextData = undefined;
     const actual_ctx = if (ctx) |c| c else blk: {
         ctx_data = try @import("runtime").createNullContext(allocator);
@@ -154,7 +175,9 @@ pub fn fireErrorEvent(
     target: *runtime.Instance,
     error_info: ErrorInfo,
 ) !bool {
-    // If no context, create a null context for testing
+    // The same stack-allocated context as `fireEvent` - see the note there for
+    // why the ErrorEvent may hold a pointer into this frame, and what would stop
+    // that being true.
     var ctx_data: runtime.ContextData = undefined;
     const actual_ctx = if (ctx) |c| c else blk: {
         ctx_data = try @import("runtime").createNullContext(allocator);
@@ -231,6 +254,13 @@ fn dispatchEvent(
     // Invoke event listeners on target
     // This requires integration with EventTarget's listener storage
     // For now, we'll just check if the event was cancelled
+    //
+    // THIS STUB IS LOAD-BEARING for the stack-allocated context in `fireEvent`
+    // and `fireErrorEvent`. Because no listener runs, the event is never handed
+    // to script, never wrapped by V8 and never cached - so `instance.ctx`,
+    // which points into the caller's frame when `ctx` was null, cannot be read
+    // after that frame ends. Wiring real dispatch in here means giving those
+    // two functions a context that outlives the call.
 
     // Unset dispatch flag
     impls.Event.setDispatchFlag(event, false);
