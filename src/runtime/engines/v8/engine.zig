@@ -1282,6 +1282,11 @@ pub const DynamicImportResolver = struct {
         ffi.v8_DynamicImport_Resolve(self.context, self.resolver, module_namespace);
     }
 
+    /// Reject with a value (a Global<Value>* the caller keeps)
+    pub fn rejectWithValue(self: DynamicImportResolver, value: ?*ffi.Value) void {
+        ffi.v8_DynamicImport_RejectWithValue(self.context, self.resolver, value);
+    }
+
     /// Reject with an error message
     pub fn reject(self: DynamicImportResolver, error_message: []const u8) void {
         ffi.v8_DynamicImport_Reject(
@@ -1296,6 +1301,23 @@ pub const DynamicImportResolver = struct {
 /// Global dynamic import handler (set per isolate)
 var g_dynamic_import_handler: ?DynamicImportHandler = null;
 
+/// The embedder's own import() algorithm - HTML's, which loads through the
+/// document's module map - consulted BEFORE the per-context handler.
+///
+/// It returns false to decline (a context it does not serve, e.g. a worker's
+/// or a ShadowRealm's), and the per-context handler then runs as before. When
+/// it returns true it has taken over `resolver` and will settle the promise.
+/// `type_attribute` is the import's "type" attribute, valid for the call.
+pub const EmbedderDynamicImport = *const fn (
+    context: *anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    type_attribute: ?[]const u8,
+    resolver: DynamicImportResolver,
+) bool;
+
+pub var embedder_dynamic_import: ?EmbedderDynamicImport = null;
+
 /// FFI callback wrapper that converts C types to Zig types
 fn dynamicImportCallbackWrapper(
     user_data: ?*anyopaque,
@@ -1305,8 +1327,18 @@ fn dynamicImportCallbackWrapper(
     specifier: [*]const u8,
     specifier_len: c_int,
     promise_resolver: *anyopaque,
+    type_attribute: ?[*:0]const u8,
 ) callconv(.c) void {
     _ = user_data;
+
+    if (embedder_dynamic_import) |embedder| {
+        if (context) |ctx| {
+            const referrer_slice = if (referrer_specifier) |ref| ref[0..@intCast(referrer_len)] else "";
+            const resolver = DynamicImportResolver{ .context = ctx, .resolver = promise_resolver };
+            const type_slice: ?[]const u8 = if (type_attribute) |t| std.mem.span(t) else null;
+            if (embedder(ctx, referrer_slice, specifier[0..@intCast(specifier_len)], type_slice, resolver)) return;
+        }
+    }
 
     const handler = g_dynamic_import_handler orelse {
         // No handler registered, reject with error

@@ -1808,6 +1808,23 @@ Global<Value>* v8_Function_CallCatching(
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
 }
 
+/// Run `body(data)` with V8's automatic microtask execution suppressed.
+///
+/// The scope has to live on the C++ stack: SuppressMicrotaskExecutionScope
+/// records its own ADDRESS as the isolate's last API entry
+/// (ThreadLocalTop::IncrementCallDepth), which V8 compares against real stack
+/// positions - a heap-allocated one would corrupt that. So instead of
+/// handing the scope out, this holds it for the duration of a callback.
+///
+/// HTML reports a script's exception while the script's realm is still on the
+/// execution context stack, so microtasks queued by error handlers wait for
+/// the checkpoint in "clean up after running script" rather than running after
+/// each handler, as V8's kAuto policy would from a native-code caller.
+void v8_RunWithMicrotasksSuppressed(Isolate* isolate, void (*body)(void*), void* data) {
+    Isolate::SuppressMicrotaskExecutionScope scope(isolate);
+    body(data);
+}
+
 /// A second, independently owned Global for the value `global` holds. Both
 /// must be disposed. Returns nullptr for a null or empty handle.
 Global<Value>* v8_Global_Clone(Global<Value>* global) {
@@ -4593,6 +4610,8 @@ struct DynamicImportCallbackData {
     ///   specifier: The specifier passed to import()
     ///   specifier_len: Length of specifier
     ///   promise_resolver: V8 PromiseResolver* to resolve/reject with result
+    ///   type_attribute: the import's "type" attribute, or null (valid for the
+    ///     duration of the call only)
     /// Returns: void (result communicated via promise_resolver)
     void (*callback)(
         void* user_data,
@@ -4601,7 +4620,8 @@ struct DynamicImportCallbackData {
         int referrer_module_specifier_len,
         const char* specifier,
         int specifier_len,
-        void* promise_resolver
+        void* promise_resolver,
+        const char* type_attribute
     );
 };
 
@@ -4618,7 +4638,6 @@ static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
     Local<FixedArray> import_assertions
 ) {
     (void)host_defined_options;
-    (void)import_assertions;
 
     Isolate* isolate = context->GetIsolate();
     EscapableHandleScope handle_scope(isolate);
@@ -4655,7 +4674,11 @@ static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
     // Create Global handles for context and resolver to pass to Zig
     Global<Context>* context_global = new Global<Context>(isolate, context);
     Global<Promise::Resolver>* resolver_global = new Global<Promise::Resolver>(isolate, resolver);
-    
+
+    // The import's "type" attribute - a dynamic import's attributes carry no
+    // source positions, so (key, value) pairs.
+    char* type_attribute = importTypeAttribute(isolate, context, import_assertions, 2, nullptr);
+
     // Call the Zig callback - it will resolve/reject the promise
     g_dynamic_import_callback->callback(
         g_dynamic_import_callback->user_data,
@@ -4664,8 +4687,10 @@ static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
         referrer_len,
         specifier_cstr,
         specifier_len,
-        resolver_global
+        resolver_global,
+        type_attribute
     );
+    delete[] type_attribute;
     
     // Clean up referrer string (if allocated)
     if (referrer_utf8) {
@@ -4688,7 +4713,8 @@ void v8_Isolate_SetHostImportModuleDynamicallyCallback(
         int referrer_module_specifier_len,
         const char* specifier,
         int specifier_len,
-        void* promise_resolver
+        void* promise_resolver,
+        const char* type_attribute
     )
 ) {
     // Store callback data
@@ -4728,6 +4754,32 @@ void v8_DynamicImport_Resolve(
     resolver_global->Reset();
     delete resolver_global;
     // Don't delete namespace_global - caller owns it
+}
+
+/// Reject a dynamic import promise with a given VALUE (a Global<Value>* the
+/// caller keeps). An import() whose module fails to parse, link or evaluate
+/// rejects with that very exception, not a new Error describing it.
+/// Consumes context_ptr and resolver_ptr, as Resolve and Reject do.
+void v8_DynamicImport_RejectWithValue(
+    void* context_ptr,
+    void* resolver_ptr,
+    Global<Value>* value
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
+    Global<Promise::Resolver>* resolver_global = static_cast<Global<Promise::Resolver>*>(resolver_ptr);
+
+    Local<Context> context = context_global->Get(isolate);
+    Local<Promise::Resolver> resolver = resolver_global->Get(isolate);
+    Local<Value> reason = value ? value->Get(isolate) : Undefined(isolate).As<Value>();
+
+    resolver->Reject(context, reason).Check();
+
+    delete context_global;
+    resolver_global->Reset();
+    delete resolver_global;
 }
 
 /// Reject a dynamic import promise with an error
@@ -7225,6 +7277,30 @@ void v8_Isolate_SetPromiseRejectCallback(
     
     // Register with V8
     isolate->SetPromiseRejectCallback(V8PromiseRejectCallback);
+}
+
+/// promise.[[PromiseIsHandled]] (HTML "notify about rejected promises" step
+/// 4.1.1 and HostPromiseRejectionTracker). False for a non-promise.
+bool v8_Promise_HasHandler(Global<Value>* promise) {
+    if (!promise || promise->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> value = promise->Get(isolate);
+    if (!value->IsPromise()) return false;
+    return value.As<Promise>()->HasHandler();
+}
+
+/// Call `callback(isolate, data)` after every microtask checkpoint on the
+/// isolate's default queue - automatic (kAuto) and explicit alike, including
+/// checkpoints that found the queue empty (MicrotaskQueue::OnCompleted).
+/// HTML performs "notify about rejected promises" at the end of each
+/// microtask checkpoint; this is where that hooks in.
+void v8_Isolate_AddMicrotasksCompletedCallback(Isolate* isolate, void (*callback)(Isolate*, void*), void* data) {
+    isolate->AddMicrotasksCompletedCallback(callback, data);
+}
+
+void v8_Isolate_RemoveMicrotasksCompletedCallback(Isolate* isolate, void (*callback)(Isolate*, void*), void* data) {
+    isolate->RemoveMicrotasksCompletedCallback(callback, data);
 }
 
 /// Clear the promise rejection callback for an isolate
