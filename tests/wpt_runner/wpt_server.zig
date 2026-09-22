@@ -354,12 +354,20 @@ pub const WptServer = struct {
 };
 
 /// Write a lockfile naming `pid` into a scratch WPT root.
-fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t) !void {
+fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t, port: u16) !void {
     var file = try dir.createFile(io, LOCKFILE_NAME, .{});
     defer file.close(io);
     var buf: [64]u8 = undefined;
-    try file.writeStreamingAll(io, try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
+    try file.writeStreamingAll(io, try std.fmt.bufPrint(&buf, "{d}:{d}\n", .{ pid, port }));
 }
+
+/// Adoption is decided by whether the PORT answers, not by the pid, so a test
+/// has to own its port: listen on one nothing else uses for the adopt case,
+/// and name one nothing listens on for the stale case. Writing :8000 as these
+/// tests once did made their outcome depend on whether a real `wpt serve`
+/// happened to be running on the machine.
+const test_live_port: u16 = 38123;
+const test_dead_port: u16 = 38124;
 
 test "a live lockfile is adopted, not owned" {
     // Under --supervise the parent starts the server and every child finds it
@@ -373,14 +381,19 @@ test "a live lockfile is adopted, not owned" {
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid());
+    // A real listener on the port, so the probe has something to answer it.
+    const live_addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", test_live_port);
+    var listener = try live_addr.listen(std.testing.io, .{ .mode = .stream });
+    defer listener.deinit(std.testing.io);
+
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), test_live_port);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
 
     try std.testing.expect(try server.checkExistingServer());
     try std.testing.expectEqual(std.c.getpid(), server.pid.?);
-    try std.testing.expectEqual(@as(u16, 8000), server.port);
+    try std.testing.expectEqual(test_live_port, server.port);
     try std.testing.expect(!server.we_spawned);
 
     // Still there: adopting must not consume the lockfile the owner wrote.
@@ -400,7 +413,7 @@ test "a lockfile naming a dead process is cleared" {
     defer allocator.free(root);
 
     // Above any pid_max, so kill() cannot find it and cannot ever be reused.
-    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646);
+    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646, test_dead_port);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
