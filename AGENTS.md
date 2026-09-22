@@ -1339,3 +1339,79 @@ that starts performing an operation will fail tests that used to pass by
 skipping it, and the honest report says which of the two is happening. Diff per
 FILE and per SUBTEST NAME; a totals row can hold two opposite movements that
 cancel.
+
+---
+
+### Architecture: A codegen-stub `init` silently produces a stateless node
+
+**Date**: 2026-09-22
+**Lesson**: `CDATASection.zig` and `ProcessingInstruction.zig` still had the
+generated stub `init` - `runtime.Instance.init(...)` plus `// TODO: Initialize
+your instance state here if needed` - so they never chained through
+`CharacterDataImpl.init` -> `NodeImpl.init` -> `EventTargetImpl.init`.
+
+**Why**: An impl's `init` IS the inheritance chain. Skipping it produces an
+instance with the right vtable and the right `State` type - so it wraps, it
+passes every pointer guard, and `instanceof` is correct - but with none of the
+state its parents own. Its data, node type, parent, owner document and listener
+list are all simply absent, and every accessor returns `InvalidStateError`.
+
+**What Happened**: `document.createCDATASection()` and
+`createProcessingInstruction()` had never returned a usable node. That is not
+niche, because `dom/ranges` and much of `dom/nodes` build their fixtures in
+`dom/common.js`, which calls both inside `setup()` - and testharness rethrows
+out of `setup()`, so ONE DOMException there turns the whole file into a harness
+ERROR with zero subtests. 20 of 30 `dom/ranges` files reported ERROR for this,
+and the runner shows only `Error: [object DOMException]`, naming neither the
+call nor the file.
+
+The same shape hid elsewhere: `Event.init` allocates the instance but leaves
+`_internal` null, and only `Event.call_constructor` creates it. So
+`Event.init` + `initEvent` took `initEvent`'s `getInternal(...) orelse return`
+early exit, the initialized flag was never set, and `dispatchEvent` rejected the
+event per DOM 2.8 step 1 - which is why DOMContentLoaded never fired on any
+document.
+
+**Fix**: Chain `init` to the parent impl. To find the rest:
+
+```bash
+grep -rn "TODO: Initialize your instance state" src/webidl/impls/
+grep -rln "runtime.Instance.init" src/webidl/impls/   # should be rare
+```
+
+Then check the constructor, not just `init`: if `X.call_constructor` creates
+`_internal` and `X.init` does not, every engine-side caller of `init` gets a
+stateless object.
+
+**Takeaway**: **A stub `init` fails as `InvalidStateError` from somewhere else
+entirely, long after construction. When a whole directory ERRORs with zero
+subtests, suspect one throwing call in a shared `setup()` before suspecting the
+tests.**
+
+---
+
+### Architecture: Interface getters clone and hand you the memory
+
+**Date**: 2026-09-22
+**Lesson**: `Element.get_localName`, `get_namespaceURI`, `get_prefix`,
+`Attr.get_name`/`get_value` and friends all end in
+`try x.clone(instance.ctx.allocator)` with the comment "transfer ownership to
+caller (interface layer will free)".
+
+**Why**: That comment is written for the SCRIPT caller. When JS reads the
+property, the binding layer frees the returned `DOMString`. A Zig caller has no
+such layer, so it owns the allocation.
+
+**What Happened**: Writing `cloneNode` against the interfaces - the direction
+the impls boundary asks for - leaked the element's local name, namespace and
+prefix plus three strings per attribute, on every clone, in a path that runs for
+every `cloneNode`, `importNode` and `Range.cloneContents`. Invisible to
+`std.testing.allocator`, because it is the context allocator.
+
+**Fix**: `defer x.deinit(node.ctx.allocator)` on every getter result. Free with
+**`ctx.allocator`**, which is what the getter cloned into -
+`node_internal.allocator` is not necessarily the same one. `DOMString.deinit`
+is a no-op for `.empty` and `.interned`, so it is safe unconditionally.
+
+**Takeaway**: **"The interface layer will free it" means the JS binding will.
+Calling a `get_*` from Zig makes you the owner.**
