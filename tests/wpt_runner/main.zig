@@ -63,6 +63,7 @@ const baseline = @import("baseline.zig");
 const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
+const stall_watchdog = @import("stall_watchdog.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
 const host = @import("host");
@@ -1496,7 +1497,56 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // followed by wait(io). Behaviour is unchanged - still a blocking wait for
         // this one shard - and Term's union tags are lowercase now.
         var child = try std.process.spawn(shard.io, .{ .argv = argv.items });
+
+        // The per-file ceiling only bounds the wait for `__wpt_complete`. The
+        // navigation, the parse and every script the parser runs are unbounded,
+        // and `fetch()` is synchronous down to `curl_easy_perform`, so a page
+        // that polls in a loop never returns to the ceiling at all. This wait
+        // is the only place left that can end it. See stall_watchdog.zig.
+        var watchdog: stall_watchdog.Watchdog = .{
+            .journal_path = shard.journal_path,
+            // A spawned child always has an id; a null one means there is
+            // nothing to watch, and a zero pid would name our own group.
+            .child_id = child.id orelse 0,
+            .stall_limit_ms = if (child.id == null) 0 else options.stall_limit_ms,
+        };
+        try watchdog.start();
+
         const term = try child.wait(shard.io);
+        watchdog.stop();
+
+        if (watchdog.killedChild()) {
+            // A hang is not a crash: nothing faulted, the file simply never
+            // finished. Recording it as one would put it in the crash column,
+            // which gates, and would say the process was unsound when it was
+            // the test that would not end.
+            var after = try journal.read(allocator, shard.journal_path);
+            const hung = after.nextIndex();
+            after.deinit();
+
+            if (hung >= total) break;
+
+            const path = shard.paths[hung];
+            print("\n{s}!!! hung on [{d}] {s} (no progress for {d}ms; killed)\n\n", .{
+                shard.label orelse "", hung, path, options.stall_limit_ms,
+            });
+
+            var j = try journal.Journal.append(allocator, shard.journal_path);
+            defer j.deinit();
+            const message = try std.fmt.allocPrint(
+                allocator,
+                "supervisor killed a child that made no progress for {d}ms",
+                .{options.stall_limit_ms},
+            );
+            defer allocator.free(message);
+            try j.record(.{
+                .index = hung,
+                .path = path,
+                .status = .timeout,
+                .message = message,
+            });
+            continue;
+        }
 
         const clean = switch (term) {
             .exited => |code| code == 0,

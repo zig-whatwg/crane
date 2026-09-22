@@ -267,7 +267,7 @@ pub const WptBrowser = struct {
         workers.setDocumentOrigin(origin);
 
         // Load testharness.js
-        try self.loadTestHarness(ctx);
+        try self.loadTestHarness(ctx, timeout.harnessMultiplier());
 
         // Execute the test script
         _ = ctx.evaluateScript(test_content) catch |err| {
@@ -336,7 +336,7 @@ pub const WptBrowser = struct {
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute
-        try self.loadTestHarness(ctx);
+        try self.loadTestHarness(ctx, config.harnessMultiplierForMillis(timeout_ms));
 
         const nav_ms = lapMs(&phase);
 
@@ -468,7 +468,12 @@ pub const WptBrowser = struct {
     }
 
     /// Load testharness.js and testharnessreport.js into the context
-    fn loadTestHarness(self: *WptBrowser, ctx: *Context) !void {
+    ///
+    /// `harness_multiplier` is the `setup({timeout_multiplier: N})` this file's
+    /// budget needs. It cannot be left to testharness.js: that reads
+    /// `<meta name="timeout">` out of the document, and this runs before the
+    /// document exists. See `config.Timeout.harnessMultiplier`.
+    fn loadTestHarness(self: *WptBrowser, ctx: *Context, harness_multiplier: u32) !void {
         _ = ctx.v8_context; // Suppress unused warning
 
         // CRITICAL CHECK: Verify no state leaked from previous context
@@ -563,6 +568,36 @@ pub const WptBrowser = struct {
             // requirement, and a result is worth more than the speed-up.
             log.warn("loadTestHarness: could not disable harness output: {}", .{err});
         };
+
+        // Hand the harness the budget it could not read for itself.
+        //
+        // `WindowTestEnvironment.test_timeout()` walks the document's <meta>
+        // elements for `name=timeout`, and this runs before the document has
+        // been fetched - so that walk sees nothing and every file, including
+        // the ones that declare `content="long"`, gets the 10s default. The
+        // runner then honours the 60s it parsed from the same meta, the two
+        // clocks disagree, and the harness's always wins: it fires at 10s,
+        // calls complete(), and the file is recorded TIMEOUT with whatever had
+        // run by then. Verified on
+        // `back-forward-cache/eligibility/inflight-fetch-1.html`, a `long`
+        // file that ended at 9,942ms of a 60,000ms ceiling.
+        //
+        // Skipped at 1x: `setup()` moves the harness into its SETUP phase, and
+        // there is no reason to do that to the ~90% of files whose budget is
+        // already the harness default.
+        if (harness_multiplier > 1) {
+            var buf: [96]u8 = undefined;
+            const script = try std.fmt.bufPrint(
+                &buf,
+                "setup({{ timeout_multiplier: {d} }});",
+                .{harness_multiplier},
+            );
+            _ = ctx.evaluateScript(script) catch |err| {
+                // Same reasoning as the output flag: a file running on the
+                // short budget is worth more than no result at all.
+                log.warn("loadTestHarness: could not set the harness timeout: {}", .{err});
+            };
+        }
 
         // Verify testharness.js loaded correctly by checking for globals
         // This catches cases where testharness.js execution fails silently

@@ -40,7 +40,50 @@ pub const Timeout = enum {
             .long => 60_000,
         };
     }
+
+    /// What to pass as `setup({timeout_multiplier: N})` so testharness.js
+    /// arms its own timeout at this budget.
+    ///
+    /// testharness.js decides its harness timeout for itself, in
+    /// `WindowTestEnvironment.test_timeout()`, by walking
+    /// `document.getElementsByTagName("meta")` for `name=timeout`. In a
+    /// browser that runs when the document above the `<script>` already
+    /// exists. The runner installs testharness.js *before* the page is
+    /// fetched - `loadTestHarness` then `loadPageWithOptions` - so that walk
+    /// always runs over an empty document, never finds the meta, and always
+    /// returns `settings.harness_timeout.normal`.
+    ///
+    /// So a `<meta name="timeout" content="long">` file got a 60s ceiling from
+    /// the runner and a 10s one from the harness, and the harness always won:
+    /// it fired at 10s, called `complete()`, and the file was recorded TIMEOUT
+    /// with whatever it had - usually nothing. 68 of the 664 sources under
+    /// html/browsers declare `long`, and every one of them was cut to a sixth
+    /// of its budget.
+    ///
+    /// `timeout_multiplier` is testharness's own supported knob for a slow
+    /// host, and it multiplies exactly the value the meta lookup should have
+    /// produced. Injecting it is what puts the two clocks back in agreement.
+    pub fn harnessMultiplier(self: Timeout) u32 {
+        return switch (self) {
+            .normal => 1,
+            .long => 6,
+        };
+    }
 };
+
+/// `Timeout.harnessMultiplier` for a budget that has already been flattened to
+/// milliseconds.
+///
+/// The browser layer carries the per-file ceiling as a `u64` rather than the
+/// enum, and rounding is the safe direction: a multiplier below 1 would arm
+/// the harness *inside* the runner's ceiling and reintroduce the very
+/// disagreement this exists to remove.
+pub fn harnessMultiplierForMillis(millis: u64) u32 {
+    const base = Timeout.normal.toMillis();
+    const n = millis / base;
+    if (n < 1) return 1;
+    return @intCast(n);
+}
 
 /// Test file type determined by extension
 pub const FileType = enum {
@@ -148,10 +191,15 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "-h3.",
     "webtransport-h3",
 
-    // Browser-specific tests (1 failure)
-    // Tests in browsers/ require specific browser drivers (geckodriver, chromedriver)
-    // These test browser automation features, not web platform APIs.
-    "browsers/",
+    // WPT's own browser-driver test (1 failure)
+    // infrastructure/browsers/ exercises geckodriver/chromedriver launching,
+    // which is browser automation rather than a web platform API.
+    //
+    // Anchored at `infrastructure/`. These patterns are matched with `indexOf`,
+    // so the bare `browsers/` this used to be was a substring rule that also
+    // matched all 701 `html/browsers/` sources - the entire browsing-contexts
+    // corpus, silently, while `isInScope` looked right because `html` matched.
+    "infrastructure/browsers/",
 
     // Proxy Auto-Config (PAC) tests (1 failure)
     // PAC requires: PAC file fetching, JS evaluation per-request, proxy routing.
@@ -254,6 +302,84 @@ test "isExcluded" {
     try testing.expect(isExcluded("test-manual.html"));
     try testing.expect(!isExcluded("url/url-constructor.any.js"));
     try testing.expect(!isExcluded("dom/events/Event.html"));
+}
+
+test "the harness multiplier reproduces the budget the meta lookup would have" {
+    const testing = std.testing;
+
+    // testharness.js starts from `settings.harness_timeout.normal`, which is
+    // the same 10s this enum calls `normal`. The multiplier has to carry it to
+    // exactly the runner's own ceiling, or the two clocks disagree again in
+    // the other direction and the harness outlives the runner.
+    const harness_base = Timeout.normal.toMillis();
+
+    try testing.expectEqual(@as(u32, 1), Timeout.normal.harnessMultiplier());
+    try testing.expectEqual(
+        Timeout.normal.toMillis(),
+        harness_base * Timeout.normal.harnessMultiplier(),
+    );
+
+    try testing.expectEqual(@as(u32, 6), Timeout.long.harnessMultiplier());
+    try testing.expectEqual(
+        Timeout.long.toMillis(),
+        harness_base * Timeout.long.harnessMultiplier(),
+    );
+}
+
+test "the millisecond form agrees with the enum form" {
+    const testing = std.testing;
+
+    try testing.expectEqual(
+        Timeout.normal.harnessMultiplier(),
+        harnessMultiplierForMillis(Timeout.normal.toMillis()),
+    );
+    try testing.expectEqual(
+        Timeout.long.harnessMultiplier(),
+        harnessMultiplierForMillis(Timeout.long.toMillis()),
+    );
+
+    // Never below 1. A budget shorter than the harness's own 10s floor must
+    // still leave the harness at its floor, not arm it early - the runner's
+    // ceiling is what ends such a file, and a harness firing first would take
+    // the subtest results away with it.
+    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(0));
+    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(1));
+    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(9_999));
+}
+
+test "every timeout has a multiplier that lands on its own budget" {
+    const testing = std.testing;
+
+    // Pins the relationship rather than the two known cases: a third Timeout
+    // added later with a multiplier that does not divide out lands here
+    // instead of in a sweep six weeks from now.
+    const base = Timeout.normal.toMillis();
+    inline for (@typeInfo(Timeout).@"enum".fields) |field| {
+        const t: Timeout = @enumFromInt(field.value);
+        try testing.expectEqual(t.toMillis(), base * t.harnessMultiplier());
+    }
+}
+
+test "the browsers/ exclusion names infrastructure, not html/browsers" {
+    const testing = std.testing;
+
+    // `isExcluded` matches with `indexOf`, so every entry in
+    // `exclusion_patterns` is a substring rule over the whole path. The rule
+    // that meant to drop WPT's own `infrastructure/browsers/` driver test was
+    // written as the bare `browsers/`, and that substring also occurs in all
+    // 701 `html/browsers/` sources - browsing contexts, window.open, history,
+    // location, origin. The entire browsing-contexts corpus was out of scope
+    // and `wpt_runner html/browsers/...` reported "Found 0 test files", while
+    // `isInScope` still looked right because the `html` category matched.
+    try testing.expect(isInScope("html/browsers/windows/browsing-context-window.html"));
+    try testing.expect(isInScope("html/browsers/history/the-location-interface/location_hash.html"));
+    try testing.expect(isInScope("html/browsers/the-window-object/open-close/open-features-tokenization.html"));
+    try testing.expect(isInScope("html/browsers/browsing-the-web/navigating-across-documents/003.html"));
+    try testing.expect(isInScope("html/browsers/origin/cross-origin-objects/cross-origin-objects.html"));
+
+    // The one source the rule was written for stays excluded.
+    try testing.expect(isExcluded("infrastructure/browsers/browser-test.html"));
+    try testing.expect(!isInScope("infrastructure/browsers/browser-test.html"));
 }
 
 test "isInScope" {

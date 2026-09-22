@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const config = @import("config.zig");
+const stall_watchdog = @import("stall_watchdog.zig");
 
 /// Command-line options
 pub const Options = struct {
@@ -59,6 +60,13 @@ pub const Options = struct {
     /// comparing against it. One path flag rather than two so a run cannot
     /// compare against one file and write to another.
     update_baseline: bool = false,
+    /// How long a supervised child may add nothing to the journal before the
+    /// supervisor kills it, in milliseconds. 0 disables the watchdog.
+    ///
+    /// The per-file ceiling does not bound the navigation, the parse, or the
+    /// scripts the parser runs, and `fetch()` is synchronous, so a polling page
+    /// can hold the process indefinitely. See stall_watchdog.zig.
+    stall_limit_ms: u64 = stall_watchdog.default_stall_limit_ms,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -219,6 +227,10 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.baseline_path = arg["--baseline=".len..];
         } else if (std.mem.eql(u8, arg, "--update-baseline")) {
             options.update_baseline = true;
+        } else if (std.mem.startsWith(u8, arg, "--stall-limit-ms=")) {
+            const value = arg["--stall-limit-ms=".len..];
+            options.stall_limit_ms = std.fmt.parseInt(u64, value, 10) catch
+                stall_watchdog.default_stall_limit_ms;
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -534,4 +546,30 @@ test "shardRequest is zero for a serial run" {
     defer auto.deinit();
     auto.parallel = 0;
     try testing.expectEqual(@as(usize, 0), auto.shardRequest());
+}
+
+test "the stall watchdog is on by default and can be turned off" {
+    const testing = std.testing;
+
+    // On by default: a sweep that has to be asked for the backstop does not
+    // have one the first time it needs it.
+    var plain = try parseArgs(testing.allocator, &.{"wpt-runner"});
+    defer plain.deinit();
+    try testing.expectEqual(stall_watchdog.default_stall_limit_ms, plain.stall_limit_ms);
+
+    var tightened = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=30000" });
+    defer tightened.deinit();
+    try testing.expectEqual(@as(u64, 30_000), tightened.stall_limit_ms);
+
+    // Zero is a real value, not a parse failure: it means "never kill", which
+    // is what a debugging session attached to a hung child wants.
+    var off = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=0" });
+    defer off.deinit();
+    try testing.expectEqual(@as(u64, 0), off.stall_limit_ms);
+
+    // Garbage falls back to the default rather than to zero, so a typo cannot
+    // silently disable the backstop.
+    var typo = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=soon" });
+    defer typo.deinit();
+    try testing.expectEqual(stall_watchdog.default_stall_limit_ms, typo.stall_limit_ms);
 }

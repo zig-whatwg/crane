@@ -1852,3 +1852,177 @@ exit crash is the same hazard from the other side - the exit sweep reading
 act on whoever lives there now.** The order of failures is: bulk-freed slot ->
 reissued -> stale weak callback -> `remove` on the newcomer. Any fix has to
 break that chain at the callback, not at the allocator.
+||||||| 594336700
+
+---
+
+### Testing: An exclusion pattern is a substring rule over the whole path
+
+**Date**: 2026-09-22
+**Lesson**: `config.isExcluded` matches with `indexOf`, so a short pattern silently deletes whole directories from the corpus.
+
+**Why**: `exclusion_patterns` entries are tested with
+`std.mem.indexOf(u8, path, pattern) != null`. There is no anchoring, no path
+segmentation, and nothing that distinguishes "a directory named X" from "any
+path containing X".
+
+**What Happened**: The entry `"browsers/"` was written to drop WPT's own
+`infrastructure/browsers/` browser-driver test - exactly one source. That
+substring also occurs in all **701** `html/browsers/` sources, so the entire
+browsing-contexts corpus was out of scope: `wpt_runner html/browsers/windows/`
+answered `Found 0 test files ... Scope: 0 of 36594 testharness URLs (0.0%)`.
+Nothing in that area could be run except by naming each file on the command
+line, and `isInScope` looked correct the whole time because the `html`
+category matched.
+
+Note that `isInScope` has a careful whole-segment matcher, with tests, so the
+category side of the same decision cannot make this mistake. The exclusion
+side has no such guard.
+
+**Fix**: Anchor the pattern - `"infrastructure/browsers/"`. Tests pin both
+directions: the 701 sources are in scope, the 1 source is not.
+
+**Takeaway**: **Anchor every exclusion pattern at a directory that can only
+mean what you meant.** Before adding one, grep the manifest for it and count
+what it takes with it.
+
+---
+
+### Testing: The per-file ceiling does not bound the file
+
+**Date**: 2026-09-22
+**Lesson**: `waitForCompletion`'s timeout covers only the wait for `__wpt_complete`; the navigation, the parse and every script the parser runs are unbounded.
+
+**Why**: `runHTMLTest` is three phases - `loadTestHarness`,
+`loadPageWithOptions`, `waitForCompletion` - and only the third has a
+deadline. `fetch()` is synchronous down to `curl_easy_perform`, and
+`CURLOPT_TIMEOUT` is 0, so a script that polls in a loop never returns to the
+phase that could stop it:
+
+    loadPageWithOptions -> parseHTMLWithScripting -> runClassicScript
+      -> PerformCheckpoint -> AsyncFunctionAwaitResolveClosure
+        -> fetchCallback -> curl_easy_perform -> poll()
+
+**What Happened**: `common/dispatcher/dispatcher.js` - loaded by **251**
+`html/` sources - is `while(1) { try { await fetch(...) } catch {} }`.
+`history-traversal/pagereveal/order-in-prerender-activation.https.html` sat in
+that stack against a 10s ceiling and never came back, and every file queued
+behind it waited too. Another file has run **78 minutes** this way. A sampled
+stack named it in one command; reasoning about it from the journal did not,
+because a hung sweep and a slow sweep look identical there.
+
+**Fix**: `tests/wpt_runner/stall_watchdog.zig`. The supervisor cannot see
+inside the child, but the journal grows by one record per finished file, so a
+journal that has not grown is a child that has not finished one - a signal
+that needs no cooperation from whatever is stuck. SIGKILL past 150s (more than
+double the longest legal per-file budget) and record the file as TIMEOUT: a
+hang is not a crash, nothing faulted.
+
+**Takeaway**: **Check liveness by the journal's mtime, not by the process -
+and give any unbounded phase an external deadline, because an in-process one
+cannot fire while the process is inside a blocking C call.**
+
+---
+
+### Testing: testharness.js reads its own timeout out of a document that does not exist yet
+
+**Date**: 2026-09-22
+**Lesson**: `<meta name="timeout" content="long">` was invisible, so every `long` file ran on a sixth of its budget.
+
+**Why**: `WindowTestEnvironment.test_timeout()` walks
+`document.getElementsByTagName("meta")` for `name=timeout`. In a browser that
+runs as part of the document, so the meta above the `<script>` is there. The
+runner installs testharness.js *before* the page is fetched -
+`loadTestHarness(ctx)` then `loadPageWithOptions` - so the walk has always run
+over an empty document and always returned
+`settings.harness_timeout.normal` (10s).
+
+**What Happened**: Two clocks disagreed on every `long` file: 60s from the
+runner, which parses the same meta out of the source and has a test proving
+it, and 10s from the harness. The harness always won, because it fires first
+and calls `complete()`. The file was recorded TIMEOUT with whatever had run,
+usually nothing. Measured on
+`back-forward-cache/eligibility/inflight-fetch-1.html`: 9,925ms of a 60,000ms
+ceiling. 68 of the 664 sources under `html/browsers` declare `long`.
+
+The parser test passed the whole time. The bug was not in what the runner
+parsed but in what it never told the harness.
+
+**Fix**: inject `setup({timeout_multiplier: N})` after testharness.js loads -
+testharness's own knob for a slow host, applied to exactly the value the meta
+lookup should have produced. `config.Timeout.harnessMultiplier` keeps the two
+in step, with a test that walks the enum so a third budget cannot drift.
+
+**Takeaway**: **When a library derives a setting from state the host supplies
+out of order, the host has to hand it over explicitly. Two components each
+reading the same input is not the same as them agreeing.**
+
+---
+
+### Architecture: A synchronous navigation still owes its load event
+
+**Date**: 2026-09-22
+**Lesson**: `iframe.src = <http url>` loaded the document and fired nothing.
+
+**Why**: `IFrameIntegration.navigateToSrc` fetches, parses and commits before
+it returns - Crane has no async navigation. Both places that set an iframe's
+src fired `load` only for `data:` and `javascript:`, guarded by a comment
+reading "HTTP URLs are async and would need async load event firing". That was
+true of the spec and false of this engine: by the time `setSrc` returns, the
+HTTP document is already committed.
+
+**What Happened**: every page waiting on an iframe hung to the ceiling. The
+WPT helpers are all written as `iframe.addEventListener("load", ...)` around
+a src assignment - `waitForIframe`, `setupSentinelIframe`, `insertIframe` -
+so this was not a corner. On a 52-file slice of
+`navigating-across-documents/replace-before-load/` and
+`origin-keyed-agent-clusters/1-iframe/`: **45 TIMEOUT / 7 OK before, 15
+TIMEOUT / 37 OK after**.
+
+**Fix**: queue the event as a MICROTASK rather than firing it inline, and
+open a `JsScope` before dispatching. Three deferral shapes were tried; the
+measurement picked the winner, not the spec:
+
+1. **Synchronous** - wrong. The event arrives before any listener exists:
+   `setupSentinelIframe` sets `src`, appends, and only then awaits, and a
+   parser-created `<iframe src>` is appended during tree construction, before
+   the document's scripts have run at all.
+2. **A task**, which is what §4.8.5 actually says - measured WORSE. On the same
+   52-file slice, more files in `replace-before-load/location-setter-*` looped
+   under the task form than under the microtask form, because delivering later
+   let those tests re-navigate. Its supposed advantage - that
+   `waitForCompletion` pumps the loop in <=50ms slices against the per-file
+   deadline - does not exist either: `V8EventLoop.runOnceBlocking` drains with
+   `while (self.tasks.items.len > 0)`, so a task that queues a task never
+   returns to the deadline. HTML §8.1.7.3 runs *one* task per turn; this runs
+   the transitive closure. **Bounding that drain by the queue length at entry
+   would put every runaway task loop back under the per-file ceiling** - left
+   alone here only because that queue is shared with worker startup, whose
+   comment says it depends on the cascade completing in one call.
+3. **A microtask** - what shipped. It drains at the end of the current script,
+   by which point the listener is attached. One file
+   (`location-setter-during-pageshow.html`) still loops; the supervisor's
+   stall watchdog bounds it.
+
+The task attempt also produced a lesson of its own: a callback reached from
+the event loop rather than from V8 has **no HandleScope and no entered
+context**, so `Event.call_constructor` died in `HandleScope::CreateHandle` -
+a **SIGTRAP**, not an error return, so the whole file went CRASH rather than
+failing a subtest. 20 of 52 files crashed that way. `v8.JsScope.init` fixes
+it, and is kept in the microtask path too: it costs a nested scope and makes
+the callback correct wherever it is called from.
+
+Fire on a failed navigation too: §4.8.5 fires load for the error document, and
+not firing leaves the page hung.
+
+The deferral token comes from a process-wide counter, not a per-instance one.
+The slab recycles instance addresses, so a callback holding a
+`*runtime.Instance` can find a different element's state there; a
+zero-initialised per-instance counter would match that stale state and
+dispatch at an unrelated iframe.
+
+**Takeaway**: **When an engine does synchronously what the spec does
+asynchronously, the events still have to fire - and which deferral to use is a
+measurement, not a reading of the spec. Whatever you pick, a callback reached
+from the event loop rather than from V8 must open its own HandleScope before it
+touches a Local, or it SIGTRAPs the whole file instead of failing a subtest.**
