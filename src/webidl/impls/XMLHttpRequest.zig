@@ -995,6 +995,14 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
 /// checks the flag before touching anything and drops its own. Whichever runs
 /// second frees the token. Single-threaded - the event loop - so a plain
 /// counter is enough.
+///
+/// One bounded leak remains that cannot be closed from here: if the event loop
+/// is destroyed before it runs the task - a worker terminated with a request
+/// outstanding, which `xhr/close-worker-with-xhr-in-progress.html` does
+/// deliberately - the task's reference is never released, so the token (four
+/// words) survives. Closing it needs a cancellable task, which
+/// `EventLoop.queueTask` does not offer. One token per XHR terminated
+/// mid-request.
 const SendToken = struct {
     refs: u8,
     cancelled: bool,
