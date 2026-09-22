@@ -8,6 +8,7 @@ pub const streaming = @import("streaming.zig");
 pub const error_mode = @import("error_mode.zig");
 pub const bom = @import("bom.zig");
 pub const hooks = @import("hooks.zig");
+pub const percent_encode = @import("percent_encode.zig");
 pub const api = @import("api.zig");
 pub const comptime_encoding = @import("comptime.zig");
 pub const inline_string = @import("inline_string.zig");
@@ -55,6 +56,7 @@ pub const utf8Decode = hooks.utf8Decode;
 pub const utf8DecodeWithoutBom = hooks.utf8DecodeWithoutBom;
 pub const utf8DecodeWithoutBomOrFail = hooks.utf8DecodeWithoutBomOrFail;
 pub const utf8Encode = hooks.utf8Encode;
+pub const percentEncodeAfterEncoding = percent_encode.percentEncodeAfterEncoding;
 
 // Re-export high-level API
 pub const decodeUtf8 = api.decodeUtf8;

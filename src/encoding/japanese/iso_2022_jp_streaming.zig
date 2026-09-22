@@ -216,20 +216,38 @@ pub fn encode(
         }
 
         fba.reset();
-        const encoded = byte_encoder.encode(allocator, code_point) catch |err| {
-            if (err == error.Unencodable) {
-                return .{
-                    .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
-                    .bytes_written = out_pos,
-                    .error_code_point = code_point,
-                };
+        const state_before = byte_encoder.state;
+        const encoded = byte_encoder.encode(allocator, code_point) catch {
+            // Steps 6 and 11.1: in JIS X 0208 state the handler returns to
+            // ASCII - emitting ESC ( B - before the code point errors, so
+            // whatever the caller writes for the error is read as ASCII.
+            if (state_before == .jis0208) {
+                const escape = [_]u8{ 0x1B, 0x28, 0x42 };
+                if (out_pos + escape.len > output.len) {
+                    in_pos -= 1;
+                    if (code_point >= 0x10000) {
+                        state_wrapper.pending_high_surrogate = input[in_pos - 1];
+                    }
+                    state_wrapper.state = byte_encoder.state;
+                    return .{
+                        .status = .output_full,
+                        .code_units_consumed = in_pos,
+                        .bytes_written = out_pos,
+                    };
+                }
+                @memcpy(output[out_pos..][0..escape.len], &escape);
+                out_pos += escape.len;
+                byte_encoder.state = .ascii;
             }
+            // The state this call reached is the encoder's from here on.
+            state_wrapper.state = byte_encoder.state;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos - 1,
                 .bytes_written = out_pos,
-                .error_code_point = code_point,
+                // Step 3 reports U+000E, U+000F and U+001B as U+FFFD, so an
+                // escape sequence cannot be smuggled through as a reference.
+                .error_code_point = if (code_point == 0x0E or code_point == 0x0F or code_point == 0x1B) 0xFFFD else code_point,
             };
         };
 
