@@ -726,7 +726,26 @@ pub const TreeBuilder = struct {
     pub fn parse(self: *TreeBuilder) !void {
         while (true) {
             const token = try self.tokenizer.nextToken();
-            if (token == null) break;
+            if (token == null) {
+                // The tokenizer signals end of input by returning NULL, not by
+                // emitting an EOF token - so breaking here skipped tree
+                // construction's EOF work entirely, and the `.eof` branch of
+                // every insertion mode was dead code.
+                //
+                // That is where the implied <body> comes from: HTML §13.2.6.4.4
+                // "in head" at EOF pops head and reprocesses in "after head",
+                // which inserts a body. Without it, a document whose content is
+                // entirely head-level - a doctype, a meta, a title and some
+                // scripts, which is MOST WPT files - got <html><head> and
+                // nothing else, so `document.body` was null.
+                //
+                // dom/common.js line 25 is `document.body.insertBefore(...)`,
+                // run from `setup()`, and testharness rethrows out of setup, so
+                // that one null turned whole files into a harness ERROR with
+                // zero subtests.
+                try self.processToken(Token.eof);
+                break;
+            }
 
             var tok = token.?;
             defer tok.deinit();

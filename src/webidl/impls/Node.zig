@@ -447,12 +447,18 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
     return switch (internal.node_type) {
         NodeType.ELEMENT_NODE => blk: {
-            // For Element: its HTML-uppercased qualified name
-            if (internal.local_name) |name| {
-                // TODO: Properly uppercase for HTML elements
-                break :blk name;
-            }
-            break :blk runtime.DOMString.initEmpty();
+            // For Element: its HTML-uppercased qualified name - which is
+            // exactly what Element.tagName is defined as (DOM 4.9), so this
+            // delegates rather than reimplementing the namespace and prefix
+            // rules.
+            //
+            // It must NOT read `internal.local_name`: an element's local name
+            // lives in ELEMENT's state, not Node's, so that field is null for
+            // every element and `nodeName` came back "" while `localName` was
+            // correct. Same shape as CharacterData data living in
+            // CharacterData rather than Node.node_value.
+            break :blk interfaces.Element.get_tagName(instance) catch
+                runtime.DOMString.initEmpty();
         },
         NodeType.ATTRIBUTE_NODE => blk: {
             // For Attr: its qualified name

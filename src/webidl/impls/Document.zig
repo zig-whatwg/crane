@@ -787,14 +787,60 @@ pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// DOM §4.6 - Returns the DocumentType node or null
 pub fn get_doctype(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.doctype; // Returns null if no doctype
+
+    // The doctype is the document's first DocumentType CHILD.
+    // https://dom.spec.whatwg.org/#concept-document-doctype
+    //
+    // Computed for the same reason as documentElement above: `internal.doctype`
+    // is a cache the parser paths fill in, so `createHTMLDocument` - which does
+    // create and append a doctype - still reported null, and a doctype removed
+    // from the tree would still have been reported.
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) return c;
+        child = NodeImpl.getNextSibling(c);
+    }
+    return internal.doctype;
 }
 
 /// Getter for documentElement
 /// DOM §4.6 - Returns the document element (root element, e.g., <html>)
+/// The document element: the document's first ELEMENT child.
+///
+/// https://dom.spec.whatwg.org/#document-element
+///
+/// COMPUTED, not remembered. `internal.document_element` is a cache that only
+/// the parser paths ever assigned - HTMLParser, dom_tree_adapter,
+/// scripted_parser and context_manager - so a document built through the DOM
+/// API had none. `createHTMLDocument` correctly created and appended
+/// html/head/body and `documentElement` was still null, and `body` with it.
+///
+/// That was not niche: dom/common.js builds its fixtures inside `setup()` with
+/// `foreignDoc.body.appendChild(...)`, and testharness rethrows out of
+/// `setup()`, so this one null turned whole FILES into a harness ERROR with
+/// zero subtests.
+///
+/// A cache also goes stale: removing or replacing the root left the old
+/// pointer in place. Walking the children costs nothing here - a document has
+/// a doctype and a root, not a list.
+///
+/// The cached field is still consulted as a FALLBACK, so any path that sets it
+/// without linking the tree keeps working.
+fn documentElementOf(instance: *runtime.Instance) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) return c;
+        child = NodeImpl.getNextSibling(c);
+    }
+    if (getInternal(instance)) |internal| return internal.document_element;
+    return null;
+}
+
 pub fn get_documentElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.document_element; // Returns null if no document element
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return documentElementOf(instance);
 }
 
 /// Setter for documentElement (internal use)
@@ -1052,7 +1098,7 @@ fn findTitleElement(document: *runtime.Instance) ?*runtime.Instance {
     const ElementImpl = @import("Element.zig");
 
     // Start from document element (usually <html>)
-    const doc_element = internal.document_element orelse return null;
+    const doc_element = documentElementOf(document) orelse return null;
 
     // Recursively search for the first <title> element
     return findTitleElementInSubtree(doc_element, ElementImpl, internal.doc_type == .html);
@@ -1136,7 +1182,7 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
-    const doc_element = internal.document_element orelse return null;
+    const doc_element = documentElementOf(instance) orelse return null;
 
     // Find first body or frameset child of the document element
     const ElementImpl = @import("Element.zig");
@@ -1175,7 +1221,7 @@ pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get document element (should be <html>)
-    const doc_element = internal.document_element orelse return null;
+    const doc_element = documentElementOf(instance) orelse return null;
 
     // Find first head child of the document element
     const ElementImpl = @import("Element.zig");
@@ -2432,7 +2478,7 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     }
 
     // Get document element (html)
-    const doc_element = internal.document_element orelse return error.HierarchyRequestError;
+    const doc_element = documentElementOf(instance) orelse return error.HierarchyRequestError;
 
     // Step 3: If old body exists, replace it
     if (old_body) |ob| {
