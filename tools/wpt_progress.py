@@ -16,6 +16,7 @@ missing, and only one of those blocks building a product on top.
 import json
 import glob
 import os
+import re
 import sys
 import html
 import datetime
@@ -46,6 +47,55 @@ HISTORY_SAMPLE = 15   # paths kept per movement bucket, so the file stays small
 # which is the safe direction: a status we do not know about is not a pass.
 GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED'}
 
+# The static shape of each source: how many times the runner fans it out, and -
+# for a file that has never reported a subtest - how many subtests it looks like
+# it declares. Cached because building it opens 4,323 sources plus the scripts
+# they include; invalidated by the mtime and size of the source AND of every
+# script it pulls in, since the tests are often declared in the include.
+ESTIMATES = os.path.join(REPO, 'tmp', 'wpt-subtest-estimates.json')
+WPT_ROOT = os.path.join(REPO, 'tests', 'wpt')
+
+# A subtest-declaring call. The lookbehind stops `subsetTest(` matching `test(`
+# inside itself, and keeps a regex's `.test(` out.
+TEST_CALL = re.compile(
+    r'(?<![\w.$])(?:async_test|promise_test|promise_setup|subsetTest|test)\s*\(')
+# A test call inside one of these declares an unknown number of subtests, so a
+# static count of it is a FLOOR, not an estimate. Measured against the files
+# whose real count is known, a loopy file's static count has a median ratio of
+# 1.5 and a p90 of 24 - useless as an estimate, sound as a lower bound.
+LOOPY = re.compile(r'\b(?:for|while)\s*\(|\.(?:forEach|map)\s*\(|\bgenerate_tests\s*\(')
+VARIANT_META = re.compile(r'name=["\']variant["\']')
+VARIANT_JS = re.compile(r'^//\s*META:\s*variant=', re.M)
+GLOBAL_JS = re.compile(r'^//\s*META:\s*global=(.*)$', re.M)
+SCRIPT_META = re.compile(r'^//\s*META:\s*script=(\S+)', re.M)
+SCRIPT_SRC = re.compile(r'<script[^>]*\ssrc=["\']([^"\']+)["\']')
+
+# The globals `tests/wpt_runner/test_parser.zig:isImplemented` actually runs.
+# The rest are skipped rather than run, so their subtests are not targeted.
+IMPLEMENTED_GLOBALS = {'window', 'worker', 'dedicatedworker'}
+
+# How the per-file subtest count was arrived at, best evidence first. The page
+# prints this table verbatim, because a denominator whose composition is not
+# stated is a denominator nobody can check.
+TIERS = ('exact', 'partial', 'est', 'floor', 'unknown')
+COMPOSITION = (
+    ('exact', 'Measured, exact',
+     'ran to completion, so testharness reported every subtest the file declared'),
+    ('partial', 'Measured, lower bound',
+     'timed out or errored but still reported subtests &mdash; declared-but-unrun ones '
+     'come back NOTRUN. A floor, because declaration itself may have been cut short'),
+    ('est', 'Estimated',
+     'reported nothing; a static count of its test call sites, with no loop around them. '
+     'Against the 2,014 straight-line files whose real number is known this is exact for '
+     '90% and within 2&times; for 97%'),
+    ('floor', 'Floor only',
+     'reported nothing, and declares tests inside a loop or <code>forEach</code>, so the '
+     'static count is a lower bound and the real number is higher'),
+    ('unknown', 'Unknown',
+     'reported nothing and has no countable call site. Contributes zero rather than a '
+     'guess, so the total is understated by whatever these hold'),
+)
+
 
 def load_worklist():
     if not os.path.exists(WORKLIST):
@@ -58,12 +108,34 @@ def load_worklist():
     return paths
 
 
+def subtotal(rec):
+    """Subtests the run REPORTED for this file: pass + fail + timeout + notrun.
+
+    This is a count of subtest RESULTS, not of distinct subtests. The runner
+    executes a file once per implemented global times once per declared
+    `<meta name="variant">` and sums every run into one journal line
+    (`FileTally.add` in tests/wpt_runner/main.zig), and the variant never
+    reaches `location.search`, so each of a file's variant runs registers the
+    file's WHOLE set of subtests instead of the slice the variant names.
+    `subtest_model` divides that back out.
+    """
+    if not rec:
+        return 0
+    return (rec.get('passed', 0) + rec.get('failed', 0) +
+            rec.get('timed_out', 0) + rec.get('notrun', 0))
+
+
 def load_results():
     """Latest record per path, accumulated across runs.
 
     Journals are transient - the runner reuses their filenames - so results are
     merged into a persistent state file and read back from there. A path a run
     did not touch keeps its previous result rather than reverting to unrun.
+
+    Also carries `_sub_hw`, the most subtests any run of that file has EVER
+    reported. A file that reported 40 subtests last week and crashes today still
+    HAS 40, and the journal that saw them is about to be overwritten, so the
+    high-water mark is kept in the state file where it survives.
     """
     records = {}
 
@@ -92,10 +164,15 @@ def load_results():
                 rec['_journal'] = os.path.basename(fn)
                 rec['_mtime'] = os.path.getmtime(fn)
                 prev = records.get(rec['path'])
+                # The high-water mark rises on ANY journal line, superseding or
+                # not: what a file once declared, it still declares.
+                hw = max(subtotal(rec),
+                         (prev or {}).get('_sub_hw', 0), subtotal(prev))
                 # Only supersede with something at least as recent, so replaying
                 # an old journal cannot roll the picture backwards.
                 if prev is None or rec['_mtime'] >= prev.get('_mtime', 0):
                     records[rec['path']] = rec
+                records[rec['path']]['_sub_hw'] = hw
 
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp_path = STATE + '.tmp'
@@ -111,13 +188,195 @@ def area_of(path, depth=2):
     return '/'.join(parts[:depth]) if len(parts) > depth else parts[0]
 
 
-def build(worklist, records):
+def _read(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def _scan_source(path):
+    """Variants, implemented globals and a static subtest count for one source.
+
+    The static count is deliberately crude - a count of test-declaring call
+    sites - because it is only ever used for a file that has told us nothing.
+    What makes it usable is the `loopy` flag beside it: without a loop the count
+    is the answer, with one it is a floor.
+    """
+    full = os.path.join(WPT_ROOT, path)
+    txt = _read(full)
+    stamp = []
+    try:
+        st = os.stat(full)
+        stamp.append([path, int(st.st_mtime), st.st_size])
+    except OSError:
+        pass
+
+    variants = max(len(VARIANT_META.findall(txt)) + len(VARIANT_JS.findall(txt)), 1)
+
+    declared = GLOBAL_JS.findall(txt)
+    if declared:
+        names = [x.strip().lower() for x in ','.join(declared).split(',') if x.strip()]
+        # A file none of whose globals are implemented still runs once, and
+        # reports one skip - test_parser.zig:runCount does the same.
+        globals_ = sum(1 for x in names if x in IMPLEMENTED_GLOBALS) or 1
+    elif path.endswith('.any.js'):
+        globals_ = 2          # window + worker, parseAnyJs's default
+    else:
+        globals_ = 1
+
+    # The tests are often declared in an included script, not in the file: every
+    # encoding/legacy-mb-* sweep is one `subsetTest` call site in a shared
+    # encode-*-common.js. Counting only the file itself would score them zero.
+    bodies = [txt]
+    base = os.path.dirname(path)
+    for ref in SCRIPT_META.findall(txt) + SCRIPT_SRC.findall(txt):
+        if 'testharness' in ref or ref.startswith('http'):
+            continue
+        rel = ref[1:] if ref.startswith('/') else os.path.normpath(os.path.join(base, ref))
+        inc = os.path.join(WPT_ROOT, rel)
+        if not os.path.exists(inc):
+            continue
+        bodies.append(_read(inc))
+        try:
+            st = os.stat(inc)
+            stamp.append([rel, int(st.st_mtime), st.st_size])
+        except OSError:
+            pass
+
+    calls, loopy = 0, False
+    for body in bodies:
+        hits = len(TEST_CALL.findall(body))
+        calls += hits
+        if hits and LOOPY.search(body):
+            loopy = True
+
+    return {'v': variants, 'g': globals_, 'calls': calls * globals_,
+            'loopy': loopy, 'stamp': stamp}
+
+
+def _stamp_ok(entry):
+    stamp = entry.get('stamp') or ()
+    if not stamp:
+        return False
+    for name, mtime, size in stamp:
+        try:
+            st = os.stat(os.path.join(WPT_ROOT, name))
+        except OSError:
+            return False
+        if int(st.st_mtime) != mtime or st.st_size != size:
+            return False
+    return True
+
+
+def load_shape(worklist):
+    """Per-source static shape, cached in ESTIMATES and checked against mtimes."""
+    try:
+        with open(ESTIMATES) as f:
+            cache = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cache = {}
+
+    shape, rescanned = {}, 0
+    for path in worklist:
+        entry = cache.get(path)
+        if entry is None or not _stamp_ok(entry):
+            entry = _scan_source(path)
+            rescanned += 1
+        shape[path] = entry
+
+    if rescanned or len(cache) != len(shape):
+        os.makedirs(os.path.dirname(ESTIMATES), exist_ok=True)
+        tmp_path = ESTIMATES + '.tmp'
+        with open(tmp_path, 'w') as f:
+            json.dump(shape, f)
+        os.replace(tmp_path, ESTIMATES)
+    return shape, rescanned
+
+
+def subtest_model(worklist, records, shape):
+    """How many subtests each source TARGETS, and how many of them pass.
+
+    The unit is WPT's own: one count per (source, implemented global), with a
+    file's `<meta name="variant">` slices folded back together. Variants
+    PARTITION a file's subtests - `?1-1000` plus `?1001-2000` is the same set of
+    assertions split in two - so they must not multiply the total. Globals do
+    multiply it: `foo.any.html` and `foo.any.worker.html` are separate URLs in
+    MANIFEST.json with separate results, and worker support is a real axis.
+
+    That distinction is what makes this number differ from the raw sum by 12x.
+    The runner sums every (global, variant) run of a file into one journal line,
+    and the variant never reaches `location.search`, so `/common/subset-tests.js`
+    sees no range and each variant run re-registers the file's WHOLE set:
+    euckr-encode-href-errors-han.html declares 23,097 subtests and reports
+    554,328, exactly 24x for its 24 variants. Dividing the reported total by the
+    variant count comes out EXACT for 250 of the 251 multi-variant files that
+    have reported anything, which is the evidence for the model; the one
+    exception is noted on the page.
+
+    Five tiers, best evidence first:
+
+      exact    the file ran to OK, so testharness reported every test it declared
+      partial  it timed out or errored but still reported subtests - declared-
+               but-unrun ones come back NOTRUN - so the count is a LOWER BOUND,
+               since declaration itself may have been cut short
+      est      it reported nothing; the static count of its call sites, with no
+               loop around them. Against the 2,014 straight-line files whose
+               real count is known this is EXACT for 90% and within 2x for 97%
+      floor    it reported nothing and declares tests inside a loop: a floor
+      unknown  it reported nothing and has no countable call site. Contributes
+               ZERO rather than a guess, and the file count is disclosed
+
+    `targeted` uses the per-file high-water mark - a file that once reported 40
+    subtests still has 40 even if it crashes today - but `passing` uses only the
+    CURRENT run. Progress is what passes now, not what passed on the best day.
+    """
+    model = {}
+    for path in worklist:
+        sh = shape[path]
+        variants = sh['v']
+        rec = records.get(path)
+        observed = max(subtotal(rec), (rec or {}).get('_sub_hw', 0))
+        if observed:
+            model[path] = {
+                'tier': 'exact' if (rec or {}).get('status') == 'OK' else 'partial',
+                'targeted': observed / variants,
+                'passing': (rec or {}).get('passed', 0) / variants,
+                # Whether the fan-out divided cleanly. It does everywhere but one
+                # file, and where it does not the run fan-out did not complete
+                # uniformly, so that file's share is approximate.
+                'even': variants == 1 or observed % variants == 0,
+            }
+        elif sh['calls'] == 0:
+            model[path] = {'tier': 'unknown', 'targeted': 0.0,
+                           'passing': 0.0, 'even': True}
+        else:
+            model[path] = {'tier': 'floor' if sh['loopy'] else 'est',
+                           'targeted': float(sh['calls']), 'passing': 0.0,
+                           'even': True}
+    return model
+
+
+def build(worklist, records, shape=None):
     in_subset = set(worklist)
     areas = collections.defaultdict(lambda: collections.Counter())
+    model = subtest_model(worklist, records, shape) if shape else {}
 
     for path in worklist:
         a = area_of(path)
         areas[a]['total'] += 1
+        m = model.get(path)
+        if m:
+            # Floats on purpose: a file's share of a fan-out is not always a
+            # whole number, and rounding per FILE would bias the total. Rounding
+            # happens once, at the point of display.
+            areas[a]['sub_targeted'] += m['targeted']
+            areas[a]['sub_passing'] += m['passing']
+            areas[a]['tier_' + m['tier']] += 1
+            areas[a]['sub_t_' + m['tier']] += m['targeted']
+            if not m['even']:
+                areas[a]['sub_uneven'] += 1
         rec = records.get(path)
         if rec is None:
             areas[a]['unrun'] += 1
@@ -137,7 +396,7 @@ def build(worklist, records):
         else:
             areas[a]['gating'] += 1
             areas[a]['other'] += 1
-    return areas, in_subset
+    return areas, in_subset, model
 
 
 def bar(numer, denom, cls):
@@ -192,6 +451,9 @@ def record_generation(worklist, records, areas):
         'error': tot['gating'] - tot['crash'] - tot['timeout'],
         'clean': tot['clean'], 'partial': tot['partial'],
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
+        'sub_targeted': round(tot['sub_targeted']),
+        'sub_passing': round(tot['sub_passing']),
+        'tiers': {t: tot['tier_' + t] for t in TIERS},
         'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                   for a, c in areas.items()},
         'regenerations': 0,
@@ -239,7 +501,7 @@ def record_generation(worklist, records, areas):
     return history
 
 
-def rebuild_history(worklist, records):
+def rebuild_history(worklist, records, shape=None):
     """Reconstruct generations from the state file's per-record timestamps.
 
     Every accumulated record remembers the journal that last set it and when
@@ -266,7 +528,7 @@ def rebuild_history(worklist, records):
         journal = ', '.join(sorted({records[p].get('_journal', '?') for p in paths}))
         for path in paths:
             seen[path] = records[path]
-        areas, _ = build(worklist, seen)
+        areas, _, _ = build(worklist, seen, shape)
         tot = collections.Counter()
         for c in areas.values():
             tot.update(c)
@@ -282,6 +544,9 @@ def rebuild_history(worklist, records):
             'error': tot['gating'] - tot['crash'] - tot['timeout'],
             'clean': tot['clean'], 'partial': tot['partial'],
             'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
+            'sub_targeted': round(tot['sub_targeted']),
+            'sub_passing': round(tot['sub_passing']),
+            'tiers': {t: tot['tier_' + t] for t in TIERS},
             'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                       for a, c in areas.items()},
             'regenerations': 0,
@@ -315,7 +580,7 @@ def _save_history(history):
 
 
 def _delta(cur, prev, key, good_when_down):
-    if prev is None:
+    if prev is None or cur.get(key) is None or prev.get(key) is None:
         return ''
     d = cur[key] - prev[key]
     if d == 0:
@@ -379,6 +644,13 @@ def render_history(history):
                         items.append(f'<li class="{key}">{html.escape(line_)}</li>')
                 movement += (f'<details><summary class="dim">files</summary>'
                              f'<ul class="samples">{"".join(items)}</ul></details>')
+        st_, sp_ = g.get('sub_targeted'), g.get('sub_passing')
+        if st_ is None:
+            subcell = '<span class="dim">&mdash;</span>'
+        else:
+            pct_ = (sp_ / st_ * 100) if st_ else 0.0
+            subcell = (f'{sp_:,} {_delta(g, prev, "sub_passing", False)}'
+                       f'<br><span class="dim">{pct_:.2f}% of {st_:,}</span>')
         regen = g.get('regenerations', 0)
         when = html.escape(g['at'][:16].replace('T', ' '))
         if g.get('reconstructed'):
@@ -395,7 +667,7 @@ def render_history(history):
         <td class="num">{g['timeout']:,} {_delta(g, prev, 'timeout', True)}</td>
         <td class="num">{g['error']:,} {_delta(g, prev, 'error', True)}</td>
         <td class="num">{g['clean']:,} {_delta(g, prev, 'clean', False)}</td>
-        <td class="num hide-sm">{g['sub_pass']:,} {_delta(g, prev, 'sub_pass', False)}</td>
+        <td class="num hide-sm">{subcell}</td>
         <td class="moves">{movement}</td>
       </tr>""")
 
@@ -408,6 +680,9 @@ def render_history(history):
 <p class="dim">{since} A generation is one run of this report where at least one file changed
 status; deltas are against the previous generation. <em>Newly run</em> is coverage, not regression -
 a file measured for the first time that blocks was always blocking, it just was not counted.
+The same applies to the subtest percentage, and harder: a newly run file adds its whole
+declared set to the denominator at once, so the % can drop sharply on a generation in which
+nothing got worse.
 Rows marked <span class="dim">~</span> are reconstructed from the state file's per-record timestamps: a
 lower bound on coverage at that time, and they can only show "newly run", since only each file's latest
 status survives.</p>
@@ -423,10 +698,22 @@ status survives.</p>
 """
 
 
-def render(areas, worklist, records, files, out_path, history=None):
+def render(areas, worklist, records, files, out_path, history=None, shape=None):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
+
+    # The number the page argues against: every subtest result the runner
+    # reported, variant fan-out and all.
+    raw_reported = sum(subtotal(records.get(p)) for p in worklist)
+    raw_ratio = raw_reported / tot['sub_targeted'] if tot['sub_targeted'] else 0
+    even_multi = all_multi = 0
+    if shape:
+        for p in worklist:
+            if shape[p]['v'] > 1 and subtotal(records.get(p)):
+                all_multi += 1
+                if subtotal(records.get(p)) % shape[p]['v'] == 0:
+                    even_multi += 1
 
     total = len(worklist)
     run = tot['run']
@@ -434,6 +721,70 @@ def render(areas, worklist, records, files, out_path, history=None):
     clean = tot['clean']
     unrun = tot['unrun']
     gate_met = (run > 0 and gating == 0 and unrun == 0)
+
+    # The two senses of "how far along are we". They answer different questions
+    # and routinely disagree, so the page shows both rather than picking one.
+    sub_targeted = round(tot['sub_targeted'])
+    sub_passing = round(tot['sub_passing'])
+    sub_pct = (sub_passing / sub_targeted * 100) if sub_targeted else 0.0
+    clean_pct = (clean / total * 100) if total else 0.0
+
+    comp_rows = []
+    for tier, label, why in COMPOSITION:
+        n_files = tot['tier_' + tier]
+        n_subs = round(tot['sub_t_' + tier])
+        shown = '&mdash;' if tier == 'unknown' else f'{n_subs:,}'
+        comp_rows.append(
+            f'<tr><td class="num compn">{shown}</td>'
+            f'<td class="compl">{label}</td>'
+            f'<td class="num dim">{n_files:,} files</td>'
+            f'<td class="dim compw">{why}</td></tr>')
+
+    # The percentage is diluted by coverage, so point at the evidence for that
+    # rather than asserting it - and read the evidence out of the history, which
+    # moves, instead of writing today's numbers into the prose.
+    cov_note = ''
+    usable = [g for g in (history or {}).get('generations', []) if g.get('sub_targeted')]
+    if len(usable) >= 2:
+        peak = max(usable, key=lambda g: g['sub_passing'] / g['sub_targeted'])
+        peak_pct = peak['sub_passing'] / peak['sub_targeted'] * 100
+        if peak_pct > sub_pct + 0.005:
+            cov_note = (f' It read {peak_pct:.2f}% at generation {peak["n"]}, when only '
+                        f'{peak["run"]:,} of {peak["total"]:,} sources had run and just '
+                        f'{peak["sub_targeted"]:,} subtests were known to exist.')
+
+    uneven = tot['sub_uneven']
+    uneven_note = (f' {uneven:,} file{"s" if uneven != 1 else ""} did not divide evenly, '
+                   f'so that share is approximate.' if uneven else '')
+    subtest_html = f"""
+<div class="panel">
+  <h2 class="panelh">Subtests targeted</h2>
+  <div class="headline">{sub_passing:,}<span class="dim"> of </span>{sub_targeted:,}
+    <span class="pct">{sub_pct:.2f}%</span></div>
+  <div class="dim sub2">Subtests passing, of the subtests the 0.1 worklist targets.
+    Counted once per source per implemented global, with a file's
+    <code>&lt;meta name="variant"&gt;</code> slices folded back together &mdash; variants
+    <em>partition</em> a file's subtests, they do not multiply them.
+    The other sense of &ldquo;progressed&rdquo; is whole files:
+    <b>{clean:,} of {total:,}</b> ran clean, <b class="pct2">{clean_pct:.2f}%</b>.
+    <br><b>This percentage falls when coverage grows.</b> A subtest only exists once its
+    file runs, so every newly run file adds its whole declared set to the denominator
+    before it adds anything to the numerator.{cov_note}
+    Read it against the generation table, never alone.</div>
+  <table class="comp"><tbody>{''.join(comp_rows)}</tbody></table>
+  <p class="dim note">The denominator is <b>not</b> the raw sum of reported subtest
+    results, which is {raw_reported:,} &mdash; about {raw_ratio:.0f}&times; larger. The runner
+    executes a file once per implemented global times once per declared variant and sums
+    every run into one journal line, and the variant never reaches
+    <code>location.search</code>, so <code>/common/subset-tests.js</code> sees no range and
+    each variant run re-registers the file's <em>whole</em> set:
+    <code>euckr-encode-href-errors-han.html</code> declares 23,097 subtests and reports
+    554,328, exactly 24&times; for its 24 variants. Dividing back out by the variant count
+    comes out <b>exact</b> for {even_multi:,} of the {all_multi:,} multi-variant files that have
+    reported anything, which is the evidence for the model.{uneven_note}
+    A file's target uses the most subtests any run has <em>ever</em> reported for it;
+    its passes use only the current run.</p>
+</div>"""
 
     rows = []
     for area in sorted(areas, key=lambda a: (-areas[a]['gating'], a)):
@@ -450,6 +801,7 @@ def render(areas, worklist, records, files, out_path, history=None):
         <td class="num ok">{c['clean'] or '&middot;'}</td>
         <td class="num">{c['partial'] or '&middot;'}</td>
         <td class="num dim">{c['unrun'] or '&middot;'}</td>
+        <td class="num hide-sm">{round(c['sub_passing']):,}<span class="dim"> / {round(c['sub_targeted']):,}</span></td>
         <td>{bar(c['clean'], c['total'], 'ok')}</td>
       </tr>""")
 
@@ -548,6 +900,27 @@ def render(areas, worklist, records, files, out_path, history=None):
   .samples li.regressed {{ color: var(--bad); }}
   .samples li.unblocked {{ color: var(--ok); }}
   details summary {{ cursor: pointer; }}
+
+  .panel {{ background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px 22px 14px; margin-bottom:28px }}
+  .panelh {{ margin:0 0 8px; font-size:15px; letter-spacing:.02em;
+    text-transform:uppercase; color:var(--dim) }}
+  .headline {{ font-size:30px; font-weight:650; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums }}
+  .headline .dim {{ font-size:18px; font-weight:400 }}
+  .pct {{ color:var(--accent); margin-left:10px }}
+  .pct2 {{ color:var(--accent) }}
+  .sub2 {{ font-size:13px; margin:6px 0 14px; max-width:78ch }}
+  table.comp {{ border:0; background:transparent; font-size:12.5px }}
+  table.comp td {{ border-bottom:1px solid var(--line); padding:7px 10px 7px 0;
+    vertical-align:top; text-align:left }}
+  table.comp tr:last-child td {{ border-bottom:0 }}
+  td.compn {{ text-align:right; font-weight:650; white-space:nowrap; width:1%;
+    font-variant-numeric:tabular-nums }}
+  td.compl {{ white-space:nowrap; width:1% }}
+  td.compw {{ line-height:1.45 }}
+  .note {{ font-size:12px; margin:12px 0 0; max-width:88ch; line-height:1.5 }}
+  @media (max-width:640px) {{ td.compw {{ display:none }} }}
 </style></head><body><div class="wrap">
 
 <h1>Crane 0.1 &mdash; WPT progress</h1>
@@ -567,8 +940,10 @@ def render(areas, worklist, records, files, out_path, history=None):
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
-  <div class="card"><div class="k">Subtests passing</div><div class="v">{tot['sub_pass']:,}</div></div>
+  <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
 </div>
+
+{subtest_html}
 
 {history_html}
 
@@ -578,13 +953,19 @@ def render(areas, worklist, records, files, out_path, history=None):
     <th>Area</th><th>Subset</th><th>Run</th><th>Blocking</th>
     <th>Timeout</th><th>Crash</th><th>Clean</th>
     <th class="hide-sm">Partial</th><th class="hide-sm">Unrun</th>
+    <th class="hide-sm">Subtests&nbsp;pass&nbsp;/&nbsp;target</th>
     <th class="hide-sm">Clean&nbsp;%</th>
   </tr></thead>
   <tbody>{''.join(rows)}</tbody>
 </table>
 
 <footer>
-  <strong>Blocking</strong> = timeouts + crashes + errors. That is the gate:
+  <strong>Subtests targeted</strong> is one count per source per implemented global
+  (window, worker), with a file's <code>&lt;meta name="variant"&gt;</code> slices folded
+  back together, since a variant partitions a file's subtests rather than adding any.
+  Where a file has never reported a subtest the number is estimated from its source and
+  labelled as such above; nothing estimated is presented as measured.
+  <br><br><strong>Blocking</strong> = timeouts + crashes + errors. That is the gate:
   a crash means the engine is unsound, a failing subtest only means a feature
   is missing. <strong>Clean</strong> = ran to OK with zero failing subtests.
   <strong>Partial</strong> = ran to completion with some subtests failing,
@@ -608,14 +989,27 @@ def main():
     out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else DEFAULT_OUT
     worklist = load_worklist()
     records, files = load_results()
-    areas, _ = build(worklist, records)
+    shape, rescanned = load_shape(worklist)
+    areas, _, model = build(worklist, records, shape)
     if '--rebuild-history' in sys.argv:
-        rebuild_history(worklist, records)
+        rebuild_history(worklist, records, shape)
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
     history = record_generation(worklist, records, areas)
-    gate_met, gating, run, total, clean = render(areas, worklist, records, files, out, history)
+    gate_met, gating, run, total, clean = render(
+        areas, worklist, records, files, out, history, shape)
 
+    tot = collections.Counter()
+    for c in areas.values():
+        tot.update(c)
+    targeted, passing = round(tot['sub_targeted']), round(tot['sub_passing'])
     print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  {clean:,} clean")
+    print(f"subtests: {passing:,} passing of {targeted:,} targeted  "
+          f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
+          f"files clean {clean / total * 100 if total else 0:.2f}%")
+    print('  composition: ' + '  '.join(
+        f"{t}={round(tot['sub_t_' + t]):,}/{tot['tier_' + t]}f" for t in TIERS))
+    if rescanned:
+        print(f"  (rescanned {rescanned:,} sources -> {ESTIMATES})")
     print('GATE MET' if gate_met else 'gate not met')
     gens = history.get('generations', [])
     if gens:
