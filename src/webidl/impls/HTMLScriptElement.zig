@@ -21,6 +21,13 @@ const HTMLScriptElement = interfaces.HTMLScriptElement;
 const HTMLElementImpl = @import("HTMLElement.zig");
 const NodeImpl = @import("Node.zig");
 
+// DOM mutation seam, for the insertion steps below.
+const dom_module = @import("dom");
+const instance_bridge = dom_module.instance_bridge;
+const NodeBase = dom_module.NodeBase;
+
+const log = std.log.scoped(.html_script_element);
+
 // Use shared InstanceRegistry utility for internal state management
 const utils = webidl.utils;
 const Registry = utils.InstanceRegistry(InternalState);
@@ -218,6 +225,11 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // A script element that becomes connected must run "prepare the script
+    // element". Registering here rather than at binding-init time keeps the
+    // cost on documents that actually contain a script.
+    ensureInsertionStepsRegistered();
+
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer HTMLElementImpl.deinit(instance);
@@ -679,8 +691,19 @@ pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) 
 /// Spec: [CEReactions] attribute DOMString text;
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
 pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Per spec: "On setting, it must string replace all with the given value within this element."
-    // For now, just cache the text (full implementation needs DOM tree manipulation)
+    // Per spec: "On setting, it must string replace all with the given value
+    // within this element."
+    //
+    // Caching alone is not enough. "Prepare the script element" step 5 takes
+    // its source from the element's CHILD TEXT CONTENT, and step 6 returns
+    // early when that is empty and there is no src - so `s.text = "..."`
+    // followed by an insert produced a script the preparation algorithm
+    // considered blank and refused to run. "String replace all" is what puts a
+    // Text child there, and `Node.set_textContent` is that algorithm.
+    try interfaces.Node.set_textContent(instance, value);
+
+    // Still cached, because `get_text` reads the cache and `runClassicScript`
+    // takes its source from it rather than re-walking the children.
     try cacheSourceText(instance, value.asSlice());
 }
 
@@ -754,6 +777,55 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 // Script Preparation and Execution Algorithms
 // HTML Standard §4.12.1.1
 // =============================================================================
+
+// =============================================================================
+// Insertion steps
+// =============================================================================
+
+/// Registered once, on the first script element created in this process.
+var insertion_steps_registered: bool = false;
+
+/// The script element's insertion steps.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
+/// "When a script element el that is not parser-inserted experiences one of the
+///  events listed in the following list, the user agent must immediately
+///  prepare the script element: ... The script element becomes connected."
+///
+/// The parser is excluded exactly as the spec excludes it: both tree-building
+/// paths set the parser document on the element *before* appending it
+/// (`dom_tree_adapter.createElementNode` and `HTMLParser.createDomNodeFromTreeNode`),
+/// so `isParserInserted` is already true by the time this runs for them. That
+/// matters — the parser appends the script element while it is still EMPTY and
+/// only adds its text children afterwards, so preparing it here would mark a
+/// script with no source as already-started and silently kill it.
+fn scriptInsertionStepsCallback(node: *NodeBase) void {
+    // ELEMENT_NODE only.
+    if (node.node_type != 1) return;
+    if (!std.ascii.eqlIgnoreCase(node.node_name, "script")) return;
+
+    const instance_ptr = instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Prepare step 1 short-circuits on already started, and the parser owns its
+    // own elements. Checking both here keeps a re-insertion from paying for a
+    // full prepare that would return immediately anyway.
+    if (hasAlreadyStarted(instance)) return;
+    if (isParserInserted(instance)) return;
+
+    const allocator = instance.ctx.allocator;
+    _ = prepareScriptElement(allocator, instance) catch |err| {
+        // A script that fails to prepare is not a document that fails to load.
+        log.debug("insertion steps: prepare failed: {}", .{err});
+    };
+}
+
+/// Register the script insertion steps with the DOM mutation system. Idempotent.
+pub fn ensureInsertionStepsRegistered() void {
+    if (insertion_steps_registered) return;
+    dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch return;
+    insertion_steps_registered = true;
+}
 
 /// Prepare the script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element

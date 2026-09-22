@@ -251,10 +251,7 @@ pub fn prepareScriptElement(
 
         // Step 33.4-33.7: Build script URL, set request parameters
         // Resolve src against base URL
-        const base_url = if (node_document) |doc|
-            if (doc_state.getInternal(doc)) |internal| internal.base_uri else ""
-        else
-            "";
+        const base_url = documentBaseUrl(node_document, script_element);
 
         const script_url = resolveUrl(allocator, src, base_url) catch {
             return ScriptExecutionError.OutOfMemory;
@@ -320,7 +317,7 @@ pub fn prepareScriptElement(
 
     // Step 34: Inline script (no src attribute)
     if (node_document) |doc| {
-        const base_url = doc_state.getInternal(doc).?.base_uri;
+        const base_url = documentBaseUrl(doc, script_element);
 
         switch (script_type) {
             .classic => {
@@ -474,47 +471,40 @@ fn handleScriptScheduling(
                     return true;
                 }
             } else {
-                // External classic script (has src)
-                if (is_parser_inserted and !has_async and !has_defer) {
-                    // Parser-blocking external script
-                    // The script content should already be cached by parser_script_execution.zig
-                    // Check if it's ready to execute (content was loaded by script loader callback)
-                    if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script_element)) {
-                        // Script is ready - execute it synchronously during parsing
-                        _ = executeScriptElement(allocator, script_element) catch {
-                            // Script errors are handled internally
-                        };
-                        return true;
-                    }
-                    // Step 35.1: Set document's pending parsing-blocking script to el
-                    // Script is not ready yet - will execute when fetch completes
-                    if (node_document) |doc| {
-                        doc_state.setPendingParsingBlockingScript(doc, script_element);
-                    }
-                    return true;
-                } else if (has_defer and is_parser_inserted and !has_async) {
-                    // Deferred external script
-                    // Step 35.2: Add to list of scripts that will execute when document finishes parsing
-                    if (node_document) |doc| {
-                        doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
-                    }
-                    return true;
-                } else if (has_async and has_src) {
-                    // Async external script
-                    if (!force_async) {
-                        // Step 35.3: Add to list of scripts that will execute in order
-                        if (node_document) |doc| {
-                            doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
-                        }
-                    } else {
-                        // Step 35.4: Add to set of scripts that will execute ASAP
-                        if (node_document) |doc| {
-                            doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
-                        }
-                    }
-                    return true;
+                // External classic script (has src).
+                //
+                // Step 35's four cases, tested in the spec's own order. The
+                // order is load-bearing: the async case is first and is gated on
+                // "el has an async attribute OR el's force async is true", so a
+                // script the parser never touched takes it whether or not the
+                // author wrote `async`. Testing `has_async` alone - as this did -
+                // dropped every dynamically-inserted `<script src>` through all
+                // four cases and onto a bare `return true`, and it was never
+                // executed at all.
+                const doc = node_document orelse return true;
+
+                if (has_async or force_async) {
+                    // 35.1: set of scripts that will execute as soon as possible.
+                    doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
+                    drainReadyScripts(allocator, doc);
+                } else if (!is_parser_inserted) {
+                    // 35.2: list of scripts that will execute in order as soon
+                    // as possible.
+                    doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
+                    drainReadyScripts(allocator, doc);
+                } else if (has_defer) {
+                    // 35.3: list of scripts that will execute when the document
+                    // has finished parsing. The parser drains this one.
+                    doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
+                } else if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script_element)) {
+                    // 35.4: parser-blocking, and the content is already in hand
+                    // because the fetch above is synchronous - so this IS the
+                    // moment the spec's "mark as ready" would arrive.
+                    _ = executeScriptElement(allocator, script_element) catch {};
+                } else {
+                    // 35.4: parser-blocking and not yet fetched.
+                    doc_state.setPendingParsingBlockingScript(doc, script_element);
                 }
-                // External script without special handling - return true but don't execute yet
                 return true;
             }
         },
@@ -536,21 +526,21 @@ fn handleScriptScheduling(
                     return true;
                 }
             } else {
-                // External module script
-                if (is_parser_inserted and !has_async) {
-                    // Parser-inserted external module - deferred by default
-                    // Step 35.2: Add to list of scripts that will execute when document finishes parsing
-                    if (node_document) |doc| {
-                        doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
-                    }
-                    return true;
+                // External module script. Same step 35 as above; a module has
+                // no defer case of its own because case 35.3 already reads
+                // "el has a defer attribute OR el's type is module".
+                const doc = node_document orelse return true;
+
+                if (has_async or force_async) {
+                    doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
+                    drainReadyScripts(allocator, doc);
+                } else if (!is_parser_inserted) {
+                    doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
+                    drainReadyScripts(allocator, doc);
                 } else {
-                    // Async external module script
-                    if (node_document) |doc| {
-                        doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
-                    }
-                    return true;
+                    doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
                 }
+                return true;
             }
         },
         .importmap => {
@@ -611,51 +601,103 @@ pub fn executeScriptsWhenParsingFinished(
     doc_state.clearScriptsToExecuteWhenParsingFinished(document);
 }
 
-/// Execute scripts in the "execute in order ASAP" list
-/// These are async scripts that were added with the async attribute
-/// but need to maintain relative order
-pub fn executeScriptsInOrderAsap(
-    allocator: std.mem.Allocator,
-    document: *runtime.Instance,
-) void {
-    while (true) {
-        const script = doc_state.popFirstScriptToExecuteInOrderAsap(document) orelse break;
+/// The document whose ready-script queues a drain is currently walking.
+///
+/// A script that runs from a drain can insert another script, which re-enters
+/// `handleScriptScheduling` and asks for a drain of its own. Letting that
+/// recurse would nest arbitrarily deep on a page that appends a script per
+/// script, and would run the inner script BEFORE the outer loop had finished
+/// its own list.
+///
+/// It records the DOCUMENT rather than a bare boolean, because a script in one
+/// document can insert a script into another - an iframe's, or one from
+/// `createHTMLDocument` - and a global flag would suppress that document's
+/// drain while nobody was walking its queues, stranding the script forever.
+/// The outer loop only ever rescans the document it was given.
+var draining_document: ?*runtime.Instance = null;
 
-        // Check if ready
-        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
-            // Re-add to list and stop - must maintain order
-            doc_state.addScriptToExecuteInOrderAsap(document, script) catch {};
-            break;
-        }
+/// Backstop for a mutually-recursive pair of documents inserting into each
+/// other, which the per-document guard alone does not stop.
+var drain_depth: usize = 0;
+const max_drain_depth = 16;
 
-        _ = executeScriptElement(allocator, script) catch |err| {
-            log.debug("In-order async script execution error: {}\n", .{err});
-        };
+/// Run the document's ready scripts from both "as soon as possible" queues.
+///
+/// Spec: the ready-steps of "prepare the script element" step 35.1 and 35.2 -
+/// "Execute the script element given el", then remove it. Crane's
+/// external-script fetch is synchronous (see `prepareScriptElement` step 33.8),
+/// so a script is already ready by the time it lands in a queue and this runs
+/// at the point the spec's "mark as ready" would.
+///
+/// Nothing drained these queues at all before this existed, so every async or
+/// force-async script - which is every `<script src>` that script inserted -
+/// was queued and then simply forgotten.
+fn drainReadyScripts(allocator: std.mem.Allocator, document: *runtime.Instance) void {
+    if (draining_document == document) return;
+    if (drain_depth >= max_drain_depth) return;
+
+    const previous = draining_document;
+    draining_document = document;
+    drain_depth += 1;
+    defer {
+        draining_document = previous;
+        drain_depth -= 1;
+    }
+
+    // Bounded so a script that reinserts itself cannot spin forever.
+    var guard: usize = 0;
+    while (guard < 1024) : (guard += 1) {
+        if (runOneReadyAsapScript(allocator, document)) continue;
+        if (runOneReadyInOrderScript(allocator, document)) continue;
+        break;
     }
 }
 
-/// Execute scripts in the "execute ASAP" set
-/// These can execute in any order as soon as they're ready
-pub fn executeScriptsAsap(
-    allocator: std.mem.Allocator,
-    document: *runtime.Instance,
-) void {
+/// Run one ready script from the "execute as soon as possible" SET, if any.
+///
+/// The list is re-read on every call rather than iterated once.
+/// `getScriptsToExecuteAsap` returns the ArrayList's `items` slice, and
+/// executing a script can append to that list and reallocate it - walking the
+/// original slice would be a use-after-free on the hottest DOM path there is.
+fn runOneReadyAsapScript(allocator: std.mem.Allocator, document: *runtime.Instance) bool {
     const scripts = doc_state.getScriptsToExecuteAsap(document);
-
-    // Find all ready scripts and execute them
-    var i: usize = 0;
-    while (i < scripts.len) {
-        const script = scripts[i];
-        if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
-            _ = doc_state.removeScriptFromExecuteAsap(document, script);
-            _ = executeScriptElement(allocator, script) catch |err| {
-                log.debug("ASAP script execution error: {}\n", .{err});
-            };
-            // Don't increment i - list shifted
-        } else {
-            i += 1;
-        }
+    for (scripts) |script| {
+        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) continue;
+        _ = doc_state.removeScriptFromExecuteAsap(document, script);
+        _ = executeScriptElement(allocator, script) catch |err| {
+            log.debug("ASAP script execution error: {}", .{err});
+        };
+        return true;
     }
+    return false;
+}
+
+/// Run the head of the "execute in order as soon as possible" LIST, if ready.
+///
+/// Order is the whole point of this list, so a script that is not ready blocks
+/// the ones behind it rather than being skipped.
+fn runOneReadyInOrderScript(allocator: std.mem.Allocator, document: *runtime.Instance) bool {
+    const script = doc_state.popFirstScriptToExecuteInOrderAsap(document) orelse return false;
+
+    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
+        doc_state.addScriptToExecuteInOrderAsap(document, script) catch {};
+        return false;
+    }
+
+    _ = executeScriptElement(allocator, script) catch |err| {
+        log.debug("In-order async script execution error: {}", .{err});
+    };
+    return true;
+}
+
+/// Execute every ready script in the document's "execute ASAP" set.
+pub fn executeScriptsAsap(allocator: std.mem.Allocator, document: *runtime.Instance) void {
+    drainReadyScripts(allocator, document);
+}
+
+/// Execute the head of the document's "execute in order ASAP" list while ready.
+pub fn executeScriptsInOrderAsap(allocator: std.mem.Allocator, document: *runtime.Instance) void {
+    drainReadyScripts(allocator, document);
 }
 
 /// Execute the script element
@@ -1205,10 +1247,7 @@ pub fn prepareScriptElementAsync(
         }
 
         // Resolve src against base URL
-        const base_url = if (node_document) |doc|
-            if (doc_state.getInternal(doc)) |internal| internal.base_uri else ""
-        else
-            "";
+        const base_url = documentBaseUrl(node_document, script_element);
 
         const script_url = resolveUrl(allocator, src, base_url) catch {
             return ScriptExecutionError.OutOfMemory;
@@ -1273,7 +1312,7 @@ pub fn prepareScriptElementAsync(
 
     // Step 34: Inline script - handle synchronously (no network I/O needed)
     if (node_document) |doc| {
-        const base_url = doc_state.getInternal(doc).?.base_uri;
+        const base_url = documentBaseUrl(doc, script_element);
 
         switch (script_type) {
             .classic => {
@@ -1682,7 +1721,7 @@ fn moduleResolveCallback(
 
     // Get base URL for resolution
     const doc_internal = doc_state.getInternal(node_document) orelse return null;
-    const base_url = doc_internal.base_uri;
+    const base_url = documentBaseUrl(node_document, script_element);
 
     // Step 1: Try to resolve via import map
     var resolved_url: ?[]const u8 = doc_state.resolveImportSpecifier(
@@ -1973,6 +2012,37 @@ fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
         return internal.owner_document;
     }
     return null;
+}
+
+/// The document base URL to resolve a script's `src` against.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
+/// "If there is no base element that has an href attribute ... then the
+///  document base URL is the document's fallback base URL", which for an
+///  ordinary document is its own URL.
+///
+/// `Document`'s `base_uri` field is written by nothing in the tree - it is
+/// initialised to "" in `InternalState.init` and never assigned - and
+/// `internal.url` is only ever set to "about:blank". The URL the document was
+/// actually fetched from lives on the context entry, put there by
+/// `setDocumentUrl` during navigation. Reading `base_uri` alone made every
+/// relative `src` on a dynamically-inserted script resolve to itself, so the
+/// fetch went to a bare path with no origin and failed; an absolute URL in the
+/// same position worked, which is what isolated it.
+fn documentBaseUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
+    if (document) |doc| {
+        if (doc_state.getInternal(doc)) |internal| {
+            if (internal.base_uri.len > 0) return internal.base_uri;
+            if (internal.url.len > 0 and !std.mem.eql(u8, internal.url, "about:blank")) {
+                return internal.url;
+            }
+        }
+    }
+
+    const engine_ctx = script_element.ctx.engine_ctx orelse return "";
+    const v8_engine = @import("v8");
+    const v8_ctx: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    return v8_engine.context_manager.getDocumentUrl(v8_ctx) orelse "";
 }
 
 /// Get child text content of an element
@@ -2741,9 +2811,66 @@ const event_utils = @import("event_utils.zig");
 /// the script has loaded and executed successfully.
 pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
     // Fire a simple "load" event - not cancelable, doesn't bubble
-    event_utils.fireSimpleEvent(allocator, null, script_element, "load") catch |err| {
-        log.debug("Failed to fire load event: {any}\n", .{err});
+    fireAtScriptElement(allocator, script_element, "load");
+}
+
+/// Fire an event at a script element through the REAL dispatch algorithm.
+///
+/// `event_utils.fireSimpleEvent` cannot be used here. Its `dispatchEvent` is a
+/// stub that sets the dispatch flags and returns without invoking a single
+/// listener - deliberately, because it is handed a context synthesised on the
+/// CALLER'S STACK and only the absence of listeners keeps the event from
+/// escaping into V8 (see the comment on `event_utils.fireEvent`). The
+/// consequence for scripts is total: neither `script.onload = fn` nor
+/// `script.addEventListener("load", fn)` ever ran, which is why so many files
+/// under html/semantics/scripting-1/ waited out the full harness timeout
+/// instead of failing.
+///
+/// A script element is never in that position - it has a real context, whose
+/// entry outlives every Instance created in it - so it can go through
+/// `EventTarget.dispatchEvent`, which walks the event path, invokes listeners
+/// and calls the IDL event handler attribute.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
+fn fireAtScriptElement(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    event_type: []const u8,
+) void {
+    const ctx = script_element.ctx;
+
+    const event = interfaces.Event.call_constructor(
+        ctx,
+        runtime.DOMString.initInterned(event_type),
+        .{ .was_passed = true, .value = .{
+            .bubbles = false,
+            .cancelable = false,
+            .composed = false,
+        } },
+    ) catch |err| {
+        log.debug("Failed to create {s} event: {any}", .{ event_type, err });
+        return;
     };
+    // Deliberately no `defer deinit`. A listener that runs can hand the event to
+    // script, and V8 then holds a wrapper for it; freeing it here would be a
+    // use-after-free the moment the handler kept a reference. This is the same
+    // choice `HTMLParser.fireDOMContentLoadedEvent` makes - `errdefer` only.
+    //
+    // Not a leak: the Instance comes from the context's own allocator, the same
+    // one every DOM node script creates comes from, and is batch-freed with the
+    // rest at context teardown. One Event per external script in the document,
+    // bounded by the document, not per event-loop turn.
+    errdefer interfaces.Event.deinit(event);
+
+    // Fired by the user agent, not by script.
+    impls.Event.setIsTrusted(event, true);
+
+    _ = interfaces.EventTarget.call_dispatchEvent(script_element, event) catch |err| {
+        log.debug("Failed to dispatch {s} event: {any}", .{ event_type, err });
+        return;
+    };
+
+    _ = allocator;
 }
 
 /// Fire an error event on a script element
@@ -2759,9 +2886,7 @@ pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Inst
 /// This function handles load-time errors.
 pub fn fireErrorEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
     // Fire a simple "error" event - not cancelable by default for load errors
-    event_utils.fireSimpleEvent(allocator, null, script_element, "error") catch |err| {
-        log.debug("Failed to fire error event: {any}\n", .{err});
-    };
+    fireAtScriptElement(allocator, script_element, "error");
 }
 
 /// Report a script execution error
