@@ -197,16 +197,22 @@ fn engineOwns(instance: *runtime.Instance) bool {
 /// the realm's teardown sweep frees them - memory for the realm's lifetime,
 /// never a dangling [[controller]].
 ///
-/// An allowlist, and only of the classes built on `streams_writable.zig`'s
-/// ownership rules: their teardown touches nothing but their own slots. The
-/// older readable/transform classes are not safe to sweep (their
-/// `StoredError` is disposed twice - `Check failed: node->IsInUse()`), so they
-/// keep the weak default until they move over.
+/// An allowlist, and only of the classes built on the `impls/streams_*.zig`
+/// ownership rules: their teardown touches nothing but their own slots, so
+/// the realm's sweep can free them in any order.
 pub fn isStreamsGraphObject(name: []const u8) bool {
     const names = [_][]const u8{
         "WritableStream",
         "WritableStreamDefaultWriter",
         "WritableStreamDefaultController",
+        "ReadableStream",
+        "ReadableStreamDefaultReader",
+        "ReadableStreamBYOBReader",
+        "ReadableStreamDefaultController",
+        "ReadableByteStreamController",
+        "ReadableStreamBYOBRequest",
+        "TransformStream",
+        "TransformStreamDefaultController",
     };
     for (names) |n| {
         if (std.mem.eql(u8, name, n)) return true;
