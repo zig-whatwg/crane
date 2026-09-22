@@ -3645,6 +3645,23 @@ pub fn build(b: *std.Build) void {
     const wpt_step = b.step("wpt", "Run Web Platform Tests (use -- to pass args like url/)");
     wpt_step.dependOn(&run_wpt.step);
 
+    // Refresh the 0.1 progress report from whatever journals exist.
+    //
+    // Attached to `wpt` rather than left as a separate command anyone has to
+    // remember: the report is the thing that says whether the release gate is
+    // met, and a report you have to remember to regenerate is a report that is
+    // usually wrong. It sat five hours stale exactly that way.
+    //
+    // It reads journals and writes wpt-results/progress.html, so it is safe to
+    // run when no tests ran at all - it just reports the accumulated state.
+    const progress_report = b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" });
+    progress_report.step.dependOn(&run_wpt.step);
+    wpt_step.dependOn(&progress_report.step);
+
+    // Same thing on its own, for refreshing the page without running tests.
+    const progress_step = b.step("wpt-progress", "Regenerate wpt-results/progress.html from existing journals");
+    progress_step.dependOn(&b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" }).step);
+
     // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)
     // ========================================================================
