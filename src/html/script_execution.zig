@@ -24,6 +24,9 @@ const log = std.log.scoped(.script_execution);
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
+// Module script loading: the module map, graph fetching, linking, running.
+const module_script = @import("module_script.zig");
+
 // WebIDL interfaces - used for all WebIDL type interactions (Golden Rule #12)
 const interfaces = @import("interfaces");
 
@@ -299,6 +302,18 @@ pub fn prepareScriptElement(
         };
         if (!allowed_by_csp) log.debug("CSP blocked external script: {s}", .{script_url});
 
+        // Step 33.11 "module": fetch an external module script graph given url,
+        // and mark el ready with the result.
+        if (script_type == .module) {
+            if (allowed_by_csp and node_document != null) {
+                prepareExternalModuleScript(script_element, node_document.?, script_url);
+            } else {
+                HTMLScriptElementImpl.setResult(script_element, .null);
+            }
+            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
+            return handleScriptScheduling(allocator, script_element, parser_document, script_type);
+        }
+
         // Content the parser's script loader already fetched is used as-is.
         const cached = if (allowed_by_csp) HTMLScriptElementImpl.getCachedSourceText(script_element) else null;
         if (cached == null and allowed_by_csp) {
@@ -348,20 +363,18 @@ pub fn prepareScriptElement(
                 };
             },
             .module => {
-                // Step 34.1: Create a module script
-                const module = ModuleScript.init(source_text, base_url);
-
-                // Set result
-                HTMLScriptElementImpl.setResult(script_element, .{ .module_script = module });
-
-                // Cache source text for execution
-                HTMLScriptElementImpl.cacheSourceText(script_element, source_text) catch {
-                    return ScriptExecutionError.OutOfMemory;
-                };
-
-                // Note: Module scripts still need dependency resolution before execution
-                // For inline modules with no imports, we can execute directly
-                // Full implementation would parse imports and fetch dependencies
+                // Step 34.2 "module", step 3: fetch an inline module script
+                // graph given source text and base URL, then mark el ready with
+                // the result.
+                //
+                // The spec marks it ready from a QUEUED task, so an inline
+                // module never executes synchronously inside the insertion
+                // that prepared it. Crane marks it ready here, the same way its
+                // synchronous fetch readies external scripts; the scheduling
+                // below still defers a parser-inserted one to the end of
+                // parsing, which is the ordering most pages observe.
+                prepareInlineModuleScript(script_element, doc, source_text, base_url);
+                HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
             },
             .importmap => {
                 // Parse and register import map
@@ -783,14 +796,10 @@ pub fn executeScriptElement(
             doc_state.setCurrentScript(node_document, old_current_script);
         },
         .module => {
-            // Step 6.2: Run the module script
-            // Note: For module scripts, currentScript is always null (per spec)
-            // Modules execute in strict mode and have their own scope
-
-            runModuleScript(script_element) catch |err| {
-                // Module execution error - log but don't propagate
-                log.debug("Module script execution error: {}\n", .{err});
-            };
+            // Step 6 "module": document's currentScript is null while a module
+            // runs (it is never set on this path); run the module script given
+            // by el's result.
+            runModuleScript(script_element, node_document);
         },
         .importmap => {
             // Step 6.3: Register an import map
@@ -965,177 +974,146 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     }
 }
 
-/// Run a module script
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
-fn runModuleScript(script_element: *runtime.Instance) !void {
-    const result = HTMLScriptElementImpl.getResult(script_element);
-    const module_script = switch (result) {
-        .module_script => |m| m,
-        else => {
-            // Try to get cached source and create inline module
-            const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
-            return runModuleFromSource(script_element, source, "inline");
-        },
-    };
+// =============================================================================
+// Module scripts
+// =============================================================================
 
-    return runModuleFromSource(script_element, module_script.source_text, module_script.base_url);
-}
-
-/// Run a module from source text using the engine-agnostic EngineInterface
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+/// The document's module map, as `module_script` sees it.
 ///
-/// This function supports top-level await (TLA) per TC39 proposal:
-/// - For modules with TLA, uses runModuleAsync to get the evaluation Promise
-/// - The Promise resolves when all TLA expressions complete
-/// - Parent modules wait for async children before their own evaluation
+/// The map lives in the Document's internal state and dies with it: the first
+/// store installs `module_script.disposeEntry` as the document's module
+/// dispose function, which is the only thing that frees a module script. Keys
+/// are "<type>:<url>" for fetched scripts and "inline:<n>" for inline ones -
+/// an inline module script is in no spec map, but keeping it here gives it the
+/// same owner and the same lifetime as everything it imports.
+fn documentModuleMap(document: *runtime.Instance) module_script.ModuleMap {
+    return .{
+        .context = document,
+        .getFn = &documentModuleMapGet,
+        .putFn = &documentModuleMapPut,
+    };
+}
+
+fn documentModuleMapGet(context: *anyopaque, key: []const u8) ?*anyopaque {
+    const document: *runtime.Instance = @ptrCast(@alignCast(context));
+    return doc_state.getModule(document, key);
+}
+
+fn documentModuleMapPut(context: *anyopaque, key: []const u8, value: *anyopaque) bool {
+    const document: *runtime.Instance = @ptrCast(@alignCast(context));
+    doc_state.setModuleDisposeFunction(document, &module_script.disposeEntry);
+    doc_state.setModule(document, key, value) catch return false;
+    return true;
+}
+
+fn documentResolveImport(context: *anyopaque, specifier: []const u8, base_url: []const u8) ?[]const u8 {
+    const document: *runtime.Instance = @ptrCast(@alignCast(context));
+    return doc_state.resolveImportSpecifier(document, specifier, base_url);
+}
+
+/// Distinguishes the map keys of inline module scripts. Process-wide, so a key
+/// is never reused, even across documents.
+var next_inline_module_id: u64 = 0;
+
+/// The module loading environment for a script element's node document.
+fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
+    const internal = doc_state.getInternal(document) orelse return null;
+    const engine_ctx = script_element.ctx.getEngineContext() orelse return null;
+    return .{
+        .allocator = internal.allocator,
+        .context_instance = script_element,
+        .v8_context = @ptrCast(@alignCast(engine_ctx)),
+        .map = documentModuleMap(document),
+        .resolveImportFn = &documentResolveImport,
+    };
+}
+
+/// Prepare step 33.11 "module": fetch an external module script graph, and
+/// mark the element ready with the result.
 ///
-/// See: https://tc39.es/proposal-top-level-await/
-fn runModuleFromSource(
-    script_element: *runtime.Instance,
-    source: []const u8,
-    base_url: []const u8,
-) !void {
-    // Get document for module map caching
-    const node_document = getNodeDocument(script_element);
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-script-tree
+fn prepareExternalModuleScript(script_element: *runtime.Instance, document: *runtime.Instance, url: []const u8) void {
+    var result: HTMLScriptElementImpl.ScriptResult = .null;
+    defer HTMLScriptElementImpl.setResult(script_element, result);
 
-    // Check if this module is already compiled and cached
-    if (node_document) |doc| {
-        if (doc_state.hasModule(doc, base_url)) {
-            // Module already compiled and executed - skip
-            // Per spec, modules are only executed once
-            return;
-        }
+    const env = moduleEnvironment(script_element, document) orelse return;
+
+    // Module loading compiles, links and creates errors in the document's
+    // realm: enter it, with a HandleScope, whoever called us.
+    const v8_engine = @import("v8");
+    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
+    defer scope.deinit();
+
+    const graph = module_script.fetchExternalModuleScriptGraph(&env, url) orelse return;
+    result = moduleResult(graph);
+}
+
+/// Prepare step 34 "module": fetch an inline module script graph.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-an-inline-module-script-graph
+fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runtime.Instance, source: []const u8, base_url: []const u8) void {
+    var result: HTMLScriptElementImpl.ScriptResult = .null;
+    defer HTMLScriptElementImpl.setResult(script_element, result);
+
+    const env = moduleEnvironment(script_element, document) orelse return;
+
+    const v8_engine = @import("v8");
+    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
+    defer scope.deinit();
+
+    // Step 1: create a JavaScript module script - a parse error is kept on it.
+    const script = module_script.createJavaScriptModuleScript(&env, source, base_url) catch return;
+
+    // Owned by the document from here on, like every fetched module script.
+    var key_buf: [32]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "inline:{d}", .{next_inline_module_id}) catch unreachable;
+    next_inline_module_id += 1;
+    if (!env.map.putFn(env.map.context, key, @ptrCast(script))) {
+        script.destroy();
+        return;
     }
 
-    // Get engine interface from the script element's context
-    const ctx = script_element.ctx;
-    const engine = ctx.getEngine() orelse {
-        // No engine available (testing mode) - silently skip execution
-        log.debug("No JS engine available for module execution (testing mode)\n", .{});
-        return;
+    // Step 2: fetch the descendants of and link it.
+    const graph = module_script.fetchDescendantsAndLink(&env, script) orelse return;
+    result = moduleResult(graph);
+}
+
+/// A script element result holding a module script. The loader's script rides
+/// in `module_record`; `source_text` and `base_url` are unused on this path,
+/// and left empty rather than pointing at memory prepare is about to free.
+fn moduleResult(script: *module_script.ModuleScript) HTMLScriptElementImpl.ScriptResult {
+    var result = ModuleScript.init("", "");
+    result.module_record = script;
+    return .{ .module_script = result };
+}
+
+/// Execute step 6 "module": run the module script given by el's result.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+fn runModuleScript(script_element: *runtime.Instance, document: *runtime.Instance) void {
+    const script: *module_script.ModuleScript = switch (HTMLScriptElementImpl.getResult(script_element)) {
+        .module_script => |m| @ptrCast(@alignCast(m.module_record orelse return)),
+        else => return,
     };
+    const env = moduleEnvironment(script_element, document) orelse return;
 
-    // Get engine context
-    const engine_ctx = ctx.getEngineContext() orelse {
-        log.debug("No engine context available for module execution\n", .{});
-        return;
-    };
+    const v8_engine = @import("v8");
+    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
+    defer scope.deinit();
 
-    // Compile the module using the engine interface
-    const compileModule = engine.compileModule orelse {
-        log.debug("Engine does not support module compilation\n", .{});
-        return;
-    };
-
-    const module = compileModule(engine_ctx, source, base_url) catch |err| {
-        log.debug("Module compilation error: {}\n", .{err});
-        return;
-    } orelse {
-        log.debug("Failed to compile ES module: {s}\n", .{base_url});
-        return;
-    };
-
-    // Store in document's module map for caching and dependency resolution
-    if (node_document) |doc| {
-        doc_state.setModule(doc, base_url, module) catch |err| {
-            log.debug("Failed to cache module: {}\n", .{err});
-            // Continue execution even if caching fails
-        };
-    }
-
-    // Check if module has top-level await (TLA)
-    // Per TC39 spec, we need to use async evaluation for TLA modules
-    const has_tla = if (engine.hasTopLevelAwait) |hasTLA|
-        hasTLA(module)
-    else
-        false;
-
-    if (has_tla) {
-        // Module has TLA - use async evaluation
-        // Per HTML spec "run a module script" step 7:
-        // "If script's record is a Cyclic Module Record whose [[HasTLA]] is true,
-        //  then the result of evaluating script's record is a promise."
-        const runModuleAsync = engine.runModuleAsync orelse {
-            // Fallback to sync execution if async not available
-            log.debug("Engine does not support async module execution, falling back to sync\n", .{});
-            return runModuleSync(engine, engine_ctx, module);
-        };
-
-        // Start async evaluation - returns a Promise
-        const evaluation_promise = runModuleAsync(engine_ctx, module) catch |err| {
-            log.debug("Module async evaluation error: {}\n", .{err});
-            return;
-        } orelse {
-            log.debug("Failed to start async module evaluation: {s}\n", .{base_url});
-            return;
-        };
-
-        // Chain handlers to the evaluation Promise
-        // Per spec, we need to wait for TLA completion before the module is considered "evaluated"
-        if (engine.chainPromiseHandlers) |chainHandlers| {
-            // For now, we just log completion/rejection
-            // A full implementation would:
-            // 1. Update module status when Promise resolves
-            // 2. Fire load/error events appropriately
-            // 3. Unblock dependent modules waiting for this one
-            chainHandlers(
-                engine_ctx,
-                evaluation_promise,
-                tlaFulfillHandler,
-                @ptrCast(@constCast(base_url.ptr)), // Pass URL for logging
-                tlaRejectHandler,
-                @ptrCast(@constCast(base_url.ptr)),
-            ) catch |err| {
-                log.debug("Failed to chain TLA handlers: {}\n", .{err});
-            };
-        }
-
-        // Note: For parser-inserted modules, we may need to block further parsing
-        // until TLA completes. This is handled by the module graph system.
-    } else {
-        // No TLA - use synchronous evaluation
-        return runModuleSync(engine, engine_ctx, module);
+    switch (module_script.run(&env, script)) {
+        .ok => {},
+        .report => |exception| reportModuleException(exception),
     }
 }
 
-/// Synchronous module execution (for modules without TLA)
-fn runModuleSync(
-    engine: *const runtime.EngineInterface,
-    engine_ctx: *anyopaque,
-    module: *anyopaque,
-) void {
-    const runModule = engine.runModule orelse {
-        log.debug("Engine does not support module execution\n", .{});
-        return;
-    };
-
-    runModule(engine_ctx, module) catch |err| {
-        log.debug("Module execution error: {}\n", .{err});
-        return;
-    };
-}
-
-/// Handler called when TLA module evaluation Promise fulfills
-fn tlaFulfillHandler(context: ?*anyopaque, value: ?*anyopaque) callconv(.c) void {
-    _ = value;
-    // context contains the module URL for logging
-    if (context) |ctx| {
-        const url_ptr: [*]const u8 = @ptrCast(ctx);
-        // We don't know the length, so just log that it completed
-        _ = url_ptr;
-        log.debug("TLA module evaluation completed successfully\n", .{});
-    }
-}
-
-/// Handler called when TLA module evaluation Promise rejects
-fn tlaRejectHandler(context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void {
-    _ = reason;
-    // context contains the module URL for logging
-    if (context) |ctx| {
-        const url_ptr: [*]const u8 = @ptrCast(ctx);
-        _ = url_ptr;
-        log.debug("TLA module evaluation failed\n", .{});
-    }
+/// Step 8 of "run a module script": report an exception.
+/// TODO: dispatch the ErrorEvent at the global once "report an exception" is
+/// real; until then the exception is logged and released.
+fn reportModuleException(exception: *@import("v8").ffi.Value) void {
+    const v8_engine = @import("v8");
+    log.debug("uncaught exception in module script", .{});
+    v8_engine.ffi.v8_Global_Dispose(exception);
 }
 
 /// Check if a specifier looks like a URL (starts with /, ./, ../, or has a scheme)
