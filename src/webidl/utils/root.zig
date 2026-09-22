@@ -33,6 +33,11 @@ pub const InstanceRegistry = @import("registry.zig").InstanceRegistry;
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;
 pub const OptionalInternalStateAccessor = @import("internal_state.zig").OptionalInternalStateAccessor;
 
+/// Create the inherited Event InternalState on a directly-constructed Event
+/// SUBCLASS. Without it `dispatchEvent` throws InvalidStateError, so the event
+/// can be constructed but never dispatched.
+pub const initEventBase = @import("internal_state.zig").initEventBase;
+
 // Typed dictionary/sequence extraction utilities
 pub const typed_extraction = @import("typed_extraction.zig");
 pub const extractDictionarySlice = typed_extraction.extractDictionarySlice;

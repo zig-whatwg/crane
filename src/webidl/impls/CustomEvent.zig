@@ -13,6 +13,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
@@ -75,7 +76,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Set this's detail attribute to eventInitDict["detail"]
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !*runtime.Instance {
     // Create instance
-    _ = @"type"; // Event type handled by parent Event
     const instance = try init(ctx.allocator, State, &CustomEvent.vtable, ctx);
     errdefer deinit(instance);
 
@@ -97,13 +97,27 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Store detail in state (for direct access)
     state.own.detail = detail_value;
 
-    // Note: CustomEvent inherits from Event via prototype chain
-    // The base Event state is accessed through state.base (which is *Event)
-    // However, since BaseType is *Event (pointer), we don't have embedded Event state
-    // The inheritance is handled at the V8/JS level through prototype chain
+    state.base.own.type = try @"type".clone(ctx.allocator);
 
-    // Note: @"type" and EventInit fields would be stored in parent Event state
-    // but since Event is accessed via prototype chain, that's handled at V8 level
+    const base_init = if (eventInitDict.wasPassed()) eventInitDict.value.base else dictionaries.EventInit{};
+    state.base.own.bubbles = base_init.bubbles orelse false;
+    state.base.own.cancelable = base_init.cancelable orelse false;
+    state.base.own.composed = base_init.composed orelse false;
+
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = interfaces.Event.get_NONE();
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true; // !canceled_flag
+    state.base.own.defaultPrevented = false;
+    state.base.own.isTrusted = false;
+    state.base.own.timeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
+
+    // Create the INHERITED Event internal state and set the initialized flag.
+    // Without it dispatchEvent throws InvalidStateError, so the event can be
+    // constructed but never dispatched. Same thing MouseEvent does by hand.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
 
     return instance;
 }

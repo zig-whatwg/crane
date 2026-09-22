@@ -1037,15 +1037,31 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     var raw_ptr: ?*anyopaque = null;
 
     // Try HTMLElement's internal state first
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
-        raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice());
+    // BRAND-CHECK FIRST. `HTMLElement.getInternalState` is an InstanceRegistry
+    // lookup keyed on `@intFromPtr(instance)`, and the slab RECYCLES instance
+    // addresses - so on a target that is not an HTMLElement it can return a
+    // stale entry belonging to a freed element that happened to live at this
+    // address. Reading `event_handlers` out of that freed state panics with
+    // "incorrect alignment" inside HashMap.header, taking the process with it.
+    //
+    // Reachable from `new EventTarget()` + dispatchEvent the moment dispatch
+    // started succeeding for constructed Event subclasses.
+    //
+    // `stateAs` answers "is this really an HTMLElement" from the vtable
+    // ancestry and returns null when it cannot, which is the conservative
+    // answer here.
+    if (instance.stateAs(interfaces.HTMLElement.State) != null) {
+        const HTMLElementImpl = @import("HTMLElement.zig");
+        if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
+            raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice());
+        }
     }
 
     // If not found in HTMLElement, try Window's event handlers
     if (raw_ptr == null) {
         const WindowImpl = @import("Window.zig");
-        if (WindowImpl.getInternal(instance)) |window_internal| {
+        // Same brand-check reasoning as the HTMLElement lookup above.
+        if (if (instance.stateAs(interfaces.Window.State) != null) WindowImpl.getInternal(instance) else null) |window_internal| {
             // Window stores EventHandler (= ?*fn), but it's actually a tagged Global handle.
             // We need to get the function pointer and cast it to *anyopaque.
             if (window_internal.event_handlers.get(event_type_str.asSlice())) |handler| {

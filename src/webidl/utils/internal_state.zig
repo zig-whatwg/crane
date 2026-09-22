@@ -176,3 +176,55 @@ test "InternalStateAccessor - getCast compiles" {
     // Verify getCast is available
     _ = Accessor.getCast;
 }
+
+/// Create the inherited Event InternalState on a directly-constructed Event
+/// SUBCLASS, and set its initialized flag.
+///
+/// https://dom.spec.whatwg.org/#concept-event-constructor
+///
+/// Every Event subclass constructor runs the Event constructor's steps, which
+/// set the "initialized flag". `dispatchEvent` step 1 throws
+/// `InvalidStateError` when that flag is unset, so a subclass constructor that
+/// skips it builds an event which can be created but NEVER dispatched.
+///
+/// Nine subclass constructors hand-rolled the inherited attributes
+/// (`state.base.own.type`, `.bubbles`, `.timeStamp` …) and filled in their OWN
+/// InternalState, but never created Event's. `Event.getInternal` then returned
+/// null, `initializeEvent` silently no-opped on its `orelse return`, and the
+/// flag stayed unset - so `new CustomEvent(...)` + `dispatchEvent` threw, while
+/// the same event delivered through an `onX` IDL attribute worked, because that
+/// path does not check the flag. Hand-rolling it in each constructor is how the
+/// nine drifted apart in the first place, so it lives here instead.
+///
+/// `base_own` is a POINTER to the subclass's `state.base.own`. The Event
+/// InternalState type is read back off that struct's own `_internal` field
+/// rather than imported, so this stays on the right side of the impls boundary:
+/// an impl reaches Event through `interfaces`, never through `impls/Event.zig`.
+/// `arena` is the process-wide `runtime.ArenaAllocator.get()`, passed in rather
+/// than imported: the `webidl` module does not depend on `runtime`, and adding
+/// that edge to reach one allocator would be the wrong trade. Event's own
+/// constructor takes the InternalState from that arena, so passing it keeps the
+/// lifetime identical to the events Event already builds.
+/// Create the inherited Event InternalState on a directly-constructed Event
+/// SUBCLASS and set its initialized flag.
+///
+/// `base_own` is a POINTER to the subclass's `state.base.own` - the same view
+/// MouseEvent, PointerEvent and WheelEvent already write by hand
+/// (`state.base.base.own._internal`, one level deeper because they descend from
+/// UIEvent). Those three dispatch correctly today; the six that did not do this
+/// could be constructed but never dispatched.
+///
+/// The Event InternalState type is read back off that struct's own `_internal`
+/// field rather than imported, so this stays on the right side of the impls
+/// boundary: an impl reaches Event through `interfaces`, never through
+/// `impls/Event.zig`. `arena` is `runtime.ArenaAllocator.get()`, passed in
+/// because the `webidl` module does not depend on `runtime`.
+pub fn initEventBase(base_own: anytype, arena: anytype, allocator: std.mem.Allocator) !void {
+    const FieldT = @TypeOf(base_own._internal);
+    const Internal = @typeInfo(@typeInfo(FieldT).optional.child).pointer.child;
+
+    const internal = try arena.create(Internal);
+    internal.* = Internal.init(allocator);
+    internal.initialized_flag = true;
+    base_own._internal = internal;
+}

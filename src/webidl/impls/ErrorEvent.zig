@@ -138,6 +138,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const composed = event_init.composed orelse false;
 
     // Store event type - clone the string to ensure we own it
+
     state.base.own.type = try @"type".clone(ctx.allocator);
 
     // Initialize Event attributes (all in state.base.own)
@@ -183,6 +184,11 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             internal.@"error" = err.toAnyopaque();
         }
     }
+
+    // Create the INHERITED Event internal state and set the initialized flag.
+    // Without it dispatchEvent throws InvalidStateError, so the event can be
+    // constructed but never dispatched. Same thing MouseEvent does by hand.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
 
     return instance;
 }
