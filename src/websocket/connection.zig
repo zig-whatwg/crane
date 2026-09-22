@@ -174,11 +174,17 @@ pub const WebSocketConnection = struct {
         var backend = try curl_backend.CurlWebSocket.init(self.allocator, self.url, protocols);
         errdefer backend.deinit();
 
-        // Perform the handshake
+        // Perform the handshake.
+        //
+        // The `errdefer` above already owns the backend on this path. Calling
+        // `deinit` here as well - which this used to do - frees it twice the
+        // moment a handshake fails, and a handshake fails routinely: a blocked
+        // port, a refused connection, a bad host. Nothing reached this line
+        // until the WebSocket impl started calling `connect`, so the second
+        // free had never run.
         backend.connect() catch |err| {
             self.state = .CLOSED;
             self.close_code = close_codes.CloseCodes.ABNORMAL_CLOSURE;
-            backend.deinit();
             return err;
         };
 

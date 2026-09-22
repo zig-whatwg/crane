@@ -395,3 +395,28 @@ test "curl backend: a protocol list is joined with exactly N-1 commas" {
     defer empty.deinit();
     try testing.expect(empty.protocols == null);
 }
+
+test "connect: a failed handshake frees the backend exactly once" {
+    // `connect` takes the backend under an `errdefer` and then ALSO deinit'd it
+    // in the failure branch, so every failed handshake freed it twice. Port 9
+    // (discard) refuses a WebSocket upgrade, which is the ordinary case - a
+    // blocked port, a refused connection, a bad host. Under
+    // `std.testing.allocator` the second free is reported instead of being left
+    // to corrupt the heap.
+    var conn = try websocket.WebSocketConnection.init(
+        testing.allocator,
+        "ws://127.0.0.1:9/echo",
+    );
+    defer conn.deinit();
+
+    try testing.expectError(error.HandshakeFailed, conn.connect(null));
+
+    // "Fail the WebSocket connection": CLOSED, abnormal closure, and no backend
+    // left for `deinit` to free a third time.
+    try testing.expectEqual(websocket.ConnectionState.CLOSED, conn.state);
+    try testing.expectEqual(
+        @as(?u16, websocket.CloseCodes.ABNORMAL_CLOSURE),
+        conn.close_code,
+    );
+    try testing.expect(conn.backend == null);
+}
