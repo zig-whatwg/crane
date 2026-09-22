@@ -128,6 +128,10 @@ pub const InternalState = struct {
     /// Per WebIDL, the same object must be returned on subsequent accesses
     /// so that own properties added to the object persist.
     named_node_map: ?*runtime.Instance = null,
+    /// Slab generation of `named_node_map` when it was taken. The wrapper
+    /// cache's teardown sweep can free the map before it reaches the element;
+    /// the flags below do not see that, the generation does.
+    named_node_map_generation: u64 = 0,
 
     // ==========================================================================
     // Inline Attribute Storage Optimization
@@ -205,8 +209,17 @@ pub const InternalState = struct {
             // since reissued the address to a live object, the stale flag makes
             // this skip a deinit it should have done - a leak, and the
             // conservative side of the same trade the rest of this tree makes.
+            //
+            // The flags miss one order: the wrapper cache's teardown sweep freed
+            // the map through onObjectFreed - state block and slab slot, no
+            // flag set - before it reached this element. `getState` on that
+            // poisoned block sails past every null check (0xAA is not null) and
+            // the attribute list is freed a second time. The generation recorded
+            // when the map was taken is what tells a freed or reissued slot from
+            // the map this element still owns.
             const already_gone = runtime.instance_lifecycle.isCleanedUp(nnm) or
-                runtime.instance_lifecycle.isCleanupStarted(nnm);
+                runtime.instance_lifecycle.isCleanupStarted(nnm) or
+                runtime.SlabAllocator.generationOf(nnm) != self.named_node_map_generation;
             if (!already_gone) {
                 _ = runtime.instance_lifecycle.markCleanupStarted(nnm);
                 interfaces.NamedNodeMap.deinit(nnm);
@@ -748,8 +761,10 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         NamedNodeMapImpl.addAttr(named_node_map, attr) catch return error.OutOfMemory;
     }
 
-    // Cache the NamedNodeMap for future accesses
+    // Cache the NamedNodeMap for future accesses, with the generation that
+    // proves it is still this map at deinit.
     internal.named_node_map = named_node_map;
+    internal.named_node_map_generation = runtime.SlabAllocator.generationOf(named_node_map);
 
     return named_node_map;
 }
