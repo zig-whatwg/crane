@@ -175,6 +175,7 @@ fn slotReissued(entry: *const CacheEntry) bool {
 /// live one.
 fn engineOwns(instance: *runtime.Instance) bool {
     if (isStreamsGraphObject(instance.vtable.name)) return true;
+    if (isWindowOwned(instance)) return true;
     const NodeImpl = @import("impls").Node;
     if (NodeImpl.getInternalState(instance)) |node_internal| {
         if (node_internal.node_base) |node_base| {
@@ -184,6 +185,30 @@ fn engineOwns(instance: *runtime.Instance) bool {
     const DocumentImpl = @import("impls").Document;
     if (DocumentImpl.getInternalState(instance)) |doc_internal| {
         if (doc_internal.default_view != null) return true;
+    }
+    return false;
+}
+
+/// A window's Location and History: the Window holds each in its own state,
+/// hands out that one instance on every `window.location` / `window.history`
+/// ([SameObject]), and frees both in Window.deinit. Freeing one when its
+/// wrapper was collected left the Window pointing at a freed slab slot, so
+/// the next read returned whatever the slot held by then - an iframe's
+/// `contentWindow.location.href` read undefined after a collection, and a
+/// form submission navigating through it crashed. Blink keeps both alive
+/// from the window: DOMWindow::Trace visits location_ and
+/// LocalDOMWindow::Trace visits history_ (core/frame/dom_window.cc,
+/// local_dom_window.cc).
+fn isWindowOwned(instance: *runtime.Instance) bool {
+    const impls = @import("impls");
+    const name = instance.vtable.name;
+    if (std.mem.eql(u8, name, "Location")) {
+        const internal = impls.Location.getInternalState(instance) orelse return false;
+        return internal.window != null;
+    }
+    if (std.mem.eql(u8, name, "History")) {
+        const internal = impls.History.getInternal(instance) orelse return false;
+        return internal.window != null;
     }
     return false;
 }
