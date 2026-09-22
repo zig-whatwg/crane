@@ -303,6 +303,8 @@ pub const InternalRequest = struct {
     policy_container: RequestPolicyContainer = .client,
 
     /// Referrer
+    /// OWNED when it is `.url`: set it with `setReferrer`/`setReferrerUrl`,
+    /// which free a URL being replaced; `deinit` frees it and `clone` copies it.
     referrer: Referrer = .client,
 
     /// Referrer policy
@@ -409,6 +411,9 @@ pub const InternalRequest = struct {
         self.allocator.free(self.method);
         self.header_list.deinit();
 
+        // A URL referrer is owned - see the field's doc comment.
+        if (self.referrer == .url) self.allocator.free(self.referrer.url);
+
         // Free URL list entries
         for (self.url_list.items) |url| {
             self.allocator.free(url);
@@ -452,6 +457,22 @@ pub const InternalRequest = struct {
     }
 
     // === Method ===
+
+    /// Set the referrer to "no-referrer" or "client", freeing an owned URL.
+    ///
+    /// Spec: https://fetch.spec.whatwg.org/#concept-request-referrer
+    pub fn setReferrer(self: *Self, referrer: Referrer) void {
+        std.debug.assert(referrer != .url); // use setReferrerUrl
+        if (self.referrer == .url) self.allocator.free(self.referrer.url);
+        self.referrer = referrer;
+    }
+
+    /// Set the referrer to an owned copy of the serialized URL `url`.
+    pub fn setReferrerUrl(self: *Self, url: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, url);
+        if (self.referrer == .url) self.allocator.free(self.referrer.url);
+        self.referrer = .{ .url = copy };
+    }
 
     /// Set the request method.
     pub fn setMethod(self: *Self, method: []const u8) !void {
@@ -528,7 +549,8 @@ pub const InternalRequest = struct {
             .origin = self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .policy_container = self.policy_container,
-            .referrer = self.referrer,
+            // Copied below when it is an owned URL.
+            .referrer = if (self.referrer == .url) .client else self.referrer,
             .referrer_policy = self.referrer_policy,
             .mode = self.mode,
             .use_cors_preflight = self.use_cors_preflight,
@@ -552,6 +574,9 @@ pub const InternalRequest = struct {
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
         };
+
+        // The referrer, when it is a URL, is owned per request.
+        if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
 
         // Clone URL list
         for (self.url_list.items) |url| {
@@ -716,6 +741,28 @@ test "InternalRequest.clone" {
     try std.testing.expectEqual(RequestMode.cors, cloned.mode);
     try std.testing.expectEqual(CredentialsMode.include, cloned.credentials_mode);
     try std.testing.expect(cloned.header_list.contains("Content-Type"));
+}
+
+test "InternalRequest owns a URL referrer - set, clone and deinit do not share it" {
+    const allocator = std.testing.allocator;
+
+    const original = try InternalRequest.init(allocator, "https://example.com/");
+    defer original.deinit();
+
+    // The Request constructor's `init.referrer` is a WebIDL argument the
+    // binding layer frees when the constructor returns.
+    const argument = try allocator.dupe(u8, "https://example.com/from");
+    try original.setReferrerUrl(argument);
+    allocator.free(argument);
+    try std.testing.expectEqualStrings("https://example.com/from", original.referrer.url);
+
+    // Replacing it frees the previous copy.
+    try original.setReferrerUrl("https://example.com/again");
+
+    const cloned = try original.clone();
+    defer cloned.deinit();
+    try std.testing.expectEqualStrings("https://example.com/again", cloned.referrer.url);
+    try std.testing.expect(cloned.referrer.url.ptr != original.referrer.url.ptr);
 }
 
 test "InternalRequest.addRangeHeader" {
