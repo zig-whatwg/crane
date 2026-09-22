@@ -24,6 +24,7 @@
 const std = @import("std");
 const log = std.log.scoped(.browser_context);
 const v8 = @import("v8");
+const clock = @import("clock");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
@@ -57,6 +58,70 @@ const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
 threadlocal var current_timer_interface: ?TimerInterface = null;
 threadlocal var current_allocator: ?std.mem.Allocator = null;
 threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
+
+// ============================================================================
+// Animation frames
+// ============================================================================
+//
+// https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames
+//
+// Crane paints nothing, but requestAnimationFrame is an EVENT LOOP feature, not
+// a paint feature: its callbacks run in the "update the rendering" step, which a
+// headless engine still performs. WPT uses rAF as the standard "wait one frame"
+// idiom, so a stubbed rAF does not fail tests - it HANGS them for the full
+// timeout. The WebIDL binding (impls/Window.zig call_requestAnimationFrame)
+// discarded its callback and returned 0, which reached ~90 worklist sources.
+//
+// A frame is a BATCH, which is why this cannot be one timer per callback:
+// every callback registered before the frame runs in registration order, all
+// with the SAME timestamp, and a callback registered from inside the batch is
+// deferred to a later frame.
+
+/// ~60Hz. The spec leaves the rate to the implementation.
+const FRAME_INTERVAL_MS: u64 = 16;
+
+const AnimationFrameEntry = struct {
+    handle: u32,
+    /// OWNED. `info.get` is `v8_FunctionCallbackInfo_GetArgument`, whose C++ body
+    /// ends `return trackHandle(new Global<Value>(isolate, arg))` - so it hands
+    /// back a heap-allocated Global and the caller owns it. That is what lets it
+    /// outlive the registering scope, and it means this entry must dispose it:
+    /// once the callback has run, once it has been cancelled, or at teardown.
+    callback_fn: *v8.ffi.Function,
+    cancelled: bool = false,
+
+    fn deinit(self: AnimationFrameEntry) void {
+        v8.ffi.v8_Global_Dispose(@ptrCast(self.callback_fn));
+    }
+};
+
+const AnimationFrameState = struct {
+    isolate: *v8.ffi.Isolate,
+    v8_context: *v8.ffi.Context,
+    /// Registered for the NEXT frame, in registration order.
+    pending: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty,
+    /// The single timer driving the next frame, if one is scheduled.
+    timer_id: ?TimerId = null,
+    /// OWNED - `v8_Isolate_GetCurrentContext` allocates a Global per call.
+    owns_context: bool = true,
+    /// The batch currently being run, borrowed from animationFrameHandler's
+    /// stack for the duration of the loop. cancelAnimationFrame has to be able
+    /// to reach it: per HTML's "run the animation frame callbacks", cancelling
+    /// from INSIDE a callback must still suppress a later callback in the SAME
+    /// frame, and those entries are no longer in `pending`.
+    running: []AnimationFrameEntry = &.{},
+    /// Handles are their own space, not the timer id space: per spec
+    /// cancelAnimationFrame(someTimeoutId) must do nothing.
+    next_handle: u32 = 1,
+};
+
+threadlocal var animation_frames: ?AnimationFrameState = null;
+
+/// Captured when the timer interface is installed, which is context setup - close
+/// enough to the spec's time origin, and it avoids taking an hr_time dependency
+/// here. rAF timestamps are therefore ms since context setup, monotonic and
+/// comparable to each other, which is what the frame tests assert.
+threadlocal var animation_frame_origin_ms: i64 = 0;
 
 // ============================================================================
 // HTML timer initialisation steps (HTML Standard s8.6)
@@ -120,6 +185,7 @@ pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) vo
     if (timer_contexts == null) {
         timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(allocator);
     }
+    animation_frame_origin_ms = clock.monotonicMillis();
 }
 
 /// Get the current timer interface (for V8 callbacks)
@@ -149,6 +215,20 @@ pub fn clearTimerInterface() void {
         }
         map.deinit();
         timer_contexts = null;
+    }
+
+    // Animation frames: cancel the frame timer and drop the pending batch. The
+    // entries hold Globals owned by V8, not by us, so only the list is freed.
+    if (animation_frames) |*state| {
+        if (state.timer_id) |id| {
+            if (current_timer_interface) |timer| _ = timer.clearTimeout(id);
+        }
+        // Every pending entry still owns its callback Global, and the state owns
+        // the context Global it acquired from v8_Isolate_GetCurrentContext.
+        for (state.pending.items) |entry| entry.deinit();
+        if (current_allocator) |alloc| state.pending.deinit(alloc);
+        if (state.owns_context) v8.ffi.v8_Global_Dispose(@ptrCast(state.v8_context));
+        animation_frames = null;
     }
 
     current_timer_interface = null;
@@ -1194,6 +1274,24 @@ pub const Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
+        // requestAnimationFrame
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, requestAnimationFrameCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "requestAnimationFrame", 21) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // cancelAnimationFrame
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, cancelAnimationFrameCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "cancelAnimationFrame", 20) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
         // addEventListener
         {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
@@ -1837,6 +1935,180 @@ pub const Context = struct {
 // ============================================================================
 
 /// setTimeout callback - schedules callback to run after delay using TimerManager
+/// Schedule the single next-frame timer, if callbacks are waiting and none is
+/// already pending. One timer per FRAME, never one per callback.
+fn scheduleAnimationFrame() void {
+    const state = if (animation_frames) |*s| s else return;
+    if (state.timer_id != null) return;
+    if (state.pending.items.len == 0) return;
+    const timer = getTimerInterface() orelse return;
+    const id = timer.setTimeout(FRAME_INTERVAL_MS, animationFrameHandler, null);
+    // 0 is the failure sentinel; leaving timer_id null lets a later rAF retry.
+    if (id != 0) state.timer_id = id;
+}
+
+/// Run one frame: the whole pending batch, in registration order, sharing one
+/// timestamp.
+fn animationFrameHandler(_: ?*anyopaque) void {
+    const state = if (animation_frames) |*s| s else return;
+    const allocator = current_allocator orelse return;
+
+    // This timer has fired, so the slot is free for the next frame.
+    state.timer_id = null;
+
+    // TAKE the batch. Callbacks registered while it runs land in a fresh list
+    // and run on a later frame, which the spec requires.
+    var batch = state.pending;
+    state.pending = .empty;
+    defer batch.deinit(allocator);
+
+    if (batch.items.len == 0) return;
+
+    // Visible to cancelAnimationFrame while the batch runs.
+    state.running = batch.items;
+    defer if (animation_frames) |*s| {
+        s.running = &.{};
+    };
+
+    const isolate = state.isolate;
+    const context = state.v8_context;
+
+    v8.isolate_ownership.assertOwned(isolate, "Context.animationFrameHandler");
+
+    // Frame callbacks fire from the event loop, with no context active.
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    // v8_Context_Global allocates a Global<Object> the caller owns.
+    const global = v8.ffi.v8_Context_Global(context) orelse return;
+    defer v8.ffi.v8_Global_Dispose(@ptrCast(global));
+
+    // ONE timestamp for the whole frame.
+    const elapsed = clock.monotonicMillis() - animation_frame_origin_ms;
+    const timestamp: f64 = @floatFromInt(if (elapsed < 0) 0 else elapsed);
+
+    // v8_Number_New returns a Global<Number>* and the CALLER owns it.
+    const ts_global = v8.ffi.v8_Number_New(isolate, timestamp);
+    defer v8.ffi.v8_Global_Dispose(@ptrCast(ts_global));
+
+    // BY POINTER, not by value. cancelAnimationFrame called from inside one of
+    // these callbacks writes `cancelled` through `state.running`, which aliases
+    // this same array - a by-value loop variable is a snapshot taken before that
+    // write is read back, and the sibling runs anyway.
+    for (batch.items) |*entry| {
+        // This frame is the end of the entry's life either way, so its callback
+        // Global is disposed whether it ran or was cancelled.
+        defer entry.deinit();
+        if (entry.cancelled) continue;
+        var args: [1]*v8.ffi.Value = .{@ptrCast(ts_global)};
+        // v8_Function_Call also returns an OWNED Global<Value> for the result.
+        const result = v8.ffi.v8_Function_Call(entry.callback_fn, context, @ptrCast(global), 1, &args);
+        if (result) |r| v8.ffi.v8_Global_Dispose(r);
+    }
+
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // A callback may have asked for another frame.
+    scheduleAnimationFrame();
+}
+
+/// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards.
+fn requestAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // A missing or non-callable argument is a TypeError per WebIDL, but the rest
+    // of this file reports argument problems by returning the 0 sentinel rather
+    // than throwing, and a lone thrower here would be the odd one out.
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        setIntegerReturn(info, isolate, 0);
+        return;
+    }
+
+    // OWNED from here: every early return below must dispose it, and on success
+    // ownership passes to the pending entry.
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        v8.ffi.v8_Global_Dispose(callback_value);
+        setIntegerReturn(info, isolate, 0);
+        return;
+    }
+
+    const allocator = current_allocator orelse {
+        v8.ffi.v8_Global_Dispose(callback_value);
+        setIntegerReturn(info, isolate, 0);
+        return;
+    };
+
+    if (animation_frames == null) {
+        const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            v8.ffi.v8_Global_Dispose(callback_value);
+            setIntegerReturn(info, isolate, 0);
+            return;
+        };
+        animation_frames = .{ .isolate = isolate, .v8_context = v8_context };
+    }
+    const state = &animation_frames.?;
+
+    const handle = state.next_handle;
+    state.pending.append(allocator, .{
+        .handle = handle,
+        .callback_fn = @ptrCast(callback_value),
+    }) catch {
+        v8.ffi.v8_Global_Dispose(callback_value);
+        setIntegerReturn(info, isolate, 0);
+        return;
+    };
+    state.next_handle += 1;
+
+    scheduleAnimationFrame();
+
+    setIntegerReturn(info, isolate, @intCast(handle));
+}
+
+/// `v8_Integer_New` allocates a Global and `SetReturnValue` only reads it into a
+/// Local, so the caller still owns it. Wrapped because rAF has six return paths
+/// and an undisposed one on each is how the 14,774 leaked `v8_Number_New`
+/// handles in a single timers file got there.
+fn setIntegerReturn(info: *const v8.ffi.FunctionCallbackInfo, isolate: *v8.ffi.Isolate, value: i32) void {
+    const boxed = v8.ffi.v8_Integer_New(isolate, value);
+    defer v8.ffi.v8_Global_Dispose(@ptrCast(boxed));
+    info.setReturnValue(@ptrCast(boxed));
+}
+
+/// cancelAnimationFrame(handle). An unknown handle must do nothing.
+fn cancelAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (info.v8_FunctionCallbackInfo_Length() < 1) return;
+
+    const state = if (animation_frames) |*s| s else return;
+
+    const handle_value = info.get(0);
+    defer v8.ffi.v8_Global_Dispose(handle_value);
+    if (!v8.ffi.v8_Value_IsNumber(handle_value)) return;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Global_Dispose(@ptrCast(context));
+    const as_f64 = v8.ffi.v8_Value_NumberValue(handle_value, context);
+    if (std.math.isNan(as_f64) or as_f64 < 1 or as_f64 > @as(f64, @floatFromInt(std.math.maxInt(u32)))) return;
+    const handle: u32 = @intFromFloat(as_f64);
+
+    // Mark rather than remove: the batch may already be running, and removing
+    // from under the loop in animationFrameHandler would shift its indices.
+    // The frame in progress first: a callback cancelling a sibling registered
+    // for the same frame is the case `pending` alone cannot answer.
+    for (state.running) |*entry| {
+        if (entry.handle == handle) {
+            entry.cancelled = true;
+            return;
+        }
+    }
+    for (state.pending.items) |*entry| {
+        if (entry.handle == handle) {
+            entry.cancelled = true;
+            return;
+        }
+    }
+}
+
 fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
 

@@ -939,3 +939,119 @@ genuine generator difference.
 
 **Takeaway**: **Format generated output before you diff it, or the diff is
 unreadable and a real change hides in it.**
+
+---
+
+### Architecture: The live window globals are installed natively, not through WebIDL
+
+**Date**: 2026-09-22
+**Lesson**: `requestAnimationFrame` discarded its callback and returned 0, so ~90
+worklist sources HUNG rather than failed - and the reason it was invisible is
+that `impls/Window.zig` is not where window globals come from.
+
+**Why**: `src/browser/Context.zig` installs the real window globals directly on
+the global object via `FunctionTemplate`: `setTimeout`, `clearTimeout`,
+`setInterval`, `clearInterval`, `addEventListener`, `removeEventListener`,
+`dispatchEvent`, `fetch`, and now `requestAnimationFrame` /
+`cancelAnimationFrame`. The WebIDL `call_setTimeout` in BOTH `impls/Window.zig`
+and the `WindowOrWorkerGlobalScope` mixin returns `error.NotImplemented` and is
+dead code.
+
+**What Happened**: `call_requestAnimationFrame` ended with
+
+    // TODO: Proper callback wrapping - for now return placeholder
+    _ = callback;
+    return 0; // Placeholder
+
+It reads as half-implemented rather than absent, because it lazily constructs an
+`AnimationFrameScheduler` first. There are also TWO unused rAF implementations
+in the tree - `event_loop/rendering.zig`'s `AnimationFrameProvider` and
+`window/animation_frame.zig`'s `AnimationFrameScheduler` - both only ever
+re-exported, and `runAnimationFrameCallbacks` has no caller outside its own
+module. Per the re-export lesson above, neither was even analysed.
+
+The cost was not failures but TIMEOUTS: rAF is WPT's standard "wait one frame"
+idiom. 90 of 4,323 worklist sources use it directly and more reach it through
+support helpers; `html/dom/render-blocking/` alone was 57 blocking of 62, with
+48 of its 64 files using rAF.
+
+**Fix**: install it natively in `Context.zig` alongside the timers, driven by
+one `setTimeout` at the frame interval. A frame is a BATCH: every callback
+registered before it runs in registration order sharing ONE timestamp, and a
+callback registered during the batch is deferred to a later frame - so one timer
+per callback is wrong. `queueMicrotask` (in the mixin) and `requestIdleCallback`
+were checked and are genuinely implemented; rAF was the only placeholder of this
+shape.
+
+**The same trap in the other direction.** Grepping `impls/` for stubs produces
+false alarms, because many impls are dead code shadowed by a native
+implementation. All 18 impls with `call_forEach` discard their callback -
+`Headers`, `URLSearchParams`, `FormData`, `NodeList`, `DOMTokenList` - which
+looks like `headers.forEach(cb)` silently doing nothing across the whole engine.
+It is not: `interface.zig`'s `forEachCallback` implements the iterable methods
+natively, validates its argument and iterates properly. The impls are never
+called.
+
+So there are at least three places a window/interface member can really live,
+and `impls/` is the one least likely to be authoritative:
+
+| Where | Examples |
+|-------|----------|
+| `src/browser/Context.zig` | setTimeout, setInterval, fetch, addEventListener, rAF |
+| `src/runtime/engines/v8/interface.zig` | iterable methods: forEach, keys, values, entries |
+| `src/webidl/impls/` | everything else |
+
+**Takeaway**: **Before concluding anything from a stub in `impls/`, find the
+binding that actually runs.** A stub there may be dead code (harmless) or the
+live path (a hang); the two look identical in the file. And a stub that returns
+a sentinel instead of throwing converts a failing test into a hanging one, which
+costs the full timeout and reports as an engine defect rather than a missing
+feature.
+
+---
+
+### Testing: A test file added while `wpt serve` is running 404s, and a 404 reads as TIMEOUT
+
+**Date**: 2026-09-22
+**Lesson**: `wpt serve` fixes its file routing at startup. The runner REUSES a
+live server. So a test file you create now is not servable until that server is
+killed - and the symptom is a timeout, not an error.
+
+**Why**: `tests/wpt_runner/wpt_server.zig` checks for an existing server (via
+`.wpt_serve.lock`, falling back to the port) and sets `we_spawned = false` when
+it finds one. That server keeps serving for as long as it lives - 35 minutes in
+the case that produced this note - and 404s anything created after it started.
+The runner then loads the 404 body as the test page, `window.__wpt_complete`
+never becomes true, and the file is journalled TIMEOUT at the 10s ceiling. This
+is the same in-band-failure laundering as the network-error lesson above.
+
+**What Happened**: measured, because it looked exactly like a code regression.
+
+    crane/ce-get.html        (Sep 21 14:30, before the server)  HTTP 200  OK, 2 subtests
+    crane/ce-get-copy.html   (byte-identical copy, 00:44)       HTTP 404  TIMEOUT, 0 subtests
+    crane/bisect-trivial.html (`assert_true(true)`, 00:39)      HTTP 404  TIMEOUT, 0 subtests
+
+Server PID start time 00:15:00. Same directory, same permissions, same bytes,
+same load - only the creation time differed. Adding the files to MANIFEST.json
+changed nothing; `wpt serve` is not consulting the manifest for this.
+
+A new rAF test went from 5 subtests on its first run to 0 subtests afterwards,
+and the 0 was pure 404. Most of an hour went into bisecting a change that was
+never at fault, including a discarded worktree build.
+
+**Fix**: before trusting ANY result from a test file you just added:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://web-platform.test:8000/crane/<file>.html
+```
+
+200 means it is servable. 404 means kill the server and re-run:
+
+```bash
+lsof -t -nP -iTCP:8000 -sTCP:LISTEN | xargs -r kill
+```
+
+**Takeaway**: **A brand-new test reporting TIMEOUT with ZERO subtests is a 404
+until proven otherwise.** Zero subtests means the harness never ran at all,
+which is a different failure from a test that hangs - a real hang still reports
+the subtests it got through.
