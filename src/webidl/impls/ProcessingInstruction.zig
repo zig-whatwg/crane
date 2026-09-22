@@ -64,7 +64,11 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // Chain through CharacterData -> Node -> EventTarget. Calling
+    // runtime.Instance.init directly (the codegen stub) left the node with no
+    // CharacterData state, so storing its data threw InvalidStateError and
+    // document.createProcessingInstruction() could never return a usable node.
+    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
     // Initialize ProcessingInstruction internal state
