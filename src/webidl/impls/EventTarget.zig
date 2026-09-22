@@ -1128,8 +1128,18 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     const event_v8_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(event_local)) orelse return;
     defer v8_engine.ffi.v8_Global_Dispose(event_v8_global);
 
-    // Get 'this' value as a Global - v8_Undefined returns a Global<Value>*
-    const recv_global = v8_engine.ffi.v8_Undefined(v8_isolate);
+    // The callback this value is the event's currentTarget - the instance whose
+    // handler this is (the event handler processing algorithm, step 4: "with
+    // callback this value set to event's currentTarget"). A content attribute
+    // handler like `onclick="this.value = 1"` depends on it. The wrapper is
+    // the cache's (a Window's is its global), so it is not disposed here.
+    const this_wrapper = v8_engine.template_registry.wrapInstanceAsV8Object(
+        instance,
+        v8_engine.template_registry.getInstanceInterfaceName(instance),
+        v8_isolate,
+        v8_context,
+    ) catch null;
+    const recv_global = if (this_wrapper) |w| @as(?*v8_engine.ffi.Value, @ptrCast(w)) else v8_engine.ffi.v8_Undefined(v8_isolate);
 
     // Prepare argument array with Global handles
     var args: [1]*v8_engine.ffi.Value = .{event_v8_global};

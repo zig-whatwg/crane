@@ -3011,6 +3011,9 @@ pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.
             internal.slot.deinit(internal.allocator);
             internal.slot = runtime.DOMString.initEmpty();
         }
+
+        // Attribute change steps with value null: deactivate the handler.
+        eventHandlerAttributeChangeSteps(instance, name, null);
     }
 }
 
@@ -3444,6 +3447,9 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     // Set in attribute list
     try setAttributeInternal(internal, null, null, name, val);
 
+    // Attribute change steps: event handler content attributes.
+    eventHandlerAttributeChangeSteps(instance, name, val);
+
     // HTML spec hooks: Trigger element-specific attribute change reactions
     // For HTMLImageElement: setting "src" triggers image data update
     // Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
@@ -3453,6 +3459,158 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
             triggerImageSrcChange(instance, val);
         }
     }
+}
+
+// =============================================================================
+// Event handler content attributes (HTML §8.1.8.1)
+// =============================================================================
+
+/// The event handlers a body or frameset element's content attributes set on
+/// the WINDOW rather than on the element: the WindowEventHandlers members and
+/// the "Window-reflecting body element event handler set".
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#determining-the-target-of-an-event-handler
+const window_reflecting_body_handlers = [_][]const u8{
+    // Window-reflecting body element event handler set
+    "onblur",         "onerror",              "onfocus",
+    "onload",         "onresize",             "onscroll",
+    // WindowEventHandlers
+    "onafterprint",   "onbeforeprint",        "onbeforeunload",
+    "onhashchange",   "onlanguagechange",     "onmessage",
+    "onmessageerror", "onoffline",            "ononline",
+    "onpagehide",     "onpagereveal",         "onpageshow",
+    "onpageswap",     "onpopstate",           "onrejectionhandled",
+    "onstorage",      "onunhandledrejection", "onunload",
+};
+
+/// The attribute change steps that synchronize event handler content
+/// attributes with event handlers.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes
+/// "1. If namespace is not null, or localName is not the name of an event
+///  handler content attribute on element, then return.
+///  2. Let eventTarget be the result of determining the target of an event
+///  handler given element and localName.
+///  3. If value is null, then deactivate an event handler given eventTarget and
+///  localName.
+///  4. Otherwise: ... set eventHandler's value to the internal raw uncompiled
+///  handler value/location."
+///
+/// Nothing did this before, so `<body onload="...">` - and every `onload=`,
+/// `onerror=`, `onclick=` attribute on any element - never ran. Pages that
+/// start their tests from `<body onload>` (all of encoding/legacy-mb-*) waited
+/// out the harness timeout on every variant.
+///
+/// Deviation, stated: the spec keeps the value as an internal raw uncompiled
+/// handler and compiles it the first time the handler's current value is
+/// needed. This compiles it here, at attribute-change time. Crane's handler
+/// maps hold a compiled function under a pointer tag, and all four tag values
+/// are taken, so an uncompiled value has nowhere to live yet. What that
+/// changes: a syntax error surfaces when the attribute is set rather than when
+/// the event first fires, and the scope chain captures the element's document
+/// at set time. The function is otherwise the spec's: same name, same
+/// parameters, same object environments, and it is assigned through the event
+/// handler IDL attribute, so getters, dispatch and removal all see one handler.
+fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []const u8, value: ?[]const u8) void {
+    // Step 1: only unnamespaced "on..." attributes of HTML elements. Whether
+    // the name really is an event handler of the target is checked below,
+    // against the target's own IDL attributes.
+    if (!std.mem.startsWith(u8, local_name, "on") or local_name.len <= 2) return;
+    const internal = getInternal(instance) orelse return;
+    const ns = if (internal.namespace_uri) |n| n.asSlice() else return;
+    if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml")) return;
+
+    // Step 2: determining the target of an event handler.
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    const element_name = internal.local_name.asSlice();
+    const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
+        for (window_reflecting_body_handlers) |h| {
+            if (std.mem.eql(u8, h, local_name)) break true;
+        } else false;
+
+    // A document with no browsing context has no active global to run in,
+    // and "getting the current value" would never compile the handler there
+    // (scripting is disabled for it) - so there is nothing to do.
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const target: *runtime.Instance = if (forwards_to_window) window else instance;
+
+    const engine_ctx = instance.ctx.getEngineContext() orelse return;
+    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
+    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
+    defer v8.ffi.v8_HandleScope_Dispose(scope);
+
+    const template_registry = v8.template_registry;
+    const target_obj = template_registry.wrapInstanceAsV8Object(
+        target,
+        template_registry.getInstanceInterfaceName(target),
+        isolate,
+        context,
+    ) catch return;
+
+    // "localName is the name of an event handler content attribute on
+    // element": the target exposes an event handler IDL attribute of that name.
+    var name_buf: [64]u8 = undefined;
+    if (local_name.len >= name_buf.len) return;
+    @memcpy(name_buf[0..local_name.len], local_name);
+    name_buf[local_name.len] = 0;
+    const name_z: [*:0]const u8 = @ptrCast(&name_buf);
+    if (!v8.ffi.v8_Object_Has(context, target_obj, name_z)) return;
+
+    const key = v8.ffi.v8_String_NewFromUtf8(isolate, local_name.ptr, @intCast(local_name.len)) orelse return;
+    defer v8.ffi.v8_String_Dispose(key);
+
+    // Step 3: deactivate. The IDL attribute set to null clears the handler.
+    const body = value orelse {
+        const null_value = v8.ffi.v8_Null(isolate) orelse return;
+        defer v8.ffi.v8_Global_Dispose(null_value);
+        _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), null_value);
+        return;
+    };
+
+    // Getting the current value of the event handler, step 3.9: the scope is
+    // the global environment, then - for an element's handler - the document
+    // and the element itself. A Window's handler (a body's onload) gets none.
+    // TODO: the form owner's object environment between the two.
+    var scopes: [2]?*v8.ffi.Object = .{ null, null };
+    var scope_count: c_int = 0;
+    if (!forwards_to_window) {
+        scopes[0] = template_registry.wrapInstanceAsV8Object(
+            document,
+            template_registry.getInstanceInterfaceName(document),
+            isolate,
+            context,
+        ) catch return;
+        scopes[1] = target_obj;
+        scope_count = 2;
+    }
+
+    var error_info: ?*v8.ffi.V8ErrorInfo = null;
+    const function = v8.ffi.v8_CompileEventHandler(
+        context,
+        local_name.ptr,
+        @intCast(local_name.len),
+        body.ptr,
+        @intCast(body.len),
+        forwards_to_window and std.mem.eql(u8, local_name, "onerror"),
+        &scopes,
+        scope_count,
+        &error_info,
+    ) orelse {
+        // Step 3.7: a body that does not parse leaves the handler null.
+        // TODO: report the SyntaxError to the global once "report an
+        // exception" dispatches ErrorEvents.
+        v8.ffi.v8_FreeErrorInfo(error_info);
+        const null_value = v8.ffi.v8_Null(isolate) orelse return;
+        defer v8.ffi.v8_Global_Dispose(null_value);
+        _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), null_value);
+        return;
+    };
+    defer v8.ffi.v8_Global_Dispose(function);
+
+    // Step 3.12: the handler's value is the function - through the IDL
+    // attribute, which stores it exactly as `element.onload = fn` would.
+    _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), function);
 }
 
 /// Trigger image loading when src attribute changes on an img element

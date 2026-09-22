@@ -900,6 +900,13 @@ struct V8ErrorInfo {
     int column_number;
     char* source_line;     // malloc'd, Zig must free
     char* resource_name;   // malloc'd, Zig must free
+    // The thrown value itself, or nullptr when there was none to capture.
+    // Owned by this struct: v8_FreeErrorInfo disposes it, so a caller that only
+    // wants the strings leaks nothing, and a caller that needs the value past
+    // the free - "report an exception" puts it in ErrorEvent.error, and a
+    // module script keeps its parse error to rethrow - must copy it into a
+    // Global of its own first.
+    Global<Value>* exception;
 };
 
 /// Extract exception information from a TryCatch
@@ -928,6 +935,10 @@ static V8ErrorInfo* extractException(Isolate* isolate, TryCatch* try_catch) {
     Local<Value> exception = try_catch->Exception();
     String::Utf8Value exception_str(isolate, exception);
     info->message = strdup(*exception_str ? *exception_str : "Unknown error");
+    info->exception = nullptr;
+    if (!exception.IsEmpty()) {
+        info->exception = trackHandle(new Global<Value>(isolate, exception));
+    }
     
     // Extract detailed message information
     Local<Message> message = try_catch->Message();
@@ -999,8 +1010,62 @@ void v8_FreeErrorInfo(V8ErrorInfo* info) {
     if (info->stack_trace) free(info->stack_trace);
     if (info->source_line) free(info->source_line);
     if (info->resource_name) free(info->resource_name);
+    if (info->exception) {
+        releaseWeakArm(info->exception);
+        info->exception->Reset();
+        delete info->exception;
+    }
 
     delete info;
+}
+
+/// "Extract error information" for a thrown value that did not arrive through a
+/// TryCatch: a module script's evaluation promise rejecting, or the parse error
+/// a module script keeps to rethrow.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#extract-error
+/// The spec leaves message, filename, lineno and colno implementation-defined.
+/// The message is the value's ToString, the same text extractException uses,
+/// so an error reports identically whichever path it took. The location comes
+/// from v8::Exception::CreateMessage, which for an Error object reads the stack
+/// it captured when it was constructed - where it was thrown, for every
+/// ordinary `throw new X()`.
+///
+/// Returns an info the caller frees with v8_FreeErrorInfo, whose `exception`
+/// is a fresh Global of the value. Null only when there is nothing to work with.
+V8ErrorInfo* v8_Exception_GetErrorInfo(Global<Context>* context, Global<Value>* exception) {
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate || !context || !exception || exception->IsEmpty()) return nullptr;
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    // ToString on an arbitrary thrown value can run script and throw again. That
+    // second exception has nowhere to go and must not stay pending into the next
+    // unrelated V8 call.
+    TryCatch try_catch(isolate);
+
+    Local<Value> value = exception->Get(isolate);
+
+    V8ErrorInfo* info = new V8ErrorInfo();
+    info->has_error = true;
+    info->line_number = -1;
+    info->column_number = -1;
+    info->exception = trackHandle(new Global<Value>(isolate, value));
+
+    String::Utf8Value text(isolate, value);
+    info->message = strdup(*text ? *text : "Uncaught exception");
+
+    Local<Message> message = Exception::CreateMessage(isolate, value);
+    if (!message.IsEmpty()) {
+        info->line_number = message->GetLineNumber(ctx).FromMaybe(-1);
+        info->column_number = message->GetStartColumn();
+        String::Utf8Value resource(isolate, message->GetScriptResourceName());
+        info->resource_name = strdup(*resource ? *resource : "");
+    }
+
+    return info;
 }
 
 // ============================================================================
@@ -3861,13 +3926,58 @@ void v8_Script_Dispose(Global<Script>* script) {
 // ============================================================================
 
 /// Module resolve callback data structure
+///
+/// The callback is handed what identifies a ModuleRequest to the host - its
+/// specifier and its "type" import attribute (null when absent) - plus the
+/// referrer's identity hash, which is how the embedder finds the referrer's own
+/// record (and so its base URL and its already-fetched children). It returns
+/// the Global<Module>* of the child; ownership stays with the embedder.
 struct ModuleResolveCallbackData {
     void* user_data;
-    void* (*callback)(void* user_data, const char* specifier, int specifier_len, void* referrer_module);
+    void* (*callback)(void* user_data, const char* specifier, int specifier_len, const char* type_attribute, int referrer_identity_hash);
 };
+
+/// The value of the "type" entry in an import-attributes FixedArray, as a new[]
+/// string the caller delete[]s, or nullptr when there is none. `stride` is 3 for
+/// arrays that carry source positions (ModuleRequest::GetImportAttributes and
+/// the resolve callback) and 2 for those that do not (dynamic import).
+/// `has_unsupported_key` is set when any key other than "type" appears: the host
+/// must reject those (HTML's HostLoadImportedModule step 7.1.1 throws a
+/// SyntaxError) rather than ignore them.
+static char* importTypeAttribute(Isolate* isolate, Local<Context> context, Local<FixedArray> attributes, int stride, bool* has_unsupported_key) {
+    if (has_unsupported_key) *has_unsupported_key = false;
+    if (attributes.IsEmpty()) return nullptr;
+    char* type = nullptr;
+    for (int i = 0; i + 1 < attributes->Length(); i += stride) {
+        Local<Data> key_data = attributes->Get(context, i);
+        Local<Data> value_data = attributes->Get(context, i + 1);
+        if (key_data.IsEmpty() || !key_data->IsValue() || value_data.IsEmpty() || !value_data->IsValue()) continue;
+        String::Utf8Value key(isolate, key_data.As<Value>());
+        if (*key && strcmp(*key, "type") == 0) {
+            String::Utf8Value value(isolate, value_data.As<Value>());
+            int len = value.length();
+            delete[] type;
+            type = new char[len + 1];
+            memcpy(type, *value ? *value : "", len);
+            type[len] = '\0';
+        } else if (has_unsupported_key) {
+            *has_unsupported_key = true;
+        }
+    }
+    return type;
+}
 
 /// Global module resolve callback (set per isolate)
 static ModuleResolveCallbackData* g_module_resolve_callback = nullptr;
+
+/// A JSON module's parsed value, held from creation until V8 runs its
+/// evaluation steps (see v8_Module_CreateJsonModule).
+struct SyntheticJsonExport {
+    Global<Module> module;
+    Global<Value> value;
+};
+
+static std::vector<SyntheticJsonExport*>* g_synthetic_json_exports = nullptr;
 
 /// Report an unresolvable module specifier as a JavaScript exception.
 ///
@@ -3914,8 +4024,6 @@ static MaybeLocal<Module> V8ModuleResolveCallback(
     Local<FixedArray> import_assertions,
     Local<Module> referrer
 ) {
-    (void)import_assertions;  // Not used currently
-
     Isolate* isolate = context->GetIsolate();
 
     if (!g_module_resolve_callback || !g_module_resolve_callback->callback) {
@@ -3928,36 +4036,34 @@ static MaybeLocal<Module> V8ModuleResolveCallback(
     const char* specifier_cstr = *specifier_utf8;
     int specifier_len = specifier_utf8.length();
 
-    // Create a Global handle for the referrer module
-    Global<Module>* referrer_global = new Global<Module>(isolate, referrer);
+    // The resolve callback's attributes carry source positions: (key, value,
+    // position) triples, as d8's ResolveModuleCallback reads them.
+    char* type_attribute = importTypeAttribute(isolate, context, import_assertions, 3, nullptr);
 
     // Call the Zig callback
     void* result = g_module_resolve_callback->callback(
         g_module_resolve_callback->user_data,
         specifier_cstr,
         specifier_len,
-        referrer_global
+        type_attribute,
+        referrer->GetIdentityHash()
     );
+    delete[] type_attribute;
 
     if (!result) {
-        delete referrer_global;
         throwUnresolvedModuleSpecifier(isolate, specifier);
         return MaybeLocal<Module>();
     }
 
-    // Result should be a Global<Module>*
+    // Result is a Global<Module>* the embedder keeps owning.
     Global<Module>* resolved = static_cast<Global<Module>*>(result);
-    Local<Module> local_resolved = resolved->Get(isolate);
-    
-    delete referrer_global;
-    
-    return local_resolved;
+    return resolved->Get(isolate);
 }
 
 /// Set the module resolve callback for the current isolate
 void v8_Module_SetResolveCallback(
     void* user_data,
-    void* (*callback)(void* user_data, const char* specifier, int specifier_len, void* referrer_module)
+    void* (*callback)(void* user_data, const char* specifier, int specifier_len, const char* type_attribute, int referrer_identity_hash)
 ) {
     if (!g_module_resolve_callback) {
         g_module_resolve_callback = new ModuleResolveCallbackData();
@@ -4181,6 +4287,25 @@ int v8_Module_GetIdentityHash(Global<Module>* module) {
 /// Dispose a module handle
 void v8_Module_Dispose(Global<Module>* module) {
     if (module) {
+        // A JSON module disposed before it was ever evaluated still holds its
+        // parsed value in the synthetic-export table; drop it with the module.
+        if (g_synthetic_json_exports && !g_synthetic_json_exports->empty() && !module->IsEmpty()) {
+            Isolate* isolate = Isolate::GetCurrent();
+            if (isolate) {
+                HandleScope handle_scope(isolate);
+                Local<Module> local = module->Get(isolate);
+                auto& entries = *g_synthetic_json_exports;
+                for (size_t i = 0; i < entries.size(); i++) {
+                    if (entries[i]->module == local) {
+                        entries[i]->module.Reset();
+                        entries[i]->value.Reset();
+                        delete entries[i];
+                        entries.erase(entries.begin() + i);
+                        break;
+                    }
+                }
+            }
+        }
         releaseWeakArm(module);
         module->Reset();
         delete module;
@@ -4222,6 +4347,235 @@ bool v8_Module_IsGraphAsync(Global<Module>* module) {
     // V8's IsGraphAsync() checks if this module or any of its dependencies
     // contain top-level await, requiring async evaluation
     return local_module->IsGraphAsync();
+}
+
+/// The "type" import attribute of the module request at `index`, as a new[]
+/// string freed with v8_FreeString, or nullptr when the request has none.
+///
+/// `*status` is 0 for no type, 1 for a type (returned), -1 for a request that
+/// also names an attribute other than "type" - which the host must reject with
+/// a SyntaxError (HTML HostLoadImportedModule step 7.1.1) - and -2 for an index
+/// out of range.
+char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* status) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *status = 0;
+
+    Local<Module> local_module = module->Get(isolate);
+    Local<FixedArray> requests = local_module->GetModuleRequests();
+    if (index < 0 || index >= requests->Length()) {
+        *status = -2;
+        return nullptr;
+    }
+
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<ModuleRequest> request = requests->Get(context, index).As<ModuleRequest>();
+    bool has_unsupported_key = false;
+    char* type = importTypeAttribute(isolate, context, request->GetImportAttributes(), 3, &has_unsupported_key);
+    if (has_unsupported_key) {
+        delete[] type;
+        *status = -1;
+        return nullptr;
+    }
+    if (type) *status = 1;
+    return type;
+}
+
+// ============================================================================
+// Event handler content attributes
+// ============================================================================
+
+/// Compile an event handler content attribute's value into its function.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler
+/// step 3.9: a function named `name` whose body is `body`, with the single
+/// parameter `event` - or, for a Window's onerror, the five parameters
+/// (event, source, lineno, colno, error) - and whose scope is the global
+/// environment wrapped by the object environments of `scopes`, OUTERMOST FIRST:
+/// [document, form owner, element] for an element's handler, none for a
+/// Window's. v8::ScriptCompiler::CompileFunction pushes context extensions in
+/// order, so the last one is innermost - the order Blink's
+/// JSEventHandlerForContentAttribute passes them in.
+///
+/// Returns the function (Global<Value>*, caller owns), or nullptr with
+/// `*out_error` set (free with v8_FreeErrorInfo; its `exception` is the
+/// SyntaxError) when the body does not parse.
+Global<Value>* v8_CompileEventHandler(
+    Global<Context>* context,
+    const char* name,
+    int name_len,
+    const char* body,
+    int body_len,
+    bool window_onerror,
+    Global<Object>** scopes,
+    int scope_count,
+    V8ErrorInfo** out_error
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *out_error = nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+
+    Local<String> source_text;
+    Local<String> function_name;
+    if (!String::NewFromUtf8(isolate, body, NewStringType::kNormal, body_len).ToLocal(&source_text) ||
+        !String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&function_name)) {
+        return nullptr;
+    }
+
+    Local<String> params[5];
+    int param_count = 1;
+    params[0] = String::NewFromUtf8Literal(isolate, "event");
+    if (window_onerror) {
+        params[1] = String::NewFromUtf8Literal(isolate, "source");
+        params[2] = String::NewFromUtf8Literal(isolate, "lineno");
+        params[3] = String::NewFromUtf8Literal(isolate, "colno");
+        params[4] = String::NewFromUtf8Literal(isolate, "error");
+        param_count = 5;
+    }
+
+    std::vector<Local<Object>> extensions;
+    for (int i = 0; i < scope_count; i++) {
+        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
+    }
+
+    ScriptCompiler::Source source(source_text);
+    Local<Function> function;
+    if (!ScriptCompiler::CompileFunction(
+            ctx, &source, param_count, params,
+            extensions.size(), extensions.empty() ? nullptr : extensions.data())
+             .ToLocal(&function)) {
+        if (try_catch.HasCaught()) {
+            *out_error = extractException(isolate, &try_catch);
+        } else {
+            *out_error = new V8ErrorInfo();
+            (*out_error)->has_error = true;
+            (*out_error)->message = strdup("Event handler could not be compiled");
+            (*out_error)->line_number = -1;
+            (*out_error)->column_number = -1;
+        }
+        return nullptr;
+    }
+
+    function->SetName(function_name);
+    return trackHandle(new Global<Value>(isolate, function.As<Value>()));
+}
+
+// ============================================================================
+// JSON module scripts (synthetic modules)
+// ============================================================================
+//
+// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-json-module-script
+// A JSON module script's record is a Synthetic Module Record whose single
+// "default" export is the parsed value. V8 runs the evaluation steps below on
+// Evaluate(); they look the parsed value up by module, set the export, and
+// resolve. The value lives in this table from creation until evaluation (or
+// until the module is disposed unevaluated). Same design as d8's
+// json_module_to_parsed_json_map.
+
+static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
+    Isolate* isolate = context->GetIsolate();
+
+    Local<Value> value;
+    bool found = false;
+    if (g_synthetic_json_exports) {
+        auto& entries = *g_synthetic_json_exports;
+        for (size_t i = 0; i < entries.size(); i++) {
+            if (entries[i]->module == module) {
+                value = entries[i]->value.Get(isolate);
+                entries[i]->module.Reset();
+                entries[i]->value.Reset();
+                delete entries[i];
+                entries.erase(entries.begin() + i);
+                found = true;
+                break;
+            }
+        }
+    }
+
+    // Returning empty promises V8 an exception is pending (the contract of
+    // SyntheticModuleEvaluationSteps), so the failure path must throw.
+    if (!found) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "JSON module has no parsed value")));
+        return MaybeLocal<Value>();
+    }
+
+    Local<String> default_name = String::NewFromUtf8Literal(isolate, "default", NewStringType::kInternalized);
+    if (module->SetSyntheticModuleExport(isolate, default_name, value).IsNothing()) {
+        return MaybeLocal<Value>();
+    }
+
+    Local<Promise::Resolver> resolver;
+    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Value>();
+    if (resolver->Resolve(context, Undefined(isolate)).IsNothing()) return MaybeLocal<Value>();
+    return resolver->GetPromise();
+}
+
+/// Create a JSON module script's record from its source text.
+///
+/// Spec: "create a JSON module script" steps 3-6 - parse the text as JSON; on
+/// failure the script's parse error is the thrown SyntaxError and its record is
+/// null; on success the record is a synthetic module exporting the value as
+/// "default".
+///
+/// Returns the module (Global<Module>*, caller owns - v8_Module_Dispose), or
+/// nullptr with `*out_error` set (free with v8_FreeErrorInfo; its `exception`
+/// is the SyntaxError).
+Global<Module>* v8_Module_CreateJsonModule(
+    Global<Context>* context,
+    const char* source,
+    int source_len,
+    const char* name,
+    int name_len,
+    V8ErrorInfo** out_error
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *out_error = nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+
+    Local<String> text;
+    Local<Value> parsed;
+    if (!String::NewFromUtf8(isolate, source, NewStringType::kNormal, source_len).ToLocal(&text) ||
+        !JSON::Parse(ctx, text).ToLocal(&parsed)) {
+        if (try_catch.HasCaught()) {
+            *out_error = extractException(isolate, &try_catch);
+        } else {
+            *out_error = new V8ErrorInfo();
+            (*out_error)->has_error = true;
+            (*out_error)->message = strdup("JSON module could not be parsed");
+            (*out_error)->line_number = -1;
+            (*out_error)->column_number = -1;
+        }
+        return nullptr;
+    }
+
+    Local<String> module_name;
+    if (!String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&module_name)) {
+        module_name = String::Empty(isolate);
+    }
+    Local<String> default_name = String::NewFromUtf8Literal(isolate, "default", NewStringType::kInternalized);
+    Local<Module> module = Module::CreateSyntheticModule(
+        isolate,
+        module_name,
+        MemorySpan<const Local<String>>(&default_name, 1),
+        JsonModuleEvaluationSteps
+    );
+
+    if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
+    SyntheticJsonExport* entry = new SyntheticJsonExport();
+    entry->module.Reset(isolate, module);
+    entry->value.Reset(isolate, parsed);
+    g_synthetic_json_exports->push_back(entry);
+
+    return trackHandle(new Global<Module>(isolate, module));
 }
 
 // ============================================================================
@@ -8098,6 +8452,17 @@ void v8_ClearModuleResolveCallback() {
     if (g_module_resolve_callback != nullptr) {
         delete g_module_resolve_callback;
         g_module_resolve_callback = nullptr;
+    }
+    // Parsed JSON values of modules that were never evaluated. Their Globals
+    // belong to the isolate being torn down and must be reset before it goes.
+    if (g_synthetic_json_exports != nullptr) {
+        for (SyntheticJsonExport* entry : *g_synthetic_json_exports) {
+            entry->module.Reset();
+            entry->value.Reset();
+            delete entry;
+        }
+        delete g_synthetic_json_exports;
+        g_synthetic_json_exports = nullptr;
     }
 }
 

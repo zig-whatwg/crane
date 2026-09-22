@@ -1729,9 +1729,10 @@ pub const Context = struct {
             log.debug("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
         };
 
-        // Fire DOMContentLoaded event
-        // Per HTML Standard §13.2.7 "The end" step 4
-        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+        // DOMContentLoaded (HTML §13.2.7 "the end" step 4) has already fired:
+        // parseHTMLWithScripting dispatches it at the document when parsing
+        // finishes. Firing it again here ran every DOMContentLoaded listener
+        // twice.
 
         // Fire load event
         // Per HTML Standard §13.2.7 "The end" step 9
