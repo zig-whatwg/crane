@@ -28,6 +28,7 @@ const log = std.log.scoped(.html_parser);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
@@ -899,20 +900,40 @@ fn fireDOMContentLoadedEvent(
     ctx: runtime.Context,
     document: *runtime.Instance,
 ) !void {
-    // Create the DOMContentLoaded event
-    const event = interfaces.Event.init(allocator, ctx) catch return error.OutOfMemory;
-    errdefer interfaces.Event.deinit(event);
+    _ = allocator;
 
-    // Initialize the event with type "DOMContentLoaded"
-    // Per spec: bubbles = true, cancelable = false
-    const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
-    const bubbles = webidl.Opt(bool).passed(true);
-    const cancelable = webidl.Opt(bool).passed(false);
-    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
+    // The parser runs outside V8's call stack, so there is no HandleScope here.
+    // Constructing and dispatching an event both create Local handles, and V8
+    // aborts the process ("Cannot create a handle without a HandleScope") the
+    // moment one is made without a scope. Same reason HTMLImageElement opens a
+    // JsScope before firing load/error from a timer.
+    const v8_engine = @import("v8");
+    const js_scope = v8_engine.JsScope.init(ctx) orelse {
+        // Context is gone (navigated away); nothing to dispatch to.
+        return;
+    };
+    defer js_scope.deinit();
+
+    // Create the DOMContentLoaded event.
+    //
+    // This must go through the CONSTRUCTOR, not `Event.init` + `initEvent`.
+    // `Event.init` allocates the instance but leaves `_internal` null, so
+    // `initEvent` takes its `getInternal(...) orelse return` early exit, the
+    // initialized flag is never set, and `dispatchEvent` then rejects the event
+    // with InvalidStateError per DOM 2.8 step 1. The net effect was that
+    // DOMContentLoaded never fired at all, on every document.
+    //
+    // Per HTML 13.2.7 "The end" step 4: bubbles = true, cancelable = false.
+    const event = try interfaces.Event.call_constructor(
+        ctx,
+        runtime.DOMString.initInterned("DOMContentLoaded"),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = true, .cancelable = false }),
+    );
+    errdefer interfaces.Event.deinit(event);
 
     // Dispatch the event on the document
     // Document inherits from EventTarget so it can receive events
-    _ = interfaces.EventTarget.call_dispatchEvent(document, event) catch return error.InvalidStateError;
+    _ = try interfaces.EventTarget.call_dispatchEvent(document, event);
 }
 
 // =============================================================================
