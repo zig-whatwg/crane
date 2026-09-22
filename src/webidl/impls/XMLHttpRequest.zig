@@ -668,6 +668,26 @@ fn uploadObjectIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
 }
 
 /// Build the event object and deliver it to both kinds of listener.
+///
+/// KNOWN LEAK, measured and deliberately not "fixed" by guessing.
+/// `DebugAllocator` names it exactly:
+///
+///     memory address 0x... leaked:
+///       ProgressEvent.call_constructor  ctx.allocator.create(InternalState)
+///       XMLHttpRequest.fireAt           interfaces.ProgressEvent.call_constructor
+///
+/// The event instance created here has no owner. `ProgressEvent.deinit` would
+/// free it, but calling it is only safe if nothing retained the event - and a
+/// listener may have kept it (`let saved; xhr.onload = e => saved = e`), in
+/// which case V8 holds a wrapper around an Instance this would return to the
+/// slab. AGENTS.md is explicit that guessing at that has shipped two
+/// use-after-frees, and there is no "is this instance wrapped" query reachable
+/// from here to decide it with.
+///
+/// It is structural rather than mine: `HTMLImageElement.fireEventOnElement`
+/// creates and abandons an Event the same way. Firing six events per request
+/// makes it more frequent, which is why it is written down here rather than
+/// left to be rediscovered.
 fn fireAt(
     target: *runtime.Instance,
     xhr_instance: *runtime.Instance,
