@@ -89,6 +89,14 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "html", .description = "HTML Standard (non-rendering)" },
     .{ .name = "cookiestore", .description = "Cookie Store API" },
     .{ .name = "webidl", .description = "WebIDL bindings" },
+    // The three below were in the 0.1 worklist (tools/wpt_subset.py) but not
+    // here, so `wpt_runner websockets/` reported "No tests found" and exited 0
+    // while 781 worklist files - 18% of the corpus - were invisible to any
+    // directory run. Only --from-file reached them. Keep this list and the
+    // worklist's INCLUDE table in step.
+    .{ .name = "custom-elements", .description = "Custom Elements (HTML)" },
+    .{ .name = "websockets", .description = "WebSockets (HTML), via libcurl" },
+    .{ .name = "navigation-api", .description = "Navigation API (HTML)" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested

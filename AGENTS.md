@@ -165,9 +165,19 @@ hottest paths.
 
 ```bash
 zig fmt src/ tests/ tools/
-zig build      --cache-dir /tmp/crane-z16-cache
-zig build test --cache-dir /tmp/crane-z16-cache
+zig build wpt-runner -j2 --cache-dir /tmp/crane-z16-cache   # the one artifact WPT needs
+zig build test       -j2 --cache-dir /tmp/crane-z16-cache
 ```
+
+**Never run a bare `zig build`, and always pass `-j2`.** `build.zig` installs
+19 artifacts, and every one that embeds the tree is a separate root-module
+analysis of ~1M lines at ~6 GB of RAM each, three at a time by default. One
+bare build is 18 GB; one bare build plus two agents doing the same on a 32 GB
+machine is swap, which is what a load average of 68 looked like on 2026-09-22.
+`wpt-runner` builds the single executable the WPT loop uses; `-j2` caps the
+concurrent root compiles for `test`, which has many. The `wpt` step
+(`zig build wpt -j2 -- <path>`) is the other single-artifact path: it builds
+`wpt_runner` and runs it.
 
 **Do NOT put `/tmp/sdkshim` on PATH.** It was required until the machine
 upgraded to macOS 27 on 2026-09-21. `MacOSX15.sdk` no longer exists, Zig's own
@@ -1583,3 +1593,35 @@ second half, ClearWeak-then-Dispose in one tick puts `Reset()` on freed memory.
 **Takeaway**: **"Release the arm" is two different operations depending on
 whether the handle outlives the call.** V8 verifies the difference and aborts
 the process, so the parameter is not optional documentation.
+
+---
+
+### Testing: A directory argument is filtered through the runner's allowlist, and three 0.1 areas were not on it
+
+**Date**: 2026-09-22
+**Lesson**: `wpt_runner custom-elements/` printed "No tests found. Check your
+filter paths." and exited 0. The 0.1 worklist had 167 custom-elements files.
+
+**Why**: a directory argument is intersected with `in_scope_categories` in
+`tests/wpt_runner/config.zig`, which listed url, urlpattern, encoding, console,
+mimesniff, streams, fetch, xhr, dom, html, cookiestore and webidl - and not
+`custom-elements` (167 files), `websockets` (200) or `navigation-api` (414).
+781 worklist files, 18% of the corpus, were invisible to every directory run.
+An explicit file path works, and `--from-file` bypasses the filter entirely,
+which is the only reason the sweep ever measured them.
+
+**What Happened**: "No tests found" reads as an empty area, not as a filter, and
+the exit code is 0. An agent told to work `websockets/` by directory would have
+baselined nothing and reported a clean run. `tools/wpt_subset.py` is the
+authority on scope; the runner's list had drifted from it without anything
+noticing, because nothing compares the two.
+
+**Fix**: the three areas are on the list now. When adding an area to the
+worklist's INCLUDE table, add it here too - or run the area with
+`--from-file=<list>`, which is what the sweep does.
+
+**Takeaway**: **"No tests found" with exit 0 is a filter, not a fact.** Any
+runner answer that involves zero of something - zero tests, zero subtests, zero
+crashes - deserves one question before it is believed: what would this look like
+if the input had simply been dropped? This is the sixth distinct way this harness
+manufactures a result; the other five are above.

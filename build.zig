@@ -3558,6 +3558,19 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(wpt_runner_exe);
 
+    // Build ONLY wpt_runner. A bare `zig build` compiles all 19 installed
+    // artifacts, and every one that embeds the tree is a separate root-module
+    // analysis of ~1M lines - about 6 GB of RAM each, three at a time by
+    // default. On a 32 GB machine, one full build plus two agents doing the
+    // same is swap, not CPU. The WPT loop needs exactly this executable:
+    //
+    //     zig build wpt-runner -j2 --cache-dir /tmp/<cache>
+    //
+    // `-j2` caps concurrent root compiles; the `wpt` step (build + run) is the
+    // other single-artifact path.
+    const wpt_runner_step = b.step("wpt-runner", "Build only wpt_runner (no run); pair with -j2");
+    wpt_runner_step.dependOn(&b.addInstallArtifact(wpt_runner_exe, .{}).step);
+
     // WPT build options
     const wpt_output = b.option(
         []const u8,
