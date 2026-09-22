@@ -260,7 +260,7 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
             const response_state = response_instance.getState(Response.State);
             if (response_state.own._internal) |response_internal| {
                 response_internal.response.status = entry.status;
-                response_internal.response.status_message = entry.status_text;
+                try response_internal.response.setStatusMessage(entry.status_text);
                 // Body would be set here if we had the full response body handling
             }
 
@@ -366,7 +366,7 @@ pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.R
         const response_state = response_instance.getState(Response.State);
         if (response_state.own._internal) |response_internal| {
             response_internal.response.status = entry.status;
-            response_internal.response.status_message = entry.status_text;
+            try response_internal.response.setStatusMessage(entry.status_text);
             // Body would be set here if we had the full response body handling
         }
 

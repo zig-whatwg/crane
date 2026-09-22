@@ -67,7 +67,14 @@ pub const InternalResponse = struct {
     /// HTTP status (0-999)
     status: u16 = 200,
 
-    /// Status message (empty for HTTP/2+)
+    /// Status message (empty for HTTP/2+).
+    ///
+    /// OWNED by this response whenever it is non-empty: set it with
+    /// `setStatusMessage`, never by assigning the field. It used to be a bare
+    /// borrowed slice that `deinit` never freed, so its lifetime was whatever
+    /// the assigner's happened to be - a string literal, a cache entry, or the
+    /// Response constructor's `init.statusText`, which the WebIDL layer frees
+    /// the moment the constructor returns.
     status_message: []const u8,
 
     /// Header list
@@ -127,11 +134,9 @@ pub const InternalResponse = struct {
         }
         self.url_list.deinit(self.allocator);
 
-        // Free status message if we own it
-        if (self.status_message.len > 0) {
-            // Check if it's an owned allocation (not a static string)
-            // For safety, we track this via a flag or always own
-        }
+        // The status message is owned whenever it is non-empty - see the
+        // field's doc comment.
+        if (self.status_message.len > 0) self.allocator.free(self.status_message);
 
         self.header_list.deinit();
 
@@ -147,6 +152,17 @@ pub const InternalResponse = struct {
         }
 
         self.allocator.destroy(self);
+    }
+
+    /// Set the status message to an owned copy of `message`.
+    ///
+    /// Spec: https://fetch.spec.whatwg.org/#concept-response-status-message -
+    /// "a byte sequence". The caller's buffer is not retained, so a borrowed
+    /// argument is safe to pass.
+    pub fn setStatusMessage(self: *Self, message: []const u8) !void {
+        const copy: []const u8 = if (message.len > 0) try self.allocator.dupe(u8, message) else "";
+        if (self.status_message.len > 0) self.allocator.free(self.status_message);
+        self.status_message = copy;
     }
 
     // === URL Accessors ===
@@ -172,13 +188,21 @@ pub const InternalResponse = struct {
         const new_response = try self.allocator.create(Self);
         errdefer self.allocator.destroy(new_response);
 
+        // Each response frees its own status message, so the clone needs its
+        // own copy - sharing it is a double free.
+        const status_message: []const u8 = if (self.status_message.len > 0)
+            try self.allocator.dupe(u8, self.status_message)
+        else
+            "";
+        errdefer if (status_message.len > 0) self.allocator.free(status_message);
+
         new_response.* = .{
             .allocator = self.allocator,
             .response_type = self.response_type,
             .aborted = self.aborted,
             .url_list = .empty,
             .status = self.status,
-            .status_message = self.status_message,
+            .status_message = status_message,
             .header_list = try self.header_list.clone(self.allocator),
             .body = null,
             .cache_state = self.cache_state,
@@ -477,6 +501,46 @@ test "InternalResponse.clone" {
     try std.testing.expectEqual(@as(u16, 201), cloned.status);
     try std.testing.expectEqualStrings("https://example.com", cloned.url().?);
     try std.testing.expect(cloned.header_list.contains("Content-Type"));
+}
+
+test "InternalResponse owns its status message - a borrowed argument is copied, not kept" {
+    const allocator = std.testing.allocator;
+
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+
+    // The Response constructor's `init.statusText` is a WebIDL argument the
+    // binding layer frees the moment the constructor returns. Keeping the slice
+    // was a dangling pointer; the response has to hold its own copy.
+    const argument = try allocator.dupe(u8, "Not Found");
+    try response.setStatusMessage(argument);
+    allocator.free(argument);
+    try std.testing.expectEqualStrings("Not Found", response.status_message);
+
+    // Replacing it frees the previous copy - the testing allocator reports a
+    // leak otherwise - and the empty string needs no allocation at all.
+    try response.setStatusMessage("Gone");
+    try std.testing.expectEqualStrings("Gone", response.status_message);
+}
+
+test "InternalResponse.clone copies the status message rather than sharing it" {
+    const allocator = std.testing.allocator;
+
+    const original = try InternalResponse.init(allocator);
+    defer original.deinit();
+    try original.setStatusMessage("Created");
+
+    const cloned = try original.clone();
+    defer cloned.deinit();
+
+    // Two responses each free their own status message; shared storage would
+    // be a double free when the second one goes.
+    try std.testing.expectEqualStrings("Created", cloned.status_message);
+    try std.testing.expect(cloned.status_message.ptr != original.status_message.ptr);
+
+    try original.setStatusMessage("");
+    try std.testing.expectEqualStrings("", original.status_message);
+    try std.testing.expectEqualStrings("Created", cloned.status_message);
 }
 
 test "isNullBodyStatus" {

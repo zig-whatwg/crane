@@ -415,19 +415,35 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 
 // === Property Getters ===
 
+/// An owned copy of `bytes` for a string getter to return.
+///
+/// OWNERSHIP: a getter returning USVString/ByteString/DOMString has its result
+/// FREED by the interface layer (the `needs_cleanup` defer in
+/// `engines/v8/interface.zig`), with `instance.ctx.allocator`. The three getters
+/// below returned the request's own storage - its method, its URL-list entry,
+/// and for `referrer` a string literal - so every read freed memory the request
+/// still owned (a double free at `deinit`) or, for the literal, wrote into
+/// read-only memory (`Bus error` in `memset`).
+fn ownedString(instance: *runtime.Instance, bytes: []const u8) ![]const u8 {
+    if (bytes.len == 0) return "";
+    return try instance.ctx.allocator.dupe(u8, bytes);
+}
+
 /// Get method
+/// Spec: https://fetch.spec.whatwg.org/#dom-request-method
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
-    return internal.request.method;
+    return try ownedString(instance, internal.request.method);
 }
 
 /// Get URL
+/// Spec: https://fetch.spec.whatwg.org/#dom-request-url
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     // Use accessor method - returns first URL in url_list
-    return internal.request.getUrl();
+    return try ownedString(instance, internal.request.getUrl());
 }
 
 /// Get headers - creates and caches Headers instance on first access
@@ -493,10 +509,12 @@ pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
+    // Spec: https://fetch.spec.whatwg.org/#dom-request-referrer - owned, see
+    // `ownedString`.
     return switch (internal.request.referrer) {
         .no_referrer => "",
-        .client => "about:client",
-        .url => |url| url,
+        .client => try ownedString(instance, "about:client"),
+        .url => |url| try ownedString(instance, url),
     };
 }
 
