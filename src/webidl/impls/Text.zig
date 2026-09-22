@@ -194,21 +194,25 @@ pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance
 // =============================================================================
 
 /// Operation: splitText(offset)
-/// DOM §4.12 - Splits this text node at the given offset and returns the remainder as a new Text node.
+/// DOM §4.12 - "The splitText(offset) method steps are to split this with offset."
 ///
-/// Spec: To split a Text node with offset:
-/// 1. Let length be node's length.
-/// 2. If offset is greater than length, throw "IndexSizeError".
-/// 3. Let count be length minus offset.
-/// 4. Let new data be the result of substringing data with node, offset, and count.
-/// 5. Let new node be a new Text node with same node document. Set new node's data to new data.
-/// 6. If parent is not null:
-///    6.1. Insert new node into parent before node's next sibling
-///    6.2-6.5. Update live ranges
-/// 7. Replace data with node, offset, count, and empty string.
-/// 8. Return new node.
+/// To split a Text node `node` with integer `offset`:
+///  1. Let length be node's length.
+///  2. If offset is greater than length, then throw an "IndexSizeError".
+///  3. Let count be length − offset.
+///  4. Let newData be the result of substringing data of node with offset and count.
+///  5. Let newNode be a new Text node whose node document is node's node document
+///     and data is newData.
+///  6. Let parent be node's parent.
+///  7. If parent is non-null:
+///     1. Insert newNode into parent before node's next sibling.
+///     2-5. Update live ranges.
+///  8. Replace data of node with offset, count, and the empty string.
+///  9. Return newNode.
+///
+/// https://dom.spec.whatwg.org/#concept-text-split
 pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Get length from CharacterData (use interface per Golden Rule #13)
     const length = try interfaces.CharacterData.get_length(instance);
@@ -221,32 +225,53 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
     // Step 3: count = length - offset
     const count = length - offset;
 
-    // Step 4: Get substring (the data for new node)
-    const new_data = try interfaces.CharacterData.call_substringData(instance, offset, count);
-    defer {
-        var nd = new_data;
-        nd.deinit(internal.allocator);
-    }
+    // Step 4: Get substring (the data for new node).
+    // `substringData` allocates out of `instance.ctx.allocator`, so the
+    // matching free is against that allocator, not the Text state's.
+    var new_data = try interfaces.CharacterData.call_substringData(instance, offset, count);
+    defer new_data.deinit(instance.ctx.allocator);
 
-    // Step 5: Create new Text node
-    // TODO: Get proper context from instance. For now, create minimal instance
-    // using init() directly rather than call_constructor
-    const new_node = try init(internal.allocator, State, &Text.vtable, undefined);
+    // Step 5: New Text node in the same node document.
+    //
+    // The context must be this node's: `init(..., undefined)` left
+    // `new_node.ctx.allocator` pointing at stack garbage, and the first
+    // `.data` read on the returned node segfaulted inside the allocator
+    // vtable. Everything a Text node does later - `get_data`, `substringData`,
+    // `wholeText` - allocates through `ctx.allocator`.
+    const new_node = try call_constructor(
+        instance.ctx,
+        webidl.Opt(runtime.DOMString).passed(new_data),
+    );
     errdefer deinit(new_node);
 
-    // Set node type and data on the new node
-    try NodeImpl.setNodeType(new_node, NodeImpl.NodeType.TEXT_NODE);
-    try CharacterDataImpl.setData(new_node, new_data.asSlice());
+    if (NodeImpl.getOwnerDocument(instance)) |doc| {
+        try NodeImpl.setOwnerDocument(new_node, doc);
+    }
 
-    // TODO: Set owner_document from this node
+    // Step 6: parent
+    const parent = try interfaces.Node.get_parentNode(instance);
 
-    // Step 6: If parent is not null, insert new node
-    // TODO: Access Node's parent via inheritance and call dom.mutation.insert
+    // Step 7
+    if (parent) |p| {
+        // Step 7.1: Insert newNode into parent before node's next sibling.
+        const next_sibling = try interfaces.Node.get_nextSibling(instance);
+        _ = try interfaces.Node.call_insertBefore(p, new_node, next_sibling);
 
-    // Step 7: Delete the split-off data from this node (use interface per Golden Rule #13)
-    try interfaces.CharacterData.call_deleteData(instance, offset, count);
+        // Steps 7.2-7.5
+        dom.mutation.runLiveRangeSplitSteps(instance, new_node, p, offset);
+    }
 
-    // Step 8: Return new node
+    // Step 8: Replace data with the empty string (not deleteData - same effect,
+    // but this is the algorithm the spec names, and it is the one that runs the
+    // live-range steps for a replacement).
+    try interfaces.CharacterData.call_replaceData(
+        instance,
+        offset,
+        count,
+        runtime.DOMString.initEmpty(),
+    );
+
+    // Step 9: Return new node
     return new_node;
 }
 

@@ -1925,6 +1925,76 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
     }
 }
 
+/// Live range updates for "split a Text node", steps 7.2 through 7.5.
+/// Spec: https://dom.spec.whatwg.org/#concept-text-split
+///
+/// Called by `Text.splitText` *after* `newNode` has been inserted into
+/// `parent`. The insert algorithm's own step 5 has already shifted ranges whose
+/// offset is strictly greater than newNode's index; these four steps are the
+/// separate ones the split algorithm adds on top, and they do not overlap with
+/// it: 7.4/7.5 match the single offset `index of node + 1` exactly.
+///
+/// Non-throwing. A node with no document, or a document with no registered
+/// ranges, simply has nothing to update - the overwhelmingly common case.
+///
+/// `node` and `new_node` are `*runtime.Instance` for Text nodes, `parent` the
+/// `*runtime.Instance` they now live under.
+pub fn runLiveRangeSplitSteps(
+    node: *runtime.Instance,
+    new_node: *runtime.Instance,
+    parent: *runtime.Instance,
+    offset: u32,
+) void {
+    const NodeImpl = impls.Node;
+    const doc = NodeImpl.getOwnerDocument(node) orelse return;
+    const internal = document_internals.getInternal(doc) orelse return;
+    if (internal.ranges.items.len == 0) return;
+
+    // Index of node in parent, for steps 7.4 and 7.5. Inserting newNode after
+    // node does not move node, so this is the same index the spec means.
+    const node_base_ptr = instance_bridge.getNodeBase(node) orelse return;
+    const parent_base_ptr = instance_bridge.getNodeBase(parent) orelse return;
+    const node_index_usize = tree_helpers.getChildIndex(parent_base_ptr, node_base_ptr) orelse return;
+    const node_index: u32 = @intCast(node_index_usize);
+
+    for (internal.ranges.items) |range| {
+        // Step 7.2: start node is node and start offset > offset ->
+        // move the boundary to newNode, rebased.
+        if (RangeImpl.getStartContainer(range) == node) {
+            const start_offset = RangeImpl.getStartOffset(range);
+            if (start_offset > offset) {
+                RangeImpl.setStartBoundary(range, new_node, start_offset - offset);
+            }
+        }
+
+        // Step 7.3: same for the end boundary.
+        if (RangeImpl.getEndContainer(range) == node) {
+            const end_offset = RangeImpl.getEndOffset(range);
+            if (end_offset > offset) {
+                RangeImpl.setEndBoundary(range, new_node, end_offset - offset);
+            }
+        }
+
+        // Step 7.4: start node is parent and start offset == node's index + 1.
+        // Re-read the container: 7.2 may have just moved it to newNode, and a
+        // boundary on newNode is not on parent, so it cannot match here.
+        if (RangeImpl.getStartContainer(range) == parent) {
+            const start_offset = RangeImpl.getStartOffset(range);
+            if (start_offset == node_index + 1) {
+                RangeImpl.setStartOffset(range, start_offset + 1);
+            }
+        }
+
+        // Step 7.5: same for the end boundary.
+        if (RangeImpl.getEndContainer(range) == parent) {
+            const end_offset = RangeImpl.getEndOffset(range);
+            if (end_offset == node_index + 1) {
+                RangeImpl.setEndOffset(range, end_offset + 1);
+            }
+        }
+    }
+}
+
 /// Helper: Run NodeIterator pre-remove steps for all iterators
 /// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
 fn runNodeIteratorPreRemoveSteps(node: anytype) void {

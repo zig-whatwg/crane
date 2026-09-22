@@ -346,19 +346,38 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     WeakCallbackData* data = info.GetParameter();
     if (!data) return;
 
+    // A null `handle` means a dispose got here first: `releaseWeakArm` detached
+    // this record because V8 had already queued the callback for this GC.
+    //
+    // Free the record and RETURN. The Zig finalizer does not run, and that is
+    // the point. Every disposer in this tree frees the Zig side in the same
+    // breath as the handle - `disposeEntryWrapper` is followed by
+    // `allocator.destroy(entry)` on all six `wrapper_cache` paths, and
+    // `observable_array_exotic.cleanupAll` destroys the state right after its
+    // `ClearWeak` - so `user_data` is freed memory by now. Running
+    // `wrapper_cache.weakCallback` on a destroyed `CacheEntry` reads
+    // `entry.cache` out of the freed allocation and then calls `fetchRemove` on
+    // whatever HashMap that lands in.
+    //
+    // Skipping costs at most a leak of a `user_data` its owner did not free.
+    // Calling is a use-after-free. Same trade as the rest of this file: the
+    // unproven case takes the branch that costs memory.
+    //
+    // V8's own obligation is already discharged - the dispose reset the node -
+    // so there is nothing to Reset here either.
+    if (!data->handle) {
+        detachedWeakData().erase(data);
+        freeWeakData(data);
+        return;
+    }
+
     // v8-weak-callback-info.h: "When first called, the embedder MUST Reset() the
     // Global which triggered the callback."
     //
-    // A null `handle` means a dispose got there first and already reset the node,
-    // so the obligation is discharged and the pointer is a freed `Global<Value>`.
     // Erase BEFORE calling into Zig: the Zig finalizer routinely disposes this
     // very handle, and it must not find a stale arm to release.
-    if (data->handle) {
-        armedWeakData().erase(static_cast<const void*>(data->handle));
-        data->handle->Reset();
-    } else {
-        detachedWeakData().erase(data);
-    }
+    armedWeakData().erase(static_cast<const void*>(data->handle));
+    data->handle->Reset();
 
     // Call the Zig finalizer with user data
     if (data->callback) {
