@@ -88,6 +88,9 @@ pub const InternalState = struct {
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
+    /// The document URL string `url` was last parsed from, so a document whose
+    /// URL has not changed costs one comparison per access, not a parse.
+    url_source: ?[]const u8 = null,
 
     /// Navigation callback for triggering actual navigation.
     /// Set by the context that creates this Location (e.g., HTMLIFrameElement for iframes).
@@ -102,6 +105,7 @@ pub const InternalState = struct {
         if (self.cached_href) |href| {
             self.allocator.free(href);
         }
+        if (self.url_source) |src| self.allocator.free(src);
         // Free the URL if we own it (allocated in init)
         if (self.url) |url| {
             url.deinit();
@@ -119,9 +123,54 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Helper to get URL from internal state
+/// HTML §7.10.1: "A Location object's url is its relevant Document's URL,
+/// if this Location object's relevant Document is non-null, and about:blank
+/// otherwise." The record parsed at construction (about:blank) is the
+/// fallback for a Location with no window yet; with a window, the document's
+/// URL wins - it is what navigation set, and `history.pushState` changes it.
 fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
     const internal = getInternal(instance) orelse return null;
+    refreshFromDocument(internal);
     return internal.url;
+}
+
+/// Re-parse `internal.url` when the relevant document's URL string differs
+/// from the one it was parsed from. Every failure leaves the previous record
+/// in place: an unreadable document URL is not a reason to report a wrong one.
+fn refreshFromDocument(internal: *InternalState) void {
+    const window = internal.window orelse return;
+    const document = interfaces.Window.get_document(window) catch return;
+    // The interface getter clones into the DOCUMENT's context allocator, so
+    // that is what frees it (AGENTS.md, "Interface getters clone").
+    const doc_url = interfaces.Document.get_URL(document) catch return;
+    defer document.ctx.allocator.free(doc_url);
+    if (doc_url.len == 0) return;
+    if (internal.url_source) |src| {
+        if (std.mem.eql(u8, src, doc_url)) return;
+    }
+
+    const parsed = internal.allocator.create(url_record.URLRecord) catch return;
+    parsed.* = basic_parser.parse(internal.allocator, doc_url, null) catch {
+        internal.allocator.destroy(parsed);
+        return;
+    };
+    const source = internal.allocator.dupe(u8, doc_url) catch {
+        parsed.deinit();
+        internal.allocator.destroy(parsed);
+        return;
+    };
+
+    if (internal.url) |old| {
+        old.deinit();
+        internal.allocator.destroy(old);
+    }
+    internal.url = parsed;
+    if (internal.url_source) |src| internal.allocator.free(src);
+    internal.url_source = source;
+    if (internal.cached_href) |href| {
+        internal.allocator.free(href);
+        internal.cached_href = null;
+    }
 }
 
 /// Initialize instance (creates the instance)
