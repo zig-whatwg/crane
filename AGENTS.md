@@ -202,18 +202,27 @@ mid-run. Both are gone; but on a shared machine prefer the binary directly:
 ./zig-out/bin/wpt_runner --from-file=<list> --parallel=1 --wpt-root=tests/wpt --output=<dir>
 ```
 
-**Do NOT put `/tmp/sdkshim` on PATH.** It was required until the machine
-upgraded to macOS 27 on 2026-09-21. `MacOSX15.sdk` no longer exists, Zig's own
-SDK detection now works, and recreating the shim pointed at `MacOSX27.0.sdk`
-breaks the build outright:
+**The macOS SDK is chosen by `build.zig`, not by you.** Zig 0.16's bundled
+libcxx does not compile against the macOS 27 SDK:
 
     use of undeclared identifier 'INFINITY'
       zig/0.16.0/lib/libcxx/include/__random/clamp_to_integral.h:47
     error: sub-compilation of libcxx failed
 
-The identical build with no shim on PATH has no libcxx error at all. The old
-platform-aware shim is parked at `/tmp/sdkshim.disabled-2026-09-21` in case an
-iOS build ever needs its `--sdk` handling back.
+The 27 SDK's `math.h` leaves `INFINITY` to `<float.h>` when clang modules are
+on, and the clang `float.h` Zig ships defines it only for C23 or a non-strict
+`-std`. `useBuildableMacosSdk` in `build.zig` detects a 27+ default SDK and
+builds against the newest `MacOSX26.x.sdk` the Command Line Tools still ship,
+through a libc file it writes into the cache root. So a plain
+`zig build wpt-runner -j2` works; `--libc <file>` overrides it.
+
+- **Do not put an `xcrun` shim on PATH.** Zig asks
+  `xcrun --sdk macosx --show-sdk-path`, and `/tmp/sdkshim` broke the build
+  twice by answering that with the wrong SDK. `SDKROOT` does not help either -
+  `xcrun` ignores it when `--sdk` is given. The old iOS-aware shim is parked at
+  `/tmp/sdkshim.disabled-2026-09-21`.
+- **If `INFINITY` comes back**, the Command Line Tools dropped the 26.x SDK.
+  The durable fix is a Zig whose libcxx is SDK-27 clean.
 
 All three must pass. For changes to V8 handle ownership, they are not
 sufficient — see the regression protocol above.
@@ -362,9 +371,6 @@ Build caches are the big one. `/tmp/crane-z16-cache` reached **31 GB** in a
 single session; deleting it returned 398 GB free to 429 GB. It is worth keeping
 while you are still building and worth deleting the moment you are not — a cold
 rebuild is ~10 minutes, since V8 itself is prebuilt.
-
-Keep `/tmp/sdkshim` — it is 4 KB, every build needs it, and it does not survive
-a reboot.
 
 Before reporting a task complete, verify rather than claim:
 
@@ -2281,4 +2287,30 @@ happening; none of them could have said what the right behaviour was.
 **Takeaway**: **When you are naming a mechanism yourself, stop and check
 whether Blink or WebKit already has a name for it. They usually do, and the
 name comes with ten years of edge cases.**
+
+---
+
+### Debugging: Xcode updated itself mid-session and took the build's SDK with it
+
+**Date**: 2026-09-22
+**Lesson**: A build error naming a file that does not exist means the toolchain
+moved; check that before the code.
+
+**What Happened**: `zig build test` failed with `unable to find libSystem
+system library` and `failed to open .../SDKs/MacOSX26.5.sdk/.../
+SystemConfiguration.tbd: FileNotFound`, while a `wpt-runner` build in the same
+chain had passed minutes earlier. `ls` of Xcode's SDK folder showed only
+`MacOSX.sdk` and two `27` symlinks; 435 cache manifests in the build cache still
+named `MacOSX26.5.sdk`, the newest written that morning. Xcode had updated its
+SDK from 26.5 to 27.0 during the run. The next build then failed for real, on
+the `INFINITY` incompatibility described under "Before every commit".
+
+**Fix**: `build.zig` now selects a buildable SDK itself (`useBuildableMacosSdk`).
+To triage the next one: `xcrun --sdk macosx --show-sdk-version`,
+`ls /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/
+/Library/Developer/CommandLineTools/SDKs/`, and `grep -rl <old path>` in the
+cache's `h/` directory to date the last build that saw it.
+
+**Takeaway**: **An error that names a missing SDK file is about the machine,
+not the tree.** Ten seconds of `ls` beats re-running the suite.
 

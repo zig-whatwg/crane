@@ -499,9 +499,74 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?[]const u8) void {
     ) catch @panic("OOM") });
 }
 
+/// Zig 0.16's bundled libcxx does not compile against the macOS 27 SDK:
+///
+///     zig/0.16.0/lib/libcxx/include/__random/clamp_to_integral.h:47:58:
+///       use of undeclared identifier 'INFINITY'
+///     error: sub-compilation of libcxx failed
+///
+/// The 27 SDK's `math.h` defines INFINITY only when clang modules are off or
+/// `<float.h>` cannot be included, leaving it to `<float.h>` - and the clang
+/// `float.h` Zig ships defines it only for C23 or a non-strict `-std`, which
+/// libcxx's strict C++ compile is not. So neither header defines it, and every
+/// build that has to recompile libcxx fails. It surfaced when Xcode updated
+/// itself from the 26.5 SDK to 27.0 on 2026-09-22, mid-build.
+///
+/// Zig picks the SDK with `xcrun --sdk macosx --show-sdk-path`, which ignores
+/// SDKROOT, so the override has to be a libc file: when the default SDK is 27
+/// or newer and the Command Line Tools still ship a 26.x SDK, every compile
+/// step builds against that. An explicit `--libc` always wins, and nothing
+/// happens off macOS or for a non-macOS target.
+fn useBuildableMacosSdk(b: *std.Build, target: std.Build.ResolvedTarget) void {
+    if (b.libc_file != null) return;
+    if (@import("builtin").os.tag != .macos) return;
+    if (target.result.os.tag != .macos or !target.query.isNativeOs()) return;
+
+    var code: u8 = 0;
+    const version_out = b.runAllowFail(
+        &.{ "xcrun", "--sdk", "macosx", "--show-sdk-version" },
+        &code,
+        .ignore,
+    ) catch return;
+    const version = std.mem.trim(u8, version_out, " \t\r\n");
+    const major_end = std.mem.indexOfScalar(u8, version, '.') orelse version.len;
+    const major = std.fmt.parseInt(u32, version[0..major_end], 10) catch return;
+    if (major < 27) return;
+
+    // The newest real 26.x SDK directory; `MacOSX26.sdk` is a symlink to it.
+    const sdk_root = "/Library/Developer/CommandLineTools/SDKs";
+    const io = b.graph.io;
+    var dir = std.Io.Dir.cwd().openDir(io, sdk_root, .{ .iterate = true }) catch return;
+    defer dir.close(io);
+    var best_name: ?[]const u8 = null;
+    var best_minor: u32 = 0;
+    var it = dir.iterate();
+    while (it.next(io) catch null) |entry| {
+        if (entry.kind != .directory) continue;
+        const prefix = "MacOSX26.";
+        const suffix = ".sdk";
+        if (!std.mem.startsWith(u8, entry.name, prefix) or !std.mem.endsWith(u8, entry.name, suffix)) continue;
+        const minor = std.fmt.parseInt(u32, entry.name[prefix.len .. entry.name.len - suffix.len], 10) catch continue;
+        if (best_name == null or minor > best_minor) {
+            best_minor = minor;
+            best_name = b.dupe(entry.name);
+        }
+    }
+    const sdk = b.fmt("{s}/{s}", .{ sdk_root, best_name orelse return });
+
+    const contents = b.fmt(
+        "include_dir={s}/usr/include\nsys_include_dir={s}/usr/include\ncrt_dir=\nmsvc_lib_dir=\nkernel32_lib_dir=\ngcc_dir=\n",
+        .{ sdk, sdk },
+    );
+    const libc_name = "crane-macos-sdk.libc";
+    b.cache_root.handle.writeFile(io, .{ .sub_path = libc_name, .data = contents }) catch return;
+    b.libc_file = b.cache_root.join(b.allocator, &.{libc_name}) catch return;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    useBuildableMacosSdk(b, target);
 
     // Where this target's V8 archives live.
     //
