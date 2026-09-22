@@ -1056,6 +1056,11 @@ pub const V8ErrorInfo = extern struct {
     source_line: ?[*:0]u8,
     /// Resource name/URL (heap-allocated, null-terminated, may be null)
     resource_name: ?[*:0]u8,
+    /// The thrown value (Global<Value>*), or null when none was captured.
+    /// OWNED BY THIS STRUCT: `v8_FreeErrorInfo` disposes it. A caller that
+    /// needs the value after freeing the info must copy it into its own Global
+    /// first (`v8_Global_Get` + `v8_Value_ToGlobal`).
+    exception: ?*Value,
 
     /// Get the message as a Zig slice
     pub fn getMessage(self: *const V8ErrorInfo) ?[]const u8 {
@@ -1090,8 +1095,14 @@ pub const V8ErrorInfo = extern struct {
     }
 };
 
-/// Free a V8ErrorInfo structure and all its allocated strings
+/// Free a V8ErrorInfo structure, its strings and its `exception` Global
 pub extern fn v8_FreeErrorInfo(info: ?*V8ErrorInfo) void;
+
+/// "Extract error information" for a thrown value that did not come through a
+/// TryCatch (a rejected module evaluation promise, a stored parse error).
+/// Returns a new info - free with v8_FreeErrorInfo - whose `exception` is a
+/// fresh Global of the value, or null when given nothing to work with.
+pub extern fn v8_Exception_GetErrorInfo(context: *Context, exception: *Value) ?*V8ErrorInfo;
 
 /// Result of safe script compilation
 pub const V8ScriptCompileResult = extern struct {
@@ -1246,19 +1257,22 @@ pub const ModuleStatus = enum(c_int) {
 };
 
 /// Module resolve callback function type
-/// Called by V8 when a module imports another module.
+/// Called by V8 during InstantiateModule, once per module request.
 /// Arguments:
 ///   user_data: Context pointer passed to v8_Module_SetResolveCallback
 ///   specifier: The import specifier (e.g., "./module.js")
 ///   specifier_len: Length of specifier string
-///   referrer_module: The module that contains the import
+///   type_attribute: The request's "type" import attribute, or null
+///   referrer_identity_hash: v8::Module::GetIdentityHash() of the importer
 /// Returns:
-///   Global<Module>* for the resolved module, or null on error
+///   Global<Module>* for the resolved module (the embedder keeps ownership),
+///   or null - in which case the wrapper throws the TypeError V8 requires.
 pub const ModuleResolveCallback = *const fn (
     user_data: ?*anyopaque,
     specifier: [*]const u8,
     specifier_len: c_int,
-    referrer_module: ?*anyopaque,
+    type_attribute: ?[*:0]const u8,
+    referrer_identity_hash: c_int,
 ) callconv(.c) ?*anyopaque;
 
 /// Set the module resolve callback for import resolution
@@ -1301,6 +1315,44 @@ pub extern fn v8_Module_GetModuleRequest(module: *Module, index: c_int) ?[*:0]u8
 
 /// Free a string allocated by v8_Module_GetModuleRequest
 pub extern fn v8_FreeString(str: ?[*:0]u8) void;
+
+/// The "type" import attribute of the module request at `index`, or null.
+/// Free a non-null result with v8_FreeString. `status.*` is 0 (no type),
+/// 1 (type returned), -1 (the request names an attribute other than "type",
+/// which the host must reject) or -2 (index out of range).
+pub extern fn v8_Module_GetModuleRequestType(module: *Module, index: c_int, status: *c_int) ?[*:0]u8;
+
+/// Compile an event handler content attribute's value into its function
+/// (HTML "getting the current value of the event handler" step 3.9). `scopes`
+/// are Global<Object>* scope objects, OUTERMOST first ([document, form owner,
+/// element] for an element's handler; none for a Window's). Returns the
+/// function (a Global<Value>* the caller owns) or null with `out_error.*` set
+/// (free with v8_FreeErrorInfo; its `exception` is the SyntaxError).
+pub extern fn v8_CompileEventHandler(
+    context: *Context,
+    name: [*]const u8,
+    name_len: c_int,
+    body: [*]const u8,
+    body_len: c_int,
+    window_onerror: bool,
+    scopes: [*]const ?*Object,
+    scope_count: c_int,
+    out_error: *?*V8ErrorInfo,
+) ?*Value;
+
+/// Create a JSON module script's record: parse `source` as JSON and wrap the
+/// value in a synthetic module whose only export is "default".
+/// Returns the module (dispose with v8_Module_Dispose) or null with
+/// `out_error.*` set (free with v8_FreeErrorInfo; its `exception` is the
+/// SyntaxError JSON.parse threw).
+pub extern fn v8_Module_CreateJsonModule(
+    context: *Context,
+    source: [*]const u8,
+    source_len: c_int,
+    name: [*]const u8,
+    name_len: c_int,
+    out_error: *?*V8ErrorInfo,
+) ?*Module;
 
 /// Get the module's current status
 ///
