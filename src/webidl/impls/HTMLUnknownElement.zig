@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const HTMLElementImpl = @import("HTMLElement.zig");
 const HTMLUnknownElement = interfaces.HTMLUnknownElement;
 
 pub const State = HTMLUnknownElement.State;
@@ -28,9 +29,19 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    // Chain to HTMLElement, exactly as HTMLDivElement and every other element
+    // impl does. This was the raw codegen stub, which calls
+    // `runtime.Instance.init` directly and therefore creates NO
+    // HTMLElement/Element/Node/EventTarget state - so `Element.setLocalName`
+    // failed with InvalidStateError and `document.createElement("foo")` threw
+    // for every name the element factory does not recognise.
+    //
+    // The factory was already correct: it returns HTMLUnknownElement for an
+    // unknown name, per DOM "create an element". The defect was here.
+    //
+    // Same shape as 82784123d (CDATASection, ProcessingInstruction) and the
+    // AGENTS.md lesson "stub inits produce stateless nodes".
+    return try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
