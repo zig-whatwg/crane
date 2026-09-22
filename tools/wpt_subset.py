@@ -136,6 +136,28 @@ EXCLUDE = [
     ('fetch/content-encoding/zstd/', 'zstd'),
     ('websockets/stream/',           'WebSocketStream, not shipping'),
 
+    # XML-serialised documents: .xhtml, .svg, .xml.
+    #
+    # Excluded on measurement, not on assumption. These are real web platform
+    # content and belong in a general-purpose engine, but Crane has no XML
+    # parser - only an HTML one. Classifying them so they run (FileType ->
+    # .html) was tried and measured on 12 xhtml files:
+    #
+    #     before   12 ERROR, wall_ms = 0, never started
+    #     after     9 TIMEOUT + 3 OK, 1 subtest passing
+    #
+    # So it converts instant errors into 10-second hangs and yields one result.
+    # Worse for the gate, worse for run time, and a pass under the HTML parser
+    # would be suspect anyway - XHTML needs self-closing tags, namespaces and
+    # well-formedness the HTML parser does not implement.
+    #
+    # Re-include when there is an XML parser. Until then these count as a known
+    # missing feature rather than as engine defects.
+    ('.xhtml',  'no XML parser - see the measurement above'),
+    ('.xht',    'no XML parser'),
+    ('.svg',    'no XML parser'),
+    ('.xml',    'no XML parser'),
+
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),
