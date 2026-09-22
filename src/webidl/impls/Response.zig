@@ -135,19 +135,33 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Handle init options first (status, statusText, headers)
-    var status_text_provided = false;
+    // "Initialize a response" - https://fetch.spec.whatwg.org/#initialize-a-response
     if (init_data.wasPassed()) {
+        // Step 1: If init["status"] is not in the range 200 to 599, inclusive,
+        // then throw a RangeError.
         if (init_data.value.status) |status| {
             if (status < 200 or status > 599) {
                 return error.RangeError;
             }
+        }
+
+        // Step 2: If init["statusText"] is not the empty string and does not
+        // match the reason-phrase token production, then throw a TypeError.
+        if (init_data.value.statusText) |status_text| {
+            if (!isReasonPhrase(status_text)) return error.TypeError;
+        }
+
+        // Step 3: Set response's response's status to init["status"].
+        if (init_data.value.status) |status| {
             internal.response.status = status;
         }
 
+        // Step 4: Set response's response's status message to
+        // init["statusText"]. The response keeps its OWN copy: this argument
+        // belongs to the WebIDL layer, which frees it when the constructor
+        // returns.
         if (init_data.value.statusText) |status_text| {
-            internal.response.status_message = status_text;
-            status_text_provided = true;
+            try internal.response.setStatusMessage(status_text);
         }
 
         // Handle headers from init
@@ -169,10 +183,10 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
         }
     }
 
-    // Set default statusText based on status if not explicitly provided
-    if (!status_text_provided) {
-        internal.response.status_message = getDefaultStatusText(internal.response.status);
-    }
+    // No default status message: ResponseInit's `statusText` defaults to the
+    // empty string, and `new Response().statusText` is "" in every engine.
+    // Inventing "OK" from the status code was a deviation, and it pointed the
+    // field at a string literal that the binding layer then tried to free.
 
     // Handle body parameter
     if (body.wasPassed()) {
@@ -313,13 +327,25 @@ pub fn get_type(instance: *runtime.Instance) anyerror!enums.ResponseType {
     };
 }
 
+/// Spec: https://fetch.spec.whatwg.org/#dom-response-url - the empty string if
+/// this's response's URL is null, otherwise its serialization with exclude
+/// fragment set.
+///
+/// OWNERSHIP: a getter returning USVString/ByteString/DOMString has its result
+/// FREED by the interface layer (the `needs_cleanup` defer in
+/// `engines/v8/interface.zig`). Returning the response's own URL-list entry
+/// handed its storage to `allocator.free`, so the second read of `url` - or the
+/// response's own `deinit` - freed it again.
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
     // Return last URL in URL list (for redirects)
     if (internal.response.url_list.items.len > 0) {
-        return internal.response.url_list.items[internal.response.url_list.items.len - 1];
+        const url = internal.response.url_list.items[internal.response.url_list.items.len - 1];
+        // TODO: serialize with the exclude fragment flag set.
+        if (url.len == 0) return "";
+        return try instance.ctx.allocator.dupe(u8, url);
     }
 
     return "";
@@ -343,10 +369,16 @@ pub fn get_ok(instance: *runtime.Instance) anyerror!bool {
     return internal.response.status >= 200 and internal.response.status <= 299;
 }
 
+/// Spec: https://fetch.spec.whatwg.org/#dom-response-statustext
+///
+/// Owned copy - see `get_url`. This one was the loudest: a default status text
+/// was a string LITERAL, and freeing it wrote to read-only memory
+/// (`Bus error` in `memset`, from `Allocator.free`).
 pub fn get_statusText(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
-    return internal.response.status_message;
+    if (internal.response.status_message.len == 0) return "";
+    return try instance.ctx.allocator.dupe(u8, internal.response.status_message);
 }
 
 pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -968,52 +1000,18 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 // === Helper Functions ===
 
-/// Get default status text for HTTP status codes
-fn getDefaultStatusText(status: u16) []const u8 {
-    return switch (status) {
-        100 => "Continue",
-        101 => "Switching Protocols",
-        200 => "OK",
-        201 => "Created",
-        202 => "Accepted",
-        203 => "Non-Authoritative Information",
-        204 => "No Content",
-        205 => "Reset Content",
-        206 => "Partial Content",
-        300 => "Multiple Choices",
-        301 => "Moved Permanently",
-        302 => "Found",
-        303 => "See Other",
-        304 => "Not Modified",
-        307 => "Temporary Redirect",
-        308 => "Permanent Redirect",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        406 => "Not Acceptable",
-        408 => "Request Timeout",
-        409 => "Conflict",
-        410 => "Gone",
-        411 => "Length Required",
-        412 => "Precondition Failed",
-        413 => "Payload Too Large",
-        414 => "URI Too Long",
-        415 => "Unsupported Media Type",
-        416 => "Range Not Satisfiable",
-        417 => "Expectation Failed",
-        418 => "I'm a teapot",
-        422 => "Unprocessable Entity",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        504 => "Gateway Timeout",
-        505 => "HTTP Version Not Supported",
-        else => "",
-    };
+/// Does `bytes` match RFC 9112's `reason-phrase` production?
+///
+///     reason-phrase = 1*( HTAB / SP / VCHAR / obs-text )
+///
+/// The caller has already let the empty string through, which "initialize a
+/// response" step 2 exempts explicitly.
+fn isReasonPhrase(bytes: []const u8) bool {
+    for (bytes) |c| {
+        const ok = c == '\t' or c == ' ' or (c >= 0x21 and c <= 0x7E) or c >= 0x80;
+        if (!ok) return false;
+    }
+    return true;
 }
 
 // === Internal Helper Functions (for Cache API) ===

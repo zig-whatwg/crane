@@ -624,7 +624,20 @@ pub const LibcurlBackend = struct {
         _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
         // Method (stored in ctx to persist until request completes)
-        if (!std.mem.eql(u8, request.method, "GET")) {
+        //
+        // HEAD is not a custom request as far as libcurl is concerned.
+        // CURLOPT_CUSTOMREQUEST only rewrites the method NAME on the request
+        // line - libcurl's documentation is explicit that it does not change
+        // how the transfer behaves - so a "HEAD" sent that way still waits for
+        // the body the response's Content-Length announces. A HEAD response
+        // never carries one (RFC 9110 9.3.2), so against a server that keeps
+        // the connection open - `wpt serve` does - the transfer never ended,
+        // and with no transfer timeout that hung the whole process: every
+        // xhr/ test that sends HEAD. CURLOPT_NOBODY is how libcurl makes a
+        // HEAD request.
+        if (std.mem.eql(u8, request.method, "HEAD")) {
+            _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
+        } else if (!std.mem.eql(u8, request.method, "GET")) {
             ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
             _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
         }

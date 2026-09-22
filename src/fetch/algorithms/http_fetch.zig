@@ -32,6 +32,14 @@ const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const cors = @import("../cors/root.zig");
 const clock = @import("clock");
 const PreflightCache = cors.PreflightCache;
+const main_fetch = @import("main_fetch.zig");
+
+// URL Standard, for a redirect's location URL. The same three modules `xhr`
+// takes for `open()` - `url`'s root re-exports neither the serializer nor a
+// plain `parse`.
+const url_record = @import("url_record");
+const basic_parser = @import("basic_parser");
+const url_serializer = @import("url_serializer");
 
 /// Error types for HTTP fetch.
 pub const HttpFetchError = error{
@@ -109,9 +117,10 @@ pub fn httpFetch(
                 return final_response;
             },
             .follow => {
-                // Run HTTP-redirect fetch (handles the redirect chain)
-                final_response.deinit();
-                return try httpRedirectFetch(allocator, params, options);
+                // Step 6.2 "follow": "Set response to the result of running
+                // HTTP-redirect fetch given fetchParams and response." The
+                // response in hand IS the redirect - it is not fetched again.
+                return try httpRedirectFetch(allocator, params, options, final_response);
             },
         }
     }
@@ -128,83 +137,238 @@ pub fn httpFetch(
     return final_response;
 }
 
-/// HTTP-redirect fetch algorithm.
+/// HTTP-redirect fetch.
 ///
-/// Per Fetch spec §4.7:
-/// 1. Let request be fetchParams's request
-/// 2. Let response be the result of running HTTP-network-or-cache fetch
-/// 3. If response is not a network error and response's status is a redirect status:
-///    - Handle redirect based on redirect mode
-/// 4. Return response
+/// Spec: https://fetch.spec.whatwg.org/#http-redirect-fetch
+///
+/// Takes ownership of `response`, the redirect being followed. The previous
+/// version took no response at all: it fetched the redirecting URL a SECOND
+/// time, appended the raw `Location` value to the URL list without parsing it,
+/// and then read `response.status` after `response.deinit()` - a use-after-free
+/// that crashed `fetch/api/redirect/redirect-{location,mode,to-dataurl}.any.js`
+/// and `fetch/api/cors/cors-redirect.any.js`.
 pub fn httpRedirectFetch(
     allocator: Allocator,
     params: *FetchParams,
     options: HttpFetchOptions,
+    response: *InternalResponse,
 ) HttpFetchError!*InternalResponse {
+    _ = options;
+
+    // Step 1: Let request be fetchParams's request.
     const request = params.request;
 
-    // Step 1: Let request be fetchParams's request (already have it)
+    // Step 2: Let internalResponse be response. Nothing at this layer is a
+    // filtered response yet.
 
-    // Step 2: Run HTTP-network-or-cache fetch
-    var response = try httpNetworkOrCacheFetch(allocator, params, options, false);
+    // Step 3: Let locationURL be internalResponse's location URL given
+    // request's current URL's fragment.
+    const location = locationUrl(allocator, response, request.currentUrl()) catch |err| {
+        response.deinit();
+        return switch (err) {
+            error.OutOfMemory => HttpFetchError.OutOfMemory,
+            // Step 5: If locationURL is failure, return a network error.
+            error.InvalidLocation => try internal_response.networkError(allocator),
+        };
+    };
 
-    // Step 3: Handle redirects
-    if (!isNetworkError(response) and internal_response.isRedirectStatus(response.status)) {
-        // Get Location header for redirect
-        const location = response.header_list.get(allocator, "Location") catch null;
-        defer if (location) |loc| allocator.free(loc);
+    // Step 4: If locationURL is null, then return response.
+    const location_url = location orelse return response;
+    defer allocator.free(location_url);
 
-        if (location) |loc| {
-            // Check redirect count
-            if (request.redirect_count >= 20) {
-                response.deinit();
+    // Everything below needs only the status, so read it before letting the
+    // redirect response go.
+    const status = response.status;
+    response.deinit();
+
+    // Step 6: If locationURL's scheme is not an HTTP(S) scheme, return a
+    // network error.
+    if (!std.mem.startsWith(u8, location_url, "http:") and !std.mem.startsWith(u8, location_url, "https:")) {
+        return try internal_response.networkError(allocator);
+    }
+
+    // Step 7: If request's redirect count is 20, return a network error.
+    if (request.redirect_count >= 20) {
+        return try internal_response.networkError(allocator);
+    }
+
+    // Step 8: Increase request's redirect count by 1.
+    request.redirect_count += 1;
+
+    // Steps 9-10 compare request's origin with locationURL's and check
+    // response tainting. Neither is populated on this path yet - main fetch
+    // does not compute tainting and callers leave origin as "client" - so they
+    // cannot be evaluated here without guessing.
+    // TODO: steps 9-10 once main fetch step 12 sets response tainting.
+
+    // Step 11: If internalResponse's status is not 303, request's body is
+    // non-null, and request's body's source is null, return a network error.
+    // A byte body always has a source; only a stream body can lack one.
+    if (status != 303) {
+        if (request.body) |b| switch (b) {
+            .bytes => {},
+            .body => |body| if (body.source == .none) {
                 return try internal_response.networkError(allocator);
-            }
+            },
+        };
+    }
 
-            // Increment redirect count
-            request.redirect_count += 1;
+    // Step 12: POST under 301/302, or anything but GET/HEAD under 303, becomes
+    // a GET without a body or its body headers.
+    if (redirectBecomesGet(status, request.method)) {
+        // Step 12.1
+        request.setMethod("GET") catch return HttpFetchError.OutOfMemory;
+        if (request.body) |b| switch (b) {
+            .body => |body| body.deinit(),
+            .bytes => {}, // borrowed, never owned by the request
+        };
+        request.body = null;
 
-            // Add redirect URL to request's URL list
-            request.addUrl(loc) catch {
-                response.deinit();
+        // Step 12.2: delete each request-body-header name.
+        for (request_body_header_names) |name| request.header_list.delete(name);
+    }
+
+    // Step 13: crossing to another origin drops `Authorization`, the one CORS
+    // non-wildcard request-header name.
+    if (!sameHttpOrigin(request.currentUrl(), location_url)) {
+        request.header_list.delete("Authorization");
+    }
+
+    // Step 14: re-extracting a byte body from its source yields the same
+    // bytes, so there is nothing to do for the bodies this layer carries.
+
+    // Steps 15-17: timing info.
+    const now = getCurrentTimeMs();
+    params.timing_info.redirect_end_time = now;
+    params.timing_info.post_redirect_start_time = now;
+    if (params.timing_info.redirect_start_time == 0) {
+        params.timing_info.redirect_start_time = params.timing_info.start_time;
+    }
+
+    // Step 18: Append locationURL to request's URL list.
+    request.addUrl(location_url) catch return HttpFetchError.OutOfMemory;
+
+    // Step 19: set request's referrer policy on redirect.
+    // TODO: needs the response's `Referrer-Policy` header parsed; the policy
+    // is left unchanged until then.
+
+    // Steps 20-22: recursive main fetch. Redirect mode "manual" only reaches
+    // here for a navigation, which this layer does not do, so recursive stays
+    // true.
+    const final_response = main_fetch.mainFetch(allocator, params, true) catch |err| switch (err) {
+        main_fetch.MainFetchError.OutOfMemory => return HttpFetchError.OutOfMemory,
+        main_fetch.MainFetchError.NetworkError => return try internal_response.networkError(allocator),
+    };
+
+    // A response's URL list is the request's: it is what makes `redirected`
+    // true and `url` the final URL. Network errors keep theirs empty.
+    if (final_response.response_type != .@"error") {
+        for (final_response.url_list.items) |u| allocator.free(u);
+        final_response.url_list.clearRetainingCapacity();
+        for (request.url_list.items) |u| {
+            final_response.addUrl(u) catch {
+                final_response.deinit();
                 return HttpFetchError.OutOfMemory;
             };
-
-            // Clean up current response and fetch again
-            response.deinit();
-
-            // Handle method change for 303 redirects
-            if (response.status == 303) {
-                request.setMethod("GET") catch {
-                    return HttpFetchError.OutOfMemory;
-                };
-                // Remove body for GET requests
-                request.body = null;
-            }
-
-            // Recursive redirect fetch
-            const final_response = try httpRedirectFetch(allocator, params, options);
-
-            // The request's url_list tracks the full redirect chain
-            // If there was a redirect, response needs multiple URLs for 'redirected' property
-            // (url_list.len > 1 means redirected)
-            if (request.url_list.items.len > 1) {
-                // Clear response's url_list and copy full chain from request
-                for (final_response.url_list.items) |url| {
-                    allocator.free(url);
-                }
-                final_response.url_list.clearRetainingCapacity();
-
-                for (request.url_list.items) |url| {
-                    final_response.addUrl(url) catch {};
-                }
-            }
-
-            return final_response;
         }
     }
 
-    return response;
+    return final_response;
+}
+
+/// Request-body-header names.
+///
+/// Spec: https://fetch.spec.whatwg.org/#request-body-header-name
+const request_body_header_names = [_][]const u8{
+    "Content-Encoding",
+    "Content-Language",
+    "Content-Location",
+    "Content-Type",
+};
+
+/// HTTP-redirect fetch step 12: does following this redirect turn the request
+/// into a GET?
+fn redirectBecomesGet(status: u16, method: []const u8) bool {
+    if ((status == 301 or status == 302) and std.mem.eql(u8, method, "POST")) return true;
+    if (status == 303 and !std.mem.eql(u8, method, "GET") and !std.mem.eql(u8, method, "HEAD")) return true;
+    return false;
+}
+
+/// Are two SERIALIZED HTTP(S) URLs same origin?
+///
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin - the
+/// tuple (scheme, host, port). Comparing text is exact here because both sides
+/// come out of the same serializer: scheme and host are canonical, a default
+/// port is already elided, and userinfo - the only thing between `//` and the
+/// host - ends at the one `@` the serializer leaves unescaped.
+fn sameHttpOrigin(a: []const u8, b: []const u8) bool {
+    const pa = splitOrigin(a) orelse return false;
+    const pb = splitOrigin(b) orelse return false;
+    return std.mem.eql(u8, pa.scheme, pb.scheme) and std.mem.eql(u8, pa.host_port, pb.host_port);
+}
+
+const OriginParts = struct { scheme: []const u8, host_port: []const u8 };
+
+fn splitOrigin(serialized: []const u8) ?OriginParts {
+    const sep = std.mem.indexOf(u8, serialized, "://") orelse return null;
+    const rest = serialized[sep + 3 ..];
+    const authority = rest[0 .. std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len];
+    const host_start = if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| at + 1 else 0;
+    return .{ .scheme = serialized[0..sep], .host_port = authority[host_start..] };
+}
+
+const LocationError = error{ OutOfMemory, InvalidLocation };
+
+/// A response's location URL.
+///
+/// Spec: https://fetch.spec.whatwg.org/#concept-response-location-url
+///
+/// Returns null when there is no `Location` header, an owned serialized URL
+/// otherwise, and `error.InvalidLocation` for the spec's "failure": more than
+/// one `Location` value, or one that does not parse against the response's URL.
+fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: []const u8) LocationError!?[]u8 {
+    // Step 1: If response's status is not a redirect status, return null.
+    if (!internal_response.isRedirectStatus(response.status)) return null;
+
+    // Step 2: Let location be the result of extracting header list values
+    // given `Location` and response's header list. `Location` is a
+    // single-value header, so two of them are failure.
+    var value: ?[]const u8 = null;
+    for (response.header_list.iterator()) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "Location")) continue;
+        if (value != null) return error.InvalidLocation;
+        value = header.value;
+    }
+    const raw = value orelse return null;
+
+    // Step 3: parse location with response's URL.
+    var base_record: ?url_record.URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (response.url()) |base| {
+        base_record = basic_parser.parse(allocator, base, null) catch null;
+    }
+
+    var parsed = basic_parser.parse(
+        allocator,
+        std.mem.trim(u8, raw, " \t"),
+        if (base_record) |*b| b else null,
+    ) catch return error.InvalidLocation;
+    defer parsed.deinit();
+
+    const serialized = url_serializer.serialize(allocator, &parsed, false) catch return error.OutOfMemory;
+
+    // Step 4: If location is a URL whose fragment is null, set location's
+    // fragment to requestFragment - the request's current URL's fragment.
+    // Appending `#fragment` to the serialization is the same URL.
+    if (parsed.fragment() == null) {
+        if (std.mem.indexOfScalar(u8, request_url, '#')) |hash| {
+            defer allocator.free(serialized);
+            return std.mem.concat(allocator, u8, &.{ serialized, request_url[hash..] }) catch error.OutOfMemory;
+        }
+    }
+
+    // Step 5: Return location.
+    return @constCast(serialized);
 }
 
 /// HTTP-network-or-cache fetch algorithm.
@@ -805,4 +969,51 @@ test "isNetworkError" {
     defer ok_response.deinit();
     ok_response.status = 200;
     try std.testing.expect(!isNetworkError(ok_response));
+}
+
+test "redirectBecomesGet - HTTP-redirect fetch step 12" {
+    try std.testing.expect(redirectBecomesGet(301, "POST"));
+    try std.testing.expect(redirectBecomesGet(302, "POST"));
+    try std.testing.expect(!redirectBecomesGet(302, "PUT"));
+    try std.testing.expect(redirectBecomesGet(303, "PUT"));
+    try std.testing.expect(redirectBecomesGet(303, "POST"));
+    try std.testing.expect(!redirectBecomesGet(303, "GET"));
+    try std.testing.expect(!redirectBecomesGet(303, "HEAD"));
+    try std.testing.expect(!redirectBecomesGet(307, "POST"));
+    try std.testing.expect(!redirectBecomesGet(308, "POST"));
+}
+
+test "sameHttpOrigin - scheme, host and port, ignoring userinfo and path" {
+    try std.testing.expect(sameHttpOrigin("http://a.test/x", "http://a.test/y?z#w"));
+    try std.testing.expect(sameHttpOrigin("http://u:p@a.test:81/x", "http://a.test:81/"));
+    try std.testing.expect(!sameHttpOrigin("http://a.test/", "https://a.test/"));
+    try std.testing.expect(!sameHttpOrigin("http://a.test/", "http://b.test/"));
+    try std.testing.expect(!sameHttpOrigin("http://a.test:81/", "http://a.test/"));
+}
+
+test "locationUrl - relative, absolute, missing, duplicated, and the inherited fragment" {
+    const allocator = std.testing.allocator;
+
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.status = 302;
+    try response.addUrl("http://a.test/dir/page?q");
+
+    // No Location: null (step 4 of HTTP-redirect fetch returns the response).
+    try std.testing.expect((try locationUrl(allocator, response, "http://a.test/dir/page")) == null);
+
+    // Path-relative, resolved against the RESPONSE's URL, and given the
+    // request's fragment because it has none of its own.
+    try response.header_list.append("Location", "next");
+    const rel = (try locationUrl(allocator, response, "http://a.test/dir/page#frag")).?;
+    defer allocator.free(rel);
+    try std.testing.expectEqualStrings("http://a.test/dir/next#frag", rel);
+
+    // Two Location headers: failure.
+    try response.header_list.append("Location", "/other");
+    try std.testing.expectError(error.InvalidLocation, locationUrl(allocator, response, "http://a.test/"));
+
+    // Not a redirect status: null, whatever the headers say.
+    response.status = 200;
+    try std.testing.expect((try locationUrl(allocator, response, "http://a.test/")) == null);
 }

@@ -55,6 +55,44 @@ test "LibcurlBackend - GET request" {
     try testing.expect(response.body.?.len > 0);
 }
 
+test "LibcurlBackend - HEAD reads no body, even when Content-Length announces one" {
+    const allocator = testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/get", .{base_url}) catch unreachable;
+
+    const backend = try LibcurlBackend.init(allocator);
+    defer backend.deinit();
+
+    // The server answers HEAD the way RFC 9110 9.3.2 says: GET's
+    // Content-Length and no body. Sent as CURLOPT_CUSTOMREQUEST "HEAD", curl
+    // does not know the method has no response body and waits for those
+    // bytes - against `wpt serve`, which keeps the connection open, forever,
+    // taking the whole WPT runner with it. The timeout here only bounds the
+    // failure.
+    const request = NetworkRequest{
+        .url = url,
+        .method = "HEAD",
+        .headers = &.{},
+        .body = null,
+        .timeout_ms = 5000,
+    };
+
+    var response = try backend.getBackend().send(allocator, &request);
+    defer response.deinit();
+
+    try testing.expectEqual(@as(u16, 200), response.status);
+    if (response.body) |body| try testing.expectEqual(@as(usize, 0), body.len);
+}
+
 test "LibcurlBackend - POST request with body" {
     const allocator = testing.allocator;
 

@@ -352,8 +352,12 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
     ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
     _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
-    // Method (stored in ctx to persist until request completes)
-    if (!std.mem.eql(u8, request.method, "GET")) {
+    // Method (stored in ctx to persist until request completes). HEAD needs
+    // CURLOPT_NOBODY, not a custom method name - see the same branch in
+    // curl_backend.zig's configureRequest for why.
+    if (std.mem.eql(u8, request.method, "HEAD")) {
+        _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
+    } else if (!std.mem.eql(u8, request.method, "GET")) {
         ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
         _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
     }

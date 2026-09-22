@@ -160,6 +160,23 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The GC integration layer handles slab freeing after this returns.
 }
 
+/// This's relevant settings object's API base URL.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
+///
+/// The same lookup `XMLHttpRequest.open()` makes (see `relevantBaseURL` in
+/// XMLHttpRequest.zig): a Window's navigation records the document URL in the
+/// context entry, and a worker records its script URL there
+/// (html/worker_v8_context.zig), which is a worker's API base URL. Borrowed;
+/// not ours to free.
+fn relevantBaseURL(ctx: runtime.Context) ?[]const u8 {
+    const v8_engine = @import("v8");
+    const v8_context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
+    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    if (url.len == 0) return null;
+    return url;
+}
+
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
 pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
@@ -175,8 +192,15 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // Step 2: Let fallbackMode be null
     var fallback_mode: ?enums.RequestMode = null;
 
-    // Step 3: Let baseURL be this's relevant settings object's API base URL
-    // TODO: Get from context when needed
+    // Step 3: Let baseURL be this's relevant settings object's API base URL.
+    // Parsed once here; a base that does not parse is no base, under which a
+    // relative input fails step 5.2 exactly as it would with no document.
+    const api_parser = @import("api_parser");
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (relevantBaseURL(ctx)) |base| {
+        base_record = api_parser.parseURL(ctx.allocator, base, null) catch null;
+    }
 
     // Step 4: Let signal be null
     var signal: ?*runtime.Instance = null;
@@ -184,14 +208,17 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // Step 5: If input is a string
     switch (input) {
         .usvstring => |url_string| {
-            // Step 5.1: Parse URL
-            const api_parser = @import("api_parser");
-
-            // Per Fetch spec §5.4, parsedURL is the result of parsing input with
-            // the relevant settings object's API base URL. Without a document or
-            // worker context (e.g., in REPL), only absolute URLs are valid.
+            // Step 5.1: Let parsedURL be the result of parsing input with
+            // baseURL. This passed no base at all, so every RELATIVE input -
+            // `new Request("")`, `new Request("resources/x.py")`, which is how
+            // most of fetch/api/request/ builds its requests - failed step 5.2
+            // and threw TypeError, from the top level of the test script.
             // Step 5.2: If parsedURL is failure, throw TypeError.
-            var parsed_url = api_parser.parseURL(ctx.allocator, url_string, null) catch {
+            var parsed_url = api_parser.parseURL(
+                ctx.allocator,
+                url_string,
+                if (base_record) |*b| b else null,
+            ) catch {
                 return error.TypeError;
             };
             defer parsed_url.deinit();
@@ -232,7 +259,15 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // For now, we'll modify base_request in place and create the final instance
 
     // Step 13: If init is not empty
+    // Step 10: If init["window"] exists and is non-null, then throw a
+    // TypeError. (`window` can only be set to null.)
+    if (init_opts.window) |window| switch (window) {
+        .null, .undefined => {},
+        else => return error.TypeError,
+    };
+
     const init_is_empty = (init_opts.method == null and
+        init_opts.window == null and
         init_opts.headers == null and
         init_opts.body == null and
         init_opts.referrer == null and
@@ -253,15 +288,61 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             base_request.mode = .same_origin;
         }
 
-        // Steps 13.2-8: Reset various fields
-        // (Most of these are already defaults in InternalRequest.init)
+        // Steps 13.2-4, 13.7-8: already the defaults of a request this
+        // constructor built.
+
+        // Step 13.5: Set request's referrer to "client". A Request passed as
+        // `input` brings its own, which init replaces.
+        base_request.setReferrer(.client);
+
+        // Step 13.6: Set request's referrer policy to the empty string.
+        base_request.referrer_policy = .empty;
+    }
+
+    // Step 14: If init["referrer"] exists, then:
+    if (init_opts.referrer) |referrer| {
+        if (referrer.len == 0) {
+            // Step 14.2: the empty string means "no-referrer".
+            base_request.setReferrer(.no_referrer);
+        } else {
+            // Step 14.3.1: Let parsedReferrer be the result of parsing
+            // referrer with baseURL.
+            var parsed_referrer = api_parser.parseURL(
+                ctx.allocator,
+                referrer,
+                if (base_record) |*b| b else null,
+            ) catch {
+                // Step 14.3.2: If parsedReferrer is failure, throw a TypeError.
+                return error.TypeError;
+            };
+            defer parsed_referrer.deinit();
+
+            const serialized = try @import("url_serializer").serialize(ctx.allocator, &parsed_referrer, false);
+            defer ctx.allocator.free(serialized);
+
+            // Step 14.3.3: about:client, or another origin than this's
+            // relevant settings object's, means "client". The settings
+            // object's origin is taken as its API base URL's, which it is for
+            // a document or worker created from a network URL.
+            const is_about_client = std.mem.eql(u8, parsed_referrer.scheme(), "about") and
+                std.mem.startsWith(u8, serialized, "about:client") and
+                (serialized.len == "about:client".len or serialized["about:client".len] == '?' or serialized["about:client".len] == '#');
+            if (is_about_client or !sameTupleOrigin(serialized, relevantBaseURL(ctx))) {
+                base_request.setReferrer(.client);
+            } else {
+                // Step 14.3.4: Otherwise, set request's referrer to
+                // parsedReferrer.
+                try base_request.setReferrerUrl(serialized);
+            }
+        }
     }
 
     // Step 25: If init["method"] exists
     if (init_opts.method) |method| {
         // Step 25.1: Let method = init["method"]
-        // Step 25.2: If method is not a method or is forbidden, throw TypeError
-        // TODO: Validate method
+        // Step 25.2: If method is not a method or method is a forbidden
+        // method, then throw a TypeError.
+        if (!isMethod(method) or isForbiddenMethod(method)) return error.TypeError;
 
         // Step 25.3: Normalize method (uppercase standard methods)
         // Step 25.4: Set request's method to method
@@ -280,6 +361,14 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         }
         // Step 18: Set request's mode (convert to internal enum)
         base_request.mode = toInternalMode(m);
+    }
+
+    // Step 32.1: If request's mode is "no-cors" and its method is not a
+    // CORS-safelisted method, then throw a TypeError. Checked here, ahead of
+    // the headers - both are TypeErrors, and nothing between step 25 and here
+    // can throw anything else.
+    if (base_request.mode == .no_cors and !isCorsSafelistedMethod(base_request.method)) {
+        return error.TypeError;
     }
 
     // Step 19: If init["credentials"] exists
@@ -415,19 +504,35 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 
 // === Property Getters ===
 
+/// An owned copy of `bytes` for a string getter to return.
+///
+/// OWNERSHIP: a getter returning USVString/ByteString/DOMString has its result
+/// FREED by the interface layer (the `needs_cleanup` defer in
+/// `engines/v8/interface.zig`), with `instance.ctx.allocator`. The three getters
+/// below returned the request's own storage - its method, its URL-list entry,
+/// and for `referrer` a string literal - so every read freed memory the request
+/// still owned (a double free at `deinit`) or, for the literal, wrote into
+/// read-only memory (`Bus error` in `memset`).
+fn ownedString(instance: *runtime.Instance, bytes: []const u8) ![]const u8 {
+    if (bytes.len == 0) return "";
+    return try instance.ctx.allocator.dupe(u8, bytes);
+}
+
 /// Get method
+/// Spec: https://fetch.spec.whatwg.org/#dom-request-method
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
-    return internal.request.method;
+    return try ownedString(instance, internal.request.method);
 }
 
 /// Get URL
+/// Spec: https://fetch.spec.whatwg.org/#dom-request-url
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     // Use accessor method - returns first URL in url_list
-    return internal.request.getUrl();
+    return try ownedString(instance, internal.request.getUrl());
 }
 
 /// Get headers - creates and caches Headers instance on first access
@@ -493,10 +598,12 @@ pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
+    // Spec: https://fetch.spec.whatwg.org/#dom-request-referrer - owned, see
+    // `ownedString`.
     return switch (internal.request.referrer) {
         .no_referrer => "",
-        .client => "about:client",
-        .url => |url| url,
+        .client => try ownedString(instance, "about:client"),
+        .url => |url| try ownedString(instance, url),
     };
 }
 
@@ -1322,6 +1429,58 @@ pub fn getUrlInternal(instance: *runtime.Instance) ?[]const u8 {
 
 /// Normalize HTTP method per Fetch spec
 /// Uppercases DELETE, GET, HEAD, OPTIONS, POST, PUT
+/// Is `method` a method - the `token` production of RFC 9110?
+///
+/// Spec: https://fetch.spec.whatwg.org/#concept-method
+fn isMethod(method: []const u8) bool {
+    if (method.len == 0) return false;
+    for (method) |c| switch (c) {
+        '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~' => {},
+        '0'...'9', 'a'...'z', 'A'...'Z' => {},
+        else => return false,
+    };
+    return true;
+}
+
+/// Spec: https://fetch.spec.whatwg.org/#forbidden-method - CONNECT, TRACE or
+/// TRACK, byte-case-insensitively.
+fn isForbiddenMethod(method: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(method, "CONNECT") or
+        std.ascii.eqlIgnoreCase(method, "TRACE") or
+        std.ascii.eqlIgnoreCase(method, "TRACK");
+}
+
+/// Spec: https://fetch.spec.whatwg.org/#cors-safelisted-method - GET, HEAD or
+/// POST. Compared after normalization, so byte-exact.
+fn isCorsSafelistedMethod(method: []const u8) bool {
+    return std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "POST");
+}
+
+/// Same origin, for two serialized URLs whose origin is a tuple.
+///
+/// Only http(s) is compared as a tuple - scheme, host, port - which is where
+/// referrers come from. Anything else has an opaque origin here and is never
+/// same origin, which step 14.3.3 turns into "client": the safe answer. Text
+/// comparison is exact because both sides come out of the same serializer.
+fn sameTupleOrigin(a: []const u8, b_opt: ?[]const u8) bool {
+    const b = b_opt orelse return false;
+    const pa = tupleOrigin(a) orelse return false;
+    const pb = tupleOrigin(b) orelse return false;
+    return std.mem.eql(u8, pa.scheme, pb.scheme) and std.mem.eql(u8, pa.host_port, pb.host_port);
+}
+
+const TupleOrigin = struct { scheme: []const u8, host_port: []const u8 };
+
+fn tupleOrigin(serialized: []const u8) ?TupleOrigin {
+    const sep = std.mem.indexOf(u8, serialized, "://") orelse return null;
+    const scheme = serialized[0..sep];
+    if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https")) return null;
+    const rest = serialized[sep + 3 ..];
+    const authority = rest[0 .. std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len];
+    const host_start = if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| at + 1 else 0;
+    return .{ .scheme = scheme, .host_port = authority[host_start..] };
+}
+
 fn normalizeMethod(method: []const u8) []const u8 {
     // Check case-insensitively and return uppercase version
     if (std.ascii.eqlIgnoreCase(method, "DELETE")) return "DELETE";

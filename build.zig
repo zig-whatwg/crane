@@ -1787,6 +1787,11 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("clock", clock_mod);
     fetch_mod.addImport("host", host_mod);
     fetch_mod.addImport("referrer_policy", referrer_policy_mod);
+    // HTTP-redirect fetch parses a `Location` value against the response URL.
+    // The same three URL modules `xhr_mod` takes, for the same reason.
+    fetch_mod.addImport("url_record", url_internal_url_record_mod);
+    fetch_mod.addImport("basic_parser", url_basic_parser_mod);
+    fetch_mod.addImport("url_serializer", url_serializer_mod);
 
     // Configure libcurl for network requests
     if (use_system_curl) {

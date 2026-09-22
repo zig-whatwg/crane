@@ -13,6 +13,13 @@
 //!   GET  /delay/{seconds}  - Delay response (for timeout tests)
 //!   GET  /response-headers - Return custom response headers
 //!   GET  /bytes/{n}        - Return n bytes
+//!   *    /redirect-abs     - 302, Location: /get            (root-relative)
+//!   *    /redirect-rel     - 301, Location: get             (path-relative)
+//!   *    /redirect-303     - 303, Location: /get            (method becomes GET)
+//!   *    /redirect-307     - 307, Location: /post           (method is kept)
+//!   *    /redirect-loop    - 302, Location: /redirect-loop  (never ends)
+//!   *    /redirect-none    - 302 with no Location at all
+//!   *    /redirect-ftp     - 302, Location: ftp://127.0.0.1/ (not HTTP(S))
 //!
 //! WebSocket Endpoints:
 //!   /ws/echo               - Echo all messages back
@@ -180,13 +187,24 @@ pub const TestServer = struct {
             return;
         }
 
+        // A HEAD request is answered like the GET it stands for, minus the
+        // body: RFC 9110 9.3.2 - the same header fields, Content-Length
+        // included, and no content.
+        const is_head = std.mem.eql(u8, method, "HEAD");
+
         // Route to HTTP handler
-        const response = routeRequest(allocator, method, path) catch |err| {
+        const response = routeRequest(allocator, if (is_head) "GET" else method, path) catch |err| {
             std.debug.print("Route error: {}\n", .{err});
             return sendResponse(io, stream, 500, "Internal Server Error", "text/plain", "Internal Server Error");
         };
         defer if (response.body_allocated) allocator.free(response.body);
 
+        if (response.location) |location| {
+            return sendRedirect(io, stream, response.status, response.status_text, location);
+        }
+        if (is_head) {
+            return sendHeadResponse(io, stream, response.status, response.status_text, response.content_type, response.body.len);
+        }
         try sendResponse(io, stream, response.status, response.status_text, response.content_type, response.body);
     }
 
@@ -406,9 +424,38 @@ pub const TestServer = struct {
         content_type: []const u8,
         body: []const u8,
         body_allocated: bool = false,
+        /// A `Location` header, for the redirect routes.
+        location: ?[]const u8 = null,
     };
 
+    /// The fixed redirect routes. Any method: the tests check what the client
+    /// does with its method on the way to the target.
+    fn redirectRoute(path: []const u8) ?RouteResponse {
+        const Redirect = struct { path: []const u8, status: u16, text: []const u8, location: ?[]const u8 };
+        const routes = [_]Redirect{
+            .{ .path = "/redirect-abs", .status = 302, .text = "Found", .location = "/get" },
+            .{ .path = "/redirect-rel", .status = 301, .text = "Moved Permanently", .location = "get" },
+            .{ .path = "/redirect-303", .status = 303, .text = "See Other", .location = "/get" },
+            .{ .path = "/redirect-307", .status = 307, .text = "Temporary Redirect", .location = "/post" },
+            .{ .path = "/redirect-loop", .status = 302, .text = "Found", .location = "/redirect-loop" },
+            .{ .path = "/redirect-none", .status = 302, .text = "Found", .location = null },
+            .{ .path = "/redirect-ftp", .status = 302, .text = "Found", .location = "ftp://127.0.0.1/" },
+        };
+        for (routes) |r| {
+            if (std.mem.eql(u8, path, r.path)) return .{
+                .status = r.status,
+                .status_text = r.text,
+                .content_type = "text/plain",
+                .body = "",
+                .location = r.location,
+            };
+        }
+        return null;
+    }
+
     fn routeRequest(allocator: Allocator, method: []const u8, path: []const u8) !RouteResponse {
+        if (redirectRoute(path)) |redirect| return redirect;
+
         // GET /get - echo request info
         if (std.mem.eql(u8, method, "GET") and std.mem.eql(u8, path, "/get")) {
             return .{
@@ -555,6 +602,23 @@ pub const TestServer = struct {
             503 => "Service Unavailable",
             else => "Unknown",
         };
+    }
+
+    fn sendRedirect(io: Io, stream: net.Stream, status: u16, status_text: []const u8, location: []const u8) !void {
+        var response_buf: [1024]u8 = undefined;
+        const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nLocation: {s}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", .{ status, status_text, location }) catch return error.ResponseTooLarge;
+
+        try writeAllToStream(io, stream, response);
+    }
+
+    /// The response to HEAD: GET's header fields - Content-Length announcing
+    /// the body a GET would have carried - and no body. A client that waits
+    /// for those bytes waits until the connection closes.
+    fn sendHeadResponse(io: Io, stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, content_length: usize) !void {
+        var response_buf: [1024]u8 = undefined;
+        const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\nX-Test-Header: test-value\r\n\r\n", .{ status, status_text, content_type, content_length }) catch return error.ResponseTooLarge;
+
+        try writeAllToStream(io, stream, response);
     }
 
     fn sendResponse(io: Io, stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, body: []const u8) !void {
