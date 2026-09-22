@@ -24,6 +24,10 @@ const networkError = fetch.internal.networkError;
 const mimesniff = @import("mimesniff");
 const MimeType = mimesniff.MimeType;
 
+// The seam through which the algorithms reach JavaScript.
+const event_support = @import("event_support.zig");
+const EventSink = event_support.EventSink;
+
 /// XMLHttpRequest ready states
 ///
 /// Spec: https://xhr.spec.whatwg.org/#states
@@ -188,6 +192,19 @@ pub const XMLHttpRequestState = struct {
     /// Allocator for memory management
     allocator: Allocator,
 
+    /// The XHR object's "API base URL", used by open() to resolve a relative
+    /// URL. Borrowed, never owned - the impl owns the string and keeps it alive
+    /// for the duration of the open() call.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#the-open()-method step 6 -
+    /// "parsing url with this's relevant settings object's API base URL".
+    base_url: ?[]const u8,
+
+    /// How the algorithms fire events. Null in unit tests; installed by
+    /// `src/webidl/impls/XMLHttpRequest.zig` when there is a JS object to fire
+    /// at. See `event_support.EventSink`.
+    event_sink: ?EventSink,
+
     /// Initialize state
     ///
     /// Spec: Constructor steps set initial values
@@ -223,6 +240,8 @@ pub const XMLHttpRequestState = struct {
 
             // Internal
             .allocator = allocator,
+            .base_url = null,
+            .event_sink = null,
         };
     }
 
@@ -345,6 +364,34 @@ pub const XMLHttpRequestState = struct {
             return r.response_type == .@"error";
         }
         return true; // null response is treated as network error
+    }
+
+    /// Request error steps, step 3: "Set xhr's response to a network error."
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#request-error-steps
+    ///
+    /// There is no separate "error flag" in the XHR Standard - it was removed,
+    /// and an earlier version of this module carried one anyway, which is why
+    /// `response.zig` referenced a field that did not exist. Every "did this
+    /// fail?" question is answered by the response itself: `isNetworkError()`
+    /// for the transport, `response_object == .failure` for a conversion that
+    /// threw. A null response reads back as a network error, so clearing it is
+    /// all this step needs.
+    pub fn setResponseToNetworkError(self: *XMLHttpRequestState) void {
+        if (self.response) |r| r.deinit();
+        self.response = null;
+    }
+
+    /// Take ownership of a response produced by the fetch algorithm.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#handle-response - "Set xhr's response
+    /// to response."
+    pub fn setResponse(self: *XMLHttpRequestState, new_response: *InternalResponse) void {
+        if (self.response) |r| {
+            if (r == new_response) return;
+            r.deinit();
+        }
+        self.response = new_response;
     }
 };
 

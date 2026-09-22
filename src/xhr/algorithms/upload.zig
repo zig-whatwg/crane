@@ -23,6 +23,7 @@ const std = @import("std");
 const xhr_root = @import("../root.zig");
 const ProgressTracker = @import("../internal/progress_tracker.zig").ProgressTracker;
 const event_support = @import("../internal/event_support.zig");
+const EventSink = event_support.EventSink;
 
 /// Upload progress tracker with event firing
 pub const UploadTracker = struct {
@@ -33,7 +34,11 @@ pub const UploadTracker = struct {
     error_occurred: bool,
     aborted: bool,
 
-    pub fn init(body_size: usize) UploadTracker {
+    /// Where the upload's progress events go. Null in unit tests, which then
+    /// exercise the accounting without needing an isolate.
+    sink: ?EventSink,
+
+    pub fn init(body_size: usize, sink: ?EventSink) UploadTracker {
         var tracker = ProgressTracker.init();
         tracker.setContentLength(body_size);
         return .{
@@ -43,6 +48,7 @@ pub const UploadTracker = struct {
             .completed = false,
             .error_occurred = false,
             .aborted = false,
+            .sink = sink,
         };
     }
 
@@ -51,7 +57,7 @@ pub const UploadTracker = struct {
         if (self.started) return; // Already started
         self.started = true;
 
-        event_support.fireUploadProgressEvent(.loadstart, .{
+        event_support.fireUploadProgressEvent(self.sink, .loadstart, .{
             .lengthComputable = true,
             .loaded = 0,
             .total = self.total_size,
@@ -71,7 +77,7 @@ pub const UploadTracker = struct {
     /// Fire progress event (called after chunk processing if throttle allows)
     pub fn fireProgress(self: *const UploadTracker) void {
         const info = self.getProgress();
-        event_support.fireUploadProgressEvent(.progress, .{
+        event_support.fireUploadProgressEvent(self.sink, .progress, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
@@ -86,21 +92,21 @@ pub const UploadTracker = struct {
         const info = self.getProgress();
 
         // Fire final progress event
-        event_support.fireUploadProgressEvent(.progress, .{
+        event_support.fireUploadProgressEvent(self.sink, .progress, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
         });
 
         // Fire load event
-        event_support.fireUploadProgressEvent(.load, .{
+        event_support.fireUploadProgressEvent(self.sink, .load, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
         });
 
         // Fire loadend event
-        event_support.fireUploadProgressEvent(.loadend, .{
+        event_support.fireUploadProgressEvent(self.sink, .loadend, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
@@ -115,14 +121,14 @@ pub const UploadTracker = struct {
         const info = self.getProgress();
 
         // Fire error event
-        event_support.fireUploadProgressEvent(.@"error", .{
+        event_support.fireUploadProgressEvent(self.sink, .@"error", .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
         });
 
         // Fire loadend event
-        event_support.fireUploadProgressEvent(.loadend, .{
+        event_support.fireUploadProgressEvent(self.sink, .loadend, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
@@ -137,14 +143,14 @@ pub const UploadTracker = struct {
         const info = self.getProgress();
 
         // Fire abort event
-        event_support.fireUploadProgressEvent(.abort, .{
+        event_support.fireUploadProgressEvent(self.sink, .abort, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
         });
 
         // Fire loadend event
-        event_support.fireUploadProgressEvent(.loadend, .{
+        event_support.fireUploadProgressEvent(self.sink, .loadend, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
@@ -158,14 +164,14 @@ pub const UploadTracker = struct {
         const info = self.getProgress();
 
         // Fire timeout event
-        event_support.fireUploadProgressEvent(.timeout, .{
+        event_support.fireUploadProgressEvent(self.sink, .timeout, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
         });
 
         // Fire loadend event
-        event_support.fireUploadProgressEvent(.loadend, .{
+        event_support.fireUploadProgressEvent(self.sink, .loadend, .{
             .lengthComputable = true,
             .loaded = info.loaded,
             .total = info.total,
@@ -290,7 +296,7 @@ fn isSimpleContentType(value: []const u8) bool {
 // =============================================================================
 
 test "UploadTracker - initialization" {
-    const tracker = UploadTracker.init(10240);
+    const tracker = UploadTracker.init(10240, null);
 
     try std.testing.expectEqual(@as(usize, 10240), tracker.total_size);
     try std.testing.expectEqual(@as(usize, 0), tracker.progress.total_bytes);
@@ -299,7 +305,7 @@ test "UploadTracker - initialization" {
 }
 
 test "UploadTracker - tracks progress" {
-    var tracker = UploadTracker.init(5120);
+    var tracker = UploadTracker.init(5120, null);
 
     _ = tracker.onChunk(1024);
     _ = tracker.onChunk(1024);
@@ -310,7 +316,7 @@ test "UploadTracker - tracks progress" {
 }
 
 test "UploadTracker - completion detection" {
-    var tracker = UploadTracker.init(2048);
+    var tracker = UploadTracker.init(2048, null);
 
     try std.testing.expect(!tracker.isComplete());
 
@@ -322,7 +328,7 @@ test "UploadTracker - completion detection" {
 }
 
 test "UploadTracker - loadstart fires on first chunk" {
-    var tracker = UploadTracker.init(1024);
+    var tracker = UploadTracker.init(1024, null);
 
     try std.testing.expect(!tracker.started);
 
@@ -332,7 +338,7 @@ test "UploadTracker - loadstart fires on first chunk" {
 }
 
 test "UploadTracker - fireComplete sets completed flag" {
-    var tracker = UploadTracker.init(1024);
+    var tracker = UploadTracker.init(1024, null);
     tracker.started = true;
 
     _ = tracker.onChunk(1024);
@@ -342,7 +348,7 @@ test "UploadTracker - fireComplete sets completed flag" {
 }
 
 test "UploadTracker - fireComplete only fires once" {
-    var tracker = UploadTracker.init(1024);
+    var tracker = UploadTracker.init(1024, null);
     tracker.started = true;
 
     tracker.fireComplete();
@@ -354,7 +360,7 @@ test "UploadTracker - fireComplete only fires once" {
 }
 
 test "UploadTracker - fireError sets error flag" {
-    var tracker = UploadTracker.init(1024);
+    var tracker = UploadTracker.init(1024, null);
     tracker.started = true;
 
     tracker.fireError();
@@ -364,7 +370,7 @@ test "UploadTracker - fireError sets error flag" {
 }
 
 test "UploadTracker - fireAbort sets aborted flag" {
-    var tracker = UploadTracker.init(1024);
+    var tracker = UploadTracker.init(1024, null);
     tracker.started = true;
 
     tracker.fireAbort();

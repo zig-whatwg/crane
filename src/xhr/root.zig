@@ -131,11 +131,22 @@ const std = @import("std");
 // pub const ProgressEvent = @import("webidl/interfaces/ProgressEvent.zig").ProgressEvent;
 
 // Internal
-pub const context = @import("internal/context.zig");
-pub const GlobalContext = context.GlobalContext;
+//
+// `internal/context.zig` used to sit here: a `GlobalContext` stub holding a
+// `runtime.event_loop.Scheduler`. `src/runtime/root.zig` has no `event_loop`
+// member and never had one, so the file could not compile; nothing in the tree
+// referenced `GlobalContext`, and the HTML Standard's Window and Worker - which
+// its own TODO said to wait for - now exist. Deleted rather than repaired.
+// A caller that needs the event loop reaches it through
+// `instance.ctx.getOptionalEventLoop()`.
 pub const state_machine = @import("internal/state_machine.zig");
 pub const XMLHttpRequestState = state_machine.XMLHttpRequestState;
 pub const ReadyState = state_machine.ReadyState;
+pub const event_support = @import("internal/event_support.zig");
+pub const EventSink = event_support.EventSink;
+pub const XHREventType = event_support.XHREventType;
+pub const ProgressEventData = event_support.ProgressEventData;
+pub const EventTargetKind = event_support.EventTargetKind;
 pub const progress_tracker = @import("internal/progress_tracker.zig");
 pub const ProgressTracker = progress_tracker.ProgressTracker;
 

@@ -1,113 +1,58 @@
 //! XMLHttpRequest abort() Algorithm
 //!
 //! WHATWG XHR Spec: https://xhr.spec.whatwg.org/#the-abort()-method
-//!
-//! The abort() method cancels any network activity and resets the XHR object.
 
 const std = @import("std");
 const xhr_root = @import("../root.zig");
 const XMLHttpRequestState = xhr_root.state_machine.XMLHttpRequestState;
 const ReadyState = xhr_root.state_machine.ReadyState;
-const event_support = @import("../internal/event_support.zig");
+const ResponseProcessor = @import("response.zig").ResponseProcessor;
 
-/// Abort the XMLHttpRequest
+/// The abort() method steps.
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-abort()-method
 ///
-/// Steps:
-/// 1. Terminate any ongoing fetch (via fetch controller)
-/// 2. If state is OPENED with send flag, HEADERS_RECEIVED, or LOADING:
-///    - Set state to DONE
-///    - Fire readystatechange event
-///    - If upload complete flag is unset:
-///      - Set upload complete flag
-///      - Fire abort on upload object
-///      - Fire loadend on upload object
-///    - Fire abort event
-///    - Fire loadend event
-/// 3. If state is DONE:
-///    - Reset to UNSENT (no events)
+/// 1. Abort this's fetch controller.
+/// 2. If this's state is opened with this's send() flag set, headers received,
+///    or loading, then run the request error steps for this and `abort`.
+/// 3. If this's state is done, then set this's state to unsent and set this's
+///    response to a network error.
+///
+/// That is the whole algorithm. This file used to carry its own hand-inlined
+/// copy of the request error steps AND finish by calling `state.reset()` -
+/// which is open() step 11, not anything abort() does. `reset()` clears the
+/// upload complete flag that step 6.1 has just SET, so `abort()` ended by
+/// undoing part of its own work. The events now come from the one
+/// implementation of the request error steps, in `response.zig`.
 pub fn abort(state: *XMLHttpRequestState) void {
-    // Step 1: Terminate any ongoing fetch
-    // TODO: Call fetch_controller.abort() when integrated
+    // Step 1: Abort this's fetch controller.
     terminateFetch(state);
 
-    // Step 2: Handle based on state
-    const current_state = state.ready_state;
-    const send_flag = state.send_flag;
-
-    if ((current_state == .OPENED and send_flag) or
-        current_state == .HEADERS_RECEIVED or
-        current_state == .LOADING)
+    // Step 2: run the request error steps for `abort`.
+    if ((state.ready_state == .OPENED and state.send_flag) or
+        state.ready_state == .HEADERS_RECEIVED or
+        state.ready_state == .LOADING)
     {
-        // Transition to DONE and fire events
-        abortWithEvents(state);
-    } else if (current_state == .DONE) {
-        // Just reset to UNSENT (no events)
-        resetToUnsent(state);
-    }
-    // If UNSENT or OPENED without send flag, do nothing
-}
-
-/// Abort with events (for active requests)
-fn abortWithEvents(state: *XMLHttpRequestState) void {
-    // Set state to DONE
-    state.changeState(.DONE);
-
-    // Unset send flag
-    state.send_flag = false;
-
-    // Fire readystatechange event
-    event_support.fireEvent(.readystatechange);
-
-    // Handle upload events if upload not complete
-    if (!state.upload_complete_flag) {
-        state.upload_complete_flag = true;
-
-        // Fire abort on upload object
-        event_support.fireUploadProgressEvent(.abort, .{
-            .lengthComputable = false,
-            .loaded = 0,
-            .total = 0,
-        });
-
-        // Fire loadend on upload object
-        event_support.fireUploadProgressEvent(.loadend, .{
-            .lengthComputable = false,
-            .loaded = 0,
-            .total = 0,
-        });
+        var processor = ResponseProcessor.init(state);
+        processor.requestErrorSteps(.abort);
     }
 
-    // Fire abort event on XHR
-    event_support.fireProgressEvent(.abort, .{
-        .lengthComputable = false,
-        .loaded = 0,
-        .total = 0,
-    });
-
-    // Fire loadend event on XHR
-    event_support.fireProgressEvent(.loadend, .{
-        .lengthComputable = false,
-        .loaded = 0,
-        .total = 0,
-    });
-
-    // Reset to UNSENT for next request
-    resetToUnsent(state);
-}
-
-/// Reset state to UNSENT (no events)
-fn resetToUnsent(state: *XMLHttpRequestState) void {
-    state.ready_state = .UNSENT;
-
-    // Clear request/response data
-    state.reset();
+    // Step 3: If this's state is done, set it to unsent and set this's response
+    // to a network error.
+    //
+    // Spec note: "No readystatechange event is dispatched." So this assigns the
+    // field rather than going through `changeState`, and fires nothing.
+    if (state.ready_state == .DONE) {
+        state.ready_state = .UNSENT;
+        state.setResponseToNetworkError();
+    }
 }
 
 /// Terminate the ongoing fetch operation
 ///
-/// TODO: Integrate with FetchController.abort() when available
+/// TODO: Integrate with FetchController.abort() when available. Until then an
+/// abort() during a blocking fetch takes effect when the fetch returns, not
+/// when abort() is called.
 fn terminateFetch(state: *XMLHttpRequestState) void {
     // When integrated with Fetch:
     // if (state.fetch_controller) |controller| {
@@ -210,13 +155,12 @@ test "abort - DONE just resets without events" {
     try std.testing.expectEqual(ReadyState.UNSENT, state.ready_state);
 }
 
-test "abort - clears request data" {
+test "abort - keeps the request method and URL" {
     const allocator = std.testing.allocator;
 
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    // Set some request data
     state.ready_state = .LOADING;
     state.send_flag = true;
     state.request_method = try allocator.dupe(u8, "POST");
@@ -224,7 +168,21 @@ test "abort - clears request data" {
 
     abort(&state);
 
-    // Should be cleared
-    try std.testing.expect(state.request_method == null);
-    try std.testing.expect(state.request_url == null);
+    // The abort() steps are: abort the fetch controller, run the request error
+    // steps, and set the state to unsent with a network-error response. They do
+    // NOT empty the request method, the request URL or the author request
+    // headers - that is open() step 11, "set variables associated with the
+    // object", which runs when a NEW request is opened.
+    //
+    // This test previously asserted the opposite, because `abort()` ended with
+    // a call to `state.reset()`. That call also cleared the upload complete
+    // flag the request error steps had just set, so the two abort tests could
+    // not both pass.
+    try std.testing.expectEqualStrings("POST", state.request_method.?);
+    try std.testing.expectEqualStrings("http://example.com", state.request_url.?);
+
+    // What abort() does promise:
+    try std.testing.expectEqual(ReadyState.UNSENT, state.ready_state);
+    try std.testing.expect(!state.send_flag);
+    try std.testing.expect(state.isNetworkError());
 }

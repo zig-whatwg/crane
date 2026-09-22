@@ -409,6 +409,13 @@ pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictio
 /// Step 16: "Fire an event named readystatechange at this."
 pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
     const xhr_state = getXHRState(instance);
+    const internal = getInternal(instance);
+
+    // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
+    // settings object". The base URL is the relevant global object's associated
+    // Document's URL.
+    const base_url = relevantBaseURL(instance);
+    defer if (base_url) |b| internal.allocator.free(b);
 
     // Call the open algorithm
     open_algo.open(
@@ -418,6 +425,7 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
         true, // async = true (default)
         null, // username
         null, // password
+        base_url,
     ) catch |err| {
         return switch (err) {
             open_algo.OpenError.SecurityError => error.SecurityError,
@@ -428,9 +436,26 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
         };
     };
 
-    // Step 16: Fire readystatechange event
-    // Per spec, after state changes to OPENED, fire readystatechange event
+    // Step 12: Fire an event named readystatechange at this.
     fireReadyStateChangeEvent(instance);
+}
+
+/// This's relevant settings object's API base URL: the relevant global object's
+/// associated Document's URL.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
+///
+/// Returns an owned string, or null when there is no Document to ask - a bare
+/// realm, or a worker, where a relative URL then legitimately fails to parse.
+/// Same shape as `DOMParser.call_parseFromString`, and it goes through
+/// `interfaces`, never another impl.
+fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
+    const realm = instance.ctx.realm orelse return null;
+    const window_ptr = realm.global_object orelse return null;
+    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+
+    const doc = interfaces.Window.get_document(window_instance) catch return null;
+    return interfaces.Document.get_URL(doc) catch null;
 }
 
 /// Fire the readystatechange event by invoking the onreadystatechange handler
@@ -455,7 +480,14 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
             // Use undefined as the receiver (this) since XHR events don't need a specific this binding
             const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
             var empty_args: [0]*v8_engine.ffi.Value = .{};
-            _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 0, &empty_args);
+            // `v8_Function_Call` ends in `return trackHandle(new
+            // Global<Value>(isolate, result))`, so the CALLER OWNS the result.
+            // Discarding it with `_ =` leaked one Global per XHR event
+            // dispatched. `v8_FreeFunctionCallResult` is not the free for this
+            // one - that belongs to `v8_Function_Call_Safe`, which returns a
+            // different struct.
+            const call_result = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 0, &empty_args);
+            if (call_result) |r| v8_engine.ffi.v8_Global_Dispose(r);
         }
     }
 }

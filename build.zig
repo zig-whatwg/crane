@@ -1750,12 +1750,23 @@ pub fn build(b: *std.Build) void {
     xhr_mod.addImport("host", host_mod);
     xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
     xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
-    // `src/xhr/internal/context.zig:9` does `@import("runtime")` for
-    // `runtime.event_loop.Scheduler`. The import was missing, which no build
-    // ever noticed: `impls_mod` imports `xhr`, but Zig analyses what is
-    // referenced, and nothing referenced a decl that reaches context.zig - so
-    // the module has never been compiled. See the `-Dspec=xhr` block below.
-    xhr_mod.addImport("runtime", runtime_mod);
+    // open() resolves a relative URL against the document base URL, which needs
+    // the URL parser. Without this, `parseURL` accepted only absolute http(s),
+    // data and file URLs and threw SyntaxError on everything else - and every
+    // WPT XHR test asks for `resources/*.py`, so `send()` was never reached.
+    // `url_mod`'s root does not re-export the serializer, and the parser is
+    // reachable only as `url.parser.basic_url_parser`, so take the same three
+    // modules `impls_mod` does (build.zig:1332-1335).
+    xhr_mod.addImport("url_record", url_internal_url_record_mod);
+    xhr_mod.addImport("basic_parser", url_basic_parser_mod);
+    xhr_mod.addImport("url_serializer", url_serializer_mod);
+    //
+    // `runtime` is deliberately NOT an import here. `src/xhr/internal/context.zig`
+    // was the only file that wanted it, for a `runtime.event_loop.Scheduler`
+    // that does not exist; that file is gone. Keeping xhr free of `runtime`
+    // also breaks the cycle `impls -> xhr -> runtime -> v8 -> impls`, which is
+    // what stopped `xhr_mod` from being cloned into a test root, and lets the
+    // test block below run without linking V8.
 
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
@@ -2337,68 +2348,34 @@ pub fn build(b: *std.Build) void {
 
     // XMLHttpRequest tests (WHATWG XHR Standard)
     //
-    // OPT-IN: reachable only via `-Dspec=xhr`, deliberately NOT part of `all`.
+    // These were opt-in behind `-Dspec=xhr` and left out of `all` while
+    // `src/xhr/` carried 30 compile errors across 8 files - a module that
+    // nothing had ever compiled, because `impls_mod` imports `xhr` but Zig
+    // analyses only what is REFERENCED, and `call_send` never called into it.
     //
-    // `src/xhr/` has never been compiled by anything. `impls_mod` imports it
-    // for FormData, but Zig analyses what is referenced, and nothing has ever
-    // referenced a decl that reaches past `root.zig`'s re-exports - so 20 files
-    // sat there unchecked, and `tests/xhr/`'s four committed test files were
-    // registered nowhere and had never run.
-    //
-    // The module could not compile even in principle: `src/xhr/internal/
-    // context.zig:9` does `@import("runtime")`, and `xhr_mod` was given only
-    // clock, host, fetch and mimesniff. That dependency is added above; adding
-    // it is what makes the rest of these reachable.
-    //
-    // 30 errors across 8 files, in five separate compilations:
-    //
-    //   src/xhr/internal/context.zig                 1
-    //     `runtime.event_loop` - src/runtime/root.zig has no such member.
-    //   src/xhr/algorithms/response.zig              7
-    //     `XMLHttpRequestState` has no field `error_flag`.
-    //   src/xhr/algorithms/send.zig                  3
-    //     `expected type '?*T', found '*?T'` - optional-of-pointer written as
-    //     pointer-to-optional.
-    //   src/xhr/algorithms/timeout.zig               2
-    //     `expected type 'u32', found 'u64'` on the timeout value.
-    //   tests/xhr/send_async_test.zig                8
-    //     calls a 6-parameter function with 4 arguments.
-    //   tests/xhr/state_machine_test.zig             5
-    //   tests/xhr/edge_cases_test.zig                2 (+1 in std.testing)
-    //   tests/xhr/response_types_test.zig            1
-    //     the tests read `error_flag`, `request_headers` and
-    //     `with_credentials` off `XMLHttpRequestState`; none exist.
-    //
-    // Folding 30 compile errors into `all` would turn `zig build test` red for
-    // everyone, which is worse than the status quo. Gating keeps the default
-    // suite green while making the debt reachable, reproducible and countable:
-    // `zig build test -Dspec=xhr` prints all 30. This follows 033260ae4, which
-    // did the same for websocket; that debt was paid off in b8dfa54e8 and the
-    // block promoted to `all`.
-    //
-    // Fixing these needs edits under src/xhr/ and tests/xhr/, which this change
-    // is not permitted to make.
-    //
-    // TODO: fix those 30, then give this block the same
-    // `spec_filter == null or ... "all" or ...` condition as every spec above.
-    if (spec_filter != null and std.mem.eql(u8, spec_filter.?, "xhr")) {
-        // Not V8-linked, for the same reason `html_mod`'s target is not:
-        // `impls_mod.addImport("xhr", xhr_mod)` plus runtime -> v8 -> impls
-        // makes `xhr_mod` a transitive dependency of itself, so a clone would
-        // fail with `file exists in modules 'root' and 'xhr'`. It does not
-        // matter here - the compilation never reaches the link stage.
+    // All 30 are fixed, so this runs with `all` like every other spec. Keep it
+    // that way: a gated test block is a test block that rots.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "xhr")) {
         const xhr_tests = b.addTest(.{ .root_module = xhr_mod });
         const run_xhr_tests = b.addRunArtifact(xhr_tests);
         test_step.dependOn(&run_xhr_tests.step);
 
         // `xhr_mod` already carries `fetch`, which is where the curl linkage
-        // comes from, so the test root needs nothing beyond `xhr` itself.
+        // comes from, so the test root needs nothing beyond `xhr` itself. No V8
+        // link: nothing under `src/xhr/` reaches a `v8_*` extern, which is now
+        // structural rather than incidental - the module has no `runtime`
+        // import at all.
         const xhr_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "host", .module = host_mod },
             .{ .name = "xhr", .module = xhr_mod },
+            // A response-shaped test fixture needs `InternalResponse` and
+            // `Body`: a state carrying received bytes but no response is one
+            // the algorithms cannot reach, and the text response algorithm
+            // reads "" out of it.
+            .{ .name = "fetch", .module = fetch_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/xhr", target, &xhr_imports, true) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/xhr", target, &xhr_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add xhr test files: {}\n", .{err});
         };
     }

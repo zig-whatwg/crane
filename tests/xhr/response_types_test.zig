@@ -12,6 +12,22 @@ const ResponseValue = response.ResponseValue;
 const getResponse = response.getResponse;
 const getResponseText = response.getResponseText;
 const getResponseXML = response.getResponseXML;
+const fetch = @import("fetch");
+
+/// Give `state` a 200 response whose body is `bytes`, and accumulate `bytes`
+/// into received bytes - the pair the fetch path always produces together.
+///
+/// The text response algorithm starts with "if xhr's response's body is null,
+/// return the empty string", so appending to received bytes WITHOUT a response
+/// builds a state the algorithms cannot reach and reads back as "". That is why
+/// these set both.
+fn installOkResponse(state: *XMLHttpRequestState, bytes: []const u8) !void {
+    const resp = try fetch.internal.InternalResponse.init(state.allocator);
+    resp.status = 200;
+    resp.body = try fetch.internal.Body.fromBytes(state.allocator, bytes);
+    state.setResponse(resp);
+    try state.received_bytes.appendSlice(state.allocator, bytes);
+}
 
 // =============================================================================
 // Text Response Type
@@ -38,7 +54,7 @@ test "Text response - ASCII content" {
 
     state.ready_state = .DONE;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "Hello, World!");
+    try installOkResponse(&state, "Hello, World!");
 
     const result = try getResponse(&state);
     try std.testing.expectEqualStrings("Hello, World!", result.text);
@@ -52,7 +68,7 @@ test "Text response - UTF-8 content" {
 
     state.ready_state = .DONE;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "Hello, 世界! 🌍");
+    try installOkResponse(&state, "Hello, 世界! 🌍");
 
     const result = try getResponse(&state);
     try std.testing.expectEqualStrings("Hello, 世界! 🌍", result.text);
@@ -66,7 +82,7 @@ test "Text response - available during LOADING" {
 
     state.ready_state = .LOADING;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "partial");
+    try installOkResponse(&state, "partial");
 
     const result = try getResponse(&state);
     try std.testing.expectEqualStrings("partial", result.text);
@@ -290,7 +306,7 @@ test "Document response - stubbed returns void" {
 // Error States
 // =============================================================================
 
-test "Response - error flag returns error" {
+test "Response - a failure response object returns null" {
     const allocator = std.testing.allocator;
 
     var state = XMLHttpRequestState.init(allocator);
@@ -298,7 +314,10 @@ test "Response - error flag returns error" {
 
     state.ready_state = .DONE;
     state.response_type = .arraybuffer;
-    state.error_flag = true;
+    // Spec step 3 is "if this's response object is failure, return null" -
+    // there is no error flag in the XHR Standard. The response object becomes
+    // failure when the ArrayBuffer allocation of step 5 throws.
+    state.response_object = .failure;
 
     const result = try getResponse(&state);
     try std.testing.expect(result == .@"error");
@@ -316,7 +335,7 @@ test "getResponseText - works with empty type" {
 
     state.ready_state = .DONE;
     state.response_type = .empty;
-    try state.received_bytes.appendSlice(allocator, "text content");
+    try installOkResponse(&state, "text content");
 
     const text = try getResponseText(&state);
     try std.testing.expectEqualStrings("text content", text);
@@ -330,7 +349,7 @@ test "getResponseText - works with text type" {
 
     state.ready_state = .DONE;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "text content");
+    try installOkResponse(&state, "text content");
 
     const text = try getResponseText(&state);
     try std.testing.expectEqualStrings("text content", text);

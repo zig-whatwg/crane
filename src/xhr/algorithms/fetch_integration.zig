@@ -1,10 +1,29 @@
 //! XHR Fetch Integration
 //!
-//! Integrates XMLHttpRequest with the WHATWG Fetch infrastructure.
-//! Replaces simple_fetch.zig with real Fetch API usage.
-//!
-//! WHATWG XHR Spec: https://xhr.spec.whatwg.org/
+//! WHATWG XHR Spec: https://xhr.spec.whatwg.org/#the-send()-method step 6
 //! WHATWG Fetch Spec: https://fetch.spec.whatwg.org/
+//!
+//! Builds the `req` of send() step 6 out of the XHR state, runs the real fetch
+//! algorithm, and drives the `processResponse` / `processBodyChunk` /
+//! `processEndOfBody` sequence from the result.
+//!
+//! ## What this replaced
+//!
+//! `simulateFetch`: a mock that appended the string "Mock response from Fetch
+//! integration (fetch_integration.zig)" to received bytes and never touched the
+//! network. Nothing called it either - `XMLHttpRequest.call_send` set the send
+//! flag and returned, so the whole `algorithms/` tree was unreachable.
+//!
+//! ## Blocking, deliberately
+//!
+//! `fetch.algorithms.fetch` runs the exchange to completion and hands back a
+//! finished response - the same call `src/html/navigation/fetch_integration.zig`
+//! makes. There is no incremental read, so the body arrives as ONE chunk. That
+//! gets event order and the final counts right and the number of intermediate
+//! `progress` events wrong; see the header of `send.zig`.
+//!
+//! The caller decides when to block: directly for a sync request, from an
+//! event-loop task for an async one.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -12,30 +31,18 @@ const xhr_root = @import("../root.zig");
 const XMLHttpRequestState = xhr_root.state_machine.XMLHttpRequestState;
 const ResponseProcessor = @import("response.zig").ResponseProcessor;
 const UploadTracker = @import("upload.zig").UploadTracker;
+const clock = @import("clock");
 
 // Fetch infrastructure - use module import to avoid cross-module file conflicts
 const fetch_mod = @import("fetch");
 const InternalRequest = fetch_mod.internal.InternalRequest;
 const InternalResponse = fetch_mod.internal.InternalResponse;
-const FetchParams = fetch_mod.internal.FetchParams;
-const FetchController = fetch_mod.internal.FetchController;
-const FetchTimingInfo = fetch_mod.internal.FetchTimingInfo;
 
-/// Fetch context - passed as user data to callbacks
-const FetchContext = struct {
-    allocator: Allocator,
-    state: *XMLHttpRequestState,
-    processor: *ResponseProcessor,
-    upload_tracker: ?*UploadTracker,
-};
+const log = std.log.scoped(.xhr_fetch);
 
-/// Fetch using real Fetch infrastructure
+/// Run the fetch for this XHR and drive the response processor.
 ///
-/// This integrates XHR with the WHATWG Fetch API by:
-/// 1. Creating an InternalRequest from XHR state
-/// 2. Setting up FetchParams with streaming callbacks
-/// 3. Running the fetch algorithm
-/// 4. Handling response via ResponseProcessor
+/// Spec: send() steps 6 through 11.10 (async) / 12 (sync).
 pub fn fetch(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
@@ -44,158 +51,200 @@ pub fn fetch(
 ) !void {
     const allocator = state.allocator;
 
-    // Create fetch context for callbacks
-    const context = try allocator.create(FetchContext);
-    errdefer allocator.destroy(context);
+    // Step 6: Let req be a new request, initialized from this's state.
+    const request = try createRequest(allocator, state, body);
+    defer request.deinit();
 
-    context.* = .{
-        .allocator = allocator,
-        .state = state,
-        .processor = processor,
-        .upload_tracker = upload_tracker,
+    var elapsed_timer = clock.Timer.start();
+
+    // Steps 11.7-11.8: processRequestBodyChunkLength and
+    // processRequestEndOfBody. The transfer is not observable from here, so
+    // the whole body counts as transmitted the moment the fetch returns.
+    // Firing these BEFORE the fetch would be a lie about ordering, so they run
+    // below, once the request has actually gone out.
+
+    var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {
+        // The fetch algorithm reports transport failure IN-BAND, as a response
+        // whose type is "error" - an error return here means it could not even
+        // get that far.
+        log.warn("fetch failed for {s}: {s}", .{ request.currentUrl(), @errorName(err) });
+        if (err == error.AbortError) {
+            processor.handleAbort();
+        } else {
+            processor.handleNetworkError();
+        }
+        return;
+    };
+    // The response outlives this function - the XHR state takes it. Only the
+    // timing info is ours to free, so do NOT call `result.deinit()`, which
+    // would free both.
+    result.timing_info.deinit();
+    const response = result.response;
+
+    // Step 12.4 / step 11.12.2: the timed out flag.
+    //
+    // KNOWN GAP: there is no way to hand a deadline to the fetch algorithm -
+    // `InternalRequest` has no timeout field, and the curl backend's
+    // `timeout_ms` is not reachable from here. So the transfer is NOT cancelled
+    // at the deadline; the flag is applied after the fact, from the elapsed
+    // time. A request that overruns its timeout therefore reports `timeout`
+    // late rather than on time.
+    if (state.timeout > 0) {
+        const elapsed_ms = elapsed_timer.read() / std.time.ns_per_ms;
+        if (elapsed_ms >= state.timeout) {
+            response.deinit();
+            state.timed_out_flag = true;
+            processor.handleTimeout();
+            return;
+        }
+    }
+
+    // Step 11.9.1: Set this's response to response. The state owns it now.
+    state.setResponse(response);
+
+    // Steps 11.7-11.8: the request body is fully transmitted by now.
+    if (upload_tracker) |tracker| {
+        if (body) |b| _ = tracker.onChunk(b.len);
+        // processRequestEndOfBody step 1: set the upload complete flag.
+        state.upload_complete_flag = true;
+        // Steps 2-5: progress, load and loadend at the upload object - but only
+        // while the upload listener flag is set, which is what `fireComplete`
+        // checks by having been given a sink at all.
+        if (state.upload_listener_flag) tracker.fireComplete();
+    } else {
+        state.upload_complete_flag = true;
+    }
+
+    // Step 11.9.2: Handle errors for this. A network error comes back as a
+    // successful return carrying an error-typed response, so this predicate -
+    // not the `catch` above - is what catches DNS failures, refused
+    // connections and TLS errors.
+    if (state.isNetworkError()) {
+        processor.handleNetworkError();
+        return;
+    }
+
+    // Steps 11.9.3-11.9.9: move to headers received and read the length.
+    if (!processor.processResponse()) return;
+
+    // Step 11.9.7: If this's response's body is null, run handle response
+    // end-of-body and return. A 204/304 legitimately has no body.
+    const response_body = state.response.?.body orelse {
+        processor.processResponseEndOfBody();
+        return;
     };
 
-    // Create InternalRequest from XHR state
-    const request = try createRequest(allocator, state, body);
-    errdefer request.deinit();
+    // Step 11.9.13: incrementally read the body. One chunk, see the header.
+    const bytes = response_body.getBytes();
+    if (bytes.len > 0) {
+        try processor.processResponseBodyChunk(bytes);
+    }
 
-    // Create FetchController
-    const controller = try FetchController.init(allocator);
-    errdefer controller.deinit();
-
-    // Create FetchTimingInfo
-    var timing_info = FetchTimingInfo.init(allocator);
-    errdefer timing_info.deinit();
-
-    // Create FetchParams with streaming callbacks
-    const params = try FetchParams.init(allocator, request, controller, &timing_info);
-    errdefer params.deinit();
-
-    // Set up streaming callbacks
-    params.process_response = processResponseCallback;
-    params.process_response_body_chunk = processResponseBodyChunkCallback;
-    params.process_response_end_of_body = processResponseEndOfBodyCallback;
-
-    // TODO: Implement real fetch call
-    // For now, simulate with mock data like simple_fetch
-    try simulateFetch(context);
-
-    // Cleanup
-    allocator.destroy(context);
+    // Step 11.9.11: processEndOfBody.
+    processor.processResponseEndOfBody();
 }
 
-/// Create InternalRequest from XHR state
+/// Build `req` from the XHR state.
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 6
 fn createRequest(
     allocator: Allocator,
     state: *XMLHttpRequestState,
     body: ?[]const u8,
 ) !*InternalRequest {
-    const request = try InternalRequest.init(allocator);
+    // URL: this's request URL. `InternalRequest.init` takes it - the earlier
+    // code called a one-argument `init` that does not exist and then `addUrl`,
+    // which would have left url_list[0] empty.
+    const url = state.request_url orelse return error.InvalidStateError;
+    const request = try InternalRequest.init(allocator, url);
     errdefer request.deinit();
 
-    // Set method
+    // method: this's request method.
     if (state.request_method) |method| {
         try request.setMethod(method);
     }
 
-    // Set URL
-    if (state.request_url) |url| {
-        try request.addUrl(url);
+    // header list: this's author request headers.
+    for (state.author_request_headers.iterator()) |header| {
+        try request.header_list.append(header.name, header.value);
     }
 
-    // Set headers from state.author_request_headers
-    // TODO: Copy headers when header list implementation is available
+    // unsafe-request flag: set.
+    request.unsafe_request = true;
 
-    // Set body if provided
+    // body: this's request body. Borrowed - `InternalRequest.deinit` frees only
+    // the `.body` arm of the union, never `.bytes`.
     if (body) |b| {
-        // TODO: Set body when Body implementation is integrated
-        _ = b;
+        if (b.len > 0) request.body = .{ .bytes = b };
     }
 
-    // XHR always uses CORS mode
+    // mode: "cors".
     request.mode = .cors;
 
-    // Set credentials based on withCredentials
-    request.credentials_mode = if (state.with_credentials) .include else .same_origin;
+    // use-CORS-preflight flag: set if this's upload listener flag is set.
+    request.use_cors_preflight = state.upload_listener_flag;
 
-    // Set timeout
-    if (state.timeout > 0) {
-        request.timeout_ms = state.timeout;
-    }
+    // credentials mode: "include" if this's cross-origin credentials is true,
+    // otherwise "same-origin".
+    request.credentials_mode = if (state.cross_origin_credentials) .include else .same_origin;
+
+    // initiator type: "xmlhttprequest".
+    request.initiator_type = .xmlhttprequest;
 
     return request;
 }
 
 // =============================================================================
-// Callbacks
+// Tests
 // =============================================================================
 
-/// Process response callback - called when response headers received
-fn processResponseCallback(response: *InternalResponse) void {
-    // TODO: Extract context from response or use thread-local storage
-    // For now, this is a placeholder
-    _ = response;
-    std.log.debug("XHR Fetch: processResponse called", .{});
+test "createRequest - mirrors send() step 6" {
+    const allocator = std.testing.allocator;
+
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    state.request_method = try allocator.dupe(u8, "POST");
+    state.request_url = try allocator.dupe(u8, "http://example.com/api");
+    try state.author_request_headers.append("X-Test", "1");
+    state.cross_origin_credentials = true;
+    state.upload_listener_flag = true;
+
+    const request = try createRequest(allocator, &state, "payload");
+    defer request.deinit();
+
+    try std.testing.expectEqualStrings("POST", request.method);
+    try std.testing.expectEqualStrings("http://example.com/api", request.getUrl());
+    try std.testing.expect(request.unsafe_request);
+    try std.testing.expectEqual(fetch_mod.internal.RequestMode.cors, request.mode);
+    try std.testing.expect(request.use_cors_preflight);
+    try std.testing.expectEqual(fetch_mod.internal.CredentialsMode.include, request.credentials_mode);
+    try std.testing.expectEqualStrings("payload", request.body.?.bytes);
+    try std.testing.expectEqualStrings("1", request.header_list.getFirstValue("x-test").?);
 }
 
-/// Process response body chunk callback - called for each chunk during streaming
-fn processResponseBodyChunkCallback(chunk: []const u8) void {
-    // TODO: Extract context to call processor.processResponseBodyChunk(chunk)
-    std.log.debug("XHR Fetch: received chunk of {} bytes", .{chunk.len});
+test "createRequest - same-origin credentials by default, and no body arm for an empty body" {
+    const allocator = std.testing.allocator;
+
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    state.request_method = try allocator.dupe(u8, "GET");
+    state.request_url = try allocator.dupe(u8, "http://example.com/");
+
+    const request = try createRequest(allocator, &state, "");
+    defer request.deinit();
+
+    try std.testing.expectEqual(fetch_mod.internal.CredentialsMode.same_origin, request.credentials_mode);
+    try std.testing.expect(!request.use_cors_preflight);
+    try std.testing.expect(request.body == null);
 }
 
-/// Process response end of body callback - called when response complete
-fn processResponseEndOfBodyCallback(response: *InternalResponse) void {
-    _ = response;
-    std.log.debug("XHR Fetch: processResponseEndOfBody called", .{});
-}
+test "createRequest - no request URL is an InvalidStateError, not a crash" {
+    const allocator = std.testing.allocator;
 
-// =============================================================================
-// Temporary Simulation (until real Fetch is integrated)
-// =============================================================================
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
 
-/// Simulate fetch with mock data
-///
-/// This is a temporary implementation that mimics simple_fetch.zig behavior
-/// until we have real HTTP networking integrated.
-fn simulateFetch(context: *FetchContext) !void {
-    // Simulate upload progress if body exists
-    if (context.upload_tracker) |tracker| {
-        // Simulate uploading in chunks
-        const total_size = 1024; // Mock body size
-        const chunk_size = 256;
-        var uploaded: usize = 0;
-
-        while (uploaded < total_size) {
-            const remaining = total_size - uploaded;
-            const size = @min(chunk_size, remaining);
-
-            _ = tracker.onChunk(size);
-            uploaded += size;
-        }
-
-        context.state.upload_complete_flag = true;
-    } else {
-        context.state.upload_complete_flag = true;
-    }
-
-    // Process response headers
-    context.processor.processResponse();
-
-    // Simulate response body in chunks
-    const mock_response = "Mock response from Fetch integration (fetch_integration.zig)";
-    const chunk_size = 15;
-    var offset: usize = 0;
-
-    while (offset < mock_response.len) {
-        const remaining = mock_response.len - offset;
-        const size = @min(chunk_size, remaining);
-        const chunk = mock_response[offset .. offset + size];
-
-        try context.processor.processResponseBodyChunk(chunk);
-        offset += size;
-    }
-
-    // Process end of body
-    context.processor.processResponseEndOfBody();
+    try std.testing.expectError(error.InvalidStateError, createRequest(allocator, &state, null));
 }

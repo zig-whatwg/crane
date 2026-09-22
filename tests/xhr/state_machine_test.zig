@@ -24,12 +24,16 @@ test "XMLHttpRequestState - default initialization" {
     try std.testing.expect(!state.upload_listener_flag);
     try std.testing.expect(!state.timed_out_flag);
     try std.testing.expect(!state.synchronous_flag);
-    try std.testing.expect(!state.error_flag);
+    // No `error_flag` assertion: the XHR Standard has no error flag. "Did this
+    // fail?" is `isNetworkError()`, and the response is INITIALLY a network
+    // error, so a fresh state reports true.
+    try std.testing.expect(state.isNetworkError());
     try std.testing.expect(state.request_method == null);
     try std.testing.expect(state.request_url == null);
     try std.testing.expect(state.request_body == null);
-    try std.testing.expectEqual(@as(u64, 0), state.timeout);
-    try std.testing.expect(!state.with_credentials);
+    // `attribute unsigned long timeout` - u32, not u64.
+    try std.testing.expectEqual(@as(u32, 0), state.timeout);
+    try std.testing.expect(!state.cross_origin_credentials);
     try std.testing.expectEqual(ResponseType.empty, state.response_type);
 }
 
@@ -100,7 +104,6 @@ test "reset - clears all request state" {
     state.request_url = try allocator.dupe(u8, "http://example.com");
     state.request_body = try allocator.dupe(u8, "body data");
     state.send_flag = true;
-    state.error_flag = true;
     state.timed_out_flag = true;
 
     // Reset
@@ -111,7 +114,6 @@ test "reset - clears all request state" {
     try std.testing.expect(state.request_url == null);
     try std.testing.expect(state.request_body == null);
     try std.testing.expect(!state.send_flag);
-    try std.testing.expect(!state.error_flag);
     try std.testing.expect(!state.timed_out_flag);
 }
 
@@ -121,16 +123,16 @@ test "reset - clears headers" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    // Add some headers
-    const key = try allocator.dupe(u8, "content-type");
-    const value = try allocator.dupe(u8, "application/json");
-    try state.request_headers.put(allocator, key, value);
+    // Add some headers. The field is `author_request_headers`, the spec's name
+    // for it, and a Fetch `HeaderList` rather than a StringHashMap - it owns
+    // its own copies, so the caller does not dupe.
+    try state.author_request_headers.append("content-type", "application/json");
 
     // Reset
     state.reset();
 
     // Headers should be cleared
-    try std.testing.expectEqual(@as(usize, 0), state.request_headers.count());
+    try std.testing.expectEqual(@as(usize, 0), state.author_request_headers.len());
 }
 
 test "reset - clears received bytes" {
@@ -192,16 +194,18 @@ test "Flags - synchronous flag" {
     try std.testing.expect(state.synchronous_flag);
 }
 
-test "Flags - with_credentials" {
+test "Flags - cross-origin credentials" {
     const allocator = std.testing.allocator;
 
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try std.testing.expect(!state.with_credentials);
+    // The spec calls this "cross-origin credentials"; `withCredentials` is the
+    // IDL attribute that reflects it. The state uses the spec's name.
+    try std.testing.expect(!state.cross_origin_credentials);
 
-    state.with_credentials = true;
-    try std.testing.expect(state.with_credentials);
+    state.cross_origin_credentials = true;
+    try std.testing.expect(state.cross_origin_credentials);
 }
 
 test "Flags - upload_listener_flag" {
@@ -246,9 +250,7 @@ test "Memory safety - deinit cleans up everything" {
     state.request_url = try allocator.dupe(u8, "http://example.com/api");
     state.request_body = try allocator.dupe(u8, "request body");
 
-    const key = try allocator.dupe(u8, "x-custom");
-    const value = try allocator.dupe(u8, "header-value");
-    try state.request_headers.put(allocator, key, value);
+    try state.author_request_headers.append("x-custom", "header-value");
 
     try state.received_bytes.appendSlice(allocator, "response data");
 

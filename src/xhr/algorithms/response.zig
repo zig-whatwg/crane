@@ -37,124 +37,207 @@ pub const ResponseProcessor = struct {
         };
     }
 
-    /// Process response headers received
+    /// `processResponse`, given a response.
     ///
-    /// Spec: https://xhr.spec.whatwg.org/#handle-response
-    pub fn processResponse(self: *ResponseProcessor) void {
-        // Transition to HEADERS_RECEIVED
-        self.state.changeState(.HEADERS_RECEIVED);
-        event_support.fireEvent(.readystatechange);
+    /// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 11.9
+    ///
+    /// Returns whether the caller should go on to read the body. The earlier
+    /// version of this went straight from *headers received* to *loading* and
+    /// fired readystatechange twice before a single byte had arrived. The spec
+    /// moves to *loading* from the FIRST BODY CHUNK (step 11.9.10.3), and
+    /// `xhr/xmlhttprequest-*-order` counts those events.
+    pub fn processResponse(self: *ResponseProcessor) bool {
+        // Step 1 ("set this's response to response") and step 2 ("handle
+        // errors") are the caller's - it is the one holding the response.
 
-        // Transition to LOADING if body expected
-        self.state.changeState(.LOADING);
-        event_support.fireEvent(.readystatechange);
+        // Step 3: If this's response is a network error, then return.
+        if (self.state.isNetworkError()) return false;
+
+        // Step 4: Set this's state to headers received.
+        self.state.changeState(.HEADERS_RECEIVED);
+
+        // Step 5: Fire an event named readystatechange at this.
+        event_support.fireEvent(self.state.event_sink, .readystatechange);
+
+        // Step 6: If this's state is not headers received, then return. A
+        // readystatechange listener can have called abort() or open().
+        if (self.state.ready_state != .HEADERS_RECEIVED) return false;
+
+        // Step 8-9: extract a length from the response's header list.
+        if (self.contentLength()) |length| {
+            self.progress_tracker.setContentLength(length);
+        }
+
+        // Step 7 is the caller's: a null body means end-of-body right away.
+        return true;
     }
 
-    /// Process response body chunk
+    /// `length`, from send() step 11.9.8: "the result of extracting a length
+    /// from this's response's header list". Null when there is no usable
+    /// Content-Length, which step 9 turns into 0 - but a 0 total is reported as
+    /// `lengthComputable: false`, so keep the distinction here.
+    fn contentLength(self: *const ResponseProcessor) ?usize {
+        const response = self.state.response orelse return null;
+        const raw = response.header_list.getFirstValue("content-length") orelse return null;
+        const trimmed = std.mem.trim(u8, raw, " \t");
+        return std.fmt.parseInt(usize, trimmed, 10) catch null;
+    }
+
+    /// `processBodyChunk`, given bytes.
     ///
-    /// Spec: Accumulate received bytes
+    /// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 11.9.10
     pub fn processResponseBodyChunk(self: *ResponseProcessor, chunk: []const u8) !void {
-        // Accumulate into received_bytes
+        // Step 1: Append bytes to this's received bytes.
         try self.state.received_bytes.appendSlice(self.state.allocator, chunk);
 
-        // Update progress tracker (fires throttled progress events)
+        // Step 2: If not roughly 50ms have passed since these steps were last
+        // invoked, then return.
         const should_fire = self.progress_tracker.onChunk(chunk.len);
+        if (!should_fire) return;
 
-        // Fire progress event if throttle passed
-        if (should_fire) {
-            const progress_info = self.progress_tracker.getProgress();
-            event_support.fireProgressEvent(.progress, .{
-                .lengthComputable = progress_info.length_computable,
-                .loaded = progress_info.loaded,
-                .total = progress_info.total orelse 0,
-            });
+        // Step 3: If this's state is headers received, set it to loading.
+        if (self.state.ready_state == .HEADERS_RECEIVED) {
+            self.state.changeState(.LOADING);
         }
+
+        // Step 4: Fire an event named readystatechange at this.
+        //
+        // Spec note: "Web compatibility is the reason readystatechange fires
+        // more often than this's state changes." It is fired on every
+        // un-throttled chunk, not only on the transition.
+        event_support.fireEvent(self.state.event_sink, .readystatechange);
+
+        // Step 5: Fire a progress event named progress at this with this's
+        // received bytes's length and length.
+        const progress_info = self.progress_tracker.getProgress();
+        event_support.fireProgressEvent(self.state.event_sink, .progress, .{
+            .lengthComputable = progress_info.length_computable,
+            .loaded = self.state.received_bytes.items.len,
+            .total = progress_info.total orelse 0,
+        });
     }
 
-    /// Process response end of body
+    /// Handle response end-of-body.
     ///
     /// Spec: https://xhr.spec.whatwg.org/#handle-response-end-of-body
     pub fn processResponseEndOfBody(self: *ResponseProcessor) void {
-        // Fire final progress event
-        self.progress_tracker.forceFire();
-        const final_progress = self.progress_tracker.getProgress();
-        event_support.fireProgressEvent(.progress, .{
-            .lengthComputable = final_progress.length_computable,
-            .loaded = final_progress.loaded,
-            .total = final_progress.total orelse 0,
-        });
+        // Steps 1-2: handle errors, and return if the response is a network
+        // error. `handleNetworkError` is the caller's route for that, so
+        // reaching here with one means only that there is nothing to report.
+        if (self.state.isNetworkError()) return;
 
-        // Transition to DONE
+        // Step 3: Let transmitted be this's received bytes's length.
+        const transmitted = self.state.received_bytes.items.len;
+
+        // Steps 4-5: Let length be the extracted length, 0 if not an integer.
+        const length = self.contentLength() orelse 0;
+        const computable = length > 0;
+
+        const progress = event_support.ProgressEventData{
+            .lengthComputable = computable,
+            .loaded = transmitted,
+            .total = length,
+        };
+
+        // Step 6: If this's synchronous flag is unset, fire progress.
+        //
+        // A sync request fires NO progress event here - it fires only load and
+        // loadend below. Firing it unconditionally, as this used to, gives a
+        // sync XHR one event too many.
+        if (!self.state.synchronous_flag) {
+            event_support.fireProgressEvent(self.state.event_sink, .progress, progress);
+        }
+
+        // Step 7: Set this's state to done.
         self.state.changeState(.DONE);
-        event_support.fireEvent(.readystatechange);
 
-        // Unset send flag
+        // Step 8: Unset this's send() flag.
         self.state.send_flag = false;
 
-        // Fire load event
-        event_support.fireProgressEvent(.load, .{
-            .lengthComputable = final_progress.length_computable,
-            .loaded = final_progress.loaded,
-            .total = final_progress.total orelse 0,
-        });
+        // Step 9: Fire an event named readystatechange at this.
+        event_support.fireEvent(self.state.event_sink, .readystatechange);
 
-        // Fire loadend event
-        event_support.fireProgressEvent(.loadend, .{
-            .lengthComputable = final_progress.length_computable,
-            .loaded = final_progress.loaded,
-            .total = final_progress.total orelse 0,
-        });
+        // Step 10: Fire a progress event named load at this.
+        event_support.fireProgressEvent(self.state.event_sink, .load, progress);
+
+        // Step 11: Fire a progress event named loadend at this.
+        event_support.fireProgressEvent(self.state.event_sink, .loadend, progress);
     }
 
-    /// Handle network error
+    /// The request error steps.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#request-error-steps
+    ///
+    /// `event` is the event name for step 7 - `timeout`, `abort` or `error`.
+    /// The spec fires it with 0 and 0, NOT with the bytes transferred so far,
+    /// which is why the progress tracker is deliberately not consulted here.
+    ///
+    /// Steps 4 and 5 fork on the synchronous flag: a sync request throws the
+    /// exception and fires NOTHING, so this returns after step 3 and leaves the
+    /// throw to the caller (`send.sendSync`).
+    pub fn requestErrorSteps(self: *ResponseProcessor, event: XHREventType) void {
+        // Step 1: Set state to done.
+        self.state.changeState(.DONE);
+
+        // Step 2: Unset the send() flag.
+        self.state.send_flag = false;
+
+        // Step 3: Set response to a network error.
+        self.state.setResponseToNetworkError();
+
+        // Step 4: If the synchronous flag is set, throw exception. The throw is
+        // the caller's; what matters here is that steps 5-8 do not run.
+        if (self.state.synchronous_flag) return;
+
+        // Step 5: Fire an event named readystatechange.
+        event_support.fireEvent(self.state.event_sink, .readystatechange);
+
+        // Step 6: If the upload complete flag is unset, then:
+        if (!self.state.upload_complete_flag) {
+            // Step 6.1
+            self.state.upload_complete_flag = true;
+
+            // Step 6.2: If the upload listener flag is set, then:
+            if (self.state.upload_listener_flag) {
+                const zero = ProgressEventData{ .lengthComputable = false, .loaded = 0, .total = 0 };
+                // Step 6.2.1 and 6.2.2
+                event_support.fireUploadProgressEvent(self.state.event_sink, event, zero);
+                event_support.fireUploadProgressEvent(self.state.event_sink, .loadend, zero);
+            }
+        }
+
+        const zero = ProgressEventData{ .lengthComputable = false, .loaded = 0, .total = 0 };
+
+        // Step 7: Fire a progress event named event at xhr with 0 and 0.
+        event_support.fireProgressEvent(self.state.event_sink, event, zero);
+
+        // Step 8: Fire a progress event named loadend at xhr with 0 and 0.
+        event_support.fireProgressEvent(self.state.event_sink, .loadend, zero);
+    }
+
+    /// Handle a network error.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#handle-errors step 4 - run the
+    /// request error steps for `error`.
     pub fn handleNetworkError(self: *ResponseProcessor) void {
-        // Set error flag
-        self.state.error_flag = true;
-
-        // Transition to DONE
-        self.state.changeState(.DONE);
-        event_support.fireEvent(.readystatechange);
-
-        // Unset send flag
-        self.state.send_flag = false;
-
-        // Fire error event
-        const progress = self.progress_tracker.getProgress();
-        event_support.fireProgressEvent(.@"error", .{
-            .lengthComputable = progress.length_computable,
-            .loaded = progress.loaded,
-            .total = progress.total orelse 0,
-        });
-
-        // Fire loadend event
-        event_support.fireProgressEvent(.loadend, .{
-            .lengthComputable = progress.length_computable,
-            .loaded = progress.loaded,
-            .total = progress.total orelse 0,
-        });
+        self.requestErrorSteps(.@"error");
     }
 
-    /// Handle timeout
+    /// Handle a timeout.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#handle-errors step 2 - run the
+    /// request error steps for `timeout`.
     pub fn handleTimeout(self: *ResponseProcessor) void {
         self.state.timed_out_flag = true;
-        self.state.send_flag = false;
-        self.state.changeState(.DONE);
-        event_support.fireEvent(.readystatechange);
+        self.requestErrorSteps(.timeout);
+    }
 
-        // Fire timeout event
-        const progress = self.progress_tracker.getProgress();
-        event_support.fireProgressEvent(.timeout, .{
-            .lengthComputable = progress.length_computable,
-            .loaded = progress.loaded,
-            .total = progress.total orelse 0,
-        });
-
-        // Fire loadend event
-        event_support.fireProgressEvent(.loadend, .{
-            .lengthComputable = progress.length_computable,
-            .loaded = progress.loaded,
-            .total = progress.total orelse 0,
-        });
+    /// Handle an abort.
+    ///
+    /// Spec: https://xhr.spec.whatwg.org/#handle-errors step 3 - run the
+    /// request error steps for `abort`.
+    pub fn handleAbort(self: *ResponseProcessor) void {
+        self.requestErrorSteps(.abort);
     }
 };
 
@@ -231,8 +314,13 @@ pub fn getResponse(state: *const XMLHttpRequestState) !ResponseValue {
         return .empty;
     }
 
-    // Step 3: If error flag is set, return null
-    if (state.error_flag) {
+    // Step 3: If this's response object is failure, then return null.
+    //
+    // There is no "error flag" in the XHR Standard - the earlier code read one
+    // off the state and the field did not exist, which is the whole reason this
+    // file never compiled. "response object is failure" is the actual spec
+    // condition, set when an ArrayBuffer allocation throws (step 5).
+    if (state.response_object == .failure) {
         return .{ .@"error" = .invalid_state };
     }
 
@@ -255,7 +343,11 @@ fn getTextResponse(state: *const XMLHttpRequestState) ResponseValue {
         return .{ .text = "" };
     }
 
-    if (state.error_flag) {
+    // Text response step 1: if xhr's response's body is null, return the
+    // empty string. A network error has a null body, so this subsumes the
+    // "error flag" check the earlier code wanted - and unlike that check it
+    // also covers 204/205/304, which legitimately have no body.
+    if (state.isNetworkError()) {
         return .{ .text = "" };
     }
 
@@ -436,6 +528,22 @@ pub fn getResponseXML(state: *const XMLHttpRequestState) !?*anyopaque {
 // Tests
 // =============================================================================
 
+/// Give `state` a 200 response whose body is `bytes`, and accumulate `bytes`
+/// into received bytes - the pair the fetch path always produces together.
+///
+/// The text response algorithm's step 1 is "if xhr's response's body is null,
+/// return the empty string", so a state that has received bytes but no response
+/// is not a state the algorithms can reach, and a test that builds one is
+/// testing nothing. This helper builds the reachable one.
+fn installOkResponse(state: *XMLHttpRequestState, bytes: []const u8) !void {
+    const fetch = @import("fetch");
+    const response = try fetch.internal.InternalResponse.init(state.allocator);
+    response.status = 200;
+    response.body = try fetch.internal.Body.fromBytes(state.allocator, bytes);
+    state.setResponse(response);
+    try state.received_bytes.appendSlice(state.allocator, bytes);
+}
+
 test "ResponseProcessor - initialization" {
     const allocator = std.testing.allocator;
 
@@ -447,18 +555,38 @@ test "ResponseProcessor - initialization" {
     try std.testing.expectEqual(@as(usize, 0), processor.progress_tracker.total_bytes);
 }
 
-test "ResponseProcessor - process response transitions to HEADERS_RECEIVED" {
+test "ResponseProcessor - process response transitions to HEADERS_RECEIVED, not LOADING" {
     const allocator = std.testing.allocator;
 
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
     state.ready_state = .OPENED;
+    try installOkResponse(&state, "");
 
     var processor = ResponseProcessor.init(&state);
-    processor.processResponse();
+    try std.testing.expect(processor.processResponse());
 
-    // Should transition through HEADERS_RECEIVED to LOADING
+    // Step 4 stops at *headers received*. The old assertion expected LOADING,
+    // matching an implementation that jumped both transitions at once and fired
+    // readystatechange twice before a byte had arrived; the spec moves to
+    // *loading* from the first body chunk (send() step 11.9.10.3).
+    try std.testing.expectEqual(ReadyState.HEADERS_RECEIVED, state.ready_state);
+}
+
+test "ResponseProcessor - the first chunk is what moves to LOADING" {
+    const allocator = std.testing.allocator;
+
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    state.ready_state = .OPENED;
+    try installOkResponse(&state, "");
+
+    var processor = ResponseProcessor.init(&state);
+    try std.testing.expect(processor.processResponse());
+    try processor.processResponseBodyChunk("body");
+
     try std.testing.expectEqual(ReadyState.LOADING, state.ready_state);
 }
 
@@ -483,6 +611,10 @@ test "ResponseProcessor - end of body sets DONE" {
     defer state.deinit();
 
     state.send_flag = true;
+    // Handle response end-of-body step 2 returns when the response is a network
+    // error, and the response is INITIALLY a network error - so this needs a
+    // real one to reach step 7.
+    try installOkResponse(&state, "body");
 
     var processor = ResponseProcessor.init(&state);
     processor.processResponseEndOfBody();
@@ -500,7 +632,7 @@ test "ResponseProcessor - network error sets error flag" {
     var processor = ResponseProcessor.init(&state);
     processor.handleNetworkError();
 
-    try std.testing.expect(state.error_flag);
+    try std.testing.expect(state.isNetworkError());
     try std.testing.expectEqual(ReadyState.DONE, state.ready_state);
 }
 
@@ -529,7 +661,7 @@ test "getResponse - text response when DONE" {
 
     state.ready_state = .DONE;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "Hello World");
+    try installOkResponse(&state, "Hello World");
 
     const response = try getResponse(&state);
     try std.testing.expectEqualStrings("Hello World", response.text);
@@ -633,7 +765,7 @@ test "getResponse - error when error flag set" {
 
     state.ready_state = .DONE;
     state.response_type = .arraybuffer;
-    state.error_flag = true;
+    state.response_object = .failure;
 
     const response = try getResponse(&state);
 
@@ -648,7 +780,7 @@ test "getResponseText - returns text" {
 
     state.ready_state = .DONE;
     state.response_type = .text;
-    try state.received_bytes.appendSlice(allocator, "Hello");
+    try installOkResponse(&state, "Hello");
 
     const text = try getResponseText(&state);
     try std.testing.expectEqualStrings("Hello", text);

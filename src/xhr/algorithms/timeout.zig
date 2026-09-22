@@ -36,7 +36,7 @@ pub const TimeoutError = error{
 /// 2. Set timeout to the given value
 pub fn setTimeout(
     state: *XMLHttpRequestState,
-    timeout_ms: u64,
+    timeout_ms: u32,
     in_window_context: bool,
 ) TimeoutError!void {
     // Step 1: Check for deprecated sync XHR timeout in Window
@@ -51,7 +51,11 @@ pub fn setTimeout(
 /// Get the timeout value
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-xmlhttprequest-timeout
-pub fn getTimeout(state: *const XMLHttpRequestState) u64 {
+///
+/// `attribute unsigned long timeout` - a u32. These two took and returned u64,
+/// which is what `expected type 'u32', found 'u64'` was reporting; the STATE
+/// field was the one that matched the IDL, so the signatures moved, not it.
+pub fn getTimeout(state: *const XMLHttpRequestState) u32 {
     return state.timeout;
 }
 
@@ -84,17 +88,17 @@ pub fn handleTimeout(state: *XMLHttpRequestState) void {
     state.changeState(.DONE);
 
     // Fire readystatechange event
-    event_support.fireEvent(.readystatechange);
+    event_support.fireEvent(state.event_sink, .readystatechange);
 
     // Fire timeout event (for async)
-    event_support.fireProgressEvent(.timeout, .{
+    event_support.fireProgressEvent(state.event_sink, .timeout, .{
         .lengthComputable = false,
         .loaded = 0,
         .total = 0,
     });
 
     // Fire loadend event
-    event_support.fireProgressEvent(.loadend, .{
+    event_support.fireProgressEvent(state.event_sink, .loadend, .{
         .lengthComputable = false,
         .loaded = 0,
         .total = 0,
@@ -153,7 +157,7 @@ test "setTimeout - sets timeout value" {
 
     try setTimeout(&state, 5000, false);
 
-    try std.testing.expectEqual(@as(u64, 5000), state.timeout);
+    try std.testing.expectEqual(@as(u32, 5000), state.timeout);
 }
 
 test "setTimeout - sync XHR in Window throws" {
@@ -178,7 +182,7 @@ test "setTimeout - sync XHR not in Window is allowed" {
 
     // Not in Window context - should be allowed
     try setTimeout(&state, 5000, false);
-    try std.testing.expectEqual(@as(u64, 5000), state.timeout);
+    try std.testing.expectEqual(@as(u32, 5000), state.timeout);
 }
 
 test "getTimeout - returns timeout value" {
@@ -189,7 +193,7 @@ test "getTimeout - returns timeout value" {
 
     state.timeout = 3000;
 
-    try std.testing.expectEqual(@as(u64, 3000), getTimeout(&state));
+    try std.testing.expectEqual(@as(u32, 3000), getTimeout(&state));
 }
 
 test "shouldTimeout - no timeout returns false" {
