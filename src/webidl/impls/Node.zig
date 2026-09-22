@@ -749,13 +749,19 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
             // Returns null
             return runtime.DOMString.initEmpty();
         },
-        NodeType.ATTRIBUTE_NODE,
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         NodeType.COMMENT_NODE,
         => blk: {
-            // Returns the node's data
+            // DOM 4.4: returns this's data, which CharacterData owns.
+            const data_slice = CharacterDataImpl.getData(instance) orelse {
+                break :blk runtime.DOMString.initEmpty();
+            };
+            break :blk runtime.DOMString.initInterned(data_slice);
+        },
+        NodeType.ATTRIBUTE_NODE => blk: {
+            // Attr keeps its value in node_value.
             if (internal.node_value) |val| {
                 break :blk val;
             }
@@ -796,18 +802,26 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
-        NodeType.ATTRIBUTE_NODE,
+        // DOM 4.4: for CharacterData, "replace data with node this, offset 0,
+        // count this's length, and data the given value". That lives in
+        // CharacterData's own state and must go through replace data so live
+        // ranges are updated; Node.node_value is not read for these types.
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         NodeType.COMMENT_NODE,
         => {
+            // Step 1: If the given value is null, act as if it was the empty string.
+            try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
+        },
+        // For Attr, set an existing attribute value; Attr keeps its value in node_value.
+        NodeType.ATTRIBUTE_NODE => {
             // Free old value if it exists
             if (internal.node_value) |*old| {
                 old.deinit(internal.allocator);
             }
-            // Clone and store new value (null becomes null)
-            internal.node_value = if (value) |v| try v.clone(internal.allocator) else null;
+            // Clone and store new value (null becomes the empty string per spec)
+            internal.node_value = try (value orelse runtime.DOMString.initEmpty()).clone(internal.allocator);
         },
         // For Element, Document, etc: do nothing
         else => {},
@@ -823,18 +837,21 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
             // Do nothing
         },
-        NodeType.ATTRIBUTE_NODE,
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         NodeType.COMMENT_NODE,
         => {
-            // Replace data with value
+            // DOM 4.4: "Replace data with node this, offset 0, count this's
+            // length, and data the given value" (null acts as "").
+            try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
+        },
+        NodeType.ATTRIBUTE_NODE => {
+            // Attr keeps its value in node_value.
             if (internal.node_value) |*old| {
                 old.deinit(internal.allocator);
             }
-            // Clone and store new value (null becomes null)
-            internal.node_value = if (value) |v| try v.clone(internal.allocator) else null;
+            internal.node_value = try (value orelse runtime.DOMString.initEmpty()).clone(internal.allocator);
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // Remove all children using NodeBase
@@ -1037,23 +1054,16 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
                 if (!std.mem.eql(u8, self_name.?.asSlice(), other_name.?.asSlice())) return false;
             }
 
-            const self_val = self_internal.node_value;
-            const other_val = other_internal.node_value;
-            if (self_val == null and other_val != null) return false;
-            if (self_val != null and other_val == null) return false;
-            if (self_val != null and other_val != null) {
-                if (!std.mem.eql(u8, self_val.?.asSlice(), other_val.?.asSlice())) return false;
-            }
+            // DOM 4.4 "equals": data lives in CharacterData, not node_value.
+            const self_data = CharacterDataImpl.getData(instance) orelse "";
+            const other_data = CharacterDataImpl.getData(other_node) orelse "";
+            if (!std.mem.eql(u8, self_data, other_data)) return false;
         },
-        NodeType.TEXT_NODE, NodeType.COMMENT_NODE => {
-            // Check data
-            const self_val = self_internal.node_value;
-            const other_val = other_internal.node_value;
-            if (self_val == null and other_val != null) return false;
-            if (self_val != null and other_val == null) return false;
-            if (self_val != null and other_val != null) {
-                if (!std.mem.eql(u8, self_val.?.asSlice(), other_val.?.asSlice())) return false;
-            }
+        NodeType.TEXT_NODE, NodeType.CDATA_SECTION_NODE, NodeType.COMMENT_NODE => {
+            // DOM 4.4 "equals": their data is equal.
+            const self_data = CharacterDataImpl.getData(instance) orelse "";
+            const other_data = CharacterDataImpl.getData(other_node) orelse "";
+            if (!std.mem.eql(u8, self_data, other_data)) return false;
         },
         else => {},
     }
@@ -1145,6 +1155,135 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
     // Get allocator from node's state
     const allocator = node_internal.allocator;
 
+    // DOM 4.4 "clone a node" step 2: copy must implement the same interfaces as
+    // node. A CharacterData copy built as a bare Node has no CharacterData
+    // state, so every later data access on it fails with InvalidStateError and
+    // its data is silently lost. Build those through their own interfaces, which
+    // also keeps them off `Registry.createIn` (see AGENTS.md: createIn hands out
+    // a block the arena will reissue).
+    switch (node_internal.node_type) {
+        NodeType.TEXT_NODE,
+        NodeType.CDATA_SECTION_NODE,
+        NodeType.COMMENT_NODE,
+        NodeType.PROCESSING_INSTRUCTION_NODE,
+        => {
+            const src_data = CharacterDataImpl.getData(node) orelse "";
+            const data_str = runtime.DOMString.initInterned(src_data);
+
+            const copy = switch (node_internal.node_type) {
+                NodeType.TEXT_NODE => try interfaces.Text.call_constructor(
+                    node.ctx,
+                    webidl.Opt(runtime.DOMString).passed(data_str),
+                ),
+                NodeType.COMMENT_NODE => try interfaces.Comment.call_constructor(
+                    node.ctx,
+                    webidl.Opt(runtime.DOMString).passed(data_str),
+                ),
+                NodeType.CDATA_SECTION_NODE => blk: {
+                    const cdata = try interfaces.CDATASection.init(allocator, node.ctx);
+                    errdefer runtime.Instance.deinit(cdata);
+                    try setNodeType(cdata, NodeType.CDATA_SECTION_NODE);
+                    try interfaces.CharacterData.set_data(cdata, data_str);
+                    break :blk cdata;
+                },
+                // A ProcessingInstruction's target is readonly, so it can only be
+                // set at creation; the owning document's factory does that.
+                else => blk: {
+                    // These getters CLONE and hand ownership to the caller (the
+                    // interface layer frees them when script is the caller), so
+                    // calling one from Zig means freeing it here.
+                    var target = try interfaces.ProcessingInstruction.get_target(node);
+                    defer target.deinit(node.ctx.allocator);
+                    const owner = document orelse node_internal.owner_document orelse
+                        return error.InvalidStateError;
+                    break :blk try interfaces.Document.call_createProcessingInstruction(
+                        owner,
+                        target,
+                        data_str,
+                    );
+                },
+            };
+            errdefer runtime.Instance.deinit(copy);
+
+            if (document orelse node_internal.owner_document) |owner_doc| {
+                try setOwnerDocument(copy, owner_doc);
+            }
+            return copy;
+        },
+        // DOM 4.4 "clone a node" step 2: "let copy be the result of creating an
+        // element, given document, node's local name, node's namespace, node's
+        // namespace prefix, and is value" - then step 3 copies the attributes.
+        // A bare Node copy has no Element state, so every later attribute or
+        // name access on the clone fails with InvalidStateError.
+        NodeType.ELEMENT_NODE => {
+            const owner = document orelse node_internal.owner_document orelse
+                return error.InvalidStateError;
+            // The getters below clone into ctx.allocator, so they must be freed
+            // with ctx.allocator - node_internal.allocator is not necessarily the
+            // same one.
+            const instance_allocator = node.ctx.allocator;
+
+            // Each of these getters CLONES into ctx.allocator and transfers
+            // ownership to the caller. Script callers are freed by the interface
+            // layer; a Zig caller must free them itself or every clone leaks the
+            // element's name, namespace and prefix.
+            var namespace_owned = try interfaces.Element.get_namespaceURI(node);
+            defer if (namespace_owned) |*n| n.deinit(instance_allocator);
+            var local_name_owned = try interfaces.Element.get_localName(node);
+            defer local_name_owned.deinit(instance_allocator);
+            var prefix_owned = try interfaces.Element.get_prefix(node);
+            defer if (prefix_owned) |*pfx| pfx.deinit(instance_allocator);
+
+            const namespace = namespace_owned;
+            const local_name = local_name_owned;
+            const prefix = prefix_owned;
+
+            // The spec clones from local name + prefix, NOT from tagName:
+            // tagName is ASCII-uppercased for HTML elements, so using it here
+            // would clone <div> as an element whose local name is "DIV".
+            var qualified_buf: ?[]u8 = null;
+            defer if (qualified_buf) |b| instance_allocator.free(b);
+            const qualified_name = if (if (prefix) |p| (if (p.asSlice().len > 0) p else null) else null) |p| blk: {
+                const joined = try std.fmt.allocPrint(
+                    instance_allocator,
+                    "{s}:{s}",
+                    .{ p.asSlice(), local_name.asSlice() },
+                );
+                qualified_buf = joined;
+                break :blk runtime.DOMString.initInterned(joined);
+            } else local_name;
+
+            const copy = try interfaces.Document.call_createElementNS(
+                owner,
+                namespace,
+                qualified_name,
+                webidl.Opt(runtime.JSValue).notPassed(),
+            );
+            errdefer runtime.Instance.deinit(copy);
+
+            // Step 3: for each attribute of node's attribute list, append a copy.
+            const attrs = try interfaces.Element.get_attributes(node);
+            const attr_count = try interfaces.NamedNodeMap.get_length(attrs);
+            var i: u32 = 0;
+            while (i < attr_count) : (i += 1) {
+                const attr = try interfaces.NamedNodeMap.call_item(attrs, i) orelse continue;
+                // Same ownership rule as above: these three clone.
+                var attr_ns = try interfaces.Attr.get_namespaceURI(attr);
+                defer if (attr_ns) |*n| n.deinit(instance_allocator);
+                var attr_name = try interfaces.Attr.get_name(attr);
+                defer attr_name.deinit(instance_allocator);
+                var attr_value = try interfaces.Attr.get_value(attr);
+                defer attr_value.deinit(instance_allocator);
+
+                try interfaces.Element.call_setAttributeNS(copy, attr_ns, attr_name, attr_value);
+            }
+
+            try setOwnerDocument(copy, owner);
+            return copy;
+        },
+        else => {},
+    }
+
     // Create new instance based on node type
     // For now, create a basic Node - specific types will override via their own init
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -1215,8 +1354,8 @@ pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
         // Handle text nodes
         if (child_internal.node_type == NodeType.TEXT_NODE) {
             // Remove empty text nodes
-            const data = child_internal.node_value orelse runtime.DOMString.initEmpty();
-            if (data.len() == 0) {
+            const data_slice = CharacterDataImpl.getData(current_child) orelse "";
+            if (data_slice.len == 0) {
                 // TODO: Remove this node
                 child_base = current_base.next_sibling;
                 continue;
