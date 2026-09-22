@@ -673,6 +673,14 @@ pub extern fn v8_Debug_LiveContextGlobals() i64;
 /// Live `Global<Object>` handles from the per-element entry points.
 pub extern fn v8_Debug_LiveObjectGlobals() i64;
 
+/// Live weak-arm records: `v8_Global_SetWeak` calls minus arms ended.
+///
+/// Each record holds a raw pointer to the `Global<T>` it was armed on, so it
+/// must not outlive that handle - the arm ends at `v8_Global_ClearWeak` or at
+/// the handle's disposal, whichever comes first. This counter is what makes that
+/// rule checkable; see `tests/v8/weak_callback_ownership_test.zig`.
+pub extern fn v8_Debug_LiveWeakCallbackData() i64;
+
 /// Per-entry-point Global<Object> creation counts, indexed 0..5.
 pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
 

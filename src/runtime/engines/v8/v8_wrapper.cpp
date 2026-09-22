@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <execinfo.h>  // For backtrace on macOS/Linux
 
@@ -47,9 +49,15 @@ struct GlobalHandleEntry {
 };
 static std::vector<GlobalHandleEntry> g_snapshot_handles;
 
+// Defined with the weak-callback machinery below. Deleting a Global that still
+// carries a weak arm leaves the arm's record pointing at freed memory, and this
+// is a delete site like any other.
+static void releaseWeakArmRaw(void* handle);
+
 // Type-erased reset function template
 template<typename T>
 static void resetGlobalHandle(void* ptr) {
+    releaseWeakArmRaw(ptr);
     Global<T>* handle = static_cast<Global<T>*>(ptr);
     handle->Reset();
     delete handle;
@@ -201,33 +209,164 @@ static Global<T>* trackHandle(Global<T>* handle) {
 typedef void (*ZigWeakCallbackFn)(void* data, size_t length_in_bytes);
 
 /// Weak callback data structure
+///
+/// `handle` is the `Global<T>` this record was armed on. It is NULL once that
+/// Global has been disposed - see `releaseWeakArm` for why that case exists and
+/// why the callback must honour it.
 struct WeakCallbackData {
     ZigWeakCallbackFn callback;
     void* user_data;
     Global<Value>* handle;  // Store handle pointer so we can reset it
 };
 
+// ---------------------------------------------------------------------------
+// Ownership of a weak arm
+// ---------------------------------------------------------------------------
+//
+// `v8_Global_SetWeak` heap-allocates a `WeakCallbackData` holding a RAW pointer
+// back to a `Global<T>` that Zig owns and frees on its own schedule. Nothing
+// made the two lifetimes agree, and they came apart in both directions:
+//
+//   * `PersistentBase::ClearWeak()` is `ClearWeak<void>()`, which DISCARDS the
+//     parameter V8 hands back. Every disarm leaked a record, and
+//     `wrapper_cache.zig` disarms in five places on every DOM wrapper.
+//
+//   * Disposing an armed Global deleted it with the record still pointing at it.
+//     V8 COPIES the callback parameter into a pending list during GC and runs
+//     every first-pass callback afterwards (`GlobalHandles::PendingPhantomCallback`
+//     keeps `parameter_`, not the node's), so one callback's Zig side is free to
+//     dispose a SECOND armed handle whose callback is still queued in the same
+//     pass. That second callback then reset a `Global<Value>` whose memory had
+//     already been recycled:
+//
+//         Segmentation fault at address 0x4dbacbca5b9a861c
+//           GlobalHandles::NodeSpace<Node>::Release
+//           PersistentBase<Value>::Reset
+//           WeakCallbackWrapper                     (this file, below)
+//           GlobalHandles::InvokeFirstPassWeakCallbacks
+//
+//     0x4dba is U+4DBA, a codepoint the encoding test was printing at the time.
+//     The bytes in the freed handle were the test's own data.
+//
+// The rule now: a record is owned by the arm, and the arm ends when the handle
+// is disarmed or disposed, whichever comes first. `armedWeakData` is what makes
+// that enforceable - V8 cannot answer "is this handle still armed?" once the
+// node reaches NEAR_DEATH, because `IsWeak()` is false from that moment and
+// `ClearWeak()` can no longer reach the parameter.
+//
+// Unsynchronised, like `g_isolate_allocators`: a V8 Context is
+// single-threaded, and the one module in the tree that spawns threads
+// (`src/storage/indexeddb/worker_threads.zig`) never reaches V8. If that ever
+// changes, this needs the same mutex `CallbackManager` carries.
+static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
+    static std::unordered_map<const void*, WeakCallbackData*> map;
+    return map;
+}
+
+/// Records that a dispose detached from their Global while V8 still had their
+/// callback queued. They must outlive the dispose - V8 WILL invoke them - so the
+/// callback frees them. Held here so the count is a real live count and a record
+/// whose callback never fires is still reachable.
+static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
+    static std::unordered_set<WeakCallbackData*> set;
+    return set;
+}
+
+/// Live `WeakCallbackData` records: armed minus freed.
+///
+/// Cheap enough to leave always on, unlike `CRANE_TRACK_GLOBALS` - it moves once
+/// per weak arm, not once per handle creation, and arming is already doing a V8
+/// global-handle write.
+static std::atomic<int64_t> g_live_weak_callback_data{0};
+
+extern "C" int64_t v8_Debug_LiveWeakCallbackData() {
+    return g_live_weak_callback_data.load(std::memory_order_relaxed);
+}
+
+static void freeWeakData(WeakCallbackData* data) {
+    delete data;
+    g_live_weak_callback_data.fetch_sub(1, std::memory_order_relaxed);
+}
+
+/// End the weak arm on `global`, if it has one, before the Global dies.
+///
+/// Two cases, told apart by `IsWeak()`:
+///
+///   * still weak - V8 has queued nothing and will never invoke this record, so
+///     take the parameter back off the node and free it.
+///   * not weak - either never armed (we returned already), or the node is
+///     NEAR_DEATH with a first-pass callback queued for this GC. V8 WILL invoke
+///     that callback with this record, so the record has to outlive us: clear
+///     its back-pointer so it cannot touch the Global we are about to delete,
+///     and let the callback free it.
+///
+/// An unrecognised state takes the second branch, which costs one 24-byte record
+/// until the callback runs and never costs correctness. That is deliberate: the
+/// cheap answer here is the one that leaks, not the one that frees.
+template <typename T>
+static void releaseWeakArm(Global<T>* global) {
+    if (!global) return;
+    auto& armed = armedWeakData();
+    if (armed.empty()) return;
+    auto it = armed.find(static_cast<const void*>(global));
+    if (it == armed.end()) return;
+
+    WeakCallbackData* data = it->second;
+    armed.erase(it);
+
+    if (global->IsWeak()) {
+        global->ClearWeak();
+        freeWeakData(data);
+    } else {
+        data->handle = nullptr;
+        detachedWeakData().insert(data);
+    }
+}
+
+/// `releaseWeakArm` for a caller that has lost the handle's type. Same cast
+/// `v8_Global_SetWeak` makes: every `Global<T>` is one slot pointer, and neither
+/// `IsWeak` nor `ClearWeak` reads T.
+static void releaseWeakArmRaw(void* handle) {
+    releaseWeakArm(reinterpret_cast<Global<Value>*>(handle));
+}
+
+/// Arm `handle` with `data`, replacing and releasing any arm already on it.
+///
+/// V8 keeps only the newest parameter, so a second `SetWeak` on the same handle
+/// strands the first record where nothing can reach it.
+static void armWeakData(void* handle, WeakCallbackData* data) {
+    releaseWeakArm(reinterpret_cast<Global<Value>*>(handle));
+    g_live_weak_callback_data.fetch_add(1, std::memory_order_relaxed);
+    armedWeakData()[handle] = data;
+}
+
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
 static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) {
     WeakCallbackData* data = info.GetParameter();
-    
-    if (data) {
-        // CRITICAL: V8 requires that weak callbacks MUST reset the handle
-        // before returning. Failure to do so causes "Handle not reset in first callback"
-        // crashes during GC.
-        if (data->handle) {
-            data->handle->Reset();
-        }
-        
-        // Call the Zig finalizer with user data
-        if (data->callback) {
-            data->callback(data->user_data, 0);
-        }
-        
-        // Clean up the wrapper data
-        delete data;
+    if (!data) return;
+
+    // v8-weak-callback-info.h: "When first called, the embedder MUST Reset() the
+    // Global which triggered the callback."
+    //
+    // A null `handle` means a dispose got there first and already reset the node,
+    // so the obligation is discharged and the pointer is a freed `Global<Value>`.
+    // Erase BEFORE calling into Zig: the Zig finalizer routinely disposes this
+    // very handle, and it must not find a stale arm to release.
+    if (data->handle) {
+        armedWeakData().erase(static_cast<const void*>(data->handle));
+        data->handle->Reset();
+    } else {
+        detachedWeakData().erase(data);
     }
+
+    // Call the Zig finalizer with user data
+    if (data->callback) {
+        data->callback(data->user_data, 0);
+    }
+
+    // Clean up the wrapper data
+    freeWeakData(data);
 }
 
 // ============================================================================
@@ -1096,6 +1235,7 @@ Global<Function>* crane_create_function_global(void* func_global, void* ctx_glob
 /// @param global - Pointer to the Global<Function> to release
 void crane_release_function_global(Global<Function>* global) {
     if (global) {
+        releaseWeakArm(global);
         global->Reset();
         delete global;
     }
@@ -1725,6 +1865,14 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             g_isolate_allocators.erase(it);
         }
         
+        // Records that a dispose detached from their Global while V8 still had
+        // their callback queued. Disposing the isolate is the point at which
+        // those callbacks provably will not run, so it is where they are freed.
+        for (WeakCallbackData* data : detachedWeakData()) {
+            freeWeakData(data);
+        }
+        detachedWeakData().clear();
+
         // Dispose the isolate first
         isolate->Dispose();
         
@@ -1885,6 +2033,7 @@ void v8_Context_Dispose(Global<Context>* context) {
     // for bulk cleanup while the snapshot is built.
     if (g_snapshot_mode) return;
     g_live_context_globals.fetch_sub(1, std::memory_order_relaxed);
+    releaseWeakArm(context);
     context->Reset();
     delete context;
 }
@@ -2064,6 +2213,7 @@ void v8_String_Dispose(Global<String>* str) {
         // use-after-free that this guard fixes, independent of any new disposal.
         if (g_snapshot_mode) return;
         g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
+        releaseWeakArm(str);
         str->Reset();
         delete str;
     }
@@ -2429,6 +2579,7 @@ bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
 
 void v8_Value_Dispose(Global<Value>* value) {
     if (value) {
+        releaseWeakArm(value);
         value->Reset();
         delete value;
     }
@@ -3328,6 +3479,7 @@ void v8_Object_Dispose(Global<Object>* obj) {
     // handle is registered for bulk cleanup, so disposing one here as well is a
     // double free.
     if (g_snapshot_mode) return;
+    releaseWeakArm(obj);
     obj->Reset();
     delete obj;
 }
@@ -3379,6 +3531,7 @@ bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, 
 
 void v8_Array_Dispose(Global<Array>* arr) {
     if (arr) {
+        releaseWeakArm(arr);
         arr->Reset();
         delete arr;
     }
@@ -3447,6 +3600,7 @@ Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
 
 void v8_Script_Dispose(Global<Script>* script) {
     if (script) {
+        releaseWeakArm(script);
         script->Reset();
         delete script;
     }
@@ -3703,6 +3857,7 @@ int v8_Module_GetIdentityHash(Global<Module>* module) {
 /// Dispose a module handle
 void v8_Module_Dispose(Global<Module>* module) {
     if (module) {
+        releaseWeakArm(module);
         module->Reset();
         delete module;
     }
@@ -4269,6 +4424,7 @@ Global<Function>* v8_FunctionTemplate_GetFunction(Global<FunctionTemplate>* func
 
 void v8_FunctionTemplate_Dispose(Global<FunctionTemplate>* tpl) {
     if (tpl) {
+        releaseWeakArm(tpl);
         tpl->Reset();
         delete tpl;
     }
@@ -4300,6 +4456,7 @@ void v8_FunctionTemplate_SetClassName(Global<FunctionTemplate>* tpl, Global<Stri
 void v8_ObjectTemplate_Dispose(Global<ObjectTemplate>* tpl) {
     if (!tpl) return;
     if (g_snapshot_mode) return;
+    releaseWeakArm(tpl);
     tpl->Reset();
     delete tpl;
 }
@@ -4906,6 +5063,7 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
 
 void v8_Function_Dispose(Global<Function>* fn) {
     if (fn) {
+        releaseWeakArm(fn);
         fn->Reset();
         delete fn;
     }
@@ -5158,6 +5316,7 @@ void* v8_External_Value(Global<External>* external) {
 // Dispose External
 void v8_External_Dispose(Global<External>* external) {
     if (external) {
+        releaseWeakArm(external);
         external->Reset();
         delete external;
     }
@@ -6142,7 +6301,8 @@ Global<Symbol>* v8_Symbol_GetUnscopables(Isolate* isolate) {
 }
 
 void v8_Symbol_Dispose(Global<Symbol>* symbol) {
-    delete symbol;
+    releaseWeakArm(symbol);
+    delete symbol;  // ~Global resets the handle
 }
 
 Global<Value>* v8_Object_GetPropertyWithSymbol(
@@ -6584,6 +6744,7 @@ Global<Promise>* v8_Promise_Catch(
 /// Dispose a Promise
 void v8_Promise_Dispose(Global<Promise>* promise) {
     if (promise) {
+        releaseWeakArm(promise);
         promise->Reset();
         delete promise;
     }
@@ -6619,6 +6780,7 @@ Global<Value>* v8_Promise_Result(Global<Promise>* promise) {
 /// Dispose a PromiseResolver
 void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
     if (resolver) {
+        releaseWeakArm(resolver);
         resolver->Reset();
         delete resolver;
     }
@@ -6898,6 +7060,7 @@ void v8_DisposeZigCallbackHandler(Global<Function>* handler) {
         // so it will be leaked. In a real implementation, we'd need weak callbacks
         // or a different architecture. For now, the data is small and persistent
         // for the lifetime of the stream.
+        releaseWeakArm(handler);
         handler->Reset();
         delete handler;
     }
@@ -6967,6 +7130,7 @@ void v8_ArrayBuffer_Detach(Global<ArrayBuffer>* buffer) {
 /// Dispose ArrayBuffer
 void v8_ArrayBuffer_Dispose(Global<ArrayBuffer>* buffer) {
     if (buffer) {
+        releaseWeakArm(buffer);
         buffer->Reset();
         delete buffer;
     }
@@ -7316,6 +7480,10 @@ Global<Value>* v8_DataView_New(Isolate* isolate, Global<ArrayBuffer>* buffer, si
 // ============================================================================
 
 /// Make a Global handle weak with a finalizer callback
+///
+/// The record this allocates is owned by the arm: `v8_Global_ClearWeak` or the
+/// handle's disposal ends it, and until then `armedWeakData` can find it. See
+/// the ownership note above `armedWeakData`.
 void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback) {
     if (!handle || !callback) return;
     
@@ -7325,17 +7493,22 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
     // Create wrapper data that holds callback, user data, AND the handle pointer
     // The handle pointer is needed so the weak callback can reset it (V8 requirement)
     WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global};
+    armWeakData(handle, wrapper);
     
     // Make the Global handle weak with our wrapper callback
     global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
 }
 
 /// Clear weak reference and restore strong reference
+///
+/// `releaseWeakArm` does the `ClearWeak()` itself, because the parameter has to
+/// come back with it: `PersistentBase::ClearWeak()` is `ClearWeak<void>()` and
+/// drops the record on the floor, which leaked one per call on every DOM
+/// wrapper.
 void v8_Global_ClearWeak(void* handle) {
     if (!handle) return;
     
-    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
-    global->ClearWeak();
+    releaseWeakArm(reinterpret_cast<Global<Value>*>(handle));
 }
 
 /// Check if a Global handle is weak
@@ -7380,7 +7553,11 @@ Global<Value>* v8_Value_ToWeakGlobal(
     
     // If callback is provided, make it weak immediately
     if (callback != nullptr) {
-        WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data};
+        // `global`, not a defaulted null: an aggregate initialiser with two
+        // members left `handle` null, so the callback skipped V8's mandatory
+        // Reset and this Global survived every collection of its own value.
+        WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global};
+        armWeakData(global, wrapper);
         global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
     }
     
@@ -7664,6 +7841,7 @@ void v8_AsyncIterator_Dispose(Global<Object>* iterator) {
     }
     
     // Dispose Global handle
+    releaseWeakArm(iterator);
     iterator->Reset();
     delete iterator;
 }
@@ -8621,6 +8799,7 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
 /// @param global - Global handle to dispose (null-safe)
 void v8_Global_Dispose(Global<Value>* global) {
     if (global != nullptr) {
+        releaseWeakArm(global);
         global->Reset();
         delete global;
     }
