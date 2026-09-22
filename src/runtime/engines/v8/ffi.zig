@@ -1042,6 +1042,8 @@ pub extern fn v8_Array_New(isolate: *Isolate, length: c_int) *Array;
 pub extern fn v8_Array_Length(arr: *Array) u32;
 pub extern fn v8_Array_Get(context: *Context, arr: *Array, index: u32) ?*Value;
 pub extern fn v8_Array_Set(arr: *Array, context: *Context, index: u32, value: *Value) bool;
+/// Object.freeze(object). False if it could not be frozen.
+pub extern fn v8_Object_Freeze(object: *Object, context: *Context) bool;
 pub extern fn v8_Array_Dispose(arr: *Array) void;
 
 // Script compilation and execution

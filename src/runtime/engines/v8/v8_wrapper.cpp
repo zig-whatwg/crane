@@ -3847,6 +3847,17 @@ bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, 
     return result.FromMaybe(false);
 }
 
+/// Object.freeze(object): SetIntegrityLevel(kFrozen). False if it could not be
+/// frozen - a proxy trap can refuse, and can throw.
+bool v8_Object_Freeze(Global<Object>* object, Global<Context>* context) {
+    if (!object || !context) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Local<Object> local_object = object->Get(isolate);
+    return local_object->SetIntegrityLevel(local_context, IntegrityLevel::kFrozen).FromMaybe(false);
+}
+
 void v8_Array_Dispose(Global<Array>* arr) {
     if (arr) {
         releaseWeakArm(arr);

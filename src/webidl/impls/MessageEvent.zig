@@ -60,6 +60,9 @@ pub const InternalState = struct {
     /// `createPostMessageEvent` hands one over; every other path stores a
     /// handle that somebody else frees.
     owns_data_handle: bool = false,
+    /// Whether `ports` is the empty frozen array `get_ports` made for this
+    /// event: a Global it disposes on deinit.
+    owns_ports_handle: bool = false,
     /// Transferred MessagePort instances (stored as Zig instances, not V8 objects)
     /// These get wrapped fresh when get_ports is called to ensure correct prototype chain
     transferred_ports: [16]*runtime.Instance = undefined,
@@ -90,12 +93,18 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     var state = instance.getState(State);
 
-    // A deserialized postMessage payload: the one Global this event owns.
+    // The Globals this event owns: a deserialized postMessage payload, and the
+    // empty ports array.
     if (state.own._internal) |internal| {
         if (internal.owns_data_handle and state.own.data == .handle) {
             @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(state.own.data.handle.ptr)));
         }
         internal.owns_data_handle = false;
+        if (internal.owns_ports_handle and state.own.ports == .handle) {
+            @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(state.own.ports.handle.ptr)));
+            state.own.ports = runtime.JSValue.jsUndefined;
+        }
+        internal.owns_ports_handle = false;
     }
 
     // Clean up the cloned JSValue data (if it's an owned string)
@@ -305,7 +314,20 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         }
     }
 
-    // Fall back to the stored ports value (may be an array or undefined)
+    // HTML step 8.6 of the window post message steps, and every other source
+    // of MessageEvents: `ports` is a FROZEN array of what was transferred -
+    // empty when nothing was. It is one array for the life of the event, so
+    // that `e.ports === e.ports`; the event owns it and disposes it in deinit.
+    if (state.own.ports == .handle) return state.own.ports;
+    const internal = state.own._internal orelse return state.own.ports;
+    const v8_engine = @import("v8");
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return state.own.ports;
+    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return state.own.ports;
+    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
+    const empty = v8_engine.ffi.v8_Array_New(v8_isolate, 0);
+    _ = v8_engine.ffi.v8_Object_Freeze(@ptrCast(empty), v8_context);
+    state.own.ports = .{ .handle = .{ .ptr = @ptrCast(empty), .needs_disposal = true, .handle_scope = .global } };
+    internal.owns_ports_handle = true;
     return state.own.ports;
 }
 
