@@ -190,8 +190,27 @@ pub const InternalState = struct {
         // wrapper_cache.deinit checks isCleanupStarted() before calling gc.onObjectFreed,
         // so marking here prevents double-free of the NamedNodeMap.
         if (self.named_node_map) |nnm| {
-            _ = runtime.instance_lifecycle.markCleanupStarted(nnm);
-            interfaces.NamedNodeMap.deinit(nnm);
+            // The protocol above covers Element freeing the map FIRST. The other
+            // order happens too: if script ever touched `el.attributes`, the map
+            // was wrapped, and the wrapper cache's weak callback frees it at
+            // whatever GC finds it dead - long before this exit-time sweep. It
+            // marks the Instance cleaned-up and the slab reclaims the memory,
+            // so `NamedNodeMap.deinit` here reads `getState` off an unmapped
+            // page: SEGV in `Instance.stateAs` under
+            // `InstanceRegistry(Element.InternalState).deinitAllAndClear`, which
+            // is how custom-elements/connected-callbacks.html died at exit.
+            //
+            // The lifecycle flags are keyed on the address and never dereference
+            // it, so they are safe to consult on freed memory. If the slab has
+            // since reissued the address to a live object, the stale flag makes
+            // this skip a deinit it should have done - a leak, and the
+            // conservative side of the same trade the rest of this tree makes.
+            const already_gone = runtime.instance_lifecycle.isCleanedUp(nnm) or
+                runtime.instance_lifecycle.isCleanupStarted(nnm);
+            if (!already_gone) {
+                _ = runtime.instance_lifecycle.markCleanupStarted(nnm);
+                interfaces.NamedNodeMap.deinit(nnm);
+            }
             self.named_node_map = null;
         }
 

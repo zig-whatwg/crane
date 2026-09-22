@@ -127,7 +127,17 @@ pub const ArenaAllocator = struct {
     /// Panics if the allocator was not initialized - this is a programming error.
     /// Use tryGet() for error-returning variant.
     pub fn get() *ArenaAllocator {
-        return &(global orelse @panic("ArenaAllocator not initialized - call init() first"));
+        // `|*g|` is the address of the payload IN PLACE, the same form `tryGet`
+        // uses. The previous `&(global orelse @panic(...))` takes the address of
+        // the value the `orelse` expression yields, and whether that is the
+        // payload or a temporary copy is not something a reader can tell from
+        // the line. A pointer to a copy that has gone out of scope reads as an
+        // ArenaAllocator whose backing Allocator has a null vtable, which is
+        // exactly how custom-elements/Document-createElement.html died: SEGV at
+        // 0x0 in mem.Allocator.rawAlloc, under Registry.createIn, under
+        // Node.init, at the bottom of an iframe insertion-steps chain.
+        if (global) |*g| return g;
+        @panic("ArenaAllocator not initialized - call init() first");
     }
 
     /// Get the global arena allocator instance, returning error if not initialized

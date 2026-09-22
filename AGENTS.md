@@ -176,8 +176,14 @@ bare build is 18 GB; one bare build plus two agents doing the same on a 32 GB
 machine is swap, which is what a load average of 68 looked like on 2026-09-22.
 `wpt-runner` builds the single executable the WPT loop uses; `-j2` caps the
 concurrent root compiles for `test`, which has many. The `wpt` step
-(`zig build wpt -j2 -- <path>`) is the other single-artifact path: it builds
-`wpt_runner` and runs it.
+(`zig build wpt -j2 -- <path>`) builds `wpt_runner` and runs it - it used to
+depend on the whole install step (all 19 artifacts) AND `kill -9` every process
+on the WPT ports first, which took the shared server down under three agents
+mid-run. Both are gone; but on a shared machine prefer the binary directly:
+
+```bash
+./zig-out/bin/wpt_runner --from-file=<list> --parallel=1 --wpt-root=tests/wpt --output=<dir>
+```
 
 **Do NOT put `/tmp/sdkshim` on PATH.** It was required until the machine
 upgraded to macOS 27 on 2026-09-21. `MacOSX15.sdk` no longer exists, Zig's own
@@ -1625,3 +1631,95 @@ runner answer that involves zero of something - zero tests, zero subtests, zero
 crashes - deserves one question before it is believed: what would this look like
 if the input had simply been dropped? This is the sixth distinct way this harness
 manufactures a result; the other five are above.
+
+---
+
+### Testing: The runner adopted a zombie as its server, because a zombie answers `kill(pid, 0)`
+
+**Date**: 2026-09-22
+**Lesson**: `checkExistingServer` decided "a server is running" by probing the
+lockfile's pid with signal 0. A `<defunct>` process passes that probe.
+
+**What Happened**: a runner spawned `wpt serve` while another process already
+held :8000. The child died at bind, its parent never reaped it - it was blocked
+in `wait4` on a different child - and it had already written
+`.wpt_serve.lock` with its pid. From then on every runner "adopted" pid 49683,
+a zombie, as the server. It was harmless only because an unrelated `wpt serve`
+(53135) happened to be serving the port. Whenever it was not, a run reported
+
+    Page load error: error.NetworkError    (0ms)
+
+with no curl diagnostic - curl never ran, there was nothing to connect to. Eight
+of twelve files in one timers run went that way, and the same signature turned
+up standalone.
+
+**Fix**: adopt by probing the PORT with a TCP connect (`isServerReady`), which is
+the question the code was actually asking; keep the lockfile's pid only if it is
+a live, non-zombie process, otherwise adopt with no pid. A lockfile whose port
+does not answer is stale whatever its pid says.
+
+**Takeaway**: **"The process exists" and "the process is doing its job" are
+different claims, and a zombie satisfies only the first.** Probe the resource,
+not the pid. Seventh way this harness manufactures a result.
+
+---
+
+### Debugging: A two-subtest page took 37 seconds to exit, and none of it was the test
+
+**Date**: 2026-09-22
+**Lesson**: `wpt_runner` ran a 2-subtest page in 50ms and then spent 37 seconds
+exiting. A binary built before the day's changes took 31 seconds on the same
+page, so this was never new - nobody had ever timed a runner's exit.
+
+**Why**: the runner used `init.gpa`, a `DebugAllocator(.{})` whose Debug-mode
+default is `stack_trace_frames = 6`. Every allocation and every free captures a
+six-frame trace, and Zig 0.16's unwinder parses DWARF CFI byte by byte from a
+138 MB debug binary to do it. Tearing down one page frees hundreds of thousands
+of objects. `sample` showed 99% CPU in `Io.Reader.takeLeb128` under
+`captureCurrentStackTrace`, after the test had finished.
+
+**What it cost**: standalone runs pay it once at exit, so any `timeout` under
+~40s reported "NO REPORT" for a run that had actually finished - which is how
+`custom-elements/connected-callbacks.html` was misread as still crashing after
+its crash was fixed. The runner's own "Duration" line is test time, not process
+time, which is why this never showed in a log.
+
+**Fix**: the runner owns a `DebugAllocator(.{ .stack_trace_frames = 0 })`.
+Leak detection - the count and the addresses - survives; the per-operation
+unwinding does not. `CRANE_LEAK_TRACES=1` selects the six-frame allocator for a
+run where the traces are the point.
+
+**Takeaway**: **Time the process, not the test.** A debug allocator that
+captures a trace per operation turns teardown into the dominant cost of a
+short run, and it hides behind every generous timeout.
+
+---
+
+### Testing: The report was written after teardown, so a teardown crash erased the run
+
+**Date**: 2026-09-22
+**Lesson**: `run()` wrote `wptreport.json` after `executeTests` returned, and
+`executeTests` ends with a deferred `browser.deinit()`. Every result a run
+produced therefore lived only in memory while the browser tore down.
+
+**What Happened**: `custom-elements/connected-callbacks.html` ran all of its
+tests, then died in `Browser.deinit -> cleanupAllDomRegistries ->
+Element registry sweep -> NamedNodeMap.deinit -> stateAs` reading an Instance
+the wrapper cache had already freed. The process exited 134 and there was no
+report at all - "NO REPORT", which reads as "the test never ran", the opposite
+of what happened. Before the allocator fix above it took 21 seconds to get
+there, so it read as a hang.
+
+The sharded path is different: `runShard` journals per file and declines to
+blame a file when the child dies after the last one is journalled, so a sweep
+loses nothing to a teardown crash. It was the standalone path - the one used
+to reproduce and fix things - that lost everything.
+
+**Fix**: `executeTests` finishes and writes the report before returning, inside
+the frame whose defer tears the browser down. `run()`'s later write overwrites
+it with identical results.
+
+**Takeaway**: **Persist results before teardown; teardown is engine code and
+crashes like any other.** "NO REPORT" now means the run never produced one,
+not that the exit destroyed it - and a crash in teardown still exits non-zero,
+so it is not hidden either, only no longer paid for with the data.

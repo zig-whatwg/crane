@@ -138,21 +138,30 @@ pub const WptServer = struct {
         const pid = std.fmt.parseInt(posix.pid_t, std.mem.trim(u8, pid_str, &std.ascii.whitespace), 10) catch return false;
         const port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return false;
 
-        // Check if process is still alive (signal 0 just checks existence)
-        // Signal 0 is the POSIX existence probe. 0.16 types posix.kill's signal
-        // as a SIG enum with no zero member, so the idiom no longer fits the typed
-        // wrapper; call libc directly, which is what it did underneath anyway.
-        if (std.c.kill(pid, @enumFromInt(0)) == 0) {
-            // Process exists, use it
-            self.pid = pid;
-            self.port = port;
+        // Adopt by probing the PORT, not the pid.
+        //
+        // The old probe was `kill(pid, 0)`, and a ZOMBIE answers that. On
+        // 2026-09-22 a runner spawned `wpt serve` while another server already
+        // held :8000; the child died at bind, its parent never reaped it, and it
+        // had already written this lockfile. Every runner since then "adopted"
+        // a defunct pid. That is harmless only while some OTHER process happens
+        // to be serving the port; the moment it is not, every run reports
+        // "Page load error: error.NetworkError" at 0ms, with no curl diagnostic,
+        // because there was never anything to connect to. A TCP connect answers
+        // the question this code actually asks.
+        self.port = port;
+        if (self.isServerReady()) {
+            // Something serves the port. Remember the lockfile's pid only if it
+            // is a live, non-zombie process; otherwise adopt with no pid, which
+            // `stop()` already treats as "not ours to signal".
+            const alive = std.c.kill(pid, @enumFromInt(0)) == 0;
+            self.pid = if (alive) pid else null;
             self.we_spawned = false;
             return true;
-        } else {
-            // Process doesn't exist - stale lockfile, remove it
-            host.cwd().deleteFile(io, lockfile_path) catch {};
-            return false;
         }
+        // Nothing serves the port: the lockfile is stale whatever its pid says.
+        host.cwd().deleteFile(io, lockfile_path) catch {};
+        return false;
     }
 
     /// Spawn the wpt serve process

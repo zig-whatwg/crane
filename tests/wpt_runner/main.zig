@@ -854,6 +854,18 @@ pub fn executeTests(
     const output_path = try options.reportPath(allocator);
     defer allocator.free(output_path);
 
+    // Write the report NOW, before this function's deferred `browser.deinit()`
+    // runs. Browser teardown sweeps every DOM registry and can crash on its own
+    // - custom-elements/connected-callbacks.html died in that sweep after all
+    // its tests had run - and `run()` only writes the report after we return,
+    // so a teardown crash used to erase a finished run and leave "NO REPORT"
+    // in its place. `finish()` just stamps time_end and `run()`'s later write
+    // overwrites this file with the same results, so writing twice is safe.
+    report.finish();
+    report.writeToFile(output_path) catch |err| {
+        print("warning: could not write early report to {s}: {}\n", .{ output_path, err });
+    };
+
     progress.printSummary(output_path);
 }
 
@@ -1091,11 +1103,38 @@ pub fn main(init: std.process.Init) !void {
     if (code != 0) std.process.exit(code);
 }
 
+/// The runner's allocator, chosen at startup.
+///
+/// `init.gpa` is a `DebugAllocator(.{})`, whose Debug-mode default is
+/// `stack_trace_frames = 6`: every allocation AND every free captures a
+/// six-frame trace, and Zig 0.16's unwinder parses DWARF CFI byte-by-byte to do
+/// it. Teardown of one test page frees hundreds of thousands of objects, so a
+/// two-subtest page took 37 SECONDS to exit - measured, and the same on a
+/// binary built before today's changes, so it was never new. The whole time
+/// was `Io.Reader.takeLeb128` under `captureCurrentStackTrace`, at 99% CPU,
+/// after the test had finished in 50ms.
+///
+/// Zero frames keeps leak DETECTION (the count and the addresses) and drops the
+/// per-operation unwinding. `CRANE_LEAK_TRACES=1` restores the six-frame
+/// allocator for a run where the traces are the point; that is what named the
+/// `setTimeoutCallback` and `ProgressEvent` leaks, so it stays reachable.
+var gpa_fast: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .{};
+var gpa_traced: std.heap.DebugAllocator(.{}) = .{};
+
 fn run(init: std.process.Init) !u8 {
     // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
-    // std.process.Init carries them, along with a gpa and a process-lifetime arena,
-    // so taking Init replaces the hand-rolled allocator too.
-    const allocator = init.gpa;
+    // std.process.Init carries them and a process-lifetime arena. Its gpa is not
+    // used: see `gpa_fast` above for why the runner owns its allocator.
+    const want_traces = if (init.minimal.environ.getPosix("CRANE_LEAK_TRACES")) |v| (v.len != 0 and v[0] != '0') else false;
+    const allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    defer {
+        // Leak detection still runs; only the traces are gone in the fast case.
+        if (want_traces) {
+            _ = gpa_traced.deinit();
+        } else {
+            _ = gpa_fast.deinit();
+        }
+    }
 
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 

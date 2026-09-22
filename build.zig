@@ -3598,30 +3598,20 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);
 
     // Add step to clear WPT ports before running
-    // WPT uses ports: HTTP 8000-8003, HTTPS 8443-8446, HTTP/2 9000
-    //
-    // 9000 matters as much as the rest: `wpt serve` treats a failure to bind
-    // any one listener as fatal and tears down all the others, so a single
-    // orphaned h2 subprocess from a previous run leaves nothing on 8000 and
-    // every test times out for a reason that looks nothing like the cause.
-    const clear_ports = b.addSystemCommand(&.{
-        "sh",
-        "-c",
-        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
-        \\  pid=$(lsof -ti :$port 2>/dev/null)
-        \\  if [ -n "$pid" ]; then
-        \\    echo "Killing process $pid on port $port"
-        \\    kill -9 $pid 2>/dev/null || true
-        \\  fi
-        \\done
-        \\echo "WPT ports cleared"
-        ,
-    });
+    // There used to be a `clear_ports` pre-step here that `kill -9`ed every
+    // process on 8000-8003, 8443-8446 and 9000 before each run. On a machine
+    // where several runners share one `wpt serve`, that killed the server out
+    // from under all of them mid-run (2026-09-22 09:03, three agents), and
+    // the orphaned children it left holding :8000 became the "adopted corpse"
+    // failure documented in AGENTS.md. The runner now adopts a live server by
+    // probing the port and deletes a stale lockfile itself, so nothing here
+    // needs to kill anything.
 
     // Add run step for WPT runner
     const run_wpt = b.addRunArtifact(wpt_runner_exe);
-    run_wpt.step.dependOn(b.getInstallStep());
-    run_wpt.step.dependOn(&clear_ports.step); // Clear ports first
+    // Only wpt_runner. `b.getInstallStep()` here meant `zig build wpt` built
+    // all 19 installed artifacts - see the `wpt-runner` step above for the cost.
+    run_wpt.step.dependOn(&b.addInstallArtifact(wpt_runner_exe, .{}).step);
 
     // Pass build options as command-line arguments
     run_wpt.addArg(b.fmt("--output={s}", .{wpt_output}));
