@@ -696,8 +696,12 @@ fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typed
         // Function pointer types have alignment requirements that would strip tag bits
         const raw_ptr: *anyopaque = @ptrCast(@constCast(h));
         try internal.event_handlers.put(name, raw_ptr);
+        // HTML: setting a handler to non-null activates it - its listener
+        // takes its place in the target's listener list.
+        try @import("EventTarget.zig").activateEventHandler(instance, name);
     } else {
         _ = internal.event_handlers.remove(name);
+        @import("EventTarget.zig").deactivateEventHandler(instance, name);
     }
 }
 

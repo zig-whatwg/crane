@@ -1038,9 +1038,13 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 }
 
 /// Getter for event
+/// Getter for event
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-event
+/// "return this's current event" - the event whose listener is running in this
+/// Window's realm (set by EventTarget's inner invoke), else undefined.
 pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const event = EventTargetImpl.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
+    return .{ .instance = event };
 }
 
 /// Getter for orientation
@@ -1237,8 +1241,12 @@ fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typed
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (handler) |_| {
         try internal.event_handlers.put(name, handler);
+        // HTML: setting a handler to non-null activates it - its listener
+        // takes its place in the Window's listener list.
+        try @import("EventTarget.zig").activateEventHandler(instance, name);
     } else {
         _ = internal.event_handlers.remove(name);
+        @import("EventTarget.zig").deactivateEventHandler(instance, name);
     }
 }
 

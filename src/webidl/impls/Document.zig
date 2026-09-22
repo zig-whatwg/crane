@@ -1769,6 +1769,14 @@ fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.Event
 fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.event_handlers.put(name, handler) catch return error.OutOfMemory;
+    // HTML: a non-null value activates the handler (its listener joins the
+    // document's listener list), null deactivates it.
+    const EventTargetImpl = @import("EventTarget.zig");
+    if (handler != null) {
+        EventTargetImpl.activateEventHandler(instance, name) catch return error.OutOfMemory;
+    } else {
+        EventTargetImpl.deactivateEventHandler(instance, name);
+    }
 }
 
 // =============================================================================
@@ -1928,9 +1936,8 @@ pub fn get_onended(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
 /// Getter for onerror
 /// Returns the error event handler, or null if not set.
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.OnErrorEventHandler {
-    _ = instance;
-    // OnErrorEventHandler is nullable - return null for not set
-    return null;
+    // Stored under "error" with the rest (see set_onerror).
+    return @as(typedefs.OnErrorEventHandler, @ptrCast(getEventHandler(instance, "error")));
 }
 
 /// Getter for onfocus
@@ -2752,9 +2759,10 @@ pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// Sets the error event handler.
 /// Currently a no-op as error events are not fully implemented.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - error events not fully implemented
+    // Stored like every other handler: OnErrorEventHandler differs from
+    // EventHandler only in the callback's declared signature, and both arrive
+    // as the same tagged V8 function handle (the cast Window makes).
+    return setEventHandler(instance, "error", @as(typedefs.EventHandler, @ptrCast(value)));
 }
 
 /// Setter for onfocus

@@ -667,10 +667,14 @@ const promise_rejected: c_int = 2;
 
 /// What running a module script produced, for the caller to report.
 pub const RunResult = union(enum) {
-    /// Evaluation completed, or is waiting on top-level await.
+    /// Evaluation completed.
     ok,
     /// An exception to report (owned Global).
     report: *ffi.Value,
+    /// Evaluation is waiting on top-level await. The owned Global of the
+    /// evaluation promise: "upon rejection" of it, the caller reports the
+    /// reason.
+    pending: *ffi.Value,
 };
 
 /// Run a module script.
@@ -694,26 +698,34 @@ pub fn run(env: *const Environment, script: *ModuleScript) RunResult {
         return if (takeException(result.error_info)) |value| .{ .report = value } else .ok;
     }
     const promise_value = result.value orelse return .ok;
-    defer ffi.v8_Global_Dispose(promise_value);
 
     // With top-level await shipped, Evaluate always returns a promise; anything
     // else means evaluation completed with nothing to report.
-    if (!ffi.v8_Value_IsPromise(promise_value)) return .ok;
-    const promise: *ffi.Promise = @ptrCast(promise_value);
-    const state = ffi.v8_Promise_State(promise);
-
-    // Step 8: upon rejection, report. A graph with no top-level await settles
-    // synchronously, so the reason is already there.
-    if (state == promise_rejected) {
-        if (ffi.v8_Promise_Result(promise)) |reason| return .{ .report = reason };
+    if (!ffi.v8_Value_IsPromise(promise_value)) {
+        ffi.v8_Global_Dispose(promise_value);
         return .ok;
     }
 
-    // A graph still waiting on top-level await reports when it settles.
-    // TODO: chain a rejection reaction (engine.chainPromiseHandlers) so a
-    // top-level await that rejects later is reported too.
-    if (state == promise_pending) log.debug("module evaluation awaits top-level await", .{});
-    return .ok;
+    // The evaluation promise is the host's: step 8's "upon rejection" handles
+    // it. Without this a rejected module would ALSO be reported as an
+    // unhandled promise rejection.
+    ffi.v8_Promise_MarkAsHandled(promise_value);
+
+    const promise: *ffi.Promise = @ptrCast(promise_value);
+    switch (ffi.v8_Promise_State(promise)) {
+        // Step 8: upon rejection, report. A graph with no top-level await
+        // settles synchronously, so the reason is already there.
+        promise_rejected => {
+            defer ffi.v8_Global_Dispose(promise_value);
+            return if (ffi.v8_Promise_Result(promise)) |reason| .{ .report = reason } else .ok;
+        },
+        // A graph still waiting on top-level await reports when it settles.
+        promise_pending => return .{ .pending = promise_value },
+        else => {
+            ffi.v8_Global_Dispose(promise_value);
+            return .ok;
+        },
+    }
 }
 
 // =============================================================================
