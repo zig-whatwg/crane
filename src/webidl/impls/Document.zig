@@ -32,6 +32,7 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
+const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const NodeIteratorImpl = @import("NodeIterator.zig");
@@ -3891,6 +3892,17 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
     };
     // Use interface instead of impl (per Golden Rule #13)
     const event = try interfaces.Event.call_constructor(instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
+
+    // Steps 6-8 fall out of constructing with an empty type: type is "",
+    // isTrusted is false, timeStamp is current high resolution time.
+
+    // Step 9: Unset event's initialized flag.
+    //
+    // The Event constructor SETS it, so without this the event created here is
+    // indistinguishable from `new Event("")` and `dispatchEvent` never throws -
+    // which is exactly what "If the event's initialized flag is not set, an
+    // InvalidStateError must be thrown" checks. `initEvent` sets it again.
+    EventImpl.setInitializedFlag(event, false);
 
     return event;
 }

@@ -918,6 +918,7 @@ pub const stub_engine: EngineInterface = .{
     .getPromiseObject = stubGetPromiseObject,
     .destroyPromiseHandle = null,
     .createString = null,
+    .getPropertyTruthy = null,
     .createArrayBuffer = null,
     .createUint8Array = null,
     .parseJson = null,

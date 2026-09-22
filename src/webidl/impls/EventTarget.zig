@@ -580,112 +580,443 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    // Get Event impl to check flags
     const EventImpl = @import("Event.zig");
 
-    // Step 1: If event's dispatch flag is set, or if its initialized flag is not set,
-    //         then throw an "InvalidStateError" DOMException.
-    if (EventImpl.getDispatchFlag(event)) {
-        return error.InvalidStateError;
-    }
-
-    // Check initialized flag via internal state
-    // For now, assume event is initialized if it exists
+    // Step 1: If event's dispatch flag is set, or if its initialized flag is not
+    //         set, then throw an "InvalidStateError" DOMException.
+    //
+    // The initialized-flag half is not optional: `document.createEvent("Event")`
+    // hands back an event with the flag UNSET, and dispatching it must throw
+    // until `initEvent` runs. Skipping the check made 8 subtests of
+    // EventTarget-dispatchEvent.html report "did not throw".
+    if (EventImpl.getDispatchFlag(event)) return error.InvalidStateError;
+    if (!EventImpl.getInitializedFlag(event)) return error.InvalidStateError;
 
     // Step 2: Initialize event's isTrusted attribute to false
     EventImpl.setIsTrusted(event, false);
 
     // Step 3: Return the result of dispatching event to this
-    // TODO: Implement full dispatch algorithm from event_dispatch.zig
-    // For now, return true (event not canceled)
+    return dispatch(instance, event);
+}
 
-    // Get internal state if available
-    const internal = getInternalFromRegistry(instance);
+// ============================================================================
+// DOM §2.9 - Dispatching events
+// https://dom.spec.whatwg.org/#concept-event-dispatch
+// ============================================================================
 
-    if (internal) |int| {
-        // Set event's target
-        EventImpl.setTarget(event, instance);
+/// One struct of the event path, per "append to an event path" (DOM §2.9).
+///
+/// The shadow-tree booleans and the touch target list live on Event's own
+/// `EventPathItem`, which this is mirrored into so `composedPath()` can see the
+/// path while listeners run.
+const PathStruct = struct {
+    /// invocation target: whose event listener list is consulted.
+    invocation_target: *runtime.Instance,
+    /// shadow-adjusted target: non-null exactly where the event is AT_TARGET.
+    shadow_adjusted_target: ?*runtime.Instance,
+    related_target: ?*runtime.Instance,
+};
 
-        // Get listeners for this event type (use interface per Golden Rule #13)
-        const @"type" = interfaces.Event.get_type(event) catch return true;
-        const listeners = int.getEventListenerList();
+/// The two values the spec's `phase` argument to "invoke" can take.
+const ListenerPhase = enum { capturing, bubbling };
 
-        // Invoke matching listeners (from addEventListener)
-        for (listeners) |listener| {
-            if (std.mem.eql(u8, listener.type.asSlice(), @"type".asSlice()) and
-                !listener.removed)
-            {
-                // Actually invoke the callback
-                if (listener.callback) |callback_instance| {
-                    // The callback is stored as ?*runtime.Instance but is actually a *runtime.CallbackWrapper
-                    const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                    const v8_engine = @import("v8");
+/// What "inner invoke" needs from a listener, captured before any callback runs.
+///
+/// The spec clones the event listener LIST, whose entries are live objects: a
+/// listener removed mid-dispatch is skipped through its `removed` field, and one
+/// added mid-dispatch is simply not in the clone. Our records sit in the list by
+/// value and `removeAnEventListener` frees the record's type string, so a value
+/// copy would dangle the moment a callback removed something. Capturing identity
+/// instead - and re-checking the live list immediately before each call - gives
+/// both spec properties without holding a pointer into a list the callbacks we
+/// are about to run can mutate.
+const Invocation = struct {
+    /// Declared as *runtime.Instance to match the record, but always a
+    /// *runtime.CallbackWrapper. Doubles as the identity key: every
+    /// addEventListener call allocates a fresh wrapper, so pointer equality
+    /// distinguishes "still the listener we cloned" from "removed and re-added".
+    callback: *runtime.Instance,
+    capture: bool,
+    once: bool,
+    passive: bool,
+};
 
-                    // Get the V8 context from the instance context
-                    if (instance.ctx.engine_ctx) |engine_ctx| {
-                        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+/// Guard against a cycle in parent pointers turning dispatch into a hang.
+/// No real tree is anywhere near this deep.
+const max_event_path_depth: usize = 8192;
 
-                        // Get the current V8 isolate
-                        const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse continue;
+/// DOM §2.9 - get the parent
+///
+/// https://dom.spec.whatwg.org/#get-the-parent - "A node's get the parent
+/// algorithm, given an event, returns the node's assigned slot, if node is
+/// assigned; otherwise node's parent."
+///
+/// HTML overrides it for Document: return null if event's type is "load" or the
+/// document has no browsing context, and the document's relevant global object
+/// (its Window) otherwise. That override is the whole difference between the two
+/// halves of Event-dispatch-bubbles-true.html, which expects `window` in a
+/// click's path and not in a load's.
+fn getTheParent(target: *runtime.Instance, event_type: []const u8) ?*runtime.Instance {
+    // node_type is EventTarget's duck-typing discriminator: 0 for a plain
+    // EventTarget (and for Window, which therefore ends the path).
+    const node_type = getNodeType(target);
+    if (node_type == 0) return null;
 
-                        // Wrap the event as a V8 object using the correct interface name
-                        // This is critical for event subclasses like MessageEvent - they need
-                        // to be wrapped with their actual interface to expose properties like .data
-                        const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
+    if (node_type == interfaces.Node.get_DOCUMENT_NODE()) {
+        if (std.mem.eql(u8, event_type, "load")) return null;
+        // No browsing context means no defaultView, so one null covers both.
+        return interfaces.Document.get_defaultView(target) catch null;
+    }
 
-                        // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle
-                        const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-                            event,
-                            event_interface_name,
-                            v8_isolate,
-                            v8_context,
-                        ) catch {
-                            // If we can't wrap the event, skip this listener
-                            continue;
-                        };
+    if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
+        if (interfaces.Element.get_assignedSlot(target) catch null) |slot| return slot;
+    }
 
-                        // Convert Global handle to Local value for the callback
-                        // The callback wrapper's callN expects Local values, not Global handles
-                        const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_global)) orelse continue;
+    return interfaces.Node.get_parentNode(target) catch null;
+}
 
-                        // Get the Window for this context to push onto accessor stack.
-                        // This ensures that during the callback, the accessor is the
-                        // Window that registered the event listener, not the Window
-                        // that triggered the event.
-                        const callback_window = v8_engine.context_manager.getWindowForContext(v8_context);
-                        if (callback_window) |win| {
-                            v8_engine.context_manager.pushAccessorWindow(win);
-                        }
-                        defer {
-                            if (callback_window != null) {
-                                v8_engine.context_manager.popAccessorWindow();
-                            }
-                        }
+/// DOM §2.9 dispatch, steps 6.3 and 6.8-6.9: build the event path.
+///
+/// The path is computed ONCE, before any listener runs, which is what
+/// Event-dispatch-target-moved.html checks: a listener that moves the target
+/// elsewhere in the tree must not change where the rest of the event goes.
+fn buildEventPath(
+    path: *infra.List(PathStruct),
+    target: *runtime.Instance,
+    event_type: []const u8,
+    related_target: ?*runtime.Instance,
+) !void {
+    // Step 6.3: append with target as BOTH invocation target and shadow-adjusted
+    // target. Being the only struct with a non-null shadow-adjusted target is
+    // what makes the target - and only the target - report AT_TARGET.
+    try path.append(.{
+        .invocation_target = target,
+        .shadow_adjusted_target = target,
+        .related_target = related_target,
+    });
 
-                        // Invoke the callback with the event as an argument
-                        // Use the runtime wrapper's invoke method which delegates to the engine
-                        _ = runtime_wrapper.invoke1(@ptrCast(event_local)) catch {
-                            // If callback invocation fails, continue to next listener
-                            continue;
-                        };
-                    }
-                }
+    var parent = getTheParent(target, event_type);
+    var depth: usize = 0;
+    while (parent) |p| {
+        if (depth >= max_event_path_depth) break;
+        depth += 1;
 
-                // If listener.once is true, remove it
-                if (listener.once) {
-                    removeAnEventListener(int, listener);
-                }
-            }
+        // Step 6.9.6. Without shadow roots in the path, target's root is always
+        // a shadow-including inclusive ancestor of every ancestor, so this
+        // branch always wins and the shadow-adjusted target is null. The
+        // retargeting branches 6.9.7 and 6.9.8 only become reachable once shadow
+        // trees are in play; they are a TODO rather than a silent approximation.
+        try path.append(.{
+            .invocation_target = p,
+            .shadow_adjusted_target = null,
+            .related_target = related_target,
+        });
+
+        parent = getTheParent(p, event_type);
+    }
+}
+
+/// Mirror the path onto the event so `composedPath()` reports it.
+/// Dispatch step 9 empties it again.
+fn publishEventPath(event: *runtime.Instance, structs: []const PathStruct, allocator: std.mem.Allocator) void {
+    const EventImpl = @import("Event.zig");
+    const list = EventImpl.getPath(event) orelse return;
+    for (structs) |s| {
+        list.append(.{
+            .invocation_target = s.invocation_target,
+            .invocation_target_in_shadow_tree = false,
+            .shadow_adjusted_target = s.shadow_adjusted_target,
+            .related_target = s.related_target,
+            .touch_target_list = infra.List(*runtime.Instance).init(allocator),
+            .root_of_closed_tree = false,
+            .slot_in_closed_tree = false,
+        }) catch return;
+    }
+}
+
+/// DOM §2.9 - dispatch
+/// https://dom.spec.whatwg.org/#concept-event-dispatch
+///
+/// Returns false if the event's canceled flag is set, true otherwise.
+pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
+    const EventImpl = @import("Event.zig");
+    const allocator = target.ctx.allocator;
+
+    // Step 1: Set event's dispatch flag.
+    EventImpl.setDispatchFlag(event, true);
+
+    // Steps 7, 8 and 10 have to happen however we leave.
+    errdefer finishDispatch(event);
+
+    // Steps 2-5. targetOverride is target: the legacy target override flag is
+    // only ever passed by HTML, and only for a Window. activationTarget (steps
+    // 3, 6.4-6.5, 12) and clearTargets (steps 5, 6.10-6.11) need activation
+    // behaviour and shadow roots respectively, neither of which exists yet.
+    const related_target = EventImpl.getRelatedTarget(event);
+
+    // `get_type` hands back a borrowed slice into the event's own storage, and
+    // `initEvent` returns early while the dispatch flag is set, so no callback
+    // can invalidate it mid-dispatch.
+    const event_type_string = interfaces.Event.get_type(event) catch runtime.DOMString.initEmpty();
+    const event_type = event_type_string.asSlice();
+
+    // Step 6
+    var path = infra.List(PathStruct).init(allocator);
+    defer path.deinit();
+    try buildEventPath(&path, target, event_type, related_target);
+    const structs = path.toSlice();
+
+    publishEventPath(event, structs, allocator);
+
+    // Step 13: for each struct of event's path, IN REVERSE ORDER, invoke with
+    // "capturing".
+    var i = structs.len;
+    while (i > 0) {
+        i -= 1;
+        EventImpl.setEventPhase(event, if (structs[i].shadow_adjusted_target != null)
+            interfaces.Event.get_AT_TARGET()
+        else
+            interfaces.Event.get_CAPTURING_PHASE());
+        invoke(structs, i, event, .capturing);
+    }
+
+    // Step 14: for each struct of event's path, in order, invoke with "bubbling".
+    const bubbles = interfaces.Event.get_bubbles(event) catch false;
+    for (structs, 0..) |s, index| {
+        if (s.shadow_adjusted_target != null) {
+            // Step 14.1 - the target itself is AT_TARGET in both passes, which
+            // is how its capturing listeners run before its bubbling ones.
+            EventImpl.setEventPhase(event, interfaces.Event.get_AT_TARGET());
+        } else {
+            // Step 14.2.1
+            if (!bubbles) continue;
+            // Step 14.2.2
+            EventImpl.setEventPhase(event, interfaces.Event.get_BUBBLING_PHASE());
+        }
+        invoke(structs, index, event, .bubbling);
+    }
+
+    // Steps 7, 8, 9 and 10
+    finishDispatch(event);
+
+    // Steps 11 and 12 (clearTargets, activation behaviour) are not reachable yet.
+
+    // Step 13: return false if event's canceled flag is set; otherwise true.
+    return !EventImpl.getCanceledFlag(event);
+}
+
+/// Dispatch steps 7-10: leave the event in a state that can be dispatched again.
+fn finishDispatch(event: *runtime.Instance) void {
+    const EventImpl = @import("Event.zig");
+    // Step 7
+    EventImpl.setEventPhase(event, interfaces.Event.get_NONE());
+    // Step 8
+    EventImpl.setCurrentTarget(event, null);
+    // Step 9
+    EventImpl.clearPath(event);
+    // Step 10
+    EventImpl.setDispatchFlag(event, false);
+    EventImpl.clearPropagationFlags(event);
+}
+
+/// DOM §2.9 - invoke
+/// https://dom.spec.whatwg.org/#concept-event-listener-invoke
+fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, phase: ListenerPhase) void {
+    const EventImpl = @import("Event.zig");
+    const s = structs[index];
+
+    // Step 1: event's target is the shadow-adjusted target of the last struct at
+    // or before this one whose shadow-adjusted target is non-null.
+    var j = index + 1;
+    while (j > 0) {
+        j -= 1;
+        if (structs[j].shadow_adjusted_target) |shadow_adjusted| {
+            EventImpl.setTarget(event, shadow_adjusted);
+            break;
         }
     }
 
-    // Also invoke IDL event handler attributes (onload, onclick, etc.)
-    // These are stored in HTMLElement's event_handlers map and need to be invoked separately
-    // Per HTML spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
-    invokeIdlEventHandler(instance, event);
+    // Step 2
+    EventImpl.setRelatedTarget(event, s.related_target);
 
-    // Return !canceled
-    return !EventImpl.getCanceledFlag(event);
+    // Step 3: event's touch target list - needs UI Events, TODO.
+
+    // Step 4: stopPropagation() ends the walk here, but the caller still has to
+    // run steps 7-10, so this returns rather than unwinding.
+    if (EventImpl.getStopPropagationFlag(event)) return;
+
+    // Step 5
+    EventImpl.setCurrentTarget(event, s.invocation_target);
+
+    // Steps 6-8. Step 9's legacy webkitAnimation*/webkitTransitionEnd
+    // re-dispatch applies only to trusted events and is deliberately omitted.
+    _ = innerInvoke(event, s.invocation_target, phase);
+
+    // HTML specifies event handler IDL attributes (onclick, onload, ...) as
+    // ordinary event listeners in the same list, so they propagate like any
+    // other. Crane keeps them in a separate map, so they run here - in the
+    // bubbling pass, because an event handler attribute is never a capturing
+    // listener.
+    // TODO: register them as real listeners, so registration order between
+    // `el.onclick = f` and `el.addEventListener("click", g)` is honoured.
+    if (phase == .bubbling) {
+        invokeIdlEventHandler(s.invocation_target, event);
+    }
+}
+
+/// DOM §2.9 - inner invoke
+/// https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
+///
+/// Returns `found`: whether any listener matched the event's type, regardless of
+/// phase. Only step 9 of "invoke" consumes it.
+fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phase: ListenerPhase) bool {
+    const EventImpl = @import("Event.zig");
+
+    const internal = getInternalFromRegistry(current_target) orelse return false;
+    const list = internal.event_listener_list orelse return false;
+    if (list.len == 0) return false;
+
+    const event_type_string = interfaces.Event.get_type(event) catch return false;
+    const event_type = event_type_string.asSlice();
+
+    // Step 6 of "invoke": let listeners be a clone of the listener list. See
+    // Invocation for why this clones identity rather than the records.
+    var snapshot = infra.List(Invocation).init(internal.allocator);
+    defer snapshot.deinit();
+
+    var found = false;
+    for (list.toSlice()) |record| {
+        // Step 2: "for each listener whose removed is false"
+        if (record.removed) continue;
+        // Step 2.1
+        if (!std.mem.eql(u8, record.type.asSlice(), event_type)) continue;
+        // Step 2.2
+        found = true;
+        const callback = record.callback orelse continue;
+        snapshot.append(.{
+            .callback = callback,
+            .capture = record.capture,
+            .once = record.once,
+            .passive = record.passive orelse false,
+        }) catch return found;
+    }
+
+    for (snapshot.toSlice()) |candidate| {
+        // Steps 2.3 and 2.4 - a capturing listener runs only in the capturing
+        // pass, a bubbling one only in the bubbling pass. At the target both
+        // passes run, which is why [capture, bubble, capture] fires 1, 3, 2.
+        if (phase == .capturing and !candidate.capture) continue;
+        if (phase == .bubbling and candidate.capture) continue;
+
+        // The spec's clone holds live listeners, so one an earlier callback
+        // removed during this same dispatch is skipped via its removed field.
+        if (findListener(internal, candidate) == null) continue;
+
+        // Step 2.5: remove a once listener BEFORE invoking it, so a re-entrant
+        // dispatch cannot reach it. The wrapper has to outlive the call though -
+        // disposing it first would hand V8 a destroyed handle.
+        var expired: ?*runtime.CallbackWrapper = null;
+        if (candidate.once) expired = detachListener(internal, candidate);
+        defer if (expired) |wrapper| wrapper.deinit();
+
+        // Step 2.9
+        if (candidate.passive) EventImpl.setInPassiveListenerFlag(event, true);
+
+        // Step 2.11 - an exception is reported, never propagated.
+        callListener(candidate.callback, event, current_target);
+
+        // Step 2.12
+        if (candidate.passive) EventImpl.setInPassiveListenerFlag(event, false);
+
+        // Step 2.14
+        if (EventImpl.getStopImmediatePropagationFlag(event)) break;
+    }
+
+    // Step 3
+    return found;
+}
+
+/// Index of a still-registered listener matching `candidate`, or null.
+///
+/// Identity is the wrapper POINTER, not the JavaScript function: addEventListener
+/// allocates a fresh CallbackWrapper per call, so a listener removed and re-added
+/// during a dispatch gets a new pointer and is correctly treated as one added
+/// after the clone was taken.
+fn findListener(internal: *InternalState, candidate: Invocation) ?usize {
+    const list = internal.event_listener_list orelse return null;
+    for (list.toSlice(), 0..) |record, i| {
+        if (record.removed) continue;
+        if (record.capture != candidate.capture) continue;
+        const callback = record.callback orelse continue;
+        if (callback == candidate.callback) return i;
+    }
+    return null;
+}
+
+/// DOM §2.7 "remove an event listener", for inner invoke's step 2.5.
+///
+/// Returns the callback wrapper WITHOUT disposing it - the caller owns it until
+/// the callback has finished running.
+fn detachListener(internal: *InternalState, candidate: Invocation) ?*runtime.CallbackWrapper {
+    const index = findListener(internal, candidate) orelse return null;
+    const list = internal.event_listener_list orelse return null;
+
+    const removed = list.remove(index) catch return null;
+    var removed_type = removed.type;
+    removed_type.deinit(internal.allocator);
+
+    const callback = removed.callback orelse return null;
+    return @ptrCast(@alignCast(callback));
+}
+
+/// Inner invoke step 2.11 - "call a user object's operation" with the listener's
+/// callback, "handleEvent", « event », and event's currentTarget.
+fn callListener(callback_instance: *runtime.Instance, event: *runtime.Instance, current_target: *runtime.Instance) void {
+    const v8_engine = @import("v8");
+
+    // The record stores ?*runtime.Instance but it is always a
+    // *runtime.CallbackWrapper - see call_addEventListener.
+    const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+
+    const engine_ctx = current_target.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Wrap the event with its ACTUAL interface: a MessageEvent wrapped as Event
+    // loses `.data`.
+    const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
+    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
+        event,
+        event_interface_name,
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    // callN takes Locals; the wrapper is (usually cached and) owned elsewhere,
+    // so it is not disposed here.
+    const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_global)) orelse return;
+
+    // During the callback the accessor is the Window that REGISTERED the
+    // listener, not the one that triggered the event.
+    const callback_window = v8_engine.context_manager.getWindowForContext(v8_context);
+    if (callback_window) |win| {
+        v8_engine.context_manager.pushAccessorWindow(win);
+    }
+    defer {
+        if (callback_window != null) v8_engine.context_manager.popAccessorWindow();
+    }
+
+    // v8_Function_Call_Safe wraps the call in a TryCatch, so a throwing listener
+    // comes back as a failed result instead of unwinding through Zig - which is
+    // what "Exceptions from event listeners must not be propagated" requires.
+    const result = runtime_wrapper.invoke1(@ptrCast(event_local)) catch return;
+
+    // v8_Function_Call_Safe's value is `trackHandle(new Global<Value>(...))` and
+    // its own comment says the caller owns it. Dropping it leaked one Global per
+    // listener call, on the DOM's hottest path.
+    if (result) |value| {
+        v8_engine.ffi.v8_Global_Dispose(@ptrCast(@alignCast(value)));
+    }
 }
 
 /// Invoke IDL event handler attribute (e.g., onload, onclick) for the given event

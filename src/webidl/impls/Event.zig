@@ -332,9 +332,23 @@ pub fn call_preventDefault(instance: *runtime.Instance) anyerror!void {
 
 /// DOM §2.3 - initialize an event
 /// To initialize an event, with type, bubbles, and cancelable, run these steps:
-fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool) void {
+///
+/// Returns an error only if the type string cannot be cloned; every other step
+/// is infallible.
+fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool) !void {
     const state = instance.getState(State);
     const internal = getInternal(instance) orelse return;
+
+    // Step 5 is done FIRST because it is the only fallible one: if the clone
+    // fails there is nothing to roll back.
+    //
+    // The clone is the whole point. The WebIDL conversion layer hands an impl a
+    // DOMString it owns and frees the moment the call returns, so storing the
+    // argument left `event.type` pointing at freed memory - and dispatch, which
+    // matches listeners on `event.type`, then matched nothing at all. That is
+    // what made registered handlers look like they were never invoked.
+    var next_type = try @"type".clone(instance.ctx.allocator);
+    errdefer next_type.deinit(instance.ctx.allocator);
 
     // Step 1: Set event's initialized flag
     internal.initialized_flag = true;
@@ -351,7 +365,10 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
     state.own.target = null;
 
     // Step 5: Set event's type attribute to type
-    state.own.type = @"type";
+    // The previous value was ours, so release it rather than leaking one
+    // string per initEvent call.
+    state.own.type.deinit(instance.ctx.allocator);
+    state.own.type = next_type;
 
     // Step 6: Set event's bubbles attribute to bubbles
     state.own.bubbles = bubbles;
@@ -374,7 +391,7 @@ pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, b
     // Step 2: Initialize this
     const bubbles_val = if (bubbles.was_passed) bubbles.value else false;
     const cancelable_val = if (cancelable.was_passed) cancelable.value else false;
-    initializeEvent(instance, @"type", bubbles_val, cancelable_val);
+    try initializeEvent(instance, @"type", bubbles_val, cancelable_val);
 }
 
 /// Operation: composedPath
@@ -564,6 +581,25 @@ pub fn getDispatchFlag(instance: *runtime.Instance) bool {
     return internal.dispatch_flag;
 }
 
+/// Set the initialized flag.
+///
+/// `createEvent` needs this: https://dom.spec.whatwg.org/#dom-document-createevent
+/// step 8 is "Unset event's initialized flag", which is the whole reason
+/// `document.createEvent("Event")` must make `dispatchEvent` throw until
+/// `initEvent` runs.
+pub fn setInitializedFlag(instance: *runtime.Instance, value: bool) void {
+    const internal = getInternal(instance) orelse return;
+    internal.initialized_flag = value;
+}
+
+/// Get the initialized flag.
+///
+/// Dispatch step 1 throws "InvalidStateError" when this is unset.
+pub fn getInitializedFlag(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.initialized_flag;
+}
+
 /// Set the stop propagation flag
 pub fn getStopPropagationFlag(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
@@ -580,6 +616,31 @@ pub fn getStopImmediatePropagationFlag(instance: *runtime.Instance) bool {
 pub fn setInPassiveListenerFlag(instance: *runtime.Instance, value: bool) void {
     const internal = getInternal(instance) orelse return;
     internal.in_passive_listener_flag = value;
+}
+
+/// Unset the stop propagation flag and the stop immediate propagation flag.
+///
+/// Dispatch step 10: "Unset event's dispatch flag, stop propagation flag, and
+/// stop immediate propagation flag." Leaving them set makes the NEXT dispatch
+/// of the same event object a no-op, which is how a `stopPropagation()` in one
+/// dispatch silently swallowed every later one.
+pub fn clearPropagationFlags(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.stop_propagation_flag = false;
+    internal.stop_immediate_propagation_flag = false;
+}
+
+/// Release every struct in the event path and empty it.
+///
+/// Dispatch step 9: "Set event's path to the empty list." Each struct owns a
+/// touch target list, so clearing without releasing them leaks one list per
+/// path entry per dispatch.
+pub fn clearPath(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    for (internal.path.toSliceMut()) |*item| {
+        item.touch_target_list.deinit();
+    }
+    internal.path.clear();
 }
 
 /// Get the event path
