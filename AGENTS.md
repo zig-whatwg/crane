@@ -2647,3 +2647,75 @@ Copy the binary into `tmp/` and sweep from the copy. (And a fresh worktree needs
 with FileNotFound.)
 
 **Takeaway**: **A sweep's result belongs to the binary its children exec.**
+
+---
+
+### Architecture: `on*` content attributes had never been implemented
+
+**Date**: 2026-09-22
+**Lesson**: `HTMLElement.set_onerror` and `Document.set_onerror` were no-ops,
+and no attribute-change code turned `on*="..."` attributes into handlers, so
+`script.onerror = fn` was dropped and `<body onload>` never ran - 36 encoding
+files hung on it. `OnErrorEventHandler` has its own typedef, which is how it
+got stubbed separately from every other handler.
+
+**Fix** (43a585d9a): compile content attributes in the attribute change steps
+and assign them through the IDL attribute, forwarding `<body>`/`<frameset>`
+window handlers to the Window. Deviation: the handler is compiled when the
+attribute is SET, not on first use - every pointer-tag value in the handler
+maps is taken, so there is nowhere yet to keep an uncompiled handler.
+
+**Takeaway**: **When a directory hangs on an event, check that the handler is
+stored before checking that the event fires.**
+
+---
+
+### Architecture: load and DOMContentLoaded were each fired twice
+
+**Date**: 2026-09-22
+**Lesson**: `navigation.fireLoad` dispatched `load` - which already runs
+`window.onload` - and then called `window.onload(event)` again;
+`Context.loadHTML` re-fired DOMContentLoaded after the parser had. Invisible
+until `<body onload>` worked, when a handler registered its tests twice and the
+file ended in ERROR.
+
+**Takeaway**: **A handler that tolerates running twice hides a double fire.
+When a newly working handler turns a file into ERROR, look for the second
+caller.**
+
+---
+
+### Architecture: V8 13.1 resolves static imports synchronously
+
+**Date**: 2026-09-22
+**Lesson**: There is no HostLoadImportedModule for static imports in V8 13.1:
+imports resolve during `InstantiateModule`, so the loader
+(`src/html/module_script.zig`, 0a3e4fac4) walks and fetches the whole graph
+first, then links - d8's design. With synchronous fetches a depth-first walk
+reports the same first error as the spec's concurrent one. Record each
+module's edges while loading; the resolve callback sees only the importer's
+identity hash.
+
+---
+
+### Spec Compliance: No code path can fire a trusted event
+
+**Date**: 2026-09-22
+**Lesson**: `call_dispatchEvent` resets `isTrusted`, as the spec requires of
+`dispatchEvent()`, and the interface has no delegate for DOM's internal
+"dispatch" - so every engine-fired event reads `isTrusted === false`. The three
+script fetch-src files now complete and still fail their `isTrusted` asserts.
+
+**Takeaway**: **"Fire an event" needs its own interface-level entry point,
+distinct from the script-facing `dispatchEvent`.**
+
+---
+
+### Workflow: Freeze the tree while a test run compiles
+
+**Date**: 2026-09-22
+**Lesson**: Under load, `zig build test` reads sources for ~20 minutes - an
+edit landing in that window is compiled into some test binaries and not others.
+Stage edits in `tmp/` until it finishes. Also: git worktrees share one stash
+list, so pop by name; and `zig build test` prints "failed command" for passing
+steps that wrote to stderr - judge it by its exit status.
