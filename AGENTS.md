@@ -863,3 +863,79 @@ manager's lifetime, all of it freed at the end.
 **Takeaway**: **A structure that hands out pointers to its interior must outlive
 every holder. When you cannot enumerate the holders, retire rather than free -
 0xAA is not null, so a poisoned read is a crash, not a null check.**
+
+---
+
+### Codegen: Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real
+
+**Date**: 2026-09-21
+**Lesson**: `src/runtime/engines/v8/callback_registry.zig` is a 20-line stub whose
+two functions are both no-ops, so every `CallbackWrapper` ever created leaks.
+
+**Why**: WebIDL has two callback kinds and codegen treats them differently.
+Callback *interfaces* (EventListener, NodeFilter) generate as
+`?*runtime.CallbackWrapper` and work. Callback *functions* generate as a bare
+`*const fn`, which `conversions.zig:1209` satisfies by TAGGING the V8 function
+pointer. Nothing can be called through that, so
+`CustomElementConstructor = *const fn () *runtime.Instance` means `super()` can
+never work - `custom-elements/CustomElementRegistry.html` sits at 8/46.
+
+Migrating callback functions onto `?*runtime.CallbackWrapper` is the right fix
+and the generator change is ~10 lines. It was written, measured, and reverted
+TWICE. The reason is not the 26 compile errors it surfaces - those are
+mechanical, and `callback_wrapper.zig:53` exposes exactly the
+`callback_function_global: ?GlobalHandle` that `extractEventHandler` needs.
+
+**What Happened**: the blocker is ownership, and it is one level down.
+
+    today   el.onclick = fn   tags a pointer. NO allocation. The impl owns
+                              and disposes its one Global handle.
+    after   el.onclick = fn   allocates a wrapper + 2 Global handles, and
+                              `callback_registry.register` DISCARDS its
+                              argument, so nothing frees any of it.
+
+So the migration converts a correctly-disposed hot path into a per-assignment
+leak. `cleanupForContext` is never called from anywhere in `src/`, and only 2
+sites call `register` at all.
+
+Fixing the registry first is the obvious move and runs straight into the other
+wall: cleanup has to happen at context teardown, and added work in
+deinit/onObjectFreed has cost 2-3 crashes per 6 WPT runs, proven three ways.
+The 0.1 gate is ZERO crashes.
+
+**Fix**: the ordering is registry -> teardown race -> migration, and the
+teardown race is the real blocker. Do NOT reland the generator change before
+`register` tracks and `cleanupForContext` frees. The reverted generator lives
+at `.claude/jobs/2e30a6c4/tmp/generator-callbackwrapper.zig`.
+
+**Takeaway**: **When a change is mechanical but keeps getting reverted, the
+blocker is under it, not in it.** Two reverts were spent on the 26 compile
+errors before anyone read the registry it was migrating onto.
+
+---
+
+### Codegen: Raw codegen output is not `zig fmt`-clean, so regeneration looks like a 1,419-file change
+
+**Date**: 2026-09-21
+**Lesson**: Running codegen and then `git status` shows ~1,419 modified files
+under `src/webidl/` with no semantic change in any of them.
+
+**Why**: the committed generated files were formatted; the generator's own
+output is not. The diff is almost entirely whitespace:
+
+    13,175 lines  trailing spaces on otherwise-blank lines
+     3,896 x 2    `pub const x = .{};` re-emitted as `.{\n};`
+       111        `type:` re-emitted as `@"type":` (redundant but legal)
+
+**What Happened**: this buried a real 75-file callbacks change inside 1,419
+files of noise, and made "did codegen change anything?" unanswerable by
+inspection. It also makes AGENTS.md's advice to delete the generated dirs and
+regenerate from scratch read as catastrophic when it is harmless.
+
+**Fix**: `zig fmt src/webidl/` immediately after any `zig build codegen`, before
+`git status`. The pre-commit `zig fmt src/ tests/ tools/` already covers it, but
+by then the diff has already been read wrong. Only the `@"type"` lines are a
+genuine generator difference.
+
+**Takeaway**: **Format generated output before you diff it, or the diff is
+unreadable and a real change hides in it.**
