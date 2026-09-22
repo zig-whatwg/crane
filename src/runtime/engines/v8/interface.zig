@@ -2714,6 +2714,23 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
+                    // WebIDL "create an operation function" step 2.4: "If O does
+                    // not implement the interface target, throw a TypeError."
+                    // Nothing above asks that of every receiver: the implicit-this
+                    // path hands back the realm's GLOBAL for a null `this` whatever
+                    // the interface (idlharness calls every operation as
+                    // `op.apply(null, args)`), and a wrapper with no type info in
+                    // slot 1 - any interface outside dom_type_info's 24 - is
+                    // unwrapped unchecked. The impl then reads another interface's
+                    // state as its own: `XMLHttpRequest.open` on the Window died on
+                    // `_internal.?`. The state ancestry is the brand check; an
+                    // instance whose vtable carries none cannot be asked and
+                    // passes, as `Instance.getState` already lets it.
+                    if (instance.vtable.ancestors.len != 0 and instance.stateAs(Interface.State) == null) {
+                        conv.throwTypeErrorFromContext(isolate, method_context, "Illegal invocation");
+                        return;
+                    }
+
                     // Get the method function at comptime
                     const method_fn = @field(Interface, zig_name);
                     const fn_info = @typeInfo(@TypeOf(method_fn)).@"fn";
