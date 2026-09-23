@@ -3146,6 +3146,9 @@ bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
 }
 
 void v8_Value_Dispose(Global<Value>* value) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (value) {
         releaseWeakArm(value);
         value->Reset();
@@ -4132,6 +4135,9 @@ bool v8_Object_Freeze(Global<Object>* object, Global<Context>* context) {
 }
 
 void v8_Array_Dispose(Global<Array>* arr) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (arr) {
         releaseWeakArm(arr);
         arr->Reset();
@@ -4201,6 +4207,9 @@ Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
 }
 
 void v8_Script_Dispose(Global<Script>* script) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (script) {
         releaseWeakArm(script);
         script->Reset();
@@ -4573,6 +4582,9 @@ int v8_Module_GetIdentityHash(Global<Module>* module) {
 
 /// Dispose a module handle
 void v8_Module_Dispose(Global<Module>* module) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (module) {
         // A JSON module disposed before it was ever evaluated still holds its
         // parsed value in the synthetic-export table; drop it with the module.
@@ -5441,6 +5453,9 @@ Global<Function>* v8_FunctionTemplate_GetFunction(Global<FunctionTemplate>* func
 }
 
 void v8_FunctionTemplate_Dispose(Global<FunctionTemplate>* tpl) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (tpl) {
         releaseWeakArm(tpl);
         tpl->Reset();
@@ -6080,6 +6095,9 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
 }
 
 void v8_Function_Dispose(Global<Function>* fn) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (fn) {
         releaseWeakArm(fn);
         fn->Reset();
@@ -6333,6 +6351,9 @@ void* v8_External_Value(Global<External>* external) {
 
 // Dispose External
 void v8_External_Dispose(Global<External>* external) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (external) {
         releaseWeakArm(external);
         external->Reset();
@@ -7339,6 +7360,9 @@ Global<Symbol>* v8_Symbol_GetUnscopables(Isolate* isolate) {
 }
 
 void v8_Symbol_Dispose(Global<Symbol>* symbol) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     releaseWeakArm(symbol);
     delete symbol;  // ~Global resets the handle
 }
@@ -7805,6 +7829,9 @@ Global<Promise>* v8_Promise_Catch(
 
 /// Dispose a Promise
 void v8_Promise_Dispose(Global<Promise>* promise) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (promise) {
         releaseWeakArm(promise);
         promise->Reset();
@@ -7841,6 +7868,9 @@ Global<Value>* v8_Promise_Result(Global<Promise>* promise) {
 
 /// Dispose a PromiseResolver
 void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (resolver) {
         releaseWeakArm(resolver);
         resolver->Reset();
@@ -8191,6 +8221,9 @@ void v8_ArrayBuffer_Detach(Global<ArrayBuffer>* buffer) {
 
 /// Dispose ArrayBuffer
 void v8_ArrayBuffer_Dispose(Global<ArrayBuffer>* buffer) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (buffer) {
         releaseWeakArm(buffer);
         buffer->Reset();
@@ -8901,6 +8934,9 @@ Global<Object>* v8_AsyncIterator_New(
 
 /// Dispose an async iterator object and free its internal data
 void v8_AsyncIterator_Dispose(Global<Object>* iterator) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (!iterator) return;
     
     Isolate* isolate = Isolate::GetCurrent();
@@ -9876,6 +9912,9 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
 ///
 /// @param global - Global handle to dispose (null-safe)
 void v8_Global_Dispose(Global<Value>* global) {
+    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
+    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
+    if (g_snapshot_mode) return;
     if (global != nullptr) {
         releaseWeakArm(global);
         global->Reset();

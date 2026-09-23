@@ -816,25 +816,10 @@ pub fn V8Interface(comptime Interface: type) type {
             global: *v8.Object,
             global_name: []const u8,
         ) void {
-            @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
-
-            // CRITICAL: Get template from registry if it exists, otherwise create and register.
-            // This ensures we use the SAME template whether the interface is registered
-            // directly or first referenced as a parent by a child interface.
-            // Without this, prototype objects would differ and instanceof would fail.
-            const cached = template_registry.getTemplate(global_name);
-            const template = cached orelse blk: {
-                const new_template = createTemplate(isolate);
-                template_registry.register(global_name, new_template, isolate);
-                break :blk new_template;
-            };
-            const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
-
-            const key_str = v8.v8_String_NewFromUtf8(
-                isolate,
-                global_name.ptr,
-                @intCast(global_name.len),
-            );
+            const constructor = materializeInterfaceObject(isolate, context, global_name) orelse return;
+            defer v8.v8_Function_Dispose(constructor);
+            const key_str = v8.v8_String_NewFromUtf8(isolate, global_name.ptr, @intCast(global_name.len)) orelse return;
+            defer v8.v8_String_Dispose(key_str);
 
             // Per WebIDL spec, interface constructors on global object must be:
             // - writable: true
@@ -849,15 +834,46 @@ pub fn V8Interface(comptime Interface: type) type {
                 false, // enumerable = false (per WebIDL spec)
                 true, // configurable = true
             );
+        }
+
+        /// The interface object in `context`: the function V8 instantiates from
+        /// this interface's template, plus what WebIDL puts on it and on its
+        /// prototype that the template does not carry - a read-only `prototype`,
+        /// @@toStringTag, the iterable and async-iterable members, @@unscopables,
+        /// constants, static operations and static attributes. The caller owns
+        /// the returned handle.
+        ///
+        /// Every other handle acquired here is disposed before returning. A
+        /// Global left behind is a strong root: one per interface per realm
+        /// kept every iframe's realm alive for the life of the process.
+        ///
+        /// Called once per interface per realm - eagerly for the main context,
+        /// and by the lazy data property on a child realm's global the first time
+        /// script reads it (global_constructor_handler.lazyConstructorGetter).
+        pub fn materializeInterfaceObject(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            global_name: []const u8,
+        ) ?*v8.Function {
+            @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
+
+            // CRITICAL: Get template from registry if it exists, otherwise create and register.
+            // This ensures we use the SAME template whether the interface is registered
+            // directly or first referenced as a parent by a child interface.
+            // Without this, prototype objects would differ and instanceof would fail.
+            const cached = template_registry.getTemplate(global_name);
+            const template = cached orelse blk: {
+                const new_template = createTemplate(isolate);
+                template_registry.register(global_name, new_template, isolate);
+                break :blk new_template;
+            };
+            const constructor = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
 
             // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
             // Per WebIDL spec, interface constructors should not have legacy "arguments"
             // and "caller" properties. However, V8's FunctionTemplate creates functions
             // with these as non-configurable accessor properties that CANNOT be deleted.
-            //
-            // We previously tried to delete them here, but this always fails and wastes
-            // ~5000 FFI calls during interface registration. Removed for performance.
             //
             // IMPACT: Two WPT tests fail due to this V8 API limitation:
             //   - webidl/ecmascript-binding/builtin-function-properties.any.js
@@ -867,330 +883,51 @@ pub fn V8Interface(comptime Interface: type) type {
             // Per WebIDL §3.12, callback interfaces do NOT have a .prototype property.
             // Accessing or defining the prototype property would re-create it.
             if (is_callback_interface) {
-                // Only register constants on the constructor itself for callback interfaces
-                if (@hasDecl(Meta, "constants")) {
-                    const constants = Meta.constants;
-                    inline for (constants) |constant| {
-                        const const_name: []const u8 = constant[0];
-                        const getter_name: []const u8 = constant[1];
-
-                        // Call the getter function at comptime
-                        const value = @field(Interface, getter_name)();
-
-                        // Convert to V8 value - all constants become numbers
-                        const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
-
-                        // Create string for constant name
-                        const name_str = v8.v8_String_NewFromUtf8(
-                            isolate,
-                            const_name.ptr,
-                            @intCast(const_name.len),
-                        );
-
-                        if (name_str) |const_name_v8| {
-                            // Set as property on constructor with correct descriptor
-                            // Constants: writable=false, enumerable=true, configurable=false
-                            _ = v8.v8_Object_DefineProperty(
-                                @ptrCast(constructor.?),
-                                context,
-                                @ptrCast(const_name_v8),
-                                @ptrCast(v8_value),
-                                false, // writable = false (constants are read-only)
-                                true, // enumerable = true (constants are enumerable)
-                                false, // configurable = false (constants are permanent)
-                            );
-                        }
-                    }
-                }
-                // Done - no prototype setup for callback interfaces
-                return;
+                defineConstants(isolate, context, @ptrCast(constructor));
+                return constructor;
             }
 
             // Fix the "prototype" property to be non-writable (spec-compliant)
             // By default V8 makes constructor.prototype writable, but in browsers it's read-only
-            const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9).?;
-            const prototype_value = v8.v8_Object_Get(@ptrCast(constructor.?), context, @ptrCast(prototype_key));
-            if (prototype_value) |proto| {
-                _ = v8.v8_Object_DefineProperty(
-                    @ptrCast(constructor.?),
-                    context,
-                    @ptrCast(prototype_key),
-                    proto,
-                    false, // writable = false (read-only)
-                    false, // enumerable = false
-                    false, // configurable = false
-                );
-
-                // Set Symbol.toStringTag on prototype
-                // This makes Object.prototype.toString.call(prototype) return "[object InterfaceName]"
-                const symbol_toStringTag = v8.v8_Symbol_GetToStringTag(isolate);
-                if (symbol_toStringTag) |symbol| {
-                    const interface_name_str = v8.v8_String_NewFromUtf8(
-                        isolate,
-                        interface_name.ptr,
-                        @intCast(interface_name.len),
+            if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |prototype_key| {
+                defer v8.v8_String_Dispose(prototype_key);
+                if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key))) |proto| {
+                    defer v8.v8_Value_Dispose(proto);
+                    _ = v8.v8_Object_DefineProperty(
+                        @ptrCast(constructor),
+                        context,
+                        @ptrCast(prototype_key),
+                        proto,
+                        false, // writable = false (read-only)
+                        false, // enumerable = false
+                        false, // configurable = false
                     );
-                    if (interface_name_str) |name_v8| {
-                        _ = v8.v8_Object_DefineProperty(
-                            @ptrCast(proto),
-                            context,
-                            @ptrCast(symbol),
-                            @ptrCast(name_v8),
-                            false, // writable = false
-                            false, // enumerable = false
-                            true, // configurable = true (per WebIDL spec)
-                        );
-                    }
-                }
+                    setUpPrototype(isolate, context, @ptrCast(proto));
 
-                // Set Symbol.iterator on prototype if interface is iterable
-                if (@hasDecl(Meta, "iterable")) {
-                    const symbol_iterator = v8.v8_Symbol_GetIterator(isolate);
-                    if (symbol_iterator) |symbol| {
-                        // Create a placeholder iterator function
-                        const iterator_tmpl = v8.v8_FunctionTemplate_New(
-                            isolate,
-                            iteratorCallback,
-                            null,
-                        );
-                        if (iterator_tmpl) |tmpl| {
-                            const iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
-                            if (iterator_func) |func| {
-                                _ = v8.v8_Object_DefineProperty(
-                                    @ptrCast(proto),
-                                    context,
-                                    @ptrCast(symbol),
-                                    @ptrCast(func),
-                                    true, // writable = true
-                                    false, // enumerable = false
-                                    true, // configurable = true
-                                );
-
-                                // Also add entries(), keys(), values(), forEach() methods for iterable protocol
-                                // These are standard iterable methods per WHATWG WebIDL spec
-                                const iterable_methods = [_]struct { name: []const u8, cb: v8.FunctionCallback, arity: c_int }{
-                                    .{ .name = "entries", .cb = entriesCallback, .arity = 0 },
-                                    .{ .name = "keys", .cb = keysCallback, .arity = 0 },
-                                    .{ .name = "values", .cb = valuesCallback, .arity = 0 },
-                                    .{ .name = "forEach", .cb = forEachCallback, .arity = 1 },
-                                };
-
-                                for (iterable_methods) |method| {
-                                    const method_tmpl = v8.v8_FunctionTemplate_New(
-                                        isolate,
-                                        method.cb,
-                                        null,
-                                    );
-                                    if (method_tmpl) |m_tmpl| {
-                                        v8.v8_FunctionTemplate_SetLength(m_tmpl, method.arity);
-                                        const method_func = v8.v8_FunctionTemplate_GetFunction(m_tmpl, context);
-                                        if (method_func) |m_func| {
-                                            const method_name = v8.v8_String_NewFromUtf8(
-                                                isolate,
-                                                method.name.ptr,
-                                                @intCast(method.name.len),
-                                            );
-                                            if (method_name) |m_name| {
-                                                // Per WebIDL § 3.7.5, iterable methods (entries, keys, values, forEach)
-                                                // are enumerable properties on the prototype
-                                                _ = v8.v8_Object_DefineProperty(
-                                                    @ptrCast(proto),
-                                                    context,
-                                                    @ptrCast(m_name),
-                                                    @ptrCast(m_func),
-                                                    true, // writable = true
-                                                    true, // enumerable = true (per WebIDL § 3.7.5)
-                                                    true, // configurable = true
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Set Symbol.asyncIterator on prototype if interface is async iterable
-                if (@hasDecl(Meta, "async_iterable")) {
-                    const symbol_async_iterator = v8.v8_Symbol_GetAsyncIterator(isolate);
-                    if (symbol_async_iterator) |symbol| {
-                        // Create async iterator function that wraps call_values()
-                        const async_iterator_tmpl = v8.v8_FunctionTemplate_New(
-                            isolate,
-                            asyncIteratorCallback,
-                            null,
-                        );
-                        if (async_iterator_tmpl) |tmpl| {
-                            const async_iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
-                            if (async_iterator_func) |func| {
-                                _ = v8.v8_Object_DefineProperty(
-                                    @ptrCast(proto),
-                                    context,
-                                    @ptrCast(symbol),
-                                    @ptrCast(func),
-                                    true, // writable = true
-                                    false, // enumerable = false
-                                    true, // configurable = true
-                                );
-                            }
-
-                            // Also register "values" method with the same callback
-                            // Per WebIDL async iterable spec, values() does the same thing as [Symbol.asyncIterator]()
-                            const values_name = v8.v8_String_NewFromUtf8(isolate, "values", 6);
-                            if (values_name) |name_str| {
-                                const values_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
-                                if (values_func) |func2| {
-                                    _ = v8.v8_Object_DefineProperty(
-                                        @ptrCast(proto),
-                                        context,
-                                        @ptrCast(name_str),
-                                        @ptrCast(func2),
-                                        true, // writable = true
-                                        false, // enumerable = false
-                                        true, // configurable = true
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // NOTE: toString() for stringifiers is handled by Meta.methods
-                // which maps "toString" -> "serialize" via MethodCallback.
-                // Do NOT add redundant toString registration here - it would
-                // overwrite the correct binding from createTemplate().
-
-                // Set Symbol.unscopables on prototype if interface has [Unscopable] members
-                // Per WebIDL spec §3.7.6, the @@unscopables property is:
-                // - An object with null prototype
-                // - Contains properties for each [Unscopable] member with value true
-                // - writable=false, enumerable=false, configurable=true
-                if (@hasDecl(Meta, "unscopables")) {
-                    const unscopables = Meta.unscopables;
-                    if (unscopables.len > 0) {
-                        const symbol_unscopables = v8.v8_Symbol_GetUnscopables(isolate);
-                        if (symbol_unscopables) |symbol| {
-                            // Create an object with null prototype for @@unscopables
-                            const unscopables_obj = v8.v8_Object_NewWithNullPrototype(context);
-                            if (unscopables_obj) |obj| {
-                                // Add each unscopable member as a property with value true
-                                inline for (unscopables) |member_name| {
-                                    const name_str = v8.v8_String_NewFromUtf8(
-                                        isolate,
-                                        member_name.ptr,
-                                        @intCast(member_name.len),
-                                    );
-                                    if (name_str) |key| {
-                                        const true_val = v8.v8_Boolean_New(isolate, true);
-                                        // Per spec: writable=true, enumerable=true, configurable=true
-                                        _ = v8.v8_Object_DefineProperty(
-                                            @ptrCast(obj),
-                                            context,
-                                            @ptrCast(key),
-                                            @ptrCast(true_val),
-                                            true, // writable = true
-                                            true, // enumerable = true
-                                            true, // configurable = true
-                                        );
-                                    }
-                                }
-
-                                // Set @@unscopables on prototype
-                                // Per spec: writable=false, enumerable=false, configurable=true
-                                _ = v8.v8_Object_DefineProperty(
-                                    @ptrCast(proto),
-                                    context,
-                                    @ptrCast(symbol),
-                                    @ptrCast(obj),
-                                    false, // writable = false
-                                    false, // enumerable = false
-                                    true, // configurable = true
-                                );
-                            }
-                        }
-                    }
                 }
             }
 
-            // Register static constants on constructor
-            // Constants are static properties with get_CONSTANT_NAME() functions
-            if (@hasDecl(Meta, "constants")) {
-                const constants = Meta.constants;
-                inline for (constants) |constant| {
-                    const const_name: []const u8 = constant[0];
-                    const getter_name: []const u8 = constant[1];
-
-                    // Call the getter function at comptime
-                    const value = @field(Interface, getter_name)();
-
-                    // Convert to V8 value - all constants become numbers
-                    const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
-
-                    // Create string for constant name
-                    const name_str = v8.v8_String_NewFromUtf8(
-                        isolate,
-                        const_name.ptr,
-                        @intCast(const_name.len),
-                    );
-
-                    if (name_str) |const_name_v8| {
-                        // Set as property on constructor with correct descriptor
-                        // Constants: writable=false, enumerable=true, configurable=false
-                        _ = v8.v8_Object_DefineProperty(
-                            @ptrCast(constructor.?),
-                            context,
-                            @ptrCast(const_name_v8),
-                            @ptrCast(v8_value),
-                            false, // writable = false (constants are read-only)
-                            true, // enumerable = true (constants are enumerable)
-                            false, // configurable = false (constants are permanent)
-                        );
-                    }
-                }
-            }
+            defineConstants(isolate, context, @ptrCast(constructor));
 
             // Register static methods on constructor
             // Static methods like AbortSignal.abort(), AbortSignal.timeout()
             if (@hasDecl(Meta, "static_methods")) {
-                const static_methods = Meta.static_methods;
-                inline for (static_methods) |method| {
+                inline for (Meta.static_methods) |method| {
                     const method_name: []const u8 = method[0];
                     const zig_name: []const u8 = method[1];
                     const arity: c_int = if (method.len >= 3) method[2] else 0;
-
-                    // Get the comptime-generated callback for this specific static method
                     const static_callback = StaticMethodCallback(zig_name).callback;
-
-                    // Create function template for static method
-                    const method_tmpl = v8.v8_FunctionTemplate_New(
-                        isolate,
-                        static_callback,
-                        null,
-                    );
-                    if (method_tmpl) |tmpl| {
+                    if (v8.v8_FunctionTemplate_New(isolate, static_callback, null)) |tmpl| {
+                        defer v8.v8_FunctionTemplate_Dispose(tmpl);
                         v8.v8_FunctionTemplate_SetLength(tmpl, arity);
-                        const method_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
-                        if (method_func) |func| {
-                            const name_v8 = v8.v8_String_NewFromUtf8(
-                                isolate,
-                                method_name.ptr,
-                                @intCast(method_name.len),
-                            );
-                            if (name_v8) |method_name_v8| {
+                        if (v8.v8_FunctionTemplate_GetFunction(tmpl, context)) |func| {
+                            defer v8.v8_Function_Dispose(func);
+                            if (v8.v8_String_NewFromUtf8(isolate, method_name.ptr, @intCast(method_name.len))) |method_name_v8| {
+                                defer v8.v8_String_Dispose(method_name_v8);
                                 // Set the function's .name property per WebIDL spec
                                 v8.v8_Function_SetName(func, method_name_v8);
-
                                 // Static methods: writable=true, enumerable=true, configurable=true
-                                _ = v8.v8_Object_DefineProperty(
-                                    @ptrCast(constructor.?),
-                                    context,
-                                    @ptrCast(method_name_v8),
-                                    @ptrCast(func),
-                                    true, // writable = true
-                                    true, // enumerable = true
-                                    true, // configurable = true
-                                );
+                                _ = v8.v8_Object_DefineProperty(@ptrCast(constructor), context, @ptrCast(method_name_v8), @ptrCast(func), true, true, true);
                             }
                         }
                     }
@@ -1208,7 +945,140 @@ pub fn V8Interface(comptime Interface: type) type {
                     const setter_cb: ?v8.FunctionCallback = if (setter_name) |s_name| StaticMethodCallback(s_name).callback else null;
                     if (v8.v8_String_NewFromUtf8(isolate, prop_name.ptr, @intCast(prop_name.len))) |name_v8| {
                         defer v8.v8_String_Dispose(name_v8);
-                        _ = v8.v8_Object_SetAccessorProperty(@ptrCast(constructor.?), context, name_v8, getter_cb, setter_cb);
+                        _ = v8.v8_Object_SetAccessorProperty(@ptrCast(constructor), context, name_v8, getter_cb, setter_cb);
+                    }
+                }
+            }
+
+            return constructor;
+        }
+
+        /// Constants on `target`, the interface object: writable=false,
+        /// enumerable=true, configurable=false (WebIDL §3.7.2).
+        fn defineConstants(isolate: *v8.Isolate, context: *v8.Context, target: *v8.Object) void {
+            if (!@hasDecl(Meta, "constants")) return;
+            inline for (Meta.constants) |constant| {
+                const const_name: []const u8 = constant[0];
+                const getter_name: []const u8 = constant[1];
+                const value = @field(Interface, getter_name)();
+                const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
+                defer v8.v8_Value_Dispose(@ptrCast(v8_value));
+                if (v8.v8_String_NewFromUtf8(isolate, const_name.ptr, @intCast(const_name.len))) |const_name_v8| {
+                    defer v8.v8_String_Dispose(const_name_v8);
+                    _ = v8.v8_Object_DefineProperty(target, context, @ptrCast(const_name_v8), @ptrCast(v8_value), false, true, false);
+                }
+            }
+        }
+
+        /// What WebIDL puts on the interface prototype object beyond the
+        /// template: @@toStringTag, the iterable and async-iterable members and
+        /// @@unscopables.
+        fn setUpPrototype(isolate: *v8.Isolate, context: *v8.Context, proto: *v8.Object) void {
+            // Set Symbol.toStringTag on prototype
+            // This makes Object.prototype.toString.call(prototype) return "[object InterfaceName]"
+            if (v8.v8_Symbol_GetToStringTag(isolate)) |symbol| {
+                defer v8.v8_Symbol_Dispose(symbol);
+                if (v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len))) |name_v8| {
+                    defer v8.v8_String_Dispose(name_v8);
+                    // writable = false, enumerable = false, configurable = true (per WebIDL spec)
+                    _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(symbol), @ptrCast(name_v8), false, false, true);
+                }
+            }
+
+            // Set Symbol.iterator on prototype if interface is iterable
+            if (@hasDecl(Meta, "iterable")) {
+                if (v8.v8_Symbol_GetIterator(isolate)) |symbol| {
+                    defer v8.v8_Symbol_Dispose(symbol);
+                    if (v8.v8_FunctionTemplate_New(isolate, iteratorCallback, null)) |tmpl| {
+                        defer v8.v8_FunctionTemplate_Dispose(tmpl);
+                        if (v8.v8_FunctionTemplate_GetFunction(tmpl, context)) |func| {
+                            defer v8.v8_Function_Dispose(func);
+                            // writable = true, enumerable = false, configurable = true
+                            _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(symbol), @ptrCast(func), true, false, true);
+
+                            // Also add entries(), keys(), values(), forEach() methods for iterable protocol
+                            // These are standard iterable methods per WHATWG WebIDL spec
+                            const iterable_methods = [_]struct { name: []const u8, cb: v8.FunctionCallback, arity: c_int }{
+                                .{ .name = "entries", .cb = entriesCallback, .arity = 0 },
+                                .{ .name = "keys", .cb = keysCallback, .arity = 0 },
+                                .{ .name = "values", .cb = valuesCallback, .arity = 0 },
+                                .{ .name = "forEach", .cb = forEachCallback, .arity = 1 },
+                            };
+                            for (iterable_methods) |method| {
+                                const m_tmpl = v8.v8_FunctionTemplate_New(isolate, method.cb, null) orelse continue;
+                                defer v8.v8_FunctionTemplate_Dispose(m_tmpl);
+                                v8.v8_FunctionTemplate_SetLength(m_tmpl, method.arity);
+                                const m_func = v8.v8_FunctionTemplate_GetFunction(m_tmpl, context) orelse continue;
+                                defer v8.v8_Function_Dispose(m_func);
+                                const m_name = v8.v8_String_NewFromUtf8(isolate, method.name.ptr, @intCast(method.name.len)) orelse continue;
+                                defer v8.v8_String_Dispose(m_name);
+                                // Per WebIDL § 3.7.5, iterable methods (entries, keys, values, forEach)
+                                // are enumerable properties on the prototype
+                                _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(m_name), @ptrCast(m_func), true, true, true);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Set Symbol.asyncIterator on prototype if interface is async iterable
+            if (@hasDecl(Meta, "async_iterable")) {
+                if (v8.v8_Symbol_GetAsyncIterator(isolate)) |symbol| {
+                    defer v8.v8_Symbol_Dispose(symbol);
+                    // Create async iterator function that wraps call_values()
+                    if (v8.v8_FunctionTemplate_New(isolate, asyncIteratorCallback, null)) |tmpl| {
+                        defer v8.v8_FunctionTemplate_Dispose(tmpl);
+                        if (v8.v8_FunctionTemplate_GetFunction(tmpl, context)) |func| {
+                            defer v8.v8_Function_Dispose(func);
+                            // writable = true, enumerable = false, configurable = true
+                            _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(symbol), @ptrCast(func), true, false, true);
+                        }
+
+                        // Also register "values" method with the same callback
+                        // Per WebIDL async iterable spec, values() does the same thing as [Symbol.asyncIterator]()
+                        if (v8.v8_String_NewFromUtf8(isolate, "values", 6)) |name_str| {
+                            defer v8.v8_String_Dispose(name_str);
+                            if (v8.v8_FunctionTemplate_GetFunction(tmpl, context)) |func2| {
+                                defer v8.v8_Function_Dispose(func2);
+                                _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(name_str), @ptrCast(func2), true, false, true);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // NOTE: toString() for stringifiers is handled by Meta.methods
+            // which maps "toString" -> "serialize" via MethodCallback.
+            // Do NOT add redundant toString registration here - it would
+            // overwrite the correct binding from createTemplate().
+
+            // Set Symbol.unscopables on prototype if interface has [Unscopable] members
+            // Per WebIDL spec §3.7.6, the @@unscopables property is:
+            // - An object with null prototype
+            // - Contains properties for each [Unscopable] member with value true
+            // - writable=false, enumerable=false, configurable=true
+            if (@hasDecl(Meta, "unscopables")) {
+                const unscopables = Meta.unscopables;
+                if (unscopables.len > 0) {
+                    if (v8.v8_Symbol_GetUnscopables(isolate)) |symbol| {
+                        defer v8.v8_Symbol_Dispose(symbol);
+                        if (v8.v8_Object_NewWithNullPrototype(context)) |obj| {
+                            defer v8.v8_Object_Dispose(obj);
+                            const true_val = v8.v8_Boolean_New(isolate, true);
+                            defer if (true_val) |t| v8.v8_Value_Dispose(t);
+                            // Add each unscopable member as a property with value true
+                            inline for (unscopables) |member_name| {
+                                if (v8.v8_String_NewFromUtf8(isolate, member_name.ptr, @intCast(member_name.len))) |key| {
+                                    defer v8.v8_String_Dispose(key);
+                                    if (true_val) |t| {
+                                        // Per spec: writable=true, enumerable=true, configurable=true
+                                        _ = v8.v8_Object_DefineProperty(obj, context, @ptrCast(key), @ptrCast(t), true, true, true);
+                                    }
+                                }
+                            }
+                            // Per spec: writable=false, enumerable=false, configurable=true
+                            _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(symbol), @ptrCast(obj), false, false, true);
+                        }
                     }
                 }
             }

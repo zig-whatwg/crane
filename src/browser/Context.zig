@@ -694,7 +694,7 @@ pub const Context = struct {
         // SNAPSHOT MODE: Skip initializeBindings() - interfaces are already in the snapshot!
         // However, we still need to populate the Zig-side template registry so that
         // wrapInstanceAsV8Object() can wrap Document, Navigator, etc. with correct prototypes.
-        v8.interface_bindings.registerAllTemplatesOnly(self.isolate, v8_ctx);
+        v8.interface_bindings.registerAllTemplatesOnly(self.isolate, v8_ctx, .eager);
 
         // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);

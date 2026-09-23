@@ -35,7 +35,7 @@ const helpers = webidl.helpers;
 
 // Import generated interfaces
 const interfaces = @import("interfaces");
-const interface_catalog = @import("interface_catalog.zig");
+const global_constructor_handler = @import("global_constructor_handler.zig");
 
 // ============================================================================
 // Centralized Skip List
@@ -322,9 +322,21 @@ pub fn registerAllInterfaces(
 ///
 /// The reinstallation is critical: without it, calling `new Worker()` from JS
 /// would invoke a stale callback pointer, never reaching our Zig code.
+/// How `registerAllTemplatesOnly` installs the interface objects.
+pub const InterfaceObjects = enum {
+    /// Materialize every interface object on the global now.
+    eager,
+    /// Make every one but the core few a lazy data property
+    /// (global_constructor_handler), built on first read. A realm then builds
+    /// only the interface objects its script reads: an iframe paid for all
+    /// ~1,260 of them, ~25 ms and ~2.8 MB each time, and kept them.
+    lazy_follows,
+};
+
 pub fn registerAllTemplatesOnly(
     isolate: *v8.Isolate,
     context: *v8.Context,
+    objects: InterfaceObjects,
 ) void {
     @setEvalBranchQuota(200_000);
     const template_registry = @import("template_registry.zig");
@@ -332,6 +344,7 @@ pub fn registerAllTemplatesOnly(
 
     // Get global object for reinstalling constructors
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     inline for (iface_decls) |decl| {
         // Skip problematic interfaces using centralized skip list
@@ -415,7 +428,14 @@ pub fn registerAllTemplatesOnly(
             // CRITICAL: Reinstall constructor on global to ensure fresh callbacks.
             // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers.
             // registerGlobalFast uses the template from the registry, so prototype identity is preserved.
-            Binding.registerGlobalFast(isolate, context, global, decl.name);
+            //
+            // Or, in a child realm, leave it to a lazy data property whose getter
+            // builds the whole interface object on first read.
+            if (objects == .lazy_follows and global_constructor_handler.isLazyInstallableInterface(decl.name)) {
+                global_constructor_handler.installLazy(isolate, context, global, decl.name);
+            } else {
+                Binding.registerGlobalFast(isolate, context, global, decl.name);
+            }
         }
     }
 }
@@ -1390,6 +1410,35 @@ pub fn createTemplateOnDemandByName(
         }
     }
 
+    return null;
+}
+
+/// The interface object named `interface_name` in `context`, fully set up
+/// (V8Interface.materializeInterfaceObject), for the lazy data property a child
+/// realm's global carries until script first reads it. The caller owns the
+/// returned handle.
+pub fn materializeInterfaceObjectByName(
+    interface_name: []const u8,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) ?*v8.Function {
+    @setEvalBranchQuota(10_000_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // At comptime, as registerAllTemplatesOnly does: a skipped interface's
+        // binding is never analysed, and some cannot be.
+        if (comptime shouldSkipInterface(decl.name)) continue;
+        const InterfaceType = @field(interfaces, decl.name);
+        if (@typeInfo(InterfaceType) != .@"struct") continue;
+        if (!@hasDecl(InterfaceType, "Meta")) continue;
+        if (@hasDecl(InterfaceType.Meta, "is_mixin")) {
+            if (InterfaceType.Meta.is_mixin) continue;
+        }
+        if (std.mem.eql(u8, decl.name, interface_name)) {
+            return V8Interface(InterfaceType).materializeInterfaceObject(isolate, context, decl.name);
+        }
+    }
     return null;
 }
 

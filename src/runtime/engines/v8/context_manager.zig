@@ -2545,15 +2545,7 @@ pub fn createChildContext(
     // After snapshot restore, the template callbacks are stale (point to old addresses).
     // We must call registerAllTemplatesOnly to create fresh templates with valid callbacks.
     // Without this, accessing interfaces (like Document) in the child context crashes.
-    interface_bindings.registerAllTemplatesOnly(options.isolate, child_context);
-
-    // 4f2. Install lazy constructors for global interfaces (DOMException, URL, etc.)
-    // This makes interfaces accessible as properties on the global object.
-    // In the main context, this is done by hydrateContextFromSnapshot().
-    // For child contexts, we must explicitly call it since createChildContext()
-    // doesn't go through hydrateContextFromSnapshot().
-    const global_constructor_handler = @import("global_constructor_handler.zig");
-    global_constructor_handler.installLazyConstructorsOnGlobal(child_context);
+    interface_bindings.registerAllTemplatesOnly(options.isolate, child_context, .lazy_follows);
 
     // 5. Create realm for new context
     // Note: global_object is set to null initially and will be updated below
@@ -3269,7 +3261,7 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     }
 
     // 4. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
-    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx);
+    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx, .eager);
 
     // 5. Reinstall accessor callbacks after snapshot restore.
     // NOTE: The optimization from whatwg-8oip3 that skipped this was WRONG.
@@ -3415,15 +3407,7 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
 
     // 3. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
     log.debug("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
-    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx);
-
-    // 4. Install lazy constructors on global object
-    // V8 snapshots don't preserve lazy data properties on the global proxy.
-    // We must re-install them after context restoration (matches Chromium's pattern).
-    // Without this, interfaces like URL, URLSearchParams, etc. are not available.
-    const global_constructor_handler = @import("global_constructor_handler.zig");
-    global_constructor_handler.installLazyConstructorsOnGlobal(v8_ctx);
-    log.debug("[HYDRATE-WORKER] Lazy constructors installed on worker global\n", .{});
+    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx, .lazy_follows);
 
     // NOTE: Accessor callback reinstallation is NO LONGER NEEDED after whatwg-41la6.
     // The Chromium pattern fix (calling GetFunction before NewInstance) ensures
