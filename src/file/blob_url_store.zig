@@ -56,12 +56,16 @@ pub const BlobURLStore = struct {
     /// Memory allocator
     allocator: std.mem.Allocator,
 
-    /// Random number generator for UUID generation
-    random: std.Random,
+    /// The generator for UUID generation. Held BY VALUE: a `std.Random` is only a
+    /// `{ptr, fillFn}` view onto some generator's state, and this used to store a
+    /// view of a generator that lived in `init`'s stack frame. Every UUID then
+    /// wrote 32 bytes of xoshiro state into whichever frame had since reused that
+    /// address - a return address, a saved register, a live local.
+    prng: std.Random.DefaultPrng,
 
     /// Initialize a new blob URL store.
     pub fn init(allocator: std.mem.Allocator) BlobURLStore {
-        var prng = std.Random.DefaultPrng.init(blk: {
+        const prng = std.Random.DefaultPrng.init(blk: {
             var seed: u64 = undefined;
             // std.posix.getrandom was removed in Zig 0.16; the replacement is
             // std.Io.random, which needs an Io value this call site does not have.
@@ -77,7 +81,7 @@ pub const BlobURLStore = struct {
         return .{
             .entries = std.StringHashMap(BlobURLEntry).init(allocator),
             .allocator = allocator,
-            .random = prng.random(),
+            .prng = prng,
         };
     }
 
@@ -178,7 +182,7 @@ pub const BlobURLStore = struct {
     /// Generate a random UUID v4.
     fn generateUUID(self: *BlobURLStore) ![]const u8 {
         var uuid_bytes: [16]u8 = undefined;
-        self.random.bytes(&uuid_bytes);
+        self.prng.random().bytes(&uuid_bytes);
 
         // Set version (4) and variant (RFC 4122)
         uuid_bytes[6] = (uuid_bytes[6] & 0x0F) | 0x40;
@@ -239,6 +243,26 @@ test "BlobURLStore - createObjectURL and resolve" {
     // Should not resolve from different origin
     const cross_origin = store.resolve(url, "https://other.com");
     try std.testing.expect(cross_origin == null);
+}
+
+test "BlobURLStore - consecutive UUIDs differ" {
+    const allocator = std.testing.allocator;
+
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+
+    // The generator's state must persist from one call to the next, which
+    // means it must live in the store. A view of a generator that lived in
+    // init's stack frame reads whatever the current call chain has put at
+    // that dead address - the same bytes each time - and writes its state
+    // over it.
+    var uuids: [8][]const u8 = undefined;
+    for (&uuids) |*uuid| uuid.* = try store.generateUUID();
+    defer for (uuids) |uuid| allocator.free(uuid);
+
+    for (uuids[1..], uuids[0 .. uuids.len - 1]) |uuid, previous| {
+        try std.testing.expect(!std.mem.eql(u8, previous, uuid));
+    }
 }
 
 test "BlobURLStore - revokeObjectURL" {
