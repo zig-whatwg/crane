@@ -2835,3 +2835,99 @@ Both child paths use it.
 Grep `getOptionalEventLoop() orelse` and `getOptionalTimer() orelse` and ask
 which contexts actually take the fallback - one probe from inside an iframe
 answers it.**
+
+---
+
+### Architecture: A [SameObject] cache is a pointer V8 cannot see
+
+**Date**: 2026-09-22
+**Lesson**: A generated `cached_*` field holds a bare `*runtime.Instance`, which keeps the child neither alive nor valid.
+
+**What Happened**: `xhr.upload.onloadend = f` leaves nothing in JS holding `xhr.upload`; a GC between that line and `send()` freed it, and `send()` fired `upload.loadstart` into freed memory (`send-timeout-events.htm`). The same shape in reverse: a caching getter such as `form.elements` hands a Zig caller the element's OWN object, and freeing it (as `form.submit()` once did) broke `form.elements` for script too.
+
+**Fix**: `impls/same_object.zig`: `Pin.hold` takes a strong Global to the child's wrapper on first hand-out and the owner's deinit releases it (Blink traces the same edge: `XMLHttpRequest::Trace` visits `upload_`). A Window's Location and History count as engine-owned for the same reason (`DOMWindow::Trace` visits `location_`).
+
+**Takeaway**: **Every native pointer to a GC-managed object needs an owner that keeps its wrapper alive, and nothing a caching getter returned is yours to free.**
+
+---
+
+### Codegen: Deduplicating operations by name deleted every overload
+
+**Date**: 2026-09-22
+**Lesson**: `deduplicateOperations` kept the first operation of each name, so every overloaded operation bound only overload 0, and the binding layer stopped at four arguments.
+
+**What Happened**: `open(m, url, false)` ran asynchronously; `postMessage(msg, options)`, `FormData.append(name, blob)` and ~50 other overload sets silently dropped arguments. Every five-argument operation threw "not yet implemented".
+
+**Fix**: codegen emits `call_<op>__<k>` delegates and an `overloads` table; `interface.zig` runs WebIDL overload resolution inside overload 0's callback; `callMethodWithArgs` has an `ArgsTuple` fallback for any arity. `sameOverloadSignature` treats all string types as equal (one operation declared as DOMString and CSSOMString in two IDL sources is not an overload). The supplementary codegen run rewrites every `root.zig` and `typedefs/{CSSOMString,WindowProxy}.zig` with only its own definitions - restore them from HEAD. To implement an overload, add `call_<op>__<k>` to the impl; until then overload 0 runs.
+
+**Takeaway**: **Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.**
+
+---
+
+### Architecture: Brand-check the receiver once, in the binding layer
+
+**Date**: 2026-09-22
+**Lesson**: `MethodCallback` resolved a missing or foreign `this` to the global object for every interface, so idlharness's wrong-receiver calls reached `_internal.?` on another interface's state and crashed both idlharness files.
+
+**Fix**: `if (instance.stateAs(Interface.State) == null)` throw TypeError "Illegal invocation" for every generated operation (CRASH -> OK with 320 and 273 subtests). Getters and setters still lack the guard.
+
+**Takeaway**: **An impl cannot tell it was handed another interface's state; only the binding can.**
+
+---
+
+### Testing: Reporting an exception turns a swallowed failure into a harness ERROR
+
+**Date**: 2026-09-22
+**Lesson**: Once uncaught exceptions reach `window.onerror` (`src/html/report_exception.zig`), testharness counts every throw outside a test step as a harness ERROR.
+
+**What Happened**: merging the scripting agent's reporting moved ~30 files in its area and 33 of 2,219 checked elsewhere from OK to ERROR, each with the same or more passing subtests. Each ERROR message names a real engine defect (Illegal invocation in form validation, `CSS.supports` missing, iframes lacking `remove`, ...).
+
+**Takeaway**: **An OK that depended on an exception being dropped was never an OK. Triage the new ERROR by its message; do not revert the reporting.**
+
+---
+
+### Architecture: `SuppressMicrotaskExecutionScope` must live on the C++ stack
+
+**Date**: 2026-09-22
+**Lesson**: The scope records its own address as the isolate's last API entry, so it cannot be heap-allocated and handed across the FFI; `v8_RunWithMicrotasksSuppressed(isolate, body, data)` holds it on the C++ stack and runs a callback inside.
+
+**Takeaway**: **When a V8 scope object keys off its own address, the FFI takes a callback, not a handle.**
+
+---
+
+### Architecture: A timer that keeps a Global<Context> keeps the whole page
+
+**Date**: 2026-09-22
+**Lesson**: `V8TimerContextData` holds the handler and the current context as owned handles and nothing disposes them, so every page that sets a timer stays in memory - ~28 MB per file in long sweeps until V8 hits its heap limit, and the OOM crash is charged to whichever file is loading.
+
+**Takeaway**: **Growth that crosses pages is a leaked handle to something the next page does not need; a file that crashes only after N others is accumulated state, not the file.**
+
+---
+
+### Architecture: `std.Random` is a view, not a generator
+
+**Date**: 2026-09-22
+**Lesson**: `blob_url_store.zig` stored `prng.random()` of a stack-local `DefaultPrng` - a pointer into a dead frame. Consecutive blob UUIDs came out identical and each call wrote 32 bytes into whatever lived there.
+
+**Takeaway**: **Any `{ptr, vtable}` interface (Random, Allocator) must be built over state that outlives it.**
+
+---
+
+### Codegen: Check generated data against a second copy
+
+**Date**: 2026-09-22
+**Lesson**: The index generator hardcoded each encoding index's last pointer; jis0208 stopped at 7,939 of 11,103 and euc-kr at 17,919 of 23,749, so ~5,800 hanja could be neither encoded nor decoded. WPT ships the spec's own index data - compare against it.
+
+---
+
+### Architecture: Spec-internal hooks go through a dom module, not another impl
+
+**Date**: 2026-09-22
+**Lesson**: No IDL member adds an abort algorithm to an AbortSignal, so pipeTo reaches it through `src/dom/abort_algorithms.zig`, which AbortSignal installs into - the same shape as `mutation.zig`'s insertion-steps registry. Use this pattern, not an impl-to-impl call, for any algorithm with no IDL surface.
+
+---
+
+### Testing: Past the harness timeout, a file's status is a race; name each build
+
+**Date**: 2026-09-22
+**Lesson**: A file that blocks past the harness's 10 s (a 26 s synchronous fetch) reads OK in some runs and TIMEOUT in others - compare its subtests, not its status. And crash reports identify the build only by executable name (`procPath` is redacted), so copy each build to a unique name before sweeping with it.
