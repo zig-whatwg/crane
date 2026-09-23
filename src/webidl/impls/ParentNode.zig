@@ -38,6 +38,7 @@ const ElementImpl = @import("Element.zig");
 const HTMLCollectionImpl = @import("HTMLCollection.zig");
 const NodeListImpl = @import("NodeList.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
+const live_collections = @import("dom").live_collections;
 
 pub const ImplError = error{
     NotImplemented,
@@ -125,21 +126,10 @@ pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     errdefer interfaces.HTMLCollection.deinit(collection);
 
     // DOM: "an HTMLCollection collection rooted at this matching only element
-    // children" - live, so it answers for the tree as it is when read.
-    HTMLCollectionImpl.makeLive(collection, instance, &refillElementChildren);
+    // children" - live, so it answers for the tree as it is when read. The
+    // filter is HTMLCollection's, reached through dom.live_collections.
+    try live_collections.elementChildren(collection, instance);
     return collection;
-}
-
-/// `children`'s filter: the element children of `root`, in tree order.
-fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            HTMLCollectionImpl.addElement(collection, c) catch return;
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 // =============================================================================

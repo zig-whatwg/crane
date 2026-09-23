@@ -53,6 +53,7 @@ const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
 
 // Import script execution module from html module
 const html_mod = @import("html");
+const node_document = @import("dom").node_document;
 const script_execution = html_mod.script_execution;
 
 // Import parser script execution for incremental DOM building
@@ -778,7 +779,7 @@ fn createElementNode(
 
     // Set owner document
     if (owner_document) |doc| {
-        NodeImpl.setOwnerDocument(element, doc) catch return error.InvalidStateError;
+        node_document.set(element, doc) catch return error.InvalidStateError;
 
         // For script elements, set parser_document (marks as parser-inserted)
         if (is_script) {
@@ -819,7 +820,7 @@ fn createTextNode(
 
     // Set owner document
     if (owner_document) |doc| {
-        NodeImpl.setOwnerDocument(text, doc) catch return error.InvalidStateError;
+        node_document.set(text, doc) catch return error.InvalidStateError;
     }
 
     return text;
@@ -847,7 +848,7 @@ fn createCommentNode(
 
     // Set owner document
     if (owner_document) |doc| {
-        NodeImpl.setOwnerDocument(comment, doc) catch return error.InvalidStateError;
+        node_document.set(comment, doc) catch return error.InvalidStateError;
     }
 
     return comment;
@@ -885,7 +886,7 @@ fn createDoctypeNode(
 
     // Set owner document
     if (owner_document) |doc| {
-        NodeImpl.setOwnerDocument(doctype, doc) catch return error.InvalidStateError;
+        node_document.set(doctype, doc) catch return error.InvalidStateError;
 
         // Also set doctype reference on document
         document_internals.setDoctype(doc, doctype);

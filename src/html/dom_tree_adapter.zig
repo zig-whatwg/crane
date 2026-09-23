@@ -73,6 +73,7 @@ const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 
 // WebIDL types
 const webidl = @import("webidl");
+const node_document = @import("dom").node_document;
 
 /// Error type for DOM tree adapter operations
 pub const DomTreeAdapterError = error{
@@ -385,7 +386,7 @@ pub const DomTreeAdapter = struct {
         }
 
         // Set owner document
-        NodeImpl.setOwnerDocument(element, self.document) catch {
+        node_document.set(element, self.document) catch {
             return DomTreeAdapterError.DomOperationFailed;
         };
 
@@ -419,7 +420,7 @@ pub const DomTreeAdapter = struct {
         ) catch return DomTreeAdapterError.OutOfMemory;
 
         // Set owner document
-        NodeImpl.setOwnerDocument(text, self.document) catch {
+        node_document.set(text, self.document) catch {
             return DomTreeAdapterError.DomOperationFailed;
         };
 
@@ -442,7 +443,7 @@ pub const DomTreeAdapter = struct {
         };
 
         // Set owner document
-        NodeImpl.setOwnerDocument(comment, self.document) catch {
+        node_document.set(comment, self.document) catch {
             return DomTreeAdapterError.DomOperationFailed;
         };
 
@@ -475,7 +476,7 @@ pub const DomTreeAdapter = struct {
         }
 
         // Set owner document
-        NodeImpl.setOwnerDocument(doctype, self.document) catch {
+        node_document.set(doctype, self.document) catch {
             return DomTreeAdapterError.DomOperationFailed;
         };
 

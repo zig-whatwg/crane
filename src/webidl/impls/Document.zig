@@ -36,7 +36,6 @@ const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const SelectionImpl = @import("Selection.zig");
-const traversal = @import("dom").traversal;
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
@@ -47,6 +46,8 @@ const csp = @import("csp");
 
 // HTML module for stylesheet blocking and editing
 const html_core = @import("html_core");
+const range_boundaries = @import("dom").range_boundaries;
+const traversal = @import("dom").traversal;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
 
@@ -4428,19 +4429,9 @@ pub fn call_createRange(instance: *runtime.Instance) anyerror!*runtime.Instance 
     const range = try interfaces.Range.init(internal.allocator, instance.ctx);
     errdefer interfaces.Range.deinit(range);
 
-    // Step 2: Set range's start and end to (this, 0)
-    // Access Range's internal state to set boundary points
-    const range_state = range.getState(interfaces.Range.State);
-    if (range_state.own._internal) |range_internal_ptr| {
-        const range_internal: *RangeImpl.InternalState = @ptrCast(@alignCast(range_internal_ptr));
-        range_internal.start_container = instance;
-        range_internal.start_offset = 0;
-        range_internal.end_container = instance;
-        range_internal.end_offset = 0;
-        // Register this range with the document, recording which document
-        // it joined so the range can leave the list when it is freed.
-        try RangeImpl.joinDocument(range_internal, range, instance);
-    }
+    // Step 2: Set range's start and end to (this, 0), as a live range of this
+    // document - the Range's own step, reached through dom.range_boundaries.
+    try range_boundaries.collapseLive(range, instance, 0);
 
     // Step 3: Return range
     return range;

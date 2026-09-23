@@ -160,6 +160,11 @@ pub fn init(
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
 
+    // Every other node creator sets a node document through
+    // `dom.node_document`, never through this impl. The hook is installed
+    // here, before anything can hold this node to set its document.
+    dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
+
     // Initialize Node internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the arena.
@@ -1841,6 +1846,12 @@ pub fn setNamespaceURI(instance: *runtime.Instance, uri: ?runtime.DOMString) !vo
 }
 
 /// Set the owner document
+/// `dom.node_document`'s implementation: the same step, with the declared
+/// error set a function pointer needs.
+fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) dom_module.node_document.Error!void {
+    return setOwnerDocument(node, document);
+}
+
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.owner_document = doc;

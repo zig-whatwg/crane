@@ -105,6 +105,7 @@ pub fn init(
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
     range_boundaries.install(&boundariesOf);
+    range_boundaries.installLiveRange(.{ .collapse = &collapseLive });
 
     return instance;
 }
@@ -155,21 +156,34 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &Range.vtable, ctx);
     errdefer deinit(instance);
 
-    // Set this's start and end to (document, 0), and make it live: a live
-    // range is registered with its node document so mutations move it.
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.start_container = document;
-    internal.start_offset = 0;
-    internal.end_container = document;
-    internal.end_offset = 0;
-    try joinDocument(internal, instance, document);
+    // Set this's start and end to (document, 0), and make it live.
+    try collapseLive(instance, document, 0);
 
     return instance;
 }
 
+/// Set `range`'s start and end to (node, offset) and make it a live range of
+/// node's node document. `dom.range_boundaries.collapseLive` is how Document's
+/// createRange() reaches this; the constructor uses it directly.
+fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
+    const internal = getInternal(range) orelse return error.InvalidStateError;
+    internal.start_container = node;
+    internal.start_offset = offset;
+    internal.end_container = node;
+    internal.end_offset = offset;
+    // A live range is registered with its node document so mutations move it.
+    // A document is its own node document.
+    const node_type = interfaces.Node.get_nodeType(node) catch return error.InvalidStateError;
+    const document = if (node_type == interfaces.Node.get_DOCUMENT_NODE())
+        node
+    else
+        (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
+    try joinDocument(internal, range, document);
+}
+
 /// Register `range` as one of `document`'s live ranges, remembering which
 /// document it joined so `deinit` can leave again.
-pub fn joinDocument(internal: *InternalState, range: *runtime.Instance, document: *runtime.Instance) !void {
+fn joinDocument(internal: *InternalState, range: *runtime.Instance, document: *runtime.Instance) !void {
     try document_internals.registerRange(document, range);
     internal.owner_document = document;
     internal.owner_generation = runtime.SlabAllocator.generationOf(document);

@@ -16,6 +16,7 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const HTMLCollection = interfaces.HTMLCollection;
+const live_collections = @import("dom").live_collections;
 
 pub const State = HTMLCollection.State;
 
@@ -78,12 +79,32 @@ pub const Refill = *const fn (collection: *runtime.Instance, root: *runtime.Inst
 /// Collections were snapshots, and `children` is [SameObject] - the interface
 /// caches the first one - so `el.children` answered with whatever the element
 /// held the first time it was read, for the element's whole life.
-pub fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refill) void {
+fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refill) void {
     const internal = getInternal(collection) orelse return;
     internal.root = root;
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
     internal.refill = refill;
     refresh(collection, internal);
+}
+
+/// `dom.live_collections`' element-children filter: `children` (DOM
+/// ParentNode) is "an HTMLCollection collection rooted at this matching only
+/// element children".
+fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
+    makeLive(collection, root, &refillElementChildren);
+}
+
+/// The element children of `root`, in tree order - read through the Node
+/// interface, which is the only way this impl may see another type's state.
+fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
+    const element_node = interfaces.Node.get_ELEMENT_NODE();
+    var child = interfaces.Node.get_firstChild(root) catch return;
+    while (child) |c| {
+        if ((interfaces.Node.get_nodeType(c) catch 0) == element_node) {
+            addElement(collection, c) catch return;
+        }
+        child = interfaces.Node.get_nextSibling(c) catch return;
+    }
 }
 
 /// Bring a live collection up to date with its root.
@@ -121,6 +142,9 @@ pub fn init(
 
     // Initialize length to 0
     state.own.length = 0;
+
+    // Other impls make a collection live through dom.live_collections.
+    live_collections.install(.{ .element_children = &makeElementChildren });
 
     return instance;
 }

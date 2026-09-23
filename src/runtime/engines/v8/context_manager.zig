@@ -54,6 +54,7 @@ const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
 const host = @import("host");
+const node_document = @import("dom").node_document;
 
 /// Context mapping entry
 /// The event loop and timer a child context inherits from its parent.
@@ -1724,7 +1725,6 @@ fn initializeIframeDocumentStructure(
     const interfaces = @import("interfaces");
     const impls = @import("impls");
     const DocumentImpl = impls.Document;
-    const NodeImpl = impls.Node;
     const ElementImpl = impls.Element;
 
     // Set document type to HTML (required for proper body/head detection)
@@ -1739,7 +1739,7 @@ fn initializeIframeDocumentStructure(
         interfaces.HTMLHtmlElement.deinit(html_element);
         return;
     };
-    NodeImpl.setOwnerDocument(html_element, document) catch {
+    node_document.set(html_element, document) catch {
         interfaces.HTMLHtmlElement.deinit(html_element);
         return;
     };
@@ -1761,7 +1761,7 @@ fn initializeIframeDocumentStructure(
         interfaces.HTMLHeadElement.deinit(head_element);
         return;
     };
-    NodeImpl.setOwnerDocument(head_element, document) catch {
+    node_document.set(head_element, document) catch {
         interfaces.HTMLHeadElement.deinit(head_element);
         return;
     };
@@ -1778,7 +1778,7 @@ fn initializeIframeDocumentStructure(
         interfaces.HTMLBodyElement.deinit(body_element);
         return;
     };
-    NodeImpl.setOwnerDocument(body_element, document) catch {
+    node_document.set(body_element, document) catch {
         interfaces.HTMLBodyElement.deinit(body_element);
         return;
     };

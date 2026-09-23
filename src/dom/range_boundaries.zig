@@ -9,6 +9,8 @@
 //! own a copy without it going stale, and must not call either impl directly.
 //! Each subclass installs a provider instead; the same shape as
 //! `abort_algorithms.zig`.
+//!
+//! lint-impls: hook for Range, StaticRange
 
 const runtime = @import("runtime");
 
@@ -47,6 +49,30 @@ pub fn of(range: *runtime.Instance) ?Boundaries {
         if (provider(range)) |b| return b;
     }
     return null;
+}
+
+/// What a live Range supplies beyond its boundary points: the step
+/// `createRange()` takes - "a new live range whose start and end are
+/// (this, 0)" - which sets a Range's state and registers it with its node
+/// document, neither of which Document may reach into.
+pub const LiveRange = struct {
+    /// Set `range`'s start and end to (node, offset) and make it a live range
+    /// of node's node document.
+    collapse: *const fn (range: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void,
+};
+
+/// Per thread, like the ranges themselves.
+threadlocal var live_range: ?LiveRange = null;
+
+/// Called by the Range impl when it creates a range. Idempotent.
+pub fn installLiveRange(impl: LiveRange) void {
+    live_range = impl;
+}
+
+/// Collapse a just-created live `range` at (node, offset) and register it.
+pub fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
+    const impl = live_range orelse return error.NotSupported;
+    return impl.collapse(range, node, offset);
 }
 
 test "install is idempotent and `of` asks each provider in turn" {

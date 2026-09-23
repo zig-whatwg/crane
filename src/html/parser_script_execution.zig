@@ -46,6 +46,7 @@ const DocumentImpl = impls.Document;
 
 // DOM internals for document_element setting
 const dom = @import("dom");
+const node_document = @import("dom").node_document;
 const document_internals = dom.document_internals;
 
 /// Script loader function type for external scripts.
@@ -574,7 +575,7 @@ pub const DomTreeAdapter = struct {
         }
 
         // Set owner document
-        NodeImpl.setOwnerDocument(element, self.document) catch {};
+        node_document.set(element, self.document) catch {};
 
         // For script elements, mark as parser-inserted
         const is_script = std.mem.eql(u8, local_name, "script") and is_html;
@@ -604,8 +605,7 @@ pub const DomTreeAdapter = struct {
             webidl.Opt(runtime.DOMString).passed(dom_string),
         );
 
-        const NodeImpl = impls.Node;
-        NodeImpl.setOwnerDocument(text, self.document) catch {};
+        node_document.set(text, self.document) catch {};
 
         return text;
     }
@@ -622,7 +622,7 @@ pub const DomTreeAdapter = struct {
 
         const NodeImpl = impls.Node;
         NodeImpl.setNodeType(comment, NodeImpl.NodeType.COMMENT_NODE) catch {};
-        NodeImpl.setOwnerDocument(comment, self.document) catch {};
+        node_document.set(comment, self.document) catch {};
 
         return comment;
     }
@@ -647,7 +647,7 @@ pub const DomTreeAdapter = struct {
             }
         }
 
-        NodeImpl.setOwnerDocument(doctype, self.document) catch {};
+        node_document.set(doctype, self.document) catch {};
 
         return doctype;
     }

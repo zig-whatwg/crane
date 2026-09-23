@@ -26,6 +26,7 @@ const document_internals = dom.document_internals;
 const DocumentTypeImpl = @import("DocumentType.zig");
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
+const node_document = @import("dom").node_document;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = DOMImplementation.State;
@@ -154,7 +155,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 
     // Set node document to the associated document
     if (internal.document) |doc| {
-        try NodeImpl.setOwnerDocument(doctype, doc);
+        try node_document.set(doctype, doc);
     }
 
     return doctype;
@@ -214,7 +215,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     // Step 4: If doctype is non-null, append doctype to document
     if (doctype.was_passed) {
         if (doctype.value) |dt| {
-            try NodeImpl.setOwnerDocument(dt, document);
+            try node_document.set(dt, document);
             // Use interface instead of impl (per Golden Rule #13)
             _ = try interfaces.Node.call_appendChild(document, dt);
         }
@@ -290,7 +291,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     // Step 3: Create and append doctype with name "html"
     const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
     errdefer interfaces.DocumentType.deinit(doctype);
-    try NodeImpl.setOwnerDocument(doctype, doc);
+    try node_document.set(doctype, doc);
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(doc, doctype);
 
@@ -321,7 +322,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
             // Step 6.2: Create Text node with title data and append to title element (use interface per Golden Rule #13)
             const text_node = try interfaces.Text.call_constructor(ctx, webidl.Opt(runtime.DOMString).passed(title_val));
             errdefer interfaces.Text.deinit(text_node);
-            try NodeImpl.setOwnerDocument(text_node, doc);
+            try node_document.set(text_node, doc);
             // Use interface instead of impl (per Golden Rule #13)
             _ = try interfaces.Node.call_appendChild(title_elem, text_node);
         }
@@ -469,7 +470,7 @@ fn createElementNS(
     }
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(element, document);
+    try node_document.set(element, document);
 
     return element;
 }

@@ -1852,24 +1852,24 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     return tree_helpers.isInclusiveAncestor(node_ptr, other_ptr);
 }
 
-/// Stub: Queue tree mutation record for NodeBase nodes
-///
-/// TODO: MutationObserver integration is stubbed out during unified DOM tree refactoring.
-/// The mutation_observer_algorithms.queueTreeMutationRecord function expects:
-///   - target: *Node (WebIDL interface)
-///   - added_nodes: *NodeList (WebIDL interface)
-///   - removed_nodes: *NodeList (WebIDL interface)
+// Stub: Queue tree mutation record for NodeBase nodes
+//
+// TODO: MutationObserver integration is stubbed out during unified DOM tree refactoring.
+// The mutation_observer_algorithms.queueTreeMutationRecord function expects:
+//   - target: *Node (WebIDL interface)
+//   - added_nodes: *NodeList (WebIDL interface)
+//   - removed_nodes: *NodeList (WebIDL interface)
+
 /// `node`'s node document, which the live-range and NodeIterator steps key
 /// their lists on. `NodeBase.owner_document` is written only by `adopt`, so it
 /// is null for nearly every node - the document lives in the Node impl's state,
-/// which is where `runLiveRangeSplitSteps` already reads it. A document is its
-/// own node document.
+/// read here through the Node interface. A document is its own node document.
 fn nodeDocument(node: anytype) ?*runtime.Instance {
     const base: *NodeBase = @ptrCast(@constCast(node));
     const instance_opaque = instance_bridge.getInstance(base) orelse return null;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_opaque));
     if (base.node_type == DOCUMENT_NODE) return instance;
-    return impls.Node.getOwnerDocument(instance);
+    return interfaces.Node.get_ownerDocument(instance) catch null;
 }
 
 /// Helper: Run live range pre-remove steps
@@ -1973,8 +1973,7 @@ pub fn runLiveRangeSplitSteps(
     parent: *runtime.Instance,
     offset: u32,
 ) void {
-    const NodeImpl = impls.Node;
-    const doc = NodeImpl.getOwnerDocument(node) orelse return;
+    const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
     const internal = document_internals.getInternal(doc) orelse return;
     if (internal.ranges.items.len == 0) return;
 
