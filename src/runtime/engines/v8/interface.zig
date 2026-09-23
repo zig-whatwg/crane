@@ -904,6 +904,15 @@ pub fn V8Interface(comptime Interface: type) type {
                     );
                     setUpPrototype(isolate, context, @ptrCast(proto));
 
+                    // WebIDL "create an interface prototype object" step 4:
+                    // DOMException's prototype inherits from the realm's
+                    // %Error.prototype%, so a DOMException is an Error.
+                    if (comptime std.mem.eql(u8, interface_name, "DOMException")) {
+                        if (v8.v8_Context_ErrorPrototype(context)) |error_proto| {
+                            defer v8.v8_Object_Dispose(error_proto);
+                            _ = v8.v8_Object_SetPrototypeV2(@ptrCast(proto), context, @ptrCast(error_proto));
+                        }
+                    }
                 }
             }
 

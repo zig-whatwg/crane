@@ -5009,6 +5009,21 @@ void v8_Isolate_SetImportMetaUrlCallback(Isolate* isolate, ImportMetaUrlCallback
     isolate->SetHostInitializeImportMetaObjectCallback(V8HostInitializeImportMetaObjectCallback);
 }
 
+/// %Error.prototype% of `context`: the realm's intrinsic, not whatever script
+/// has since stored at globalThis.Error. An Error made in the context has it
+/// as its [[Prototype]].
+Global<Object>* v8_Context_ErrorPrototype(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Value> error = Exception::Error(String::Empty(isolate));
+    if (!error->IsObject()) return nullptr;
+    Local<Value> proto = error.As<Object>()->GetPrototypeV2();
+    if (!proto->IsObject()) return nullptr;
+    return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
+}
+
 /// Whether two module handles name the same module.
 bool v8_Module_Equals(Global<Module>* a, Global<Module>* b) {
     if (!a || !b) return false;
