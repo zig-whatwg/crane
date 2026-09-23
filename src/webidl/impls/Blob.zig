@@ -108,126 +108,132 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
         }
         break :blk .transparent;
     };
-    _ = endings_mode; // TODO: Apply endings conversion to strings
 
     // Get MIME type from options
     const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
     // Process blob parts if provided
-    const bytes: []const u8 = blk: {
-        if (!blobParts.wasPassed()) {
-            break :blk "";
-        }
-
-        const js_value = blobParts.value;
-
-        // Must be a handle to a V8 value
-        if (js_value != .handle) {
-            break :blk "";
-        }
-
-        const handle = js_value.handle;
-        const v8_value: *v8.Value = @ptrCast(@alignCast(handle.ptr));
-
-        // Check if it's an array
-        if (!v8.v8_Value_IsArray(v8_value)) {
-            break :blk "";
-        }
-
-        const v8_array: *v8.Array = @ptrCast(v8_value);
-        const length = v8.v8_Array_Length(v8_array);
-
-        if (length == 0) {
-            break :blk "";
-        }
-
-        // Get V8 context
-        const isolate = v8.v8_Isolate_GetCurrent() orelse break :blk "";
-        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk "";
-        defer v8.v8_Context_Dispose(v8_context);
-
-        // First pass: calculate total size needed
-        var total_size: usize = 0;
-        for (0..length) |i| {
-            const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
-
-            if (v8.v8_Value_IsString(elem)) {
-                const str: *v8.String = @ptrCast(elem);
-                total_size += @as(usize, @intCast(v8.v8_String_Utf8Length(str)));
-            } else if (v8.v8_Value_IsArrayBuffer(elem)) {
-                const ab: *v8.ArrayBuffer = @ptrCast(elem);
-                total_size += v8.v8_ArrayBuffer_ByteLength(ab);
-            } else if (v8.v8_Value_IsArrayBufferView(elem)) {
-                total_size += v8.v8_TypedArray_ByteLength(elem);
-            }
-        }
-
-        if (total_size == 0) {
-            break :blk "";
-        }
-
-        // Allocate buffer for all bytes
-        const buffer = ctx.allocator.alloc(u8, total_size) catch break :blk "";
-
-        // Second pass: copy bytes
-        var offset: usize = 0;
-        for (0..length) |i| {
-            const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
-
-            if (v8.v8_Value_IsString(elem)) {
-                const str: *v8.String = @ptrCast(elem);
-                const utf8_len = v8.v8_String_Utf8Length(str);
-                if (utf8_len > 0) {
-                    _ = v8.v8_String_WriteUtf8(str, buffer[offset..].ptr, utf8_len);
-                    offset += @as(usize, @intCast(utf8_len));
-                }
-            } else if (v8.v8_Value_IsArrayBuffer(elem)) {
-                const ab: *v8.ArrayBuffer = @ptrCast(elem);
-                const byte_length = v8.v8_ArrayBuffer_ByteLength(ab);
-                if (byte_length > 0) {
-                    if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
-                        const data: [*]const u8 = @ptrCast(data_ptr);
-                        @memcpy(buffer[offset..][0..byte_length], data[0..byte_length]);
-                        offset += byte_length;
-                    }
-                }
-            } else if (v8.v8_Value_IsArrayBufferView(elem)) {
-                if (v8.v8_TypedArray_Buffer(elem)) |ab| {
-                    const byte_offset = v8.v8_TypedArray_ByteOffset(elem);
-                    const byte_length = v8.v8_TypedArray_ByteLength(elem);
-                    if (byte_length > 0) {
-                        if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
-                            const data: [*]const u8 = @ptrCast(data_ptr);
-                            @memcpy(buffer[offset..][0..byte_length], data[byte_offset..][0..byte_length]);
-                            offset += byte_length;
-                        }
-                    }
-                }
-            }
-        }
-
-        break :blk buffer;
-    };
+    const bytes = try processBlobParts(ctx.allocator, if (blobParts.wasPassed()) blobParts.value else null, endings_mode);
     defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
     // Create the internal BlobData
     const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
     errdefer blob_data.deinit();
-
-    // Create and store internal state
-    const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
-
-    internal.* = .{
-        .blob_data = blob_data,
-        .allocator = ctx.allocator,
-    };
-
-    // Store internal state in the instance
-    const state = instance.getState(State);
-    state.own._internal = internal;
+    try setBlobData(instance, ctx.allocator, blob_data);
 
     return instance;
+}
+
+/// FileAPI "process blob parts" for a JS `sequence<BlobPart>`: the bytes of
+/// every USVString (as UTF-8), ArrayBuffer and ArrayBufferView, in order.
+/// Shared with File, whose constructor's first step is the same algorithm.
+/// The caller owns a non-empty result; an empty one is static.
+///
+/// TODO: a Blob part contributes its bytes, anything else is converted with
+/// ToString, and `endings: "native"` converts line endings - none of which
+/// happens yet.
+pub fn processBlobParts(allocator: std.mem.Allocator, parts: ?runtime.JSValue, endings: file.algorithms.Endings) ![]const u8 {
+    _ = endings;
+    const js_value = parts orelse return "";
+
+    // Must be a handle to a V8 value
+    if (js_value != .handle) {
+        return "";
+    }
+
+    const handle = js_value.handle;
+    const v8_value: *v8.Value = @ptrCast(@alignCast(handle.ptr));
+
+    // Check if it's an array
+    if (!v8.v8_Value_IsArray(v8_value)) {
+        return "";
+    }
+
+    const v8_array: *v8.Array = @ptrCast(v8_value);
+    const length = v8.v8_Array_Length(v8_array);
+
+    if (length == 0) {
+        return "";
+    }
+
+    // Get V8 context
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return "";
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return "";
+    defer v8.v8_Context_Dispose(v8_context);
+
+    // First pass: calculate total size needed
+    var total_size: usize = 0;
+    for (0..length) |i| {
+        const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
+
+        if (v8.v8_Value_IsString(elem)) {
+            const str: *v8.String = @ptrCast(elem);
+            total_size += @as(usize, @intCast(v8.v8_String_Utf8Length(str)));
+        } else if (v8.v8_Value_IsArrayBuffer(elem)) {
+            const ab: *v8.ArrayBuffer = @ptrCast(elem);
+            total_size += v8.v8_ArrayBuffer_ByteLength(ab);
+        } else if (v8.v8_Value_IsArrayBufferView(elem)) {
+            total_size += v8.v8_TypedArray_ByteLength(elem);
+        }
+    }
+
+    if (total_size == 0) {
+        return "";
+    }
+
+    // Allocate buffer for all bytes
+    const buffer = try allocator.alloc(u8, total_size);
+
+    // Second pass: copy bytes
+    var offset: usize = 0;
+    for (0..length) |i| {
+        const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
+
+        if (v8.v8_Value_IsString(elem)) {
+            const str: *v8.String = @ptrCast(elem);
+            const utf8_len = v8.v8_String_Utf8Length(str);
+            if (utf8_len > 0) {
+                _ = v8.v8_String_WriteUtf8(str, buffer[offset..].ptr, utf8_len);
+                offset += @as(usize, @intCast(utf8_len));
+            }
+        } else if (v8.v8_Value_IsArrayBuffer(elem)) {
+            const ab: *v8.ArrayBuffer = @ptrCast(elem);
+            const byte_length = v8.v8_ArrayBuffer_ByteLength(ab);
+            if (byte_length > 0) {
+                if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
+                    const data: [*]const u8 = @ptrCast(data_ptr);
+                    @memcpy(buffer[offset..][0..byte_length], data[0..byte_length]);
+                    offset += byte_length;
+                }
+            }
+        } else if (v8.v8_Value_IsArrayBufferView(elem)) {
+            if (v8.v8_TypedArray_Buffer(elem)) |ab| {
+                const byte_offset = v8.v8_TypedArray_ByteOffset(elem);
+                const byte_length = v8.v8_TypedArray_ByteLength(elem);
+                if (byte_length > 0) {
+                    if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
+                        const data: [*]const u8 = @ptrCast(data_ptr);
+                        @memcpy(buffer[offset..][0..byte_length], data[byte_offset..][0..byte_length]);
+                        offset += byte_length;
+                    }
+                }
+            }
+        }
+    }
+
+    return buffer;
+}
+
+/// Give `instance`'s Blob part its byte sequence, taking `blob_data` on
+/// success. For a File that is the File's own Blob state: Instance.getState
+/// finds an ancestor's state at its real offset.
+pub fn setBlobData(instance: *runtime.Instance, allocator: std.mem.Allocator, blob_data: *file.BlobData) !void {
+    const internal = try allocator.create(InternalState);
+    internal.* = .{
+        .blob_data = blob_data,
+        .allocator = allocator,
+    };
+    instance.getState(State).own._internal = internal;
 }
 
 /// Create a Blob from raw bytes (internal helper)
@@ -240,17 +246,7 @@ pub fn createFromBytes(allocator: std.mem.Allocator, ctx: runtime.Context, bytes
 
     const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
     errdefer blob_data.deinit();
-
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .blob_data = blob_data,
-        .allocator = allocator,
-    };
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
+    try setBlobData(instance, allocator, blob_data);
 
     return instance;
 }
@@ -262,16 +258,7 @@ pub fn createFromBlobData(allocator: std.mem.Allocator, ctx: runtime.Context, bl
     const instance = try init(allocator, State, &Blob.vtable, ctx);
     errdefer deinit(instance);
 
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .blob_data = blob_data,
-        .allocator = allocator,
-    };
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
+    try setBlobData(instance, allocator, blob_data);
 
     return instance;
 }

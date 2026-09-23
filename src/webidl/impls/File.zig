@@ -15,6 +15,8 @@ const callbacks = @import("callbacks");
 const file = @import("file");
 const webidl = @import("webidl");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const clock = @import("clock");
+const BlobImpl = @import("Blob.zig");
 const File = interfaces.File;
 
 pub const State = File.State;
@@ -25,92 +27,81 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for File implementation
+/// Internal state for File implementation: what a File adds to its Blob.
 ///
-/// Holds the FileData pointer which stores the underlying Blob data
-/// plus name and lastModified.
+/// The bytes and type are the Blob part's own state (BlobImpl.setBlobData) -
+/// size, type, slice() and text() are Blob members, answered by Blob's impl.
 pub const InternalState = struct {
-    /// The internal file data (blob + name + lastModified)
-    file_data: *file.FileData,
-    /// The relative path (webkit extension, usually empty)
+    /// The file name, owned.
+    name: []const u8,
+    /// Milliseconds since the Unix epoch.
+    last_modified: i64,
+    /// The relative path (webkit extension, usually empty), owned when non-empty.
     webkit_relative_path: []const u8,
     /// Allocator for memory management
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
-        self.file_data.deinit();
+        self.allocator.free(self.name);
         if (self.webkit_relative_path.len > 0) {
             self.allocator.free(@constCast(self.webkit_relative_path));
         }
     }
 };
 
-/// Initialize instance (creates the instance)
+/// Initialize instance: a File is a Blob, so its Blob part is built first.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return BlobImpl.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    BlobImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation
 ///
-/// Spec: https://www.w3.org/TR/FileAPI/#file-constructor
-///
-/// Steps:
-/// 1. Process fileBits using process blob parts algorithm
-/// 2. Use provided fileName
-/// 3. Use lastModified from options or current time
-/// 4. Use type from options (normalized)
+/// Spec: https://w3c.github.io/FileAPI/#file-constructor
 pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(ctx.allocator, State, &File.vtable, ctx);
     errdefer deinit(instance);
 
-    // Get MIME type from options (inherits from BlobPropertyBag)
-    const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
-
-    // For now, create empty blob data (full BlobPart processing requires V8)
-    // TODO: Process fileBits when V8 integration is complete
-    _ = fileBits;
-
-    const blob_data = try file.BlobData.init(ctx.allocator, "", mime_type);
-    errdefer blob_data.deinit();
-
-    // Create FileData with name and lastModified
-    // USVString is just []const u8 in Zig
-    const file_name = fileName;
-    const last_modified = if (options.wasPassed()) options.value.lastModified else null;
-
-    const file_data = try file.FileData.init(ctx.allocator, blob_data, file_name, last_modified);
-    errdefer file_data.deinit();
-
-    // Create and store internal state
-    const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
-
-    internal.* = .{
-        .file_data = file_data,
-        .webkit_relative_path = "", // Empty by default
-        .allocator = ctx.allocator,
+    // Step 1: bytes, the result of processing blob parts given fileBits and
+    // options.
+    const endings: file.algorithms.Endings = blk: {
+        if (options.wasPassed()) {
+            if (options.value.base.endings) |e| {
+                if (e == ._native_) break :blk .native;
+            }
+        }
+        break :blk .transparent;
     };
+    const bytes = try BlobImpl.processBlobParts(ctx.allocator, fileBits, endings);
+    defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
-    // Store internal state in the instance
-    const state = instance.getState(State);
-    state.own._internal = internal;
+    // Steps 3.1-3.2: the type - BlobData drops one with a character outside
+    // U+0020-U+007E and lowercases the rest.
+    const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
+    {
+        const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
+        errdefer blob_data.deinit();
+        try BlobImpl.setBlobData(instance, ctx.allocator, blob_data);
+    }
+
+    // Steps 2 and 3.3: the name, and lastModified - now, when not given.
+    const last_modified = if (options.wasPassed()) options.value.lastModified else null;
+    try setFileState(instance, ctx.allocator, fileName, last_modified);
 
     return instance;
 }
@@ -129,25 +120,26 @@ pub fn createFromBytes(
     const instance = try init(allocator, State, &File.vtable, ctx);
     errdefer deinit(instance);
 
-    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
-    errdefer blob_data.deinit();
+    {
+        const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+        errdefer blob_data.deinit();
+        try BlobImpl.setBlobData(instance, allocator, blob_data);
+    }
+    try setFileState(instance, allocator, name, last_modified);
 
-    const file_data = try file.FileData.init(allocator, blob_data, name, last_modified);
-    errdefer file_data.deinit();
+    return instance;
+}
 
+fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name: []const u8, last_modified: ?i64) !void {
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
-
     internal.* = .{
-        .file_data = file_data,
+        .name = try allocator.dupe(u8, name),
+        .last_modified = last_modified orelse clock.wallMillis(),
         .webkit_relative_path = "",
         .allocator = allocator,
     };
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
 /// Get internal state from instance
@@ -164,7 +156,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// Returns the name of the file (without path information).
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    const name = internal.file_data.getName();
+    const name = internal.name;
     if (name.len == 0) {
         return runtime.DOMString.initEmpty();
     }
@@ -177,7 +169,7 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns the last modified timestamp in milliseconds since Unix epoch.
 pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
     const internal = getInternal(instance) orelse return 0;
-    return internal.file_data.getLastModified();
+    return internal.last_modified;
 }
 
 /// Getter for webkitRelativePath
@@ -188,26 +180,6 @@ pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
 pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
     return internal.webkit_relative_path;
-}
-
-// ============================================================================
-// Blob inheritance - File extends Blob
-// ============================================================================
-
-/// Get the file size (delegates to underlying blob)
-pub fn get_size(instance: *runtime.Instance) ImplError!u64 {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.file_data.size();
-}
-
-/// Get the file type (delegates to underlying blob)
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    const type_str = internal.file_data.getType();
-    if (type_str.len == 0) {
-        return runtime.DOMString.initEmpty();
-    }
-    return runtime.DOMString.initInterned(type_str);
 }
 
 // ============================================================================
@@ -234,10 +206,10 @@ test "File - basic constructor" {
     const last_modified = try get_lastModified(file_instance);
     try std.testing.expectEqual(@as(i64, 1700000000000), last_modified);
 
-    const size = try get_size(file_instance);
+    const size = try BlobImpl.get_size(file_instance);
     try std.testing.expectEqual(@as(u64, 13), size);
 
-    const type_str = try get_type(file_instance);
+    const type_str = try BlobImpl.get_type(file_instance);
     try std.testing.expectEqualStrings("text/plain", type_str.asSlice());
 }
 
