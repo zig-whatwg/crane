@@ -103,7 +103,7 @@ test "send() - step 2: the send() flag being set is an InvalidStateError" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
 
     try std.testing.expectError(error.InvalidStateError, send(&state, null));
@@ -119,7 +119,7 @@ test "open() - fires nothing itself, and lands in OPENED" {
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
 
     try std.testing.expectEqual(ReadyState.OPENED, state.ready_state);
 
@@ -139,7 +139,7 @@ test "request error steps - the async order is readystatechange, error, loadend"
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
     state.upload_complete_flag = true;
 
@@ -178,7 +178,7 @@ test "request error steps - a sync request fires nothing" {
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "GET", "http://example.com/data", false, null, null, null);
+    try open(&state, "GET", "http://example.com/data", false, null, null, null, false);
     try std.testing.expect(state.synchronous_flag);
     state.send_flag = true;
 
@@ -203,7 +203,7 @@ test "request error steps - timeout also fires the upload events when a listener
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "POST", "http://example.com/data", true, null, null, null);
+    try open(&state, "POST", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
     state.upload_listener_flag = true;
     state.upload_complete_flag = false;
@@ -237,7 +237,7 @@ test "request error steps - no upload listener means no upload events" {
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "POST", "http://example.com/data", true, null, null, null);
+    try open(&state, "POST", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
     state.upload_listener_flag = false;
     state.upload_complete_flag = false;
@@ -264,7 +264,7 @@ test "handle response end-of-body - a network error reports nothing" {
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
 
     // The response is initially a network error, so step 2 returns.
@@ -284,7 +284,7 @@ test "processResponse - a network error stops before headers received" {
     defer recorder.deinit();
     recorder.install();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
 
     var processor = ResponseProcessor.init(&state);

@@ -23,11 +23,11 @@ test "Multiple open() - aborts previous request" {
     defer state.deinit();
 
     // First open
-    try open(&state, "GET", "http://example.com/1", true, null, null, null);
+    try open(&state, "GET", "http://example.com/1", true, null, null, null, false);
     try std.testing.expectEqualStrings("http://example.com/1", state.request_url.?);
 
     // Second open should replace
-    try open(&state, "POST", "http://example.com/2", true, null, null, null);
+    try open(&state, "POST", "http://example.com/2", true, null, null, null, false);
     try std.testing.expectEqualStrings("POST", state.request_method.?);
     try std.testing.expectEqualStrings("http://example.com/2", state.request_url.?);
 }
@@ -38,7 +38,7 @@ test "open() after a completed request - resets state" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
 
     // Stand in for a completed request. Calling `send()` here would perform a
     // REAL blocking fetch now that `fetch_integration` is wired to libcurl -
@@ -48,7 +48,7 @@ test "open() after a completed request - resets state" {
     try state.received_bytes.appendSlice(allocator, "old body");
 
     // Step 11: a new open() resets everything.
-    try open(&state, "POST", "http://example.com/new", true, null, null, null);
+    try open(&state, "POST", "http://example.com/new", true, null, null, null, false);
     try std.testing.expectEqual(ReadyState.OPENED, state.ready_state);
     try std.testing.expectEqualStrings("POST", state.request_method.?);
     try std.testing.expectEqual(@as(usize, 0), state.received_bytes.items.len);
@@ -84,7 +84,7 @@ test "setRequestHeader() with the send() flag set throws InvalidStateError" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "POST", "http://example.com/api", true, null, null, null);
+    try open(&state, "POST", "http://example.com/api", true, null, null, null, false);
 
     // Spec: "If this's state is not opened, throw an InvalidStateError. If
     // this's send() flag is set, throw an InvalidStateError." Setting the flag
@@ -106,7 +106,7 @@ test "createRequest - an empty body is no body at all" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "POST", "http://example.com/api", true, null, null, null);
+    try open(&state, "POST", "http://example.com/api", true, null, null, null, false);
 
     // send() step 9: "If req's body is null, set this's upload complete flag."
     // An empty string extracts to a zero-length body, which carries no upload
@@ -123,7 +123,7 @@ test "Large body - held by reference, not copied" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "POST", "http://example.com/api", true, null, null, null);
+    try open(&state, "POST", "http://example.com/api", true, null, null, null, false);
 
     // Create a large body (64KB)
     const large_body = try allocator.alloc(u8, 64 * 1024);
@@ -147,7 +147,7 @@ test "setRequestHeader() - case insensitive header names" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "POST", "http://example.com/api", true, null, null, null);
+    try open(&state, "POST", "http://example.com/api", true, null, null, null, false);
 
     // Set header with different cases
     try headers.setRequestHeader(&state, "Content-Type", "application/json");
@@ -167,7 +167,7 @@ test "setRequestHeader() - header value with special characters" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "POST", "http://example.com/api", true, null, null, null);
+    try open(&state, "POST", "http://example.com/api", true, null, null, null, false);
 
     // Value with semicolon and equals (common in content-type)
     try headers.setRequestHeader(&state, "Content-Type", "text/html; charset=utf-8");
@@ -216,7 +216,7 @@ test "abort() - multiple times is safe" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "GET", "http://example.com/data", true, null, null, null);
+    try open(&state, "GET", "http://example.com/data", true, null, null, null, false);
     state.send_flag = true;
     state.ready_state = .LOADING;
 
@@ -254,7 +254,7 @@ test "Sync XHR - async=false sets the synchronous flag" {
     defer state.deinit();
 
     // Open synchronously (async=false)
-    try open(&state, "GET", "http://example.com/data", false, null, null, null);
+    try open(&state, "GET", "http://example.com/data", false, null, null, null, false);
     try std.testing.expect(state.synchronous_flag);
 
     // The send() half of this test is gone: it would now block on a real
@@ -303,12 +303,12 @@ test "open() - case insensitive method normalization" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "get", "http://example.com", true, null, null, null);
+    try open(&state, "get", "http://example.com", true, null, null, null, false);
     try std.testing.expectEqualStrings("GET", state.request_method.?);
 
     state.reset();
 
-    try open(&state, "pOsT", "http://example.com", true, null, null, null);
+    try open(&state, "pOsT", "http://example.com", true, null, null, null, false);
     try std.testing.expectEqualStrings("POST", state.request_method.?);
 }
 
@@ -318,6 +318,6 @@ test "open() - custom method preserved as-is" {
     var state = XMLHttpRequestState.init(allocator);
     defer state.deinit();
 
-    try open(&state, "CUSTOM", "http://example.com", true, null, null, null);
+    try open(&state, "CUSTOM", "http://example.com", true, null, null, null, false);
     try std.testing.expectEqualStrings("CUSTOM", state.request_method.?);
 }
