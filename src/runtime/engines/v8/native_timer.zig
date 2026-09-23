@@ -83,6 +83,17 @@ pub fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
     return timeout;
 }
 
+/// A timer found due by `poll`, in firing order.
+const Due = struct {
+    deadline_ns: i128,
+    id: TimerId,
+
+    fn lessThan(_: void, a: Due, b: Due) bool {
+        if (a.deadline_ns != b.deadline_ns) return a.deadline_ns < b.deadline_ns;
+        return a.id < b.id;
+    }
+};
+
 /// One scheduled timer.
 const Entry = struct {
     callback: TimerCallback,
@@ -177,7 +188,7 @@ pub const NativeTimerManager = struct {
 
         // Snapshot the due ids before invoking anything: a callback may schedule or
         // cancel timers, which would invalidate an in-flight iterator.
-        var due: std.ArrayListUnmanaged(TimerId) = .empty;
+        var due: std.ArrayListUnmanaged(Due) = .empty;
         defer due.deinit(self.allocator);
 
         var iter = self.timers.iterator();
@@ -185,11 +196,19 @@ pub const NativeTimerManager = struct {
             const entry = kv.value_ptr.*;
             if (entry.cancelled) continue;
             if (entry.deadline_ns <= now) {
-                due.append(self.allocator, entry.id) catch break;
+                due.append(self.allocator, .{ .deadline_ns = entry.deadline_ns, .id = entry.id }) catch break;
             }
         }
 
-        for (due.items) |id| {
+        // HTML "run steps after a timeout" step 4: wait for every earlier
+        // invocation whose timeout is no longer than this one's. Deadline
+        // order, with ids - which increase in scheduling order - breaking
+        // ties, is that order. The map's iteration order is not any order:
+        // setTimeout(a, 0); setTimeout(b, 0) could run b first.
+        std.mem.sort(Due, due.items, {}, Due.lessThan);
+
+        for (due.items) |item| {
+            const id = item.id;
             // Re-check: an earlier callback in this same batch may have cleared it.
             const entry = self.timers.get(id) orelse continue;
             if (entry.cancelled) continue;
@@ -440,12 +459,16 @@ test "timers fire in deadline order, not insertion order" {
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    // All already due; poll fires them. Ordering within one batch is not specified
-    // by this implementation, so assert only that each ran exactly once.
+    // Scheduled c first but due last; a and b due together, in the order they
+    // were scheduled. One poll fires all three - in that order, as HTML's "run
+    // steps after a timeout" requires, whatever order the map iterates in.
+    _ = mgr.setTimeout(5, Order.mk('c'), null);
     _ = mgr.setTimeout(0, Order.mk('a'), null);
     _ = mgr.setTimeout(0, Order.mk('b'), null);
+    clock.sleep(10 * std.time.ns_per_ms);
     _ = mgr.poll();
-    try testing.expectEqual(@as(usize, 2), Order.n);
+    try testing.expectEqual(@as(usize, 3), Order.n);
+    try testing.expectEqualStrings("abc", Order.seq[0..3]);
 }
 
 test "deinit frees pending timers without leaking" {
