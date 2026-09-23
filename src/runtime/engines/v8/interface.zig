@@ -2518,9 +2518,65 @@ pub fn V8Interface(comptime Interface: type) type {
         /// 2. Parses arguments from V8 using comptime reflection
         /// 3. Calls the Interface method
         /// 4. Converts and returns the result to V8
+        /// The overload set whose FIRST overload is `zig_name`, if any - the
+        /// function the binding installs for an overloaded operation. See
+        /// `overloads` in a generated interface.
+        fn overloadSetFor(comptime zig_name: []const u8) ?[]const webidl.overload_resolution.Overload {
+            if (!@hasDecl(Interface, "overloads")) return null;
+            inline for (Interface.overloads) |entry| {
+                const set: []const webidl.overload_resolution.Overload = entry[1];
+                if (comptime std.mem.eql(u8, set[0].function, zig_name)) return set;
+            }
+            return null;
+        }
+
+        /// WebIDL "create an operation function" step 3: run the overload
+        /// resolution algorithm over `set` with the call's arguments, and let
+        /// the chosen overload's own binding convert them and run it - the
+        /// entries left in S agree on every type before the distinguishing
+        /// index, so that conversion IS steps 11, 15 and 16.
+        ///
+        /// Returns true when the call has been handled here (forwarded, or a
+        /// TypeError thrown), false when the first overload - the caller's own
+        /// - is the one to run. An overload the impl does not provide yet runs
+        /// the first overload instead, which is exactly what every call did
+        /// before overloads were bound, so an unmigrated impl changes nothing.
+        fn forwardToOverload(
+            comptime set: []const webidl.overload_resolution.Overload,
+            info: *const v8.FunctionCallbackInfo,
+        ) bool {
+            const isolate = info.getIsolate();
+            var args = OverloadArgs{ .info = info, .isolate = isolate };
+            defer args.release();
+
+            const chosen = webidl.overload_resolution.select(set, @intCast(info.length()), &args) catch |err| {
+                switch (err) {
+                    error.TypeError => conv.throwTypeError(isolate, "Failed to execute '" ++ comptime set[0].function["call_".len..] ++ "' on '" ++ interface_name ++ "': no overload matches these arguments"),
+                    // GetMethod threw; the exception is already pending.
+                    error.JavaScriptException => {},
+                }
+                return true;
+            };
+
+            if (chosen == 0 or !set[chosen].implemented) return false;
+            inline for (set, 0..) |overload, k| {
+                if (k != 0 and k == chosen) {
+                    MethodCallback(overload.function).callback(info);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // An overloaded operation is installed as its FIRST
+                    // overload; pick the one the arguments mean.
+                    if (comptime overloadSetFor(zig_name)) |set| {
+                        if (forwardToOverload(set, info)) return;
+                    }
+
                     const isolate = info.getIsolate();
 
                     // Get V8 context - for arguments parsing, we use the current context
@@ -3200,8 +3256,41 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer freeConvertedArg(Param4Type, allocator, arg4);
                     break :blk try method_fn(instance, arg1, arg2, arg3, arg4);
                 } else {
-                    // Fallback for methods with more params - use placeholder behavior
-                    return error.NotImplemented;
+                    // Five or more: the same per-argument conversion as the
+                    // branches above, as a loop. This used to return
+                    // NotImplemented, so every operation that takes five
+                    // arguments - `arc(x, y, r, start, end)`,
+                    // `setTransform(a, b, c, d, e, f)`,
+                    // `open(method, url, async, username, password)` - threw
+                    // "This feature is not yet implemented" at every call.
+                    var call_args: std.meta.ArgsTuple(@TypeOf(method_fn)) = undefined;
+                    call_args[0] = instance;
+                    // How many of `call_args[1..]` hold a value, so a
+                    // conversion that fails part-way frees only those - the
+                    // branches above get that from one `defer` per argument.
+                    var assigned: usize = 0;
+                    defer {
+                        inline for (params[1..], 1..) |param, i| {
+                            if (i <= assigned) freeConvertedArg(param.type.?, allocator, call_args[i]);
+                        }
+                    }
+                    inline for (params[1..], 1..) |param, i| {
+                        const ParamType = param.type.?;
+                        call_args[i] = if (js_arg_count >= i) arg_blk: {
+                            const v8_arg = info.get(@intCast(i - 1));
+                            break :arg_blk try convertArgReleasing(ParamType, allocator, isolate, v8_context, v8_arg);
+                        } else arg_blk: {
+                            if (comptime getDefaultArgValue(ParamType)) |default_val| {
+                                break :arg_blk default_val;
+                            } else if (comptime canUseUndefined(ParamType)) {
+                                break :arg_blk undefined;
+                            } else {
+                                return error.NotEnoughArguments;
+                            }
+                        };
+                        assigned = i;
+                    }
+                    break :blk try @call(.auto, method_fn, call_args);
                 }
             };
 
@@ -7770,6 +7859,143 @@ pub fn V8Interface(comptime Interface: type) type {
 /// This function returns an UNTAGGED pointer. The pointer is extracted directly
 /// from V8's internal field storage, not from conv.fromV8Value(). No untagging
 /// is required by callers.
+/// The overload resolution algorithm's view of one call's arguments
+/// (webidl.overload_resolution.select calls `at` for the distinguishing index).
+///
+/// `FunctionCallbackInfo.get` allocates a Global per call, and the caller owns
+/// it: `at` keeps the one argument it fetched until `release`.
+const OverloadArgs = struct {
+    info: *const v8.FunctionCallbackInfo,
+    isolate: *v8.Isolate,
+    held: ?*v8.Value = null,
+
+    pub fn at(self: *OverloadArgs, i: usize) OverloadArg {
+        self.release();
+        if (i >= @as(usize, @intCast(self.info.length()))) return .{ .value = null, .isolate = self.isolate };
+        const value = self.info.get(@intCast(i));
+        self.held = value;
+        return .{ .value = value, .isolate = self.isolate };
+    }
+
+    pub fn release(self: *OverloadArgs) void {
+        if (self.held) |value| v8.v8_Value_Dispose(value);
+        self.held = null;
+    }
+};
+
+/// One JavaScript argument, answering the questions of the overload
+/// resolution algorithm's step 12. `value` is null for an argument that was
+/// not passed, which reads as undefined.
+const OverloadArg = struct {
+    value: ?*v8.Value,
+    isolate: *v8.Isolate,
+
+    const Error = error{ TypeError, JavaScriptException };
+
+    pub fn isUndefined(self: OverloadArg) bool {
+        const v = self.value orelse return true;
+        return v8.v8_Value_IsUndefined(v);
+    }
+    pub fn isNull(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsNull(v);
+    }
+    pub fn isObject(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsObject(v);
+    }
+    pub fn isCallable(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsFunction(v);
+    }
+    fn instance(self: OverloadArg) ?*runtime.Instance {
+        const v = self.value orelse return null;
+        if (!v8.v8_Value_IsObject(v)) return null;
+        return getInstance(runtime.Instance, @ptrCast(v));
+    }
+    pub fn isPlatformObject(self: OverloadArg) bool {
+        return self.instance() != null;
+    }
+    /// Does the platform object implement the interface `id` names - is that
+    /// interface's State in its state ancestry? The same brand check the
+    /// receiver gets.
+    pub fn implements(self: OverloadArg, id: webidl.overload_resolution.Id) bool {
+        const inst = self.instance() orelse return false;
+        for (inst.vtable.ancestors) |ancestor| {
+            if (ancestor.id == id) return true;
+        }
+        return false;
+    }
+    pub fn hasArrayBufferData(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsArrayBuffer(v);
+    }
+    pub fn isDataView(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsDataView(v);
+    }
+    pub fn typedArrayName(self: OverloadArg) ?[]const u8 {
+        const v = self.value orelse return null;
+        if (!v8.v8_Value_IsTypedArray(v)) return null;
+        if (v8.v8_Value_IsInt8Array(v)) return "Int8Array";
+        if (v8.v8_Value_IsInt16Array(v)) return "Int16Array";
+        if (v8.v8_Value_IsInt32Array(v)) return "Int32Array";
+        if (v8.v8_Value_IsUint8Array(v)) return "Uint8Array";
+        if (v8.v8_Value_IsUint8ClampedArray(v)) return "Uint8ClampedArray";
+        if (v8.v8_Value_IsUint16Array(v)) return "Uint16Array";
+        if (v8.v8_Value_IsUint32Array(v)) return "Uint32Array";
+        if (v8.v8_Value_IsBigInt64Array(v)) return "BigInt64Array";
+        if (v8.v8_Value_IsBigUint64Array(v)) return "BigUint64Array";
+        if (v8.v8_Value_IsFloat32Array(v)) return "Float32Array";
+        if (v8.v8_Value_IsFloat64Array(v)) return "Float64Array";
+        // Float16Array: no predicate in the FFI yet.
+        return null;
+    }
+    /// A String object ([[StringData]]). Only step 12.9 (async sequences
+    /// against a string type) asks; no FFI predicate exists, and no overload
+    /// set in the IDL corpus reaches that case.
+    pub fn hasStringData(self: OverloadArg) bool {
+        _ = self;
+        return false;
+    }
+    pub fn hasIteratorMethod(self: OverloadArg) Error!bool {
+        return self.hasMethod(v8.v8_Symbol_GetIterator);
+    }
+    pub fn hasAsyncIteratorMethod(self: OverloadArg) Error!bool {
+        if (try self.hasMethod(v8.v8_Symbol_GetAsyncIterator)) return true;
+        return self.hasMethod(v8.v8_Symbol_GetIterator);
+    }
+    pub fn isBoolean(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsBoolean(v);
+    }
+    pub fn isNumber(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsNumber(v);
+    }
+    pub fn isBigInt(self: OverloadArg) bool {
+        const v = self.value orelse return false;
+        return v8.v8_Value_IsBigInt(v);
+    }
+
+    /// ECMAScript GetMethod(V, symbol) is not undefined. GetMethod runs the
+    /// property's getter, which can throw; a present but non-callable value is
+    /// a TypeError (GetMethod step 3).
+    fn hasMethod(self: OverloadArg, getSymbol: *const fn (*v8.Isolate) callconv(.c) ?*v8.Symbol) Error!bool {
+        const v = self.value orelse return false;
+        if (!v8.v8_Value_IsObject(v)) return false;
+        const context = v8.v8_Isolate_GetCurrentContext(self.isolate) orelse return error.JavaScriptException;
+        defer v8.v8_Context_Dispose(context);
+        const symbol = getSymbol(self.isolate) orelse return false;
+        defer v8.v8_Symbol_Dispose(symbol);
+        const method = v8.v8_Object_Get(@ptrCast(v), context, @ptrCast(symbol)) orelse return error.JavaScriptException;
+        defer v8.v8_Value_Dispose(method);
+        if (v8.v8_Value_IsNullOrUndefined(method)) return false;
+        if (!v8.v8_Value_IsFunction(method)) return error.TypeError;
+        return true;
+    }
+};
+
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
