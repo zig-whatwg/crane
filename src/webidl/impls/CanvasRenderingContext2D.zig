@@ -810,15 +810,17 @@ pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) 
         },
     };
 
-    // Get the local value from the global handle
-    const v8_local = v8.ffi.v8_Global_Get(isolate, v8_global) orelse return error.TypeError;
-    const v8_value: *v8.ffi.Value = @ptrCast(@alignCast(v8_local));
-
-    // Check if it's an object (required for iteration protocol)
-    if (!v8.ffi.v8_Value_IsObject(v8_value)) {
+    // Check if it's an object (required for iteration protocol).
+    //
+    // On the Global itself: every v8_* function here takes a Global<Value>*.
+    // This used to call v8_Global_Get first, which returns a LOCAL slot
+    // pointer merely typed *Value, and pass that on - one level of indirection
+    // off, so v8_Value_IsObject read an object's first word as a handle and
+    // crashed (webidl/ecmascript-binding/sequence-conversion.html).
+    if (!v8.ffi.v8_Value_IsObject(v8_global)) {
         return error.TypeError;
     }
-    const obj: *v8.ffi.Object = @ptrCast(v8_value);
+    const obj: *v8.ffi.Object = @ptrCast(v8_global);
 
     // Use the iteration protocol to get values (per WebIDL spec)
     const values = try iterateToF64Array(allocator, isolate, context, obj) orelse {

@@ -5169,8 +5169,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const ValueType = params[2].type orelse return .kNo;
 
+            // V8 hands an interceptor the value as a LOCAL - a pointer to a
+            // handle slot - and fromV8Value reads a Global<Value>*, one level of
+            // indirection further out. Read directly, the slot's contents were
+            // taken for a slot, and `select[0] = option` (DefineOwnProperty.html)
+            // dereferenced an object's first word. Persist it first, as the named
+            // setter always has.
+            const value_global = v8.v8_Value_Persist(isolate, @ptrCast(value)) orelse return .kNo;
+            defer v8.v8_Value_Dispose(value_global);
+
             // Convert V8 value to the expected Zig type
-            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch {
+            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value_global) catch {
                 return .kNo;
             };
 
