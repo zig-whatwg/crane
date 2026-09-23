@@ -2550,10 +2550,32 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                         };
 
+                        // [SameObject]: the owner hands out one child for its
+                        // whole life, and caches it as a bare pointer (the
+                        // generated `cached_<name>`). Nothing in script need
+                        // hold the child, so tie its wrapper to the owner's -
+                        // Blink traces the same edge - or a collection frees it
+                        // under the cache.
+                        if (comptime stateCachesSameObject("cached_" ++ prop_name)) {
+                            const key = "crane:SameObject:" ++ prop_name;
+                            v8.v8_Object_SetPrivateRef(this_obj, key.ptr, key.len, v8_value);
+                        }
+
                         info.setReturnValue(v8_value);
                     }
                 }
             };
+        }
+
+        /// Whether this interface's own or mixin state has the generated
+        /// [SameObject] cache field `name` (an inherited attribute binds
+        /// through its own interface, so its own State answers).
+        fn stateCachesSameObject(comptime field_name: []const u8) bool {
+            const S = Interface.State;
+            if (@typeInfo(S) != .@"struct") return false;
+            if (@hasField(S, "own") and @typeInfo(@FieldType(S, "own")) == .@"struct" and @hasField(@FieldType(S, "own"), field_name)) return true;
+            if (@hasField(S, "mixins") and @typeInfo(@FieldType(S, "mixins")) == .@"struct" and @hasField(@FieldType(S, "mixins"), field_name)) return true;
+            return false;
         }
 
         /// Generate a method callback for a specific method at comptime

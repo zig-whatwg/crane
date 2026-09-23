@@ -4007,6 +4007,23 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     return result;
 }
 
+/// Record a strong edge from `holder` to `value` that script cannot see: a
+/// private property keyed `key`. The garbage collector then keeps `value`
+/// alive exactly as long as `holder` - the edge Blink draws by TRACING a
+/// [SameObject] child from its owner (Node::Trace visits node_lists_).
+/// Setting it again replaces the edge.
+void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_len, Global<Value>* value) {
+    if (!holder || !value) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return;
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    (void)holder->Get(isolate)->SetPrivate(context, priv, value->Get(isolate));
+}
+
 void v8_Object_Dispose(Global<Object>* obj) {
     if (!obj) return;
     g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);

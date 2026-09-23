@@ -2966,6 +2966,11 @@ pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
 
 /// Create a transparent Proxy for legacy platform objects with WebIDL-compliant
 /// [[OwnPropertyKeys]] enumeration order: indexed → named → own → symbols
+/// A strong edge, invisible to script, from `holder` to `value` (a private
+/// property keyed `key`): `value` lives as long as `holder`. Neither handle is
+/// taken over.
+pub extern fn v8_Object_SetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int, value: *Value) void;
+
 pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object) ?*Object;
 
 // ============================================================================
