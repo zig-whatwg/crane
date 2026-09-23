@@ -573,4 +573,28 @@ pub const HTMLSelectElement = struct {
 
         return try HTMLSelectElementImpl.call_add(instance, element, before);
     }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_remove__1(instance: *runtime.Instance, index: i32) anyerror!void {
+        if (comptime @hasDecl(HTMLSelectElementImpl, "call_remove__1")) {
+            // [CEReactions] - Trigger Custom Element lifecycle callbacks
+            runtime.CEReactions.begin();
+            defer runtime.CEReactions.end();
+
+            return try HTMLSelectElementImpl.call_remove__1(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "remove", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_remove", .args = &.{} },
+            .{ .function = "call_remove__1", .implemented = @hasDecl(HTMLSelectElementImpl, "call_remove__1"), .args = &.{.{ .kinds = &.{.numeric} }} },
+        } },
+    };
 };

@@ -355,4 +355,23 @@ pub const XMLHttpRequest = struct {
     pub fn call_setAttributionReporting(instance: *runtime.Instance, options: AttributionReportingRequestOptions) anyerror!void {
         return try XMLHttpRequestImpl.call_setAttributionReporting(instance, options);
     }
+
+    pub fn call_open__1(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString, async: bool, username: webidl.Opt(?runtime.USVString), password: webidl.Opt(?runtime.USVString)) anyerror!void {
+        if (comptime @hasDecl(XMLHttpRequestImpl, "call_open__1")) {
+            return try XMLHttpRequestImpl.call_open__1(instance, method, url, async, username, password);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "open", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_open", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+            .{ .function = "call_open__1", .implemented = @hasDecl(XMLHttpRequestImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.boolean} }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional } } },
+        } },
+    };
 };

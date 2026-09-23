@@ -130,7 +130,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 6 },
+            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
             .{ "createRadialGradient", "call_createRadialGradient", 6 },
@@ -149,7 +149,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             .{ "strokeText", "call_strokeText", 3 },
             .{ "measureText", "call_measureText", 1 },
             .{ "drawImage", "call_drawImage", 3 },
-            .{ "createImageData", "call_createImageData", 2 },
+            .{ "createImageData", "call_createImageData", 1 },
             .{ "getImageData", "call_getImageData", 4 },
             .{ "putImageData", "call_putImageData", 3 },
             .{ "setLineDash", "call_setLineDash", 1 },
@@ -844,4 +844,141 @@ pub const OffscreenCanvasRenderingContext2D = struct {
     pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         return try OffscreenCanvasRenderingContext2DImpl.call_clip(instance, fillRule);
     }
+
+    pub fn call_createImageData__1(instance: *runtime.Instance, imageData: *runtime.Instance) anyerror!*runtime.Instance {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_createImageData__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_createImageData__1(instance, imageData);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_stroke__1(instance: *runtime.Instance, path: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_stroke__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_stroke__1(instance, path);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_isPointInPath__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_isPointInPath__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_isPointInPath__1(instance, path, x, y, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_putImageData__1(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32, dirtyX: i32, dirtyY: i32, dirtyWidth: i32, dirtyHeight: i32) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_putImageData__1")) {
+            // [EnforceRange] on dx
+            if (!runtime.isInRange(i32, dx)) return error.TypeError;
+            // [EnforceRange] on dy
+            if (!runtime.isInRange(i32, dy)) return error.TypeError;
+            // [EnforceRange] on dirtyX
+            if (!runtime.isInRange(i32, dirtyX)) return error.TypeError;
+            // [EnforceRange] on dirtyY
+            if (!runtime.isInRange(i32, dirtyY)) return error.TypeError;
+            // [EnforceRange] on dirtyWidth
+            if (!runtime.isInRange(i32, dirtyWidth)) return error.TypeError;
+            // [EnforceRange] on dirtyHeight
+            if (!runtime.isInRange(i32, dirtyHeight)) return error.TypeError;
+
+            return try OffscreenCanvasRenderingContext2DImpl.call_putImageData__1(instance, imageData, dx, dy, dirtyX, dirtyY, dirtyWidth, dirtyHeight);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_drawImage__1(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_drawImage__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_drawImage__1(instance, image, dx, dy, dw, dh);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_drawImage__2(instance: *runtime.Instance, image: CanvasImageSource, sx: f64, sy: f64, sw: f64, sh: f64, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_drawImage__2")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_drawImage__2(instance, image, sx, sy, sw, sh, dx, dy, dw, dh);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_setTransform__1(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_setTransform__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_setTransform__1(instance, transform);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_fill__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_fill__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_fill__1(instance, path, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_isPointInStroke__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64) anyerror!bool {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_isPointInStroke__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_isPointInStroke__1(instance, path, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_clip__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
+        if (comptime @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_clip__1")) {
+            return try OffscreenCanvasRenderingContext2DImpl.call_clip__1(instance, path, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "createImageData", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createImageData", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_createImageData__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_createImageData__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }} },
+        } },
+        .{ "stroke", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_stroke", .args = &.{} },
+            .{ .function = "call_stroke__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_stroke__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }} },
+        } },
+        .{ "isPointInPath", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_isPointInPath", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_isPointInPath__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_isPointInPath__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+        .{ "putImageData", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_putImageData", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_putImageData__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_putImageData__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "drawImage", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_drawImage", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_drawImage__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__2", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_drawImage__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "setTransform", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_setTransform", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_setTransform__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_setTransform__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+        } },
+        .{ "fill", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_fill", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
+            .{ .function = "call_fill__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_fill__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+        .{ "isPointInStroke", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_isPointInStroke", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_isPointInStroke__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_isPointInStroke__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "clip", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_clip", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
+            .{ .function = "call_clip__1", .implemented = @hasDecl(OffscreenCanvasRenderingContext2DImpl, "call_clip__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+    };
 };

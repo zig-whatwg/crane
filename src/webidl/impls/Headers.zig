@@ -16,6 +16,7 @@ const HeaderGuard = fetch.internal.HeaderGuard;
 const validation = fetch.internal.validation;
 
 const Headers = interfaces.Headers;
+const same_object = @import("same_object.zig");
 
 pub const State = Headers.State;
 
@@ -32,7 +33,20 @@ pub const ImplError = error{
 /// Internal state wraps Fetch HeaderList
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
+    /// Storage for a Headers object that owns its list - `new Headers()`.
+    /// Unused for a Request's or Response's headers; see `list`.
     header_list: HeaderList,
+    /// The header list this object IS, per the spec: `&header_list` when
+    /// `owns_headers`, otherwise the owning Request's or Response's own list.
+    ///
+    /// A POINTER, not a copy. `initWithHeaderList` used to take
+    /// `header_list.*` - a by-value copy of the owner's ArrayList header - so
+    /// the two shared one buffer through two headers. The first append past
+    /// capacity reallocated it under the owner, who then freed the old buffer's
+    /// entries again at deinit (a double free, 0xAA-poisoned), and an append
+    /// that did not reallocate was invisible to the owner, whose length never
+    /// moved: `request.headers.append(...)` never reached `fetch(request)`.
+    list: *HeaderList,
     guard: HeaderGuard,
     /// Cached sorted HeaderList for iteration (per Fetch spec, Headers iterate in sorted order)
     sorted_list: ?HeaderList = null,
@@ -40,6 +54,26 @@ pub const InternalState = struct {
     /// If false, we're wrapping another object's header_list (e.g., Response/Request)
     /// and should NOT deinit it (the owner will).
     owns_headers: bool = true,
+    /// For a Request's or Response's headers: the owner, kept alive by this
+    /// object, because `list` points into it.
+    owner: ?Owner = null,
+
+    /// The Request or Response whose list this object is.
+    ///
+    /// The dependency runs from the Headers to its owner, the reverse of
+    /// `xhr.upload`: the data is the OWNER's header list, so it is the owner
+    /// that must outlive the Headers - `const h = (await fetch(u)).headers`
+    /// holds only the Headers. So this object pins the owner's wrapper, and
+    /// the owner holds nothing but its generated `cached_headers` pointer,
+    /// which this object clears when it goes. No strong cycle: a Headers that
+    /// script drops is collected, clears the cache and unpins the owner, and
+    /// the owner hands out a new Headers over the same list next time.
+    const Owner = struct {
+        link: same_object.Link,
+        pin: same_object.Pin,
+        /// The owner's `cached_headers`, which must not outlive this object.
+        cache_slot: *?*runtime.Instance,
+    };
 };
 
 /// Initialize instance
@@ -59,8 +93,10 @@ pub fn init(
     internal.* = .{
         .allocator = allocator,
         .header_list = HeaderList.init(allocator),
+        .list = undefined,
         .guard = .none,
     };
+    internal.list = &internal.header_list;
 
     // Store in instance
     const state = instance.getState(StateType);
@@ -72,11 +108,18 @@ pub fn init(
 /// Initialize with existing HeaderList and guard (for Request/Response)
 /// NOTE: This creates a Headers wrapper that does NOT own the header_list.
 /// The owner (Response/Request) is responsible for freeing the header strings.
+///
+/// `owner` is the Request or Response `header_list` lives in, and
+/// `cache_slot` is its generated `cached_headers` field: this object keeps
+/// `owner` alive and clears `cache_slot` when it is freed - see
+/// `InternalState.Owner`.
 pub fn initWithHeaderList(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     header_list: *HeaderList,
     guard: HeaderGuard,
+    owner: *runtime.Instance,
+    cache_slot: *?*runtime.Instance,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, State, &Headers.vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -87,10 +130,17 @@ pub fn initWithHeaderList(
 
     internal.* = .{
         .allocator = allocator,
-        .header_list = header_list.*, // Copy the header list struct (pointers to strings)
+        .header_list = HeaderList.init(allocator), // unused storage
+        .list = header_list, // the owner's own list, by reference
         .guard = guard,
         .owns_headers = false, // We don't own the headers - Response/Request does
+        .owner = .{
+            .link = same_object.Link.to(owner),
+            .pin = .{},
+            .cache_slot = cache_slot,
+        },
     };
+    if (internal.owner) |*link| link.pin.hold(owner);
 
     // Store in instance
     const state = instance.getState(State);
@@ -118,6 +168,16 @@ pub fn deinit(instance: *runtime.Instance) void {
         // the Response/Request does and will free them in its deinit
         if (internal.owns_headers) {
             internal.header_list.deinit();
+        }
+        if (internal.owner) |*owner| {
+            // The owner hands out a fresh Headers over the same list next
+            // time. It is alive - this object pinned it - unless the whole
+            // context is being torn down in no particular order, which the
+            // generation check is for.
+            if (owner.link.isLive() and owner.cache_slot.* == instance) {
+                owner.cache_slot.* = null;
+            }
+            owner.pin.release();
         }
         allocator.destroy(internal);
     }
@@ -183,7 +243,7 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value:
     }
 
     // Delegate to HeaderList
-    try internal.header_list.append(name, value);
+    try internal.list.append(name, value);
 }
 
 /// delete(name)
@@ -202,7 +262,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerr
     }
 
     // Delegate to HeaderList
-    internal.header_list.delete(name);
+    internal.list.delete(name);
 }
 
 /// get(name) -> ByteString?
@@ -216,7 +276,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!
     }
 
     // Delegate to HeaderList
-    return internal.header_list.get(internal.allocator, name) catch |err| {
+    return internal.list.get(internal.allocator, name) catch |err| {
         return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
         };
@@ -229,7 +289,7 @@ pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal.?;
 
     // Get all Set-Cookie headers
-    const values = internal.header_list.getSetCookie(internal.allocator) catch |err| {
+    const values = internal.list.getSetCookie(internal.allocator) catch |err| {
         return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
         };
@@ -250,7 +310,7 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!
         return error.TypeError;
     }
 
-    return internal.header_list.contains(name);
+    return internal.list.contains(name);
 }
 
 /// set(name, value)
@@ -272,7 +332,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: ru
     }
 
     // Delegate to HeaderList
-    try internal.header_list.set(name, value);
+    try internal.list.set(name, value);
 }
 
 /// forEach(callback)
@@ -282,7 +342,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
     const internal = state.own._internal.?;
 
     // Iterate over headers
-    for (internal.header_list.entries.items) |entry| {
+    for (internal.list.entries.items) |entry| {
         // Call the callback with (value, name, headers)
         // V8 runtime will handle the actual callback invocation
         _ = callback;
@@ -305,7 +365,7 @@ pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     }
 
     // Get sorted entries (per Fetch spec, Headers iterate in sorted order)
-    const sorted_list = internal.header_list.sortAndCombine(internal.allocator) catch return null;
+    const sorted_list = internal.list.sortAndCombine(internal.allocator) catch return null;
 
     // Cache the sorted list (it owns the strings)
     internal.sorted_list = sorted_list;

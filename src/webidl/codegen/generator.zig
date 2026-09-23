@@ -266,6 +266,56 @@ fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types
     try ops.appendSlice(allocator, unique.items);
 }
 
+/// Deduplicate operations by name, static-ness AND argument types, keeping the
+/// first occurrence - so overloads survive and repeated definitions of one
+/// overload (partial interfaces, overlapping IDL sources) do not.
+///
+/// "The same types" treats the string types as one: two definitions that
+/// differ only in DOMString vs CSSOMString vs USVString are one operation
+/// written by two specs - cssom.idl's `setProperty(CSSOMString property, ...)`
+/// and the older DOM Level 2 CSS file's `setProperty(in DOMString
+/// propertyName, ...)` - and could not be told apart by overload resolution
+/// anyway. Optionality is ignored for the same reason.
+fn deduplicateOperationSignatures(allocator: std.mem.Allocator, ops: *std.ArrayList(types.Operation)) !void {
+    var unique = std.ArrayList(types.Operation).empty;
+    defer unique.deinit(allocator);
+
+    outer: for (ops.items) |op| {
+        const name = op.name orelse {
+            try unique.append(allocator, op);
+            continue;
+        };
+        for (unique.items) |seen| {
+            const seen_name = seen.name orelse continue;
+            if (seen.static == op.static and std.mem.eql(u8, seen_name, name) and
+                sameOverloadSignature(seen, op)) continue :outer;
+        }
+        try unique.append(allocator, op);
+    }
+
+    ops.clearRetainingCapacity();
+    try ops.appendSlice(allocator, unique.items);
+}
+
+fn sameOverloadSignature(a: types.Operation, b: types.Operation) bool {
+    if (a.arguments.len != b.arguments.len) return false;
+    for (a.arguments, b.arguments) |x, y| {
+        if (x.variadic != y.variadic) return false;
+        const tx = x.idlType.type;
+        const ty = y.idlType.type;
+        if (isStringTypeName(tx) and isStringTypeName(ty)) continue;
+        if (!std.mem.eql(u8, tx, ty)) return false;
+    }
+    return true;
+}
+
+fn isStringTypeName(name: []const u8) bool {
+    for ([_][]const u8{ "DOMString", "USVString", "ByteString", "CSSOMString" }) |s| {
+        if (std.mem.eql(u8, name, s)) return true;
+    }
+    return false;
+}
+
 /// Generate root.zig file that exports all interfaces
 pub fn generateInterfacesRoot(
     allocator: std.mem.Allocator,
@@ -1850,6 +1900,18 @@ fn generateInterfaceFile(
     // Partial interfaces can cause duplicate attribute definitions (e.g., style from partials)
     try deduplicateAttributes(allocator, &own_attrs);
 
+    // Every overload of every own operation: one per distinct argument type
+    // list. The by-name dedupe just below keeps only the FIRST operation of
+    // each name, and everything else in the generated interface - Meta.methods,
+    // the vtable, the primary `call_<name>` delegates - is still built from
+    // that list. Overload resolution needs the rest: `writeDelegateFunctions`
+    // emits a `call_<name>__<k>` delegate and an `overloads` table from this
+    // one. Duplicates across partial interfaces and IDL sources have identical
+    // signatures, so they still collapse to one here.
+    var own_overload_ops = try own_ops.clone(allocator);
+    defer own_overload_ops.deinit(allocator);
+    try deduplicateOperationSignatures(allocator, &own_overload_ops);
+
     // Deduplicate own operations BEFORE generating metadata
     // Partial interfaces can cause duplicate operation definitions
     try deduplicateOperations(allocator, &own_ops);
@@ -1877,6 +1939,7 @@ fn generateInterfaceFile(
         iterable_member, // Iterable declaration if present
         own_attrs.items, // Own attributes (for V8 property registration)
         async_iterable_member, // Async iterable declaration if present
+        own_overload_ops.items, // Every overload, for each method's `length`
     );
 
     // NOTE: Deduplication now happens BEFORE writeMetadata (above)
@@ -1966,7 +2029,7 @@ fn generateInterfaceFile(
 
     // Generate delegate functions (ONLY for own attributes/operations, not inherited)
     const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
-    try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items);
+    try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items, own_overload_ops.items);
 
     // Generate iterable support if interface has iterable declaration
     if (iterable_member) |iterable| {

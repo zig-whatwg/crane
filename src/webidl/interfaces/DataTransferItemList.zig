@@ -36,7 +36,7 @@ pub const DataTransferItemList = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "add", "call_add", 2 },
+            .{ "add", "call_add", 1 },
             .{ "remove", "call_remove", 1 },
             .{ "clear", "call_clear", 0 },
         };
@@ -122,4 +122,23 @@ pub const DataTransferItemList = struct {
     pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!?*runtime.Instance {
         return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }
+
+    pub fn call_add__1(instance: *runtime.Instance, data: *runtime.Instance) anyerror!?*runtime.Instance {
+        if (comptime @hasDecl(DataTransferItemListImpl, "call_add__1")) {
+            return try DataTransferItemListImpl.call_add__1(instance, data);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "add", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_add", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+            .{ .function = "call_add__1", .implemented = @hasDecl(DataTransferItemListImpl, "call_add__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "File")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").File.State) } else .other)} }} },
+        } },
+    };
 };

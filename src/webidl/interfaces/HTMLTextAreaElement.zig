@@ -655,4 +655,23 @@ pub const HTMLTextAreaElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLTextAreaElementImpl.call_checkValidity(instance);
     }
+
+    pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: DOMString, start: u32, end: u32, selectionMode: webidl.Opt(SelectionMode)) anyerror!void {
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "call_setRangeText__1")) {
+            return try HTMLTextAreaElementImpl.call_setRangeText__1(instance, replacement, start, end, selectionMode);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "setRangeText", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_setRangeText", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_setRangeText__1", .implemented = @hasDecl(HTMLTextAreaElementImpl, "call_setRangeText__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+    };
 };

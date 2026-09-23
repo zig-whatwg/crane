@@ -54,7 +54,7 @@ pub const MessagePort = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
             .{ "start", "call_start", 0 },
             .{ "close", "call_close", 0 },
         };
@@ -171,4 +171,23 @@ pub const MessagePort = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try MessagePortImpl.call_close(instance);
     }
+
+    pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!void {
+        if (comptime @hasDecl(MessagePortImpl, "call_postMessage__1")) {
+            return try MessagePortImpl.call_postMessage__1(instance, message, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "postMessage", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_postMessage", .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.sequence} } } },
+            .{ .function = "call_postMessage__1", .implemented = @hasDecl(MessagePortImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+    };
 };

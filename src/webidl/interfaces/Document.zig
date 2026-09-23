@@ -351,8 +351,8 @@ pub const Document = struct {
             .{ "getElementsByName", "call_getElementsByName", 1 },
             .{ "open", "call_open", 0 },
             .{ "close", "call_close", 0 },
-            .{ "write", "call_write", 1 },
-            .{ "writeln", "call_writeln", 1 },
+            .{ "write", "call_write", 0 },
+            .{ "writeln", "call_writeln", 0 },
             .{ "hasFocus", "call_hasFocus", 0 },
             .{ "execCommand", "call_execCommand", 1 },
             .{ "queryCommandEnabled", "call_queryCommandEnabled", 1 },
@@ -370,9 +370,9 @@ pub const Document = struct {
             .{ "caretPositionFromPoint", "call_caretPositionFromPoint", 2 },
             .{ "getElementById", "call_getElementById", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
-            .{ "prepend", "call_prepend", 1 },
-            .{ "append", "call_append", 1 },
-            .{ "replaceChildren", "call_replaceChildren", 1 },
+            .{ "prepend", "call_prepend", 0 },
+            .{ "append", "call_append", 0 },
+            .{ "replaceChildren", "call_replaceChildren", 0 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
@@ -2979,6 +2979,37 @@ pub const Document = struct {
 
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
+
+    pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: DOMString, features: DOMString) anyerror!?WindowProxy {
+        if (comptime @hasDecl(DocumentImpl, "call_open__1")) {
+            return try DocumentImpl.call_open__1(instance, url, name, features);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_requestStorageAccess__1(instance: *runtime.Instance, types: webidl.Opt(StorageAccessTypes)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(DocumentImpl, "call_requestStorageAccess__1")) {
+            return try DocumentImpl.call_requestStorageAccess__1(instance, types);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "open", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_open", .args = &.{ .{ .kinds = &.{.string}, .optionality = .optional }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_open__1", .implemented = @hasDecl(DocumentImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+        } },
+        .{ "requestStorageAccess", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_requestStorageAccess", .args = &.{} },
+            .{ .function = "call_requestStorageAccess__1", .implemented = @hasDecl(DocumentImpl, "call_requestStorageAccess__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+        } },
+    };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration

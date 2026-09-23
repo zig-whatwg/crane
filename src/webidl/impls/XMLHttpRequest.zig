@@ -31,6 +31,8 @@ const ProgressEventData = xhr.ProgressEventData;
 
 const log = std.log.scoped(.xhr);
 
+const same_object = @import("same_object.zig");
+
 /// The parent interface's generated State. `xhr.onload` and friends are
 /// declared on XMLHttpRequestEventTarget, so the fields live here for BOTH an
 /// XMLHttpRequest and an XMLHttpRequestUpload; `instance.getState` of this type
@@ -85,6 +87,11 @@ pub const InternalState = struct {
     /// The token shared with a queued send task, if one is outstanding.
     send_token: ?*SendToken,
 
+    /// Keeps `this.upload` alive for as long as this XHR - see
+    /// `same_object.zig`. The upload object carries the upload event handlers,
+    /// which script sets on it and then never touches again.
+    upload_pin: same_object.Pin,
+
     /// The request body, owned for the lifetime of one send().
     ///
     /// An async send() hands the bytes to an event-loop TASK, which runs after
@@ -100,6 +107,7 @@ pub const InternalState = struct {
             .onreadystatechange = null,
             .isolate = null,
             .send_token = null,
+            .upload_pin = .{},
             .pending_body = null,
         };
     }
@@ -123,6 +131,8 @@ pub const InternalState = struct {
     pub fn deinitState(self: *InternalState) void {
         // Dispose V8 Global handle to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
+        // The upload object's lifetime is the wrapper cache's from here.
+        self.upload_pin.release();
         // Before anything else: a task queued by an async send() is about to
         // run against an instance that is going away.
         self.cancelPendingSend();
@@ -252,6 +262,12 @@ pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // The caching is handled by [SameObject] in the interface layer (cached_upload)
     const XMLHttpRequestUpload = interfaces.XMLHttpRequestUpload;
     const upload = try XMLHttpRequestUpload.init(internal.allocator, instance.ctx);
+
+    // `cached_upload` is a pointer V8 cannot see. Without this, a collection
+    // between `xhr.upload.onloadend = f` and `send()` freed the upload object
+    // and `send()` fired `upload.loadstart` into the slab
+    // (xhr/send-timeout-events.htm, SEGV in v8_Value_IsFunction).
+    internal.upload_pin.hold(upload);
 
     return upload;
 }
@@ -467,8 +483,9 @@ pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.Event
 pub fn set_timeout(instance: *runtime.Instance, value: u32) anyerror!void {
     const xhr_state = getXHRState(instance);
 
-    // Step 1: Check sync mode in Window context (TODO: check global object type)
-    // For now, skip this check since we don't have Window detection
+    // Step 1: If the current global object is a Window object and this's
+    // synchronous flag is set, then throw an "InvalidAccessError".
+    if (xhr_state.synchronous_flag and currentGlobalIsWindow()) return error.InvalidAccessError;
 
     // Step 2: Set timeout
     xhr_state.timeout = value;
@@ -507,15 +524,18 @@ pub fn set_withCredentials(instance: *runtime.Instance, value: bool) anyerror!vo
 pub fn set_responseType(instance: *runtime.Instance, value: enums.XMLHttpRequestResponseType) anyerror!void {
     const xhr_state = getXHRState(instance);
 
-    // Step 1: Skip document in non-Window context (TODO: check global object type)
-    // For now, allow all types
+    // Step 1: If the current global object is not a Window object and the
+    // given value is "document", then return.
+    if (value == ._document_ and !currentGlobalIsWindow()) return;
 
     // Step 2: Check state
     if (xhr_state.ready_state == .LOADING or xhr_state.ready_state == .DONE) {
         return error.InvalidStateError;
     }
 
-    // Step 3: Check sync mode in Window context (TODO)
+    // Step 3: If the current global object is a Window object and this's
+    // synchronous flag is set, then throw an "InvalidAccessError".
+    if (xhr_state.synchronous_flag and currentGlobalIsWindow()) return error.InvalidAccessError;
 
     // Step 4: Set response type
     xhr_state.response_type = switch (value) {
@@ -544,39 +564,104 @@ pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictio
     return error.NotImplemented;
 }
 
-/// Operation: open
+/// Operation: open(method, url)
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-open()-method
-/// Step 15: "Set this's state to opened"
-/// Step 16: "Fire an event named readystatechange at this."
 pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
+    // Step 7: "If the async argument is omitted, set async to true, and set
+    // username and password to null."
+    return openSteps(instance, method, url, true, null, null);
+}
+
+/// Operation: open(method, url, async, username, password)
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-open()-method
+///
+/// The overload with `async`, and the only way to make a SYNCHRONOUS request:
+/// `open("GET", url, false)`. Until the binding resolved overloads, only the
+/// two-argument open() was bound, the third argument was dropped, and every
+/// XMLHttpRequest ran asynchronously - so the ~80 xhr/ files that open
+/// synchronously read `status` and `responseText` right after send() and got
+/// 0 and "".
+///
+/// Note step 7's converse: `open(m, url, undefined)` IS this overload -
+/// argument count, not value, selects it - so `async` is then false.
+pub fn call_open__1(
+    instance: *runtime.Instance,
+    method: runtime.ByteString,
+    url: runtime.USVString,
+    is_async: bool,
+    username: webidl.Opt(?runtime.USVString),
+    password: webidl.Opt(?runtime.USVString),
+) anyerror!void {
+    // `optional USVString? username = null`: omitted, undefined and null are
+    // all null.
+    const user: ?[]const u8 = if (username.wasPassed()) username.value else null;
+    const pass: ?[]const u8 = if (password.wasPassed()) password.value else null;
+    return openSteps(instance, method, url, is_async, user, pass);
+}
+
+fn openSteps(
+    instance: *runtime.Instance,
+    method: []const u8,
+    url: []const u8,
+    is_async: bool,
+    username: ?[]const u8,
+    password: ?[]const u8,
+) anyerror!void {
     const xhr_state = getXHRState(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
     // settings object". Borrowed from the context entry - not ours to free.
     const base_url = relevantBaseURL(instance);
 
-    // Call the open algorithm
+    // Step 12 fires readystatechange only "if this's state is not opened" -
+    // a second open() on an opened request changes nothing observable there.
+    // Step 11 does not touch the state, so asking now is asking then.
+    const was_opened = xhr_state.ready_state == .OPENED;
+
+    // Steps 2-11.
     open_algo.open(
         xhr_state,
         method,
         url,
-        true, // async = true (default)
-        null, // username
-        null, // password
+        is_async,
+        username,
+        password,
         base_url,
+        currentGlobalIsWindow(),
     ) catch |err| {
         return switch (err) {
             open_algo.OpenError.SecurityError => error.SecurityError,
             open_algo.OpenError.InvalidURL => error.SyntaxError,
             open_algo.OpenError.InvalidMethod => error.SyntaxError,
             open_algo.OpenError.InvalidState => error.InvalidStateError,
+            open_algo.OpenError.InvalidAccess => error.InvalidAccessError,
             open_algo.OpenError.OutOfMemory => error.OutOfMemory,
         };
     };
 
-    // Step 12: Fire an event named readystatechange at this.
-    fireReadyStateChangeEvent(instance);
+    // Step 12: If this's state is not opened, set it to opened and fire an
+    // event named readystatechange at this.
+    if (!was_opened) fireReadyStateChangeEvent(instance);
+}
+
+/// Is the current global object a Window?
+///
+/// open() step 9 and the `timeout` and `responseType` setters restrict
+/// synchronous requests in a Window only - a worker may block. The current
+/// global object is the running realm's; its Instance sits in internal field
+/// 0 of the context's global, and names its own interface.
+fn currentGlobalIsWindow() bool {
+    const ffi = v8_engine.ffi;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return false;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+    defer ffi.v8_Context_Dispose(context);
+    const global = ffi.v8_Context_Global(context) orelse return false;
+    defer ffi.v8_Object_Dispose(global);
+    const raw = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return false;
+    const global_instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    return std.mem.eql(u8, global_instance.vtable.name, "Window");
 }
 
 /// This's relevant settings object's API base URL.

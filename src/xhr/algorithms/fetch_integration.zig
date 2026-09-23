@@ -124,6 +124,23 @@ pub fn fetch(
         return;
     }
 
+    // Step 12, a synchronous request: processResponseConsumeBody appends the
+    // whole body to the received bytes, and "handle response end-of-body" is
+    // the only step that fires anything - readystatechange at done, load and
+    // loadend (its step 6 skips progress for a sync request). The
+    // headers-received and loading transitions, with their readystatechange
+    // and progress events, belong to the asynchronous path alone; running a
+    // sync request through them fired two readystatechange events and a
+    // progress event that no browser fires.
+    if (state.synchronous_flag) {
+        if (response.body) |response_body| {
+            const bytes = response_body.getBytes();
+            if (bytes.len > 0) try state.received_bytes.appendSlice(state.allocator, bytes);
+        }
+        processor.processResponseEndOfBody();
+        return;
+    }
+
     // Steps 11.9.3-11.9.9: move to headers received and read the length.
     if (!processor.processResponse()) return;
 

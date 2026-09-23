@@ -182,4 +182,80 @@ pub const AudioNode = struct {
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
         return try AudioNodeImpl.call_disconnect(instance);
     }
+
+    pub fn call_connect__1(instance: *runtime.Instance, destinationParam: *runtime.Instance, output: webidl.Opt(u32)) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_connect__1")) {
+            return try AudioNodeImpl.call_connect__1(instance, destinationParam, output);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__1(instance: *runtime.Instance, output: u32) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__1")) {
+            return try AudioNodeImpl.call_disconnect__1(instance, output);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__2(instance: *runtime.Instance, destinationNode: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__2")) {
+            return try AudioNodeImpl.call_disconnect__2(instance, destinationNode);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__3(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__3")) {
+            return try AudioNodeImpl.call_disconnect__3(instance, destinationNode, output);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__4(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: u32, input: u32) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__4")) {
+            return try AudioNodeImpl.call_disconnect__4(instance, destinationNode, output, input);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__5(instance: *runtime.Instance, destinationParam: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__5")) {
+            return try AudioNodeImpl.call_disconnect__5(instance, destinationParam);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_disconnect__6(instance: *runtime.Instance, destinationParam: *runtime.Instance, output: u32) anyerror!void {
+        if (comptime @hasDecl(AudioNodeImpl, "call_disconnect__6")) {
+            return try AudioNodeImpl.call_disconnect__6(instance, destinationParam, output);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "connect", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_connect", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioNode")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioNode.State) } else .other)} }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_connect__1", .implemented = @hasDecl(AudioNodeImpl, "call_connect__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioParam")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioParam.State) } else .other)} }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+        } },
+        .{ "disconnect", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_disconnect", .args = &.{} },
+            .{ .function = "call_disconnect__1", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__1"), .args = &.{.{ .kinds = &.{.numeric} }} },
+            .{ .function = "call_disconnect__2", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__2"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioNode")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioNode.State) } else .other)} }} },
+            .{ .function = "call_disconnect__3", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__3"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioNode")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioNode.State) } else .other)} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_disconnect__4", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__4"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioNode")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioNode.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_disconnect__5", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__5"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioParam")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioParam.State) } else .other)} }} },
+            .{ .function = "call_disconnect__6", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__6"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioParam")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioParam.State) } else .other)} }, .{ .kinds = &.{.numeric} } } },
+        } },
+    };
 };

@@ -209,4 +209,23 @@ pub const GPUCommandEncoder = struct {
     pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
         return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
+
+    pub fn call_copyBufferToBuffer__1(instance: *runtime.Instance, source: *runtime.Instance, sourceOffset: GPUSize64, destination: *runtime.Instance, destinationOffset: GPUSize64, size: webidl.Opt(GPUSize64)) anyerror!void {
+        if (comptime @hasDecl(GPUCommandEncoderImpl, "call_copyBufferToBuffer__1")) {
+            return try GPUCommandEncoderImpl.call_copyBufferToBuffer__1(instance, source, sourceOffset, destination, destinationOffset, size);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "copyBufferToBuffer", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_copyBufferToBuffer", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBuffer")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBuffer.State) } else .other)} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBuffer")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBuffer.State) } else .other)} }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+            .{ .function = "call_copyBufferToBuffer__1", .implemented = @hasDecl(GPUCommandEncoderImpl, "call_copyBufferToBuffer__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBuffer")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBuffer.State) } else .other)} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBuffer")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBuffer.State) } else .other)} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+        } },
+    };
 };

@@ -339,7 +339,7 @@ pub const Window = struct {
             .{ "confirm", "call_confirm", 0 },
             .{ "prompt", "call_prompt", 0 },
             .{ "print", "call_print", 0 },
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
             .{ "navigate", "call_navigate", 1 },
             .{ "showOpenFilePicker", "call_showOpenFilePicker", 0 },
             .{ "showSaveFilePicker", "call_showSaveFilePicker", 0 },
@@ -366,9 +366,9 @@ pub const Window = struct {
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
             .{ "atob", "call_atob", 1 },
-            .{ "setTimeout", "call_setTimeout", 2 },
+            .{ "setTimeout", "call_setTimeout", 1 },
             .{ "clearTimeout", "call_clearTimeout", 0 },
-            .{ "setInterval", "call_setInterval", 2 },
+            .{ "setInterval", "call_setInterval", 1 },
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
@@ -3095,6 +3095,85 @@ pub const Window = struct {
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
         return try WindowImpl.call_item(instance, index);
     }
+
+    pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(WindowPostMessageOptions)) anyerror!void {
+        if (comptime @hasDecl(WindowImpl, "call_postMessage__1")) {
+            return try WindowImpl.call_postMessage__1(instance, message, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_alert__1(instance: *runtime.Instance, message: DOMString) anyerror!void {
+        if (comptime @hasDecl(WindowImpl, "call_alert__1")) {
+            return try WindowImpl.call_alert__1(instance, message);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_scrollBy__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_scrollBy__1")) {
+            return try WindowImpl.call_scrollBy__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_scrollTo__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_scrollTo__1")) {
+            return try WindowImpl.call_scrollTo__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_createImageBitmap__1(instance: *runtime.Instance, image: ImageBitmapSource, sx: i32, sy: i32, sw: i32, sh: i32, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_createImageBitmap__1")) {
+            return try WindowImpl.call_createImageBitmap__1(instance, image, sx, sy, sw, sh, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_scroll__1")) {
+            return try WindowImpl.call_scroll__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "postMessage", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_postMessage", .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
+            .{ .function = "call_postMessage__1", .implemented = @hasDecl(WindowImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "alert", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_alert", .args = &.{} },
+            .{ .function = "call_alert__1", .implemented = @hasDecl(WindowImpl, "call_alert__1"), .args = &.{.{ .kinds = &.{.string} }} },
+        } },
+        .{ "scrollBy", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollBy", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollBy__1", .implemented = @hasDecl(WindowImpl, "call_scrollBy__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "scrollTo", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollTo", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollTo__1", .implemented = @hasDecl(WindowImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(WindowImpl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "scroll", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scroll", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scroll__1", .implemented = @hasDecl(WindowImpl, "call_scroll__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+    };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
