@@ -105,7 +105,7 @@ pub fn init(
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
     range_boundaries.install(&boundariesOf);
-    range_boundaries.installLiveRange(.{ .collapse = &collapseLive });
+    range_boundaries.installLiveRange(.{ .collapse = &collapseLive, .update_owner_document = &updateOwnerDocument });
 
     return instance;
 }
@@ -178,6 +178,30 @@ fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) 
         node
     else
         (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
+    try joinDocument(internal, range, document);
+}
+
+/// Blink's Range::UpdateOwnerDocumentIfNeeded. A live range is kept in the
+/// live-range list of its start node's node document, and a mutation walks
+/// only the list of the document it happens in. When adoption moves the
+/// range's boundary nodes to another document, the range moves lists with
+/// them - or removing a node there would pass it by and leave it pointing at
+/// a child that is gone.
+fn updateOwnerDocument(range: *runtime.Instance) anyerror!void {
+    const internal = getInternal(range) orelse return;
+    const start = internal.start_container orelse return;
+    const node_type = interfaces.Node.get_nodeType(start) catch return;
+    const document = if (node_type == interfaces.Node.get_DOCUMENT_NODE())
+        start
+    else
+        (interfaces.Node.get_ownerDocument(start) catch null) orelse return;
+
+    const joined_live = if (internal.owner_document) |old|
+        internal.owner_generation != 0 and runtime.SlabAllocator.generationOf(old) == internal.owner_generation
+    else
+        false;
+    if (joined_live and internal.owner_document.? == document) return;
+    if (joined_live) document_internals.unregisterRange(internal.owner_document.?, range);
     try joinDocument(internal, range, document);
 }
 

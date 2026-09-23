@@ -36,6 +36,8 @@ const document_internals = @import("document_internals.zig");
 const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
+const node_document = @import("node_document.zig");
+const range_boundaries = @import("range_boundaries.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -819,19 +821,25 @@ pub fn insert(
 
     // Step 7: For each node in nodes, in tree order:
     for (nodes[0..count]) |n| {
-        // Step 7.1: Adopt node into parent's node document
-        // Per DOM spec, a Document's node document is itself (ownerDocument returns null but
-        // internally the document is its own node document for adoption purposes).
-        // For Document nodes, we skip adoption since the document owns itself.
-        if (parent.owner_document) |doc| {
+        // Step 7.1: "Adopt node into parent's node document." A document is
+        // its own node document.
+        //
+        // Adopting is ALSO what takes node out of its old parent (adopt step
+        // 2), so it can never be skipped. It used to be, whenever the
+        // parent's NodeBase had no owner document - true of every node made
+        // through the DOM API that had not yet been inside a document, a
+        // DocumentFragment above all - and the node was then linked into its
+        // new parent while its old parent still listed it: the old parent's
+        // first child became the moved node and the rest of its children
+        // fell off the list. Emptying an element into a fragment one child
+        // at a time (jQuery's append) never terminated.
+        const parent_base: *NodeBase = @ptrCast(parent);
+        if (parent_base.getNodeDocument()) |doc| {
             try adopt(n, doc);
-        } else if (parent.node_type == DOCUMENT_NODE) {
-            // Parent is a Document - set node's owner_document to the parent (cast to Document)
-            // This is safe because Document has NodeBase as its first field
-            const doc: *interfaces.Document = @ptrCast(@alignCast(parent));
-            try adopt(n, doc);
+        } else if (n.parent_node != null) {
+            // No document to adopt into: still honour adopt's step 2.
+            try remove(n, false);
         }
-        // else: no owner document and not a document - shouldn't happen but skip adoption
 
         // Step 7.2-3: Insert node into parent's children
         // Phase 2: Maintain BOTH child_nodes list AND sibling pointers
@@ -2173,6 +2181,19 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
     }
 }
 
+/// After a tree left `old_document`: every live range of `old_document`
+/// moves to its start node's document if that is no longer this one. The
+/// list is copied first; moving a range edits it.
+fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
+    const internal = document_internals.getInternal(old_document) orelse return;
+    if (internal.ranges.items.len == 0) return;
+    const ranges = internal.allocator.dupe(*runtime.Instance, internal.ranges.items) catch return;
+    defer internal.allocator.free(ranges);
+    for (ranges) |range| {
+        range_boundaries.updateOwnerDocument(range) catch {};
+    }
+}
+
 /// Helper: Run moving steps for node and all descendants
 /// Spec: DOM §4.2.5 move algorithm step 24
 /// For each shadow-including inclusive descendant, run moving steps
@@ -2289,12 +2310,27 @@ pub fn adopt(
             }
         }
 
+        // The node document is also held by each node's Node state, which
+        // the ownerDocument getter and everything outside src/dom read; the
+        // node_document hook keeps that copy - and through it this one - in
+        // step.
+        const document_instance: ?*runtime.Instance = if (instance_bridge.getInstance(@ptrCast(@alignCast(document)))) |opaque_instance|
+            @ptrCast(@alignCast(opaque_instance))
+        else
+            null;
+
         // Step 3.1: For each shadow-including inclusive descendant in tree order
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
 
             // Step 3.1.1: Set node document to document
             desc.owner_document = document;
+            if (document_instance) |doc_instance| {
+                if (instance_bridge.getInstance(desc)) |desc_opaque| {
+                    const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
+                    node_document.set(desc_instance, doc_instance) catch {};
+                }
+            }
 
             // Step 3.1.2: If element, update attribute node documents
             if (desc.node_type == ELEMENT_NODE) {
@@ -2328,6 +2364,15 @@ pub fn adopt(
                         }
                     }
                 }
+            }
+        }
+
+        // Blink's Document::DidMoveTreeToNewDocument: each of the old
+        // document's live ranges re-checks which document it belongs to, so
+        // a range whose boundary moved with the tree follows it.
+        if (oldDocument) |old_document| {
+            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
+                moveLiveRangesAfterAdoption(@ptrCast(@alignCast(old_opaque)));
             }
         }
 

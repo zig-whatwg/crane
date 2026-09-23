@@ -1855,6 +1855,20 @@ fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) do
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.owner_document = doc;
+
+    // The tree algorithms in src/dom read the node document off the NodeBase,
+    // as the document's own NodeBase. Both copies name the same document:
+    // `insert` adopts into it, and adopting is what removes a node from its
+    // old parent, so a NodeBase with no document made every move into a node
+    // built through the DOM API leave the moved node in two child lists.
+    if (internal.node_base) |base| {
+        base.owner_document = null;
+        if (doc) |document| {
+            if (getInternal(document)) |document_internal| {
+                if (document_internal.node_base) |document_base| base.owner_document = @ptrCast(@alignCast(document_base));
+            }
+        }
+    }
 }
 
 /// Get the node type

@@ -59,6 +59,9 @@ pub const LiveRange = struct {
     /// Set `range`'s start and end to (node, offset) and make it a live range
     /// of node's node document.
     collapse: *const fn (range: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void,
+    /// Move `range` to the live-range list of its start node's node document,
+    /// if adoption has changed which document that is.
+    update_owner_document: *const fn (range: *runtime.Instance) anyerror!void,
 };
 
 /// Per thread, like the ranges themselves.
@@ -73,6 +76,13 @@ pub fn installLiveRange(impl: LiveRange) void {
 pub fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
     const impl = live_range orelse return error.NotSupported;
     return impl.collapse(range, node, offset);
+}
+
+/// A tree moved to another document: `range`, one of the old document's
+/// live ranges, follows its start node if that moved with the tree.
+pub fn updateOwnerDocument(range: *runtime.Instance) !void {
+    const impl = live_range orelse return;
+    return impl.update_owner_document(range);
 }
 
 test "install is idempotent and `of` asks each provider in turn" {
