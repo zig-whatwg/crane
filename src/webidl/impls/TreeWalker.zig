@@ -25,6 +25,7 @@ const NodeFilter = NodeIteratorImpl.NodeFilter;
 
 // Import NodeImpl for tree navigation helpers
 const NodeImpl = @import("Node.zig");
+const node_filter = @import("node_filter.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = TreeWalker.State;
@@ -33,6 +34,8 @@ pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
     OutOfMemory,
+    /// The filter threw, and its exception has been rethrown (filter step 8).
+    ExceptionPending,
 };
 
 /// Child traversal type
@@ -105,6 +108,9 @@ pub fn init(
     const state = instance.getState(State);
     state.own._internal = internal;
 
+    // Document sets a new walker up through dom.traversal.
+    @import("dom").traversal.installTreeWalker(&setUp);
+
     return instance;
 }
 
@@ -113,31 +119,30 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        node_filter.release(internal.filter);
+        internal.filter = null;
         internal.deinit();
         internal.allocator.destroy(internal);
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Create a TreeWalker with the given parameters
-/// This is called by Document.createTreeWalker()
-pub fn createTreeWalker(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
+/// `dom.traversal`'s TreeWalker set-up: createTreeWalker() steps 2-4.
+fn setUp(
+    instance: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*anyopaque,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &interfaces.TreeWalker.vtable, ctx);
-    errdefer deinit(instance);
-
+    filter: ?*runtime.CallbackWrapper,
+) anyerror!void {
     const internal = getInternal(instance);
+    // Step 2: Set walker's root and walker's current to root.
     internal.root = root;
-    internal.current = root; // Start at root per spec
+    internal.current = root;
+    // Step 3: Set walker's whatToShow to whatToShow.
     internal.what_to_show = what_to_show;
+    // Step 4: Set walker's filter to filter - owned from here on.
+    node_filter.release(internal.filter);
     internal.filter = filter;
-
-    return instance;
 }
 
 // ============================================================================
@@ -162,8 +167,7 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 /// Returns the filter callback (may be null)
 pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
-    // TODO: Return proper NodeFilter interface
-    _ = internal;
+    if (node_filter.fromStored(internal.filter)) |filter| return filter;
     return null;
 }
 
@@ -536,12 +540,14 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     // Step 5: Set traverser's active flag
     internal.active_flag = true;
 
-    // Step 6: Call filter callback
-    // TODO: Implement proper WebIDL callback invocation when callback system is ready
-    // For now, accept all nodes that pass whatToShow
-    const result = NodeFilter.FILTER_ACCEPT;
-
-    // Step 7: Unset traverser's active flag
+    // Step 6: Let result be the return value of call a user object's operation
+    // with filter's callback, "acceptNode", and « node ».
+    // Step 7: Unset traverser's active flag - on the throwing path too.
+    // Step 8: If an exception was thrown, re-throw it (node_filter.call has).
+    const result = node_filter.call(node_filter.fromStored(internal.filter).?, node) catch |err| {
+        internal.active_flag = false;
+        return err;
+    };
     internal.active_flag = false;
 
     // Step 8: Return result

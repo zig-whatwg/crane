@@ -35,9 +35,8 @@ const NodeImpl = @import("Node.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
-const NodeIteratorImpl = @import("NodeIterator.zig");
-const TreeWalkerImpl = @import("TreeWalker.zig");
 const SelectionImpl = @import("Selection.zig");
+const traversal = @import("dom").traversal;
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
@@ -4646,22 +4645,18 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 6. Return walker
 pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = filter; // TODO: Handle NodeFilter callback properly
+    // The binding hands a callback argument over: the walker owns it from
+    // here and releases it in its deinit.
+    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create TreeWalker
     // Use interface instead of impl (per Golden Rule #13)
     const walker = try interfaces.TreeWalker.init(internal.allocator, instance.ctx);
     errdefer interfaces.TreeWalker.deinit(walker);
 
-    // Steps 2-5: Initialize walker state
-    const walker_state = walker.getState(interfaces.TreeWalker.State);
-    if (walker_state.own._internal) |walker_internal_ptr| {
-        const walker_internal: *TreeWalkerImpl.InternalState = @ptrCast(@alignCast(walker_internal_ptr));
-        walker_internal.root = root;
-        walker_internal.current = root;
-        walker_internal.what_to_show = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-        // walker_internal.filter = filter; // TODO: Handle filter properly
-    }
+    // Steps 2-5: the walker's own state, set through dom.traversal.
+    const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
+    try traversal.setUpTreeWalker(walker, root, what_to_show, filter_wrapper);
 
     // Step 6: Return walker
     return walker;
@@ -5114,23 +5109,18 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = filter; // TODO: Handle NodeFilter callback properly
+    // The binding hands a callback argument over: the iterator owns it from
+    // here and releases it in its deinit.
+    const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create NodeIterator
     // Use interface instead of impl (per Golden Rule #13)
     const iterator = try interfaces.NodeIterator.init(internal.allocator, instance.ctx);
     errdefer interfaces.NodeIterator.deinit(iterator);
 
-    // Steps 2-6: Initialize iterator state
-    const iter_state = iterator.getState(interfaces.NodeIterator.State);
-    if (iter_state.own._internal) |iter_internal_ptr| {
-        const iter_internal: *NodeIteratorImpl.InternalState = @ptrCast(@alignCast(iter_internal_ptr));
-        iter_internal.root = root;
-        iter_internal.reference = root;
-        iter_internal.pointer_before_reference = true;
-        iter_internal.what_to_show = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-        // iter_internal.filter = filter; // TODO: Handle filter properly
-    }
+    // Steps 2-6: the iterator's own state, set through dom.traversal.
+    const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, instance);
 
     // Register this iterator with the document
     try registerNodeIterator(instance, iterator);

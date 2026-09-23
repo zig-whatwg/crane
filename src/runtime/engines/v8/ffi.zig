@@ -1243,6 +1243,18 @@ pub extern fn v8_Function_CallCatching(
     threw: *bool,
 ) ?*Value;
 
+/// Get(object, key) under a TryCatch: the value with `threw.* == false`, or the
+/// thrown value with `threw.* == true`, caught rather than left pending. Null
+/// with `threw` true only when there is nothing to report. A non-null result
+/// is a new Global<Value>* the caller owns.
+pub extern fn v8_Object_GetCatching(
+    context: *Context,
+    object: *Value,
+    key: [*]const u8,
+    key_len: c_int,
+    threw: *bool,
+) ?*Value;
+
 /// A second, independently owned Global for the same value. Null for null/empty.
 pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 

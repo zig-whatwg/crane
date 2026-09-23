@@ -116,10 +116,13 @@ pub const CallbackWrapper = struct {
         object: *v8.Object,
         method_name: [*:0]const u8,
     ) !*CallbackWrapper {
-        // Convert Local<Object> to Global<Value> for persistence
-        const global = GlobalHandle.create(isolate, @ptrCast(object)) orelse {
-            return error.GlobalHandleCreationFailed;
-        };
+        // `object` is a Global<Value>* - the conversion layer's handle for the
+        // argument (v8_FunctionCallbackInfo_GetArgument allocates one) - and,
+        // as initFunction does with a function, the wrapper takes it over.
+        // It used to be passed to GlobalHandle.create, which reads its
+        // argument as a LOCAL slot: one indirection off, so the wrapper held
+        // the handle's own address as a Smi, not the object.
+        const global = GlobalHandle{ .ptr = @ptrCast(object) };
 
         // Use the provided context
         const current_ctx = context;
@@ -225,7 +228,10 @@ pub const CallbackWrapper = struct {
     /// uses `v8_Object_Get`, which has no TryCatch, so a throwing getter could
     /// not be caught anyway - giving that path a catching Get is its own change.
     pub fn callNCatching(self: *CallbackWrapper, context: *v8.Context, this_arg: ?*v8.Value, args: []const *v8.Value) Completion {
-        if (!self.is_function) return .{ .normal = self.callN(context, args) };
+        if (!self.is_function) {
+            const name = self.method_name orelse return .{ .thrown = null };
+            return self.callMethodCatching(context, std.mem.span(name), args);
+        }
 
         const function = self.callback_function_global orelse return .{ .thrown = null };
         const effective_context = self.callback_context orelse context;
@@ -250,6 +256,66 @@ pub const CallbackWrapper = struct {
             &threw,
         );
         return if (threw) .{ .thrown = value } else .{ .normal = value };
+    }
+
+    /// WebIDL 3.11 "call a user object's operation" `op_name` with `args`
+    /// (Local slots, as callNCatching takes them). A callable callback value
+    /// is called directly with `this_arg`; for an object the operation is
+    /// looked up now. `method_name` is only the default a conversion recorded,
+    /// so a caller that knows its interface - NodeFilter's "acceptNode" -
+    /// names it here.
+    pub fn callOperationCatching(self: *CallbackWrapper, context: *v8.Context, op_name: []const u8, this_arg: ?*v8.Value, args: []const *v8.Value) Completion {
+        if (self.is_function) return self.callNCatching(context, this_arg, args);
+        return self.callMethodCatching(context, op_name, args);
+    }
+
+    /// Steps 10.1-10.4 and 12 of "call a user object's operation" for an
+    /// object that is not callable: X = Get(O, opName) - rethrowing what that
+    /// throws - a TypeError when X is not callable, and the call with O as
+    /// thisArg. Every handle here is a Global: the object's is the wrapper's
+    /// own, and GetCatching and CallCatching return Globals the caller owns.
+    fn callMethodCatching(self: *CallbackWrapper, context: *v8.Context, op_name: []const u8, args: []const *v8.Value) Completion {
+        const object = self.callback_object_global orelse return .{ .thrown = null };
+        const isolate = v8.v8_Isolate_GetCurrent() orelse self.isolate;
+
+        var threw = false;
+        const method = v8.v8_Object_GetCatching(context, object.ptr, op_name.ptr, @intCast(op_name.len), &threw);
+        if (threw) return .{ .thrown = method };
+        const function = method orelse return .{ .thrown = null };
+        defer v8.v8_Global_Dispose(function);
+
+        if (!v8.v8_Value_IsFunction(function)) {
+            return .{ .thrown = notCallable(isolate, op_name) };
+        }
+
+        var global_args: [16]*v8.Value = undefined;
+        const arg_count = @min(args.len, global_args.len);
+        var made: usize = 0;
+        defer for (global_args[0..made]) |arg| v8.v8_Global_Dispose(arg);
+        for (0..arg_count) |i| {
+            global_args[i] = v8.v8_Value_ToGlobal(isolate, @ptrCast(args[i])) orelse return .{ .thrown = null };
+            made += 1;
+        }
+
+        const value = v8.v8_Function_CallCatching(
+            context,
+            function,
+            object.ptr,
+            @intCast(arg_count),
+            &global_args,
+            &threw,
+        );
+        return if (threw) .{ .thrown = value } else .{ .normal = value };
+    }
+
+    /// The TypeError step 10.3 throws, as a value for the caller to rethrow
+    /// or report. Null only if V8 could not allocate it.
+    fn notCallable(isolate: *v8.Isolate, op_name: []const u8) ?*v8.Value {
+        var buf: [96]u8 = undefined;
+        const text = std.fmt.bufPrint(&buf, "The callback's '{s}' property is not callable", .{op_name}) catch "The callback's operation is not callable";
+        const message = v8.v8_String_NewFromUtf8(isolate, text.ptr, @intCast(text.len)) orelse return null;
+        defer v8.v8_Value_Dispose(@ptrCast(message));
+        return v8.v8_Exception_TypeError(message);
     }
 
     /// Invoke the callback with multiple arguments
@@ -344,62 +410,17 @@ pub const CallbackWrapper = struct {
 
             return call_result.value;
         } else {
-            // Object method call - get Local from Global handle for property access
-            const obj = self.getCallbackObject() orelse return null;
-            const method_name_str = self.method_name orelse return null;
-
-            // Get the method from the object
-            const name_str = v8.v8_String_NewFromUtf8(
-                self.isolate,
-                method_name_str,
-                @intCast(std.mem.len(method_name_str)),
-            ) orelse return null;
-
-            const method_value = v8.v8_Object_Get(obj, context, @ptrCast(name_str)) orelse return null;
-
-            if (!v8.v8_Value_IsFunction(method_value)) {
-                return null;
-            }
-
-            // Convert method to Global handle for FFI call
-            const method_global = v8.v8_Value_ToGlobal(self.isolate, method_value) orelse return null;
-            defer v8.v8_Global_Dispose(method_global);
-
-            // Convert object to Global for 'this' parameter
-            const obj_global = self.callback_object_global orelse return null;
-
-            // Convert args to Global handles
-            var global_args: [16]*v8.Value = undefined;
-            const arg_count = @min(args.len, 16);
-            for (0..arg_count) |i| {
-                const global_arg = v8.v8_Value_ToGlobal(self.isolate, @ptrCast(args[i]));
-                if (global_arg == null) return null;
-                global_args[i] = global_arg.?;
-            }
-            defer {
-                for (0..arg_count) |i| {
-                    v8.v8_Global_Dispose(global_args[i]);
-                }
-            }
-
-            if (arg_count > 0) {
-                return v8.v8_Function_Call(
-                    @ptrCast(method_global), // Global<Function>*
-                    context, // Global<Context>*
-                    @ptrCast(obj_global.ptr), // Global<Object>* - 'this' is callback object
-                    @intCast(arg_count),
-                    @ptrCast(&global_args),
-                );
-            } else {
-                var empty_args: [1]*v8.Value = undefined;
-                return v8.v8_Function_Call(
-                    @ptrCast(method_global),
-                    context,
-                    @ptrCast(obj_global.ptr),
-                    0,
-                    &empty_args,
-                );
-            }
+            // Object callback: WebIDL's user-object operation call, through
+            // the same path callNCatching takes. callN reports no exception,
+            // so a thrown value is released and the answer is null.
+            const name = self.method_name orelse return null;
+            return switch (self.callMethodCatching(effective_context, std.mem.span(name), args)) {
+                .normal => |value| value,
+                .thrown => |exception| blk: {
+                    if (exception) |e| v8.v8_Global_Dispose(e);
+                    break :blk null;
+                },
+            };
         }
     }
 };
@@ -427,21 +448,14 @@ pub fn createFromV8Value(
     }
 
     if (v8.v8_Value_IsObject(value)) {
-        // Check if object has the required method
+        // WebIDL 3.2.16: converting to a callback interface only requires an
+        // object. The operation is looked up when the callback is CALLED
+        // ("call a user object's operation", step 10.2) - every time, and
+        // what that Get throws is the caller's to rethrow or report. Looking
+        // `method_name` up here ran a `handleEvent` getter at
+        // addEventListener time and rejected objects whose operation is
+        // named something else, such as a NodeFilter's `acceptNode`.
         const obj: *v8.Object = @ptrCast(value);
-        const name_str = v8.v8_String_NewFromUtf8(
-            isolate,
-            method_name,
-            @intCast(std.mem.len(method_name)),
-        ) orelse return error.OutOfMemory;
-
-        const method_value = v8.v8_Object_Get(obj, context, @ptrCast(name_str)) orelse return null;
-
-        if (!v8.v8_Value_IsFunction(method_value)) {
-            return null;
-        }
-
-        // initObject now takes context
         return try CallbackWrapper.initObject(allocator, isolate, context, obj, method_name);
     }
 

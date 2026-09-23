@@ -1808,6 +1808,45 @@ Global<Value>* v8_Function_CallCatching(
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
 }
 
+/// Get(object, key) under a TryCatch, returning the completion the way
+/// v8_Function_CallCatching does: the property's value with `*threw` false, or
+/// the thrown value with `*threw` true. WebIDL's "call a user object's
+/// operation" performs this Get at call time and rethrows what it throws - a
+/// getter on `handleEvent` or `acceptNode` may throw. `object` must hold an
+/// object. nullptr with `*threw` true only when there is nothing to report.
+/// Every non-null result is a new Global the caller owns.
+Global<Value>* v8_Object_GetCatching(
+    Global<Context>* context,
+    Global<Value>* object,
+    const char* key,
+    int key_len,
+    bool* threw
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+
+    if (!context || !object || object->IsEmpty() || !key) return nullptr;
+    Local<Value> obj_value = object->Get(isolate);
+    if (!obj_value->IsObject()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_value = obj_value.As<Object>()->Get(ctx, name);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (maybe_value.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
+}
+
 /// Run `body(data)` with V8's automatic microtask execution suppressed.
 ///
 /// The scope has to live on the C++ stack: SuppressMicrotaskExecutionScope

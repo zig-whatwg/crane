@@ -26,6 +26,9 @@ const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.tree_helpers.NodeBase;
+const document_internals = dom_module.document_internals;
+const node_filter = @import("node_filter.zig");
+const traversal = dom_module.traversal;
 
 pub const State = NodeIterator.State;
 
@@ -33,6 +36,8 @@ pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
     OutOfMemory,
+    /// The filter threw, and its exception has been rethrown (filter step 8).
+    ExceptionPending,
 };
 
 /// NodeFilter constants per DOM spec
@@ -93,6 +98,13 @@ pub const InternalState = struct {
     /// Active flag to prevent recursive invocations
     active_flag: bool,
 
+    /// The document whose iterator list holds this iterator, and its slab
+    /// generation when it joined. The list is walked by every node removal
+    /// (the NodeIterator pre-removing steps), so a freed iterator must leave
+    /// it - but only if that document is still the object at that address.
+    document: ?*runtime.Instance = null,
+    document_generation: u64 = 0,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -137,6 +149,9 @@ pub fn init(
     const state = instance.getState(State);
     state.own._internal = internal;
 
+    // Document sets a new iterator up through dom.traversal.
+    traversal.installNodeIterator(&setUp);
+
     return instance;
 }
 
@@ -145,27 +160,45 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        if (internal.document) |doc| {
+            if (internal.document_generation != 0 and
+                runtime.SlabAllocator.generationOf(doc) == internal.document_generation)
+            {
+                document_internals.unregisterNodeIterator(doc, instance);
+            }
+        }
+        node_filter.release(internal.filter);
+        internal.filter = null;
         internal.deinit();
         internal.allocator.destroy(internal);
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Initialize a NodeIterator with given parameters
-/// Called by Document.createNodeIterator
-pub fn initWithParams(
+/// `dom.traversal`'s NodeIterator set-up: createNodeIterator() steps 2-5, and
+/// the document whose iterator list this iterator is joining.
+fn setUp(
     instance: *runtime.Instance,
     root: *runtime.Instance,
     what_to_show: u32,
-    filter: ?*anyopaque,
-) void {
+    filter: ?*runtime.CallbackWrapper,
+    document: *runtime.Instance,
+) anyerror!void {
     const internal = getInternal(instance);
+    // Step 2: Set iterator's root and iterator's reference to root.
     internal.root = root;
-    internal.reference = root; // Start at root
-    internal.pointer_before_reference = true; // Start before root
+    internal.reference = root;
+    // Step 3: Set iterator's pointer before reference to true.
+    internal.pointer_before_reference = true;
+    // Step 4: Set iterator's whatToShow to whatToShow.
     internal.what_to_show = what_to_show;
+    // Step 5: Set iterator's filter to filter - owned from here on.
+    node_filter.release(internal.filter);
     internal.filter = filter;
     internal.active_flag = false;
+    // Recorded so the iterator can leave the document's list when freed.
+    internal.document = document;
+    internal.document_generation = runtime.SlabAllocator.generationOf(document);
 }
 
 // ============================================================================
@@ -205,13 +238,8 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 /// Note: WebIDL says nullable NodeFilter, returns null if no filter
 pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
-    // If filter is null, return null (outer optional)
-    if (internal.filter) |filter_ptr| {
-        // Cast opaque pointer back to CallbackWrapper
-        const callback: *runtime.CallbackWrapper = @ptrCast(@alignCast(filter_ptr));
-        return callback; // ??*CallbackWrapper - inner optional with value
-    }
-    return null; // null for outer optional
+    if (node_filter.fromStored(internal.filter)) |filter| return filter;
+    return null;
 }
 
 // ============================================================================
@@ -318,11 +346,11 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
         return error.InvalidStateError;
     }
 
-    // Step 2: Let n be node's nodeType attribute value − 1. Read through the
-    // Node impl: the Node state of a subclass does not sit at offset 0, so a
-    // raw getState read answered null for some node types, and those were
+    // Step 2: Let n be node's nodeType attribute value − 1 - read through the
+    // Node interface. A raw getState read of Node's state answered null for
+    // node types whose Node state does not sit at offset 0, and those were
     // accepted without consulting whatToShow at all.
-    const node_type = NodeImpl.getNodeType(node) orelse return NodeFilter.FILTER_SKIP;
+    const node_type = interfaces.Node.get_nodeType(node) catch return NodeFilter.FILTER_SKIP;
     const n: u8 = @intCast(node_type - 1);
 
     // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
@@ -339,16 +367,14 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     internal.active_flag = true;
 
     // Step 6: Let result be the return value of call a user object's operation
-    // with filter's callback, "acceptNode", and « node »
-    // TODO: Implement proper WebIDL callback invocation
-    // For now, accept all nodes when filter is present
-    const result = NodeFilter.FILTER_ACCEPT;
-
-    // Step 7: Unset traverser's active flag
+    // with filter's callback, "acceptNode", and « node ».
+    // Step 7: Unset traverser's active flag - on the throwing path too.
+    // Step 8: If an exception was thrown, re-throw it (node_filter.call has).
+    const result = node_filter.call(node_filter.fromStored(internal.filter).?, node) catch |err| {
+        internal.active_flag = false;
+        return err;
+    };
     internal.active_flag = false;
-
-    // Step 8: If an exception was thrown, rethrow it
-    // (handled by error union in real callback)
 
     // Step 9: Return result
     return result;

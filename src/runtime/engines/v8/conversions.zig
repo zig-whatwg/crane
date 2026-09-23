@@ -2150,15 +2150,15 @@ pub fn toV8Value(
     // Handle CallbackWrapper types (EventHandler, etc.)
     // Extract the V8 Function from the wrapper for getters
     if (T == *runtime.CallbackWrapper) {
-        // Cast to V8-specific CallbackWrapper to access the V8 function
-        const v8_wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(value));
-        if (v8_wrapper.callback_function_global) |func_global| {
-            // Return the Global handle's V8 value
-            if (func_global.get(isolate)) |local_val| {
-                return local_val;
-            }
-        }
-        // If no function stored, return undefined
+        // The engine-agnostic wrapper a conversion made (conversions ~1600):
+        // its engine handle is the V8 wrapper, which holds the callback value -
+        // function or object - as a Global. Return that Global, borrowed, as
+        // instanceToV8 returns the wrapper cache's; the getter's
+        // `nodeIterator.filter === filter` depends on it being the same value.
+        // This used to cast the runtime wrapper AS the V8 one, and returned a
+        // Local slot where a Global is expected.
+        const engine_wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(value.engine_handle));
+        if (engine_wrapper.getGlobalValuePtr()) |global| return global;
         return toV8Undefined(isolate);
     }
 
