@@ -119,14 +119,19 @@ fn cleanupMockCacheEntries(cache: *WrapperCache, instances: []const *runtime.Ins
 // Which wrappers are held strongly (the default must stay weak)
 // ============================================================================
 
-test "isStreamsGraphObject - writable streams graph held strongly, everything else keeps the weak default" {
+test "isStreamsGraphObject - streams graph held strongly, everything else keeps the weak default" {
     const isStreamsGraphObject = v8.wrapper_cache_mod.isStreamsGraphObject;
     try testing.expect(isStreamsGraphObject("WritableStream"));
     try testing.expect(isStreamsGraphObject("WritableStreamDefaultWriter"));
     try testing.expect(isStreamsGraphObject("WritableStreamDefaultController"));
-    // The default: an interface nobody listed keeps its weak wrapper -
-    // including the readable classes until they share the writable rules.
-    try testing.expect(!isStreamsGraphObject("ReadableStream"));
+    try testing.expect(isStreamsGraphObject("ReadableStream"));
+    try testing.expect(isStreamsGraphObject("ReadableStreamBYOBReader"));
+    try testing.expect(isStreamsGraphObject("ReadableByteStreamController"));
+    try testing.expect(isStreamsGraphObject("ReadableStreamBYOBRequest"));
+    try testing.expect(isStreamsGraphObject("TransformStreamDefaultController"));
+    // The default: an interface nobody listed keeps its weak wrapper.
+    try testing.expect(!isStreamsGraphObject("ReadableStreamGenericReader"));
+    try testing.expect(!isStreamsGraphObject("TextDecoderStream"));
     try testing.expect(!isStreamsGraphObject("HTMLDivElement"));
     try testing.expect(!isStreamsGraphObject("Response"));
     try testing.expect(!isStreamsGraphObject(""));

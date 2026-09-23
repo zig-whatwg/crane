@@ -53,6 +53,23 @@ pub fn encode(
             continue;
         }
 
+        // Surrogates: a pair is one code point outside the BMP, which no
+        // single-byte index contains; a lone one is not a scalar value, and
+        // is reported as U+FFFD.
+        if (code_unit >= 0xD800 and code_unit <= 0xDFFF) {
+            const pair = code_unit <= 0xDBFF and in_pos + 1 < input.len and
+                input[in_pos + 1] >= 0xDC00 and input[in_pos + 1] <= 0xDFFF;
+            return .{
+                .status = .unmappable,
+                .code_units_consumed = in_pos,
+                .bytes_written = out_pos,
+                .error_code_point = if (pair)
+                    @intCast(0x10000 + ((@as(u21, code_unit) - 0xD800) << 10) + (@as(u21, input[in_pos + 1]) - 0xDC00))
+                else
+                    0xFFFD,
+            };
+        }
+
         // Step 3: Look up in index
         const pointer = index_gen.getPointer(index, @intCast(code_unit));
 
@@ -62,11 +79,17 @@ pub fn encode(
             out_pos += 1;
             in_pos += 1;
         } else {
-            // Step 4: Not in index - emit error placeholder (?)
-            // In replacement mode, emit '?' (0x3F)
-            output[out_pos] = 0x3F; // Question mark
-            out_pos += 1;
-            in_pos += 1;
+            // Step 4: Not in index - "return error with code point". The
+            // caller's error mode decides what it becomes: an HTML numeric
+            // character reference for URLs and forms, U+FFFD's bytes, or a
+            // failure. Substituting "?" here made every one of those
+            // impossible - a form submitting U+2603 in windows-1252 sent "?".
+            return .{
+                .status = .unmappable,
+                .code_units_consumed = in_pos,
+                .bytes_written = out_pos,
+                .error_code_point = code_unit,
+            };
         }
     }
 

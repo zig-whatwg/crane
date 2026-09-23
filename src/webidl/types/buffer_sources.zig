@@ -83,6 +83,11 @@ pub fn TypedArray(comptime T: type) type {
         buffer: *ArrayBuffer,
         byte_offset: usize,
         length: usize,
+        /// The JavaScript object this value refers to, when it was converted
+        /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
+        /// the same object"). A Global<Value>* owned by this value. `buffer`
+        /// is then `&engine_buffer` - read the bytes through the engine.
+        js: ?*anyopaque = null,
 
         const Self = @This();
 
@@ -176,6 +181,11 @@ pub const DataView = struct {
     buffer: *ArrayBuffer,
     byte_offset: usize,
     byte_length: usize,
+    /// The JavaScript object this value refers to, when it was converted
+    /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
+    /// the same object"). A Global<Value>* owned by this value. `buffer`
+    /// is then `&engine_buffer` - read the bytes through the engine.
+    js: ?*anyopaque = null,
 
     pub fn init(buffer: *ArrayBuffer, byte_offset: usize, byte_length: usize) !DataView {
         if (buffer.isDetached()) return error.DetachedBuffer;
@@ -229,6 +239,11 @@ pub const BigInt64Array = struct {
     buffer: *ArrayBuffer,
     byte_offset: usize,
     length: usize,
+    /// The JavaScript object this value refers to, when it was converted
+    /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
+    /// the same object"). A Global<Value>* owned by this value. `buffer`
+    /// is then `&engine_buffer` - read the bytes through the engine.
+    js: ?*anyopaque = null,
 
     const Self = @This();
 
@@ -271,6 +286,11 @@ pub const BigUint64Array = struct {
     buffer: *ArrayBuffer,
     byte_offset: usize,
     length: usize,
+    /// The JavaScript object this value refers to, when it was converted
+    /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
+    /// the same object"). A Global<Value>* owned by this value. `buffer`
+    /// is then `&engine_buffer` - read the bytes through the engine.
+    js: ?*anyopaque = null,
 
     const Self = @This();
 
@@ -345,6 +365,10 @@ pub fn getElementSizeForType(name: TypedArrayName) u8 {
 /// ArrayBufferView represents any TypedArray or DataView
 ///
 /// Spec: https://webidl.spec.whatwg.org/#ArrayBufferView
+/// The `buffer` of an ArrayBufferView converted from JavaScript: an empty
+/// placeholder. Such a view's bytes live in the engine; use `jsHandle()`.
+pub var engine_buffer = ArrayBuffer{ .data = &[_]u8{}, .detached = false };
+
 pub const ArrayBufferView = union(enum) {
     int8_array: TypedArray(i8),
     uint8_array: TypedArray(u8),
@@ -360,6 +384,36 @@ pub const ArrayBufferView = union(enum) {
     float32_array: TypedArray(f32),
     float64_array: TypedArray(f64),
     data_view: DataView,
+
+    /// The JavaScript object this view refers to, if it came from one.
+    pub fn jsHandle(self: ArrayBufferView) ?*anyopaque {
+        return switch (self) {
+            inline else => |v| v.js,
+        };
+    }
+
+    /// A view referring to the JavaScript object `js` (owned by the result),
+    /// with the kind, offset and element count the engine reported.
+    /// `kind` is the ffi.ViewKind order: int8, uint8, uint8_clamped, int16,
+    /// uint16, int32, uint32, float32, float64, bigint64, biguint64, data_view.
+    pub fn fromEngine(kind: u8, byte_offset: usize, length: usize, js: *anyopaque) ?ArrayBufferView {
+        const b = &engine_buffer;
+        return switch (kind) {
+            0 => .{ .int8_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            1 => .{ .uint8_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            2 => .{ .uint8_clamped_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            3 => .{ .int16_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            4 => .{ .uint16_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            5 => .{ .int32_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            6 => .{ .uint32_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            7 => .{ .float32_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            8 => .{ .float64_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            9 => .{ .bigint64_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            10 => .{ .biguint64_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
+            11 => .{ .data_view = .{ .buffer = b, .byte_offset = byte_offset, .byte_length = length, .js = js } },
+            else => null,
+        };
+    }
 
     /// Get the underlying ArrayBuffer being viewed
     ///

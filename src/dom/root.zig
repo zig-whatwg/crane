@@ -52,6 +52,7 @@ pub const XPathEvaluator = interfaces.XPathEvaluator;
 pub const tree = @import("tree.zig");
 pub const tree_helpers = @import("tree_helpers.zig");
 pub const mutation = @import("mutation.zig");
+pub const abort_algorithms = @import("abort_algorithms.zig");
 pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.zig");
 pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 pub const range_tracking = @import("range_tracking.zig");

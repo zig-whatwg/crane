@@ -125,6 +125,23 @@ pub const ReverseIndex = struct {
         return null;
     }
 
+    /// Find the first pointer for `code_point` that is outside
+    /// `[exclude_min, exclude_max]` (Shift_JIS's "index Shift_JIS pointer").
+    /// The build sort is stable, so a code point's entries are in pointer order.
+    pub fn findPointerOutside(self: *const ReverseIndex, code_point: u21, exclude_min: u16, exclude_max: u16) ?u16 {
+        var left: usize = 0;
+        var right: usize = self.entries.len;
+        while (left < right) {
+            const mid = left + (right - left) / 2;
+            if (self.entries[mid].code_point < code_point) left = mid + 1 else right = mid;
+        }
+        while (left < self.entries.len and self.entries[left].code_point == code_point) : (left += 1) {
+            const pointer = self.entries[left].pointer;
+            if (pointer < exclude_min or pointer > exclude_max) return pointer;
+        }
+        return null;
+    }
+
     /// Find the last pointer above a minimum (for Big5 special cases)
     pub fn findLastPointerAbove(self: *const ReverseIndex, code_point: u21, min_pointer: u16) ?u16 {
         if (self.entries.len == 0) return null;
@@ -320,6 +337,21 @@ pub fn findJis0208Pointer(code_point: u21) ?u16 {
     }
     // Fallback to linear scan if init failed
     return linearScan(&jis0208_index.INDEX, code_point);
+}
+
+/// Encoding § 13.3 "index Shift_JIS pointer": the index pointer for
+/// `code_point` in index jis0208 excluding the entries whose pointer is in the
+/// range 8272 to 8835 - the NEC-selected IBM extensions, which Shift_JIS
+/// encodes from their IBM extension duplicates (10716 on) instead.
+pub fn findShiftJisPointer(code_point: u21) ?u16 {
+    ensureJis0208Initialized();
+    if (jis0208_initialized.load(.acquire)) {
+        return jis0208.findPointerOutside(code_point, 8272, 8835);
+    }
+    for (jis0208_index.INDEX, 0..) |cp, pointer| {
+        if (cp == code_point and (pointer < 8272 or pointer > 8835)) return @intCast(pointer);
+    }
+    return null;
 }
 
 /// Find JIS X 0212 pointer for code point

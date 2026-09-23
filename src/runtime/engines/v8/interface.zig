@@ -8281,7 +8281,7 @@ fn invokeReadableStreamStartCallback(
     // Get the controller from the stream's internal state
     const state = instance.getState(ReadableStreamImpl.State);
     const internal = state.own._internal orelse return;
-    const controller_instance = internal.controller;
+    const controller_instance = internal.controller orelse return;
 
     // Determine controller type by comparing vtable pointers
     // This allows us to dispatch to the correct callback handler

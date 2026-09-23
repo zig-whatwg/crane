@@ -24,7 +24,6 @@ const EngineError = runtime.EngineError;
 // V8 FFI and helpers
 const ffi = @import("ffi.zig");
 const v8_conversions = @import("conversions.zig");
-const async_iterator = @import("async_iterator.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
 const callback_wrapper_mod = @import("callback_wrapper.zig");
@@ -142,22 +141,12 @@ fn v8WrapAsyncIterator(
     engine_ctx: *anyopaque,
     zig_iterator: *anyopaque,
 ) EngineError!*anyopaque {
-    // engine_ctx is the V8 Context (set by context_manager.zig)
-    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    // Get current isolate - the context should be entered so this works
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse
-        return EngineError.OperationFailed;
-
-    // Import the ReadableStreamAsyncIterator type
-    const readable_stream_async_iterator = @import("streams_readable_stream_async_iterator");
-    const ReadableStreamAsyncIterator = readable_stream_async_iterator.ReadableStreamAsyncIterator;
-
-    const iterator: *ReadableStreamAsyncIterator = @ptrCast(@alignCast(zig_iterator));
-
-    const v8_object = async_iterator.wrapAsyncIterator(isolate, context, iterator) catch
-        return EngineError.AsyncIteratorError;
-
-    return @ptrCast(v8_object);
+    // ReadableStream's async iterator is built by impls/streams_readable.zig
+    // (WebIDL's ongoing-promise machinery over a default reader); nothing
+    // wraps a Zig iterator through the engine interface any more.
+    _ = engine_ctx;
+    _ = zig_iterator;
+    return EngineError.AsyncIteratorError;
 }
 
 /// Create a V8 Promise that can be resolved/rejected from Zig

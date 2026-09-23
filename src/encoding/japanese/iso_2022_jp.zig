@@ -199,112 +199,93 @@ pub const Encoder = struct {
         return null;
     }
 
-    fn findKatakanaPointer(code_point: u21) ?u8 {
-        for (katakana_index.INDEX) |entry| {
-            if (entry.code_point == code_point) {
-                return entry.pointer;
+    /// The iso-2022-jp encoder's handler (Encoding § 12.2.2) for one code
+    /// point. "Restore code point to ioQueue" is folded into the same call:
+    /// the escape sequence and the code point's own bytes come back together.
+    ///
+    /// On `error.Unencodable` the state is left as it was. Two of the spec's
+    /// error paths first return to ASCII (step 6 for U+000E, U+000F and U+001B
+    /// in JIS X 0208 state; step 11.1 for anything else unencodable there), and
+    /// the escape that does so is output - the streaming encoder emits it,
+    /// since an error return cannot carry bytes.
+    pub fn encode(self: *Encoder, allocator: std.mem.Allocator, code_point_in: u21) ![]const u8 {
+        var code_point = code_point_in;
+
+        // Step 3: in ASCII or Roman state, U+000E, U+000F and U+001B are
+        // errors (reported as U+FFFD by the caller).
+        if ((self.state == .ascii or self.state == .roman) and isShiftOrEscape(code_point)) {
+            return error.Unencodable;
+        }
+
+        // Step 4: ASCII in ASCII state is itself.
+        if (self.state == .ascii and code_point < 0x80) {
+            return bytes(allocator, &.{@intCast(code_point)});
+        }
+
+        // Step 5: Roman state keeps ASCII except U+005C and U+007E, and maps
+        // U+00A5 and U+203E onto them.
+        if (self.state == .roman) {
+            if (code_point < 0x80 and code_point != 0x5C and code_point != 0x7E) {
+                return bytes(allocator, &.{@intCast(code_point)});
             }
+            if (code_point == 0x00A5) return bytes(allocator, &.{0x5C});
+            if (code_point == 0x203E) return bytes(allocator, &.{0x7E});
+        }
+
+        // Step 6: other ASCII outside ASCII state: back to ASCII, then the
+        // code point again - which step 3 rejects for the three controls.
+        if (code_point < 0x80) {
+            if (isShiftOrEscape(code_point)) return error.Unencodable;
+            self.state = .ascii;
+            return bytes(allocator, &.{ 0x1B, 0x28, 0x42, @intCast(code_point) });
+        }
+
+        // Step 7: U+00A5 and U+203E switch to Roman, then step 5 maps them.
+        if (code_point == 0x00A5 or code_point == 0x203E) {
+            self.state = .roman;
+            return bytes(allocator, &.{ 0x1B, 0x28, 0x4A, if (code_point == 0x00A5) 0x5C else 0x7E });
+        }
+
+        // Step 8: U+2212 MINUS SIGN is encoded as U+FF0D FULLWIDTH HYPHEN-MINUS.
+        if (code_point == 0x2212) code_point = 0xFF0D;
+
+        // Step 9: halfwidth katakana become their fullwidth forms.
+        if (code_point >= 0xFF61 and code_point <= 0xFF9F) {
+            code_point = katakanaCodePoint(@intCast(code_point - 0xFF61)) orelse return error.Unencodable;
+        }
+
+        // Steps 10-11: the index pointer, or an error.
+        const pointer = findPointer(code_point) orelse return error.Unencodable;
+
+        // Steps 13-14.
+        const lead: u8 = @intCast(pointer / 94 + 0x21);
+        const trail: u8 = @intCast(pointer % 94 + 0x21);
+
+        // Step 12: into JIS X 0208 first, if not already there.
+        if (self.state != .jis0208) {
+            self.state = .jis0208;
+            return bytes(allocator, &.{ 0x1B, 0x24, 0x42, lead, trail });
+        }
+
+        // Step 15.
+        return bytes(allocator, &.{ lead, trail });
+    }
+
+    fn isShiftOrEscape(code_point: u21) bool {
+        return code_point == 0x000E or code_point == 0x000F or code_point == 0x001B;
+    }
+
+    /// The index code point for `pointer` in index ISO-2022-JP katakana.
+    fn katakanaCodePoint(pointer: u8) ?u21 {
+        for (katakana_index.INDEX) |entry| {
+            if (entry.pointer == pointer) return entry.code_point;
         }
         return null;
     }
 
-    pub fn encode(self: *Encoder, allocator: std.mem.Allocator, code_point: u21) ![]const u8 {
-        if (code_point < 0x80 and self.state != .ascii) {
-            if (code_point == 0x000E or code_point == 0x000F or code_point == 0x001B) {
-                return error.Unencodable;
-            }
-
-            self.state = .ascii;
-            var result = try allocator.alloc(u8, 4);
-            result[0] = 0x1B;
-            result[1] = 0x28;
-            result[2] = 0x42;
-            result[3] = @intCast(code_point);
-            return result;
-        }
-
-        if (code_point < 0x80) {
-            if (code_point == 0x000E or code_point == 0x000F or code_point == 0x001B) {
-                return error.Unencodable;
-            }
-            var result = try allocator.alloc(u8, 1);
-            result[0] = @intCast(code_point);
-            return result;
-        }
-
-        if (code_point == 0x00A5 or code_point == 0x203E) {
-            if (self.state == .roman) {
-                const byte: u8 = if (code_point == 0x00A5) 0x5C else 0x7E;
-                var result = try allocator.alloc(u8, 1);
-                result[0] = byte;
-                return result;
-            }
-
-            if (self.state != .ascii) {
-                self.state = .ascii;
-                const byte: u8 = if (code_point == 0x00A5) 0x5C else 0x7E;
-                var result = try allocator.alloc(u8, 4);
-                result[0] = 0x1B;
-                result[1] = 0x28;
-                result[2] = 0x42;
-                result[3] = byte;
-                return result;
-            }
-
-            const byte: u8 = if (code_point == 0x00A5) 0x5C else 0x7E;
-            var result = try allocator.alloc(u8, 1);
-            result[0] = byte;
-            return result;
-        }
-
-        if (code_point >= 0xFF61 and code_point <= 0xFF9F) {
-            if (findKatakanaPointer(code_point)) |_| {
-                if (findPointer(code_point)) |jis_pointer| {
-                    if (self.state == .jis0208) {
-                        const lead: u8 = @intCast(jis_pointer / 94 + 0x21);
-                        const trail: u8 = @intCast(jis_pointer % 94 + 0x21);
-                        var result = try allocator.alloc(u8, 2);
-                        result[0] = lead;
-                        result[1] = trail;
-                        return result;
-                    }
-
-                    self.state = .jis0208;
-                    const lead: u8 = @intCast(jis_pointer / 94 + 0x21);
-                    const trail: u8 = @intCast(jis_pointer % 94 + 0x21);
-                    var result = try allocator.alloc(u8, 5);
-                    result[0] = 0x1B;
-                    result[1] = 0x24;
-                    result[2] = 0x42;
-                    result[3] = lead;
-                    result[4] = trail;
-                    return result;
-                }
-            }
-        }
-
-        if (findPointer(code_point)) |pointer| {
-            if (self.state == .jis0208) {
-                const lead: u8 = @intCast(pointer / 94 + 0x21);
-                const trail: u8 = @intCast(pointer % 94 + 0x21);
-                var result = try allocator.alloc(u8, 2);
-                result[0] = lead;
-                result[1] = trail;
-                return result;
-            }
-
-            self.state = .jis0208;
-            const lead: u8 = @intCast(pointer / 94 + 0x21);
-            const trail: u8 = @intCast(pointer % 94 + 0x21);
-            var result = try allocator.alloc(u8, 5);
-            result[0] = 0x1B;
-            result[1] = 0x24;
-            result[2] = 0x42;
-            result[3] = lead;
-            result[4] = trail;
-            return result;
-        }
-
-        return error.Unencodable;
+    fn bytes(allocator: std.mem.Allocator, data: []const u8) ![]const u8 {
+        const result = try allocator.alloc(u8, data.len);
+        @memcpy(result, data);
+        return result;
     }
 };

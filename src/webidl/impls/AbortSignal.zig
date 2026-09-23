@@ -40,12 +40,45 @@ pub const InternalState = struct {
     /// [[onabort]]: Event handler for abort event (stub for now)
     onabort: ?typedefs.EventHandler,
 
+    /// DOM § 3.3 "abort algorithms": run, in order, when the signal is aborted.
+    abort_algorithms: std.ArrayListUnmanaged(AbortAlgorithm) = .empty,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // reason JSValue disposal - if it's an owned handle, it needs disposal
         // For now, the engine manages the JSValue lifecycle
+        self.abort_algorithms.deinit(allocator);
         allocator.destroy(self);
     }
 };
+
+/// An abort algorithm (DOM § 3.3): `run(ctx)` once, when the signal aborts.
+/// Identified by `ctx` for removal.
+pub const AbortAlgorithm = abort_algorithms.Algorithm;
+
+/// The hook other specifications reach these through (no IDL member adds an
+/// abort algorithm, so they cannot go through the interface).
+const abort_algorithms = @import("dom").abort_algorithms;
+
+/// DOM § 3.3 "add an algorithm to an AbortSignal": does nothing when the
+/// signal is already aborted.
+fn addAlgorithm(instance: *runtime.Instance, algorithm: AbortAlgorithm) anyerror!void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
+    // Step 1: If signal is aborted, then return.
+    if (internal.aborted) return;
+    // Step 2: Append algorithm to signal's abort algorithms.
+    try internal.abort_algorithms.append(internal.allocator, algorithm);
+}
+
+/// DOM § 3.3 "remove an algorithm from an AbortSignal".
+fn removeAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    var i: usize = 0;
+    while (i < internal.abort_algorithms.items.len) {
+        if (internal.abort_algorithms.items[i].ctx == ctx) {
+            _ = internal.abort_algorithms.orderedRemove(i);
+        } else i += 1;
+    }
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -66,6 +99,10 @@ pub fn init(
     internal.aborted = false;
     internal.reason = runtime.JSValue.jsUndefined;
     internal.onabort = null;
+    internal.abort_algorithms = .empty;
+
+    // Nobody can hold a signal to add an algorithm to before one exists.
+    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm });
 
     return instance;
 }
@@ -190,6 +227,14 @@ pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplErr
     } else {
         internal.reason = reason;
     }
+
+    // "Run the abort steps", step 1: for each algorithm of signal's abort
+    // algorithms, run algorithm. Step 2: empty them. Taken first, so an
+    // algorithm that adds or removes one does not disturb this walk.
+    var algorithms = internal.abort_algorithms;
+    internal.abort_algorithms = .empty;
+    defer algorithms.deinit(internal.allocator);
+    for (algorithms.items) |algorithm| algorithm.run(algorithm.ctx);
 
     // Fire abort event (requires DOM event infrastructure)
     // For now, just set the flag - event firing would happen here

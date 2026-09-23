@@ -188,15 +188,16 @@ pub const URLRecord = struct {
             );
         }
 
-        // Update fragment offset if it exists
-        if (self.fragment_len > 0) {
-            self.fragment_start = @intCast(new_after_query_start);
-        }
+        // The fragment follows the query in the buffer, wherever it now ends -
+        // including an empty fragment, which has a length of zero.
+        self.fragment_start = @intCast(new_after_query_start);
 
         // Free old buffer and update
         self.allocator.free(self.buffer);
         self.buffer = new_buffer;
         self.query_len = new_query_len;
+        // A URL has a query exactly when it is non-null; "" is a query.
+        self.has_query = new_query != null;
     }
 
     /// Free URL record resources

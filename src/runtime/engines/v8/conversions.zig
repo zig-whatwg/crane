@@ -802,6 +802,21 @@ pub fn fromV8Value(
     }
 
     // Handle AllowSharedBufferSource - extract bytes from TypedArray/DataView/ArrayBuffer
+    // WebIDL § 3.2.26: an ArrayBufferView IDL value "is a reference to the
+    // same object as V" - so the result carries the object (an owned Global)
+    // for impls that must detach or re-view its buffer (Streams BYOB). Not
+    // [AllowShared]: a SharedArrayBuffer-backed view is a TypeError.
+    if (T == typedefs.ArrayBufferView) {
+        var info: v8.ViewInfo = undefined;
+        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
+        if (info.buffer_shared) return ConversionError.TypeError;
+        const js = v8.v8_Global_Clone(value) orelse return ConversionError.TypeError;
+        return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js) orelse {
+            v8.v8_Global_Dispose(js);
+            return ConversionError.TypeError;
+        };
+    }
+
     if (T == typedefs.AllowSharedBufferSource) {
         return try convertAllowSharedBufferSource(allocator, value);
     }
@@ -1364,12 +1379,11 @@ pub fn fromV8Value(
                     field_v8,
                 );
             } else {
-                // Property doesn't exist
-                if (@typeInfo(field.type) == .optional) {
-                    @field(result, field.name) = null;
-                } else {
-                    return ConversionError.TypeError;
-                }
+                // Get returns an empty handle only when it THREW (an absent
+                // member reads as undefined, handled above): WebIDL § 3.2.18
+                // "Let jsMemberValue be ? Get(jsDict, key)" - the conversion
+                // is abrupt and the exception is already pending.
+                return ConversionError.ExceptionPending;
             }
         }
         return result;
@@ -1835,6 +1849,13 @@ pub fn toV8Value(
             .not_passed => toV8Undefined(isolate),
             .passed => |v| v.toV8(isolate),
         };
+    }
+
+    // An ArrayBufferView that refers to a JavaScript object converts back to
+    // that object (borrowed: the IDL value keeps its handle).
+    if (T == typedefs.ArrayBufferView) {
+        const js = value.jsHandle() orelse return toV8Undefined(isolate);
+        return @ptrCast(@alignCast(js));
     }
 
     // Handle engine-agnostic JSValue (from runtime/js_value.zig)
