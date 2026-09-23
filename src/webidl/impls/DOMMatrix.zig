@@ -185,6 +185,160 @@ pub fn get_m44(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
+/// Setter for a
+pub fn set_a(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for b
+pub fn set_b(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for c
+pub fn set_c(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for d
+pub fn set_d(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for e
+pub fn set_e(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for f
+pub fn set_f(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m11
+pub fn set_m11(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m12
+pub fn set_m12(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m13
+pub fn set_m13(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m14
+pub fn set_m14(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m21
+pub fn set_m21(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m22
+pub fn set_m22(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m23
+pub fn set_m23(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m24
+pub fn set_m24(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m31
+pub fn set_m31(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m32
+pub fn set_m32(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m33
+pub fn set_m33(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m34
+pub fn set_m34(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m41
+pub fn set_m41(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m42
+pub fn set_m42(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m43
+pub fn set_m43(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for m44
+pub fn set_m44(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
 /// Operation: scaleSelf
 pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;

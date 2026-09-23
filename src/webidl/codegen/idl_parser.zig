@@ -803,11 +803,12 @@ pub const Parser = struct {
             try self.advance();
         }
 
-        // Handle 'inherit' keyword (used in subinterfaces to redeclare parent attributes)
+        // `inherit attribute` (WebIDL §2.5.2) takes its getter from the
+        // ancestor's read only attribute of the same name and is writable
+        // here - that is what declaring it is for. The grammar keeps
+        // `inherit` off read only and static attributes.
         if (self.current_token.type == .keyword_inherit) {
             try self.advance();
-            // inherit attributes are treated as readonly in most implementations
-            is_readonly = true;
         }
 
         try self.expect(.keyword_attribute);

@@ -39,28 +39,28 @@ pub const DOMMatrix = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "a", "get_a", null },
-            .{ "b", "get_b", null },
-            .{ "c", "get_c", null },
-            .{ "d", "get_d", null },
-            .{ "e", "get_e", null },
-            .{ "f", "get_f", null },
-            .{ "m11", "get_m11", null },
-            .{ "m12", "get_m12", null },
-            .{ "m13", "get_m13", null },
-            .{ "m14", "get_m14", null },
-            .{ "m21", "get_m21", null },
-            .{ "m22", "get_m22", null },
-            .{ "m23", "get_m23", null },
-            .{ "m24", "get_m24", null },
-            .{ "m31", "get_m31", null },
-            .{ "m32", "get_m32", null },
-            .{ "m33", "get_m33", null },
-            .{ "m34", "get_m34", null },
-            .{ "m41", "get_m41", null },
-            .{ "m42", "get_m42", null },
-            .{ "m43", "get_m43", null },
-            .{ "m44", "get_m44", null },
+            .{ "a", "get_a", "set_a" },
+            .{ "b", "get_b", "set_b" },
+            .{ "c", "get_c", "set_c" },
+            .{ "d", "get_d", "set_d" },
+            .{ "e", "get_e", "set_e" },
+            .{ "f", "get_f", "set_f" },
+            .{ "m11", "get_m11", "set_m11" },
+            .{ "m12", "get_m12", "set_m12" },
+            .{ "m13", "get_m13", "set_m13" },
+            .{ "m14", "get_m14", "set_m14" },
+            .{ "m21", "get_m21", "set_m21" },
+            .{ "m22", "get_m22", "set_m22" },
+            .{ "m23", "get_m23", "set_m23" },
+            .{ "m24", "get_m24", "set_m24" },
+            .{ "m31", "get_m31", "set_m31" },
+            .{ "m32", "get_m32", "set_m32" },
+            .{ "m33", "get_m33", "set_m33" },
+            .{ "m34", "get_m34", "set_m34" },
+            .{ "m41", "get_m41", "set_m41" },
+            .{ "m42", "get_m42", "set_m42" },
+            .{ "m43", "get_m43", "set_m43" },
+            .{ "m44", "get_m44", "set_m44" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -128,28 +128,28 @@ pub const DOMMatrix = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "a", "get_a", null },
-            .{ "b", "get_b", null },
-            .{ "c", "get_c", null },
-            .{ "d", "get_d", null },
-            .{ "e", "get_e", null },
-            .{ "f", "get_f", null },
-            .{ "m11", "get_m11", null },
-            .{ "m12", "get_m12", null },
-            .{ "m13", "get_m13", null },
-            .{ "m14", "get_m14", null },
-            .{ "m21", "get_m21", null },
-            .{ "m22", "get_m22", null },
-            .{ "m23", "get_m23", null },
-            .{ "m24", "get_m24", null },
-            .{ "m31", "get_m31", null },
-            .{ "m32", "get_m32", null },
-            .{ "m33", "get_m33", null },
-            .{ "m34", "get_m34", null },
-            .{ "m41", "get_m41", null },
-            .{ "m42", "get_m42", null },
-            .{ "m43", "get_m43", null },
-            .{ "m44", "get_m44", null },
+            .{ "a", "get_a", "set_a" },
+            .{ "b", "get_b", "set_b" },
+            .{ "c", "get_c", "set_c" },
+            .{ "d", "get_d", "set_d" },
+            .{ "e", "get_e", "set_e" },
+            .{ "f", "get_f", "set_f" },
+            .{ "m11", "get_m11", "set_m11" },
+            .{ "m12", "get_m12", "set_m12" },
+            .{ "m13", "get_m13", "set_m13" },
+            .{ "m14", "get_m14", "set_m14" },
+            .{ "m21", "get_m21", "set_m21" },
+            .{ "m22", "get_m22", "set_m22" },
+            .{ "m23", "get_m23", "set_m23" },
+            .{ "m24", "get_m24", "set_m24" },
+            .{ "m31", "get_m31", "set_m31" },
+            .{ "m32", "get_m32", "set_m32" },
+            .{ "m33", "get_m33", "set_m33" },
+            .{ "m34", "get_m34", "set_m34" },
+            .{ "m41", "get_m41", "set_m41" },
+            .{ "m42", "get_m42", "set_m42" },
+            .{ "m43", "get_m43", "set_m43" },
+            .{ "m44", "get_m44", "set_m44" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -212,6 +212,29 @@ pub const DOMMatrix = struct {
         .get_m43 = &get_m43,
         .get_m44 = &get_m44,
 
+        .set_a = &set_a,
+        .set_b = &set_b,
+        .set_c = &set_c,
+        .set_d = &set_d,
+        .set_e = &set_e,
+        .set_f = &set_f,
+        .set_m11 = &set_m11,
+        .set_m12 = &set_m12,
+        .set_m13 = &set_m13,
+        .set_m14 = &set_m14,
+        .set_m21 = &set_m21,
+        .set_m22 = &set_m22,
+        .set_m23 = &set_m23,
+        .set_m24 = &set_m24,
+        .set_m31 = &set_m31,
+        .set_m32 = &set_m32,
+        .set_m33 = &set_m33,
+        .set_m34 = &set_m34,
+        .set_m41 = &set_m41,
+        .set_m42 = &set_m42,
+        .set_m43 = &set_m43,
+        .set_m44 = &set_m44,
+
         .call_invertSelf = &call_invertSelf,
         .call_multiplySelf = &call_multiplySelf,
         .call_preMultiplySelf = &call_preMultiplySelf,
@@ -262,88 +285,176 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.get_a(instance);
     }
 
+    pub fn set_a(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_a(instance, value);
+    }
+
     pub fn get_b(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_b(instance);
+    }
+
+    pub fn set_b(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_b(instance, value);
     }
 
     pub fn get_c(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_c(instance);
     }
 
+    pub fn set_c(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_c(instance, value);
+    }
+
     pub fn get_d(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_d(instance);
+    }
+
+    pub fn set_d(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_d(instance, value);
     }
 
     pub fn get_e(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_e(instance);
     }
 
+    pub fn set_e(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_e(instance, value);
+    }
+
     pub fn get_f(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_f(instance);
+    }
+
+    pub fn set_f(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_f(instance, value);
     }
 
     pub fn get_m11(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m11(instance);
     }
 
+    pub fn set_m11(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m11(instance, value);
+    }
+
     pub fn get_m12(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m12(instance);
+    }
+
+    pub fn set_m12(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m12(instance, value);
     }
 
     pub fn get_m13(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m13(instance);
     }
 
+    pub fn set_m13(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m13(instance, value);
+    }
+
     pub fn get_m14(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m14(instance);
+    }
+
+    pub fn set_m14(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m14(instance, value);
     }
 
     pub fn get_m21(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m21(instance);
     }
 
+    pub fn set_m21(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m21(instance, value);
+    }
+
     pub fn get_m22(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m22(instance);
+    }
+
+    pub fn set_m22(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m22(instance, value);
     }
 
     pub fn get_m23(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m23(instance);
     }
 
+    pub fn set_m23(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m23(instance, value);
+    }
+
     pub fn get_m24(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m24(instance);
+    }
+
+    pub fn set_m24(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m24(instance, value);
     }
 
     pub fn get_m31(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m31(instance);
     }
 
+    pub fn set_m31(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m31(instance, value);
+    }
+
     pub fn get_m32(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m32(instance);
+    }
+
+    pub fn set_m32(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m32(instance, value);
     }
 
     pub fn get_m33(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m33(instance);
     }
 
+    pub fn set_m33(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m33(instance, value);
+    }
+
     pub fn get_m34(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m34(instance);
+    }
+
+    pub fn set_m34(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m34(instance, value);
     }
 
     pub fn get_m41(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m41(instance);
     }
 
+    pub fn set_m41(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m41(instance, value);
+    }
+
     pub fn get_m42(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m42(instance);
+    }
+
+    pub fn set_m42(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m42(instance, value);
     }
 
     pub fn get_m43(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m43(instance);
     }
 
+    pub fn set_m43(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m43(instance, value);
+    }
+
     pub fn get_m44(instance: *runtime.Instance) anyerror!f64 {
         return try DOMMatrixImpl.get_m44(instance);
+    }
+
+    pub fn set_m44(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMMatrixImpl.set_m44(instance, value);
     }
 
     /// Extended attributes: [Exposed=Window]

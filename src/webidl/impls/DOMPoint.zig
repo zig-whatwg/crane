@@ -80,6 +80,34 @@ pub fn get_w(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
+/// Setter for x
+pub fn set_x(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for y
+pub fn set_y(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for z
+pub fn set_z(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for w
+pub fn set_w(instance: *runtime.Instance, value: f64) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
 /// Operation: fromPoint
 pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
     _ = instance;

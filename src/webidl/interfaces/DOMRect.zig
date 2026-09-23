@@ -36,10 +36,10 @@ pub const DOMRect = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
-            .{ "width", "get_width", null },
-            .{ "height", "get_height", null },
+            .{ "x", "get_x", "set_x" },
+            .{ "y", "get_y", "set_y" },
+            .{ "width", "get_width", "set_width" },
+            .{ "height", "get_height", "set_height" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -62,10 +62,10 @@ pub const DOMRect = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
-            .{ "width", "get_width", null },
-            .{ "height", "get_height", null },
+            .{ "x", "get_x", "set_x" },
+            .{ "y", "get_y", "set_y" },
+            .{ "width", "get_width", "set_width" },
+            .{ "height", "get_height", "set_height" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -91,6 +91,11 @@ pub const DOMRect = struct {
         .get_width = &get_width,
         .get_x = &get_x,
         .get_y = &get_y,
+
+        .set_height = &set_height,
+        .set_width = &set_width,
+        .set_x = &set_x,
+        .set_y = &set_y,
 
         .deinit = &deinit,
     };
@@ -129,16 +134,32 @@ pub const DOMRect = struct {
         return try DOMRectImpl.get_x(instance);
     }
 
+    pub fn set_x(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMRectImpl.set_x(instance, value);
+    }
+
     pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
         return try DOMRectImpl.get_y(instance);
+    }
+
+    pub fn set_y(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMRectImpl.set_y(instance, value);
     }
 
     pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
         return try DOMRectImpl.get_width(instance);
     }
 
+    pub fn set_width(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMRectImpl.set_width(instance, value);
+    }
+
     pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
         return try DOMRectImpl.get_height(instance);
+    }
+
+    pub fn set_height(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMRectImpl.set_height(instance, value);
     }
 
     /// Extended attributes: [NewObject]

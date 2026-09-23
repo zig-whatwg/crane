@@ -37,10 +37,10 @@ pub const DOMPoint = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
-            .{ "z", "get_z", null },
-            .{ "w", "get_w", null },
+            .{ "x", "get_x", "set_x" },
+            .{ "y", "get_y", "set_y" },
+            .{ "z", "get_z", "set_z" },
+            .{ "w", "get_w", "set_w" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -64,10 +64,10 @@ pub const DOMPoint = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
-            .{ "z", "get_z", null },
-            .{ "w", "get_w", null },
+            .{ "x", "get_x", "set_x" },
+            .{ "y", "get_y", "set_y" },
+            .{ "z", "get_z", "set_z" },
+            .{ "w", "get_w", "set_w" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -93,6 +93,11 @@ pub const DOMPoint = struct {
         .get_x = &get_x,
         .get_y = &get_y,
         .get_z = &get_z,
+
+        .set_w = &set_w,
+        .set_x = &set_x,
+        .set_y = &set_y,
+        .set_z = &set_z,
 
         .deinit = &deinit,
     };
@@ -131,16 +136,32 @@ pub const DOMPoint = struct {
         return try DOMPointImpl.get_x(instance);
     }
 
+    pub fn set_x(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMPointImpl.set_x(instance, value);
+    }
+
     pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
         return try DOMPointImpl.get_y(instance);
+    }
+
+    pub fn set_y(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMPointImpl.set_y(instance, value);
     }
 
     pub fn get_z(instance: *runtime.Instance) anyerror!f64 {
         return try DOMPointImpl.get_z(instance);
     }
 
+    pub fn set_z(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMPointImpl.set_z(instance, value);
+    }
+
     pub fn get_w(instance: *runtime.Instance) anyerror!f64 {
         return try DOMPointImpl.get_w(instance);
+    }
+
+    pub fn set_w(instance: *runtime.Instance, value: f64) anyerror!void {
+        try DOMPointImpl.set_w(instance, value);
     }
 
     /// Extended attributes: [NewObject]
