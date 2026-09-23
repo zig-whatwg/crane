@@ -36,9 +36,7 @@ pub const PressureObserver = struct {
         };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-            .{ "knownSources", "get_knownSources", null },
-        };
+        pub const properties = .{};
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
@@ -46,6 +44,11 @@ pub const PressureObserver = struct {
             .{ "unobserve", "call_unobserve", 1 },
             .{ "disconnect", "call_disconnect", 0 },
             .{ "takeRecords", "call_takeRecords", 0 },
+        };
+
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "knownSources", "get_static_knownSources", null },
         };
 
         /// Methods defined/overridden by this interface
@@ -60,9 +63,7 @@ pub const PressureObserver = struct {
         pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-            .{ "knownSources", "get_knownSources", null },
-        };
+        pub const eager_properties = .{};
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
@@ -79,8 +80,6 @@ pub const PressureObserver = struct {
     );
 
     const delegates = .{
-        .get_knownSources = &get_knownSources,
-
         .call_disconnect = &call_disconnect,
         .call_observe = &call_observe,
         .call_takeRecords = &call_takeRecords,
@@ -120,8 +119,8 @@ pub const PressureObserver = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_knownSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try PressureObserverImpl.get_knownSources(instance);
+    pub fn get_static_knownSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PressureObserverImpl.get_static_knownSources(instance);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, source: PressureSource) anyerror!void {

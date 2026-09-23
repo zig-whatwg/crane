@@ -57,7 +57,6 @@ pub const WebTransport = struct {
             .{ "datagrams", "get_datagrams", null },
             .{ "incomingBidirectionalStreams", "get_incomingBidirectionalStreams", null },
             .{ "incomingUnidirectionalStreams", "get_incomingUnidirectionalStreams", null },
-            .{ "supportsReliableOnly", "get_supportsReliableOnly", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -68,6 +67,11 @@ pub const WebTransport = struct {
             .{ "createBidirectionalStream", "call_createBidirectionalStream", 0 },
             .{ "createUnidirectionalStream", "call_createUnidirectionalStream", 0 },
             .{ "createSendGroup", "call_createSendGroup", 0 },
+        };
+
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "supportsReliableOnly", "get_static_supportsReliableOnly", null },
         };
 
         /// Methods defined/overridden by this interface
@@ -96,7 +100,6 @@ pub const WebTransport = struct {
             .{ "datagrams", "get_datagrams", null },
             .{ "incomingBidirectionalStreams", "get_incomingBidirectionalStreams", null },
             .{ "incomingUnidirectionalStreams", "get_incomingUnidirectionalStreams", null },
-            .{ "supportsReliableOnly", "get_supportsReliableOnly", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -136,7 +139,6 @@ pub const WebTransport = struct {
         .get_protocol = &get_protocol,
         .get_ready = &get_ready,
         .get_reliability = &get_reliability,
-        .get_supportsReliableOnly = &get_supportsReliableOnly,
 
         .set_anticipatedConcurrentIncomingBidirectionalStreams = &set_anticipatedConcurrentIncomingBidirectionalStreams,
         .set_anticipatedConcurrentIncomingUnidirectionalStreams = &set_anticipatedConcurrentIncomingUnidirectionalStreams,
@@ -237,8 +239,8 @@ pub const WebTransport = struct {
         return try WebTransportImpl.get_incomingUnidirectionalStreams(instance);
     }
 
-    pub fn get_supportsReliableOnly(instance: *runtime.Instance) anyerror!bool {
-        return try WebTransportImpl.get_supportsReliableOnly(instance);
+    pub fn get_static_supportsReliableOnly(instance: *runtime.Instance) anyerror!bool {
+        return try WebTransportImpl.get_static_supportsReliableOnly(instance);
     }
 
     pub fn call_getStats(instance: *runtime.Instance) anyerror!runtime.JSValue {

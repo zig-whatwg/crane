@@ -678,6 +678,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // Static attributes: accessors of the interface object, called the
+            // way a static operation is.
+            if (@hasDecl(Meta, "static_properties")) {
+                inline for (Meta.static_properties) |prop| {
+                    const setter_name: ?[]const u8 = prop[2];
+                    ext_refs.registerCallbackRuntime(StaticMethodCallback(prop[1]).callback);
+                    if (setter_name) |s_name| ext_refs.registerCallbackRuntime(StaticMethodCallback(s_name).callback);
+                }
+            }
+
             // Register iterator callbacks if interface is iterable
             ext_refs.setRegistrationContext(interface_name, .interface_iterator);
             if (@hasDecl(Meta, "iterable")) {
@@ -1183,6 +1193,22 @@ pub fn V8Interface(comptime Interface: type) type {
                                 );
                             }
                         }
+                    }
+                }
+            }
+
+            // Static attributes (WebIDL §3.7.6): accessor properties of the
+            // interface object - a getter "get <name>", a setter "set <name>"
+            // or undefined, enumerable and configurable.
+            if (@hasDecl(Meta, "static_properties")) {
+                inline for (Meta.static_properties) |prop| {
+                    const prop_name: []const u8 = prop[0];
+                    const setter_name: ?[]const u8 = prop[2];
+                    const getter_cb: v8.FunctionCallback = StaticMethodCallback(prop[1]).callback;
+                    const setter_cb: ?v8.FunctionCallback = if (setter_name) |s_name| StaticMethodCallback(s_name).callback else null;
+                    if (v8.v8_String_NewFromUtf8(isolate, prop_name.ptr, @intCast(prop_name.len))) |name_v8| {
+                        defer v8.v8_String_Dispose(name_v8);
+                        _ = v8.v8_Object_SetAccessorProperty(@ptrCast(constructor.?), context, name_v8, getter_cb, setter_cb);
                     }
                 }
             }

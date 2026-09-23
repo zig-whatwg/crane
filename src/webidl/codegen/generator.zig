@@ -1460,7 +1460,7 @@ fn generateImplFile(
         defer if (name_was_sanitized) allocator.free(sanitized_name);
 
         try w.print("/// Getter for {s}\n", .{attr.name});
-        try w.print("pub fn get_{s}(instance: *runtime.Instance) anyerror!", .{sanitized_name});
+        try w.print("pub fn {s}{s}(instance: *runtime.Instance) anyerror!", .{ writer.getterPrefix(attr), sanitized_name });
         // For nullable types, return ?T instead of T
         if (attr.idlType.nullable) {
             try w.writeAll("?");
@@ -1486,7 +1486,7 @@ fn generateImplFile(
             defer if (name_was_sanitized) allocator.free(sanitized_name);
 
             try w.print("/// Setter for {s}\n", .{attr.name});
-            try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
+            try w.print("pub fn {s}{s}(instance: *runtime.Instance, value: ", .{ writer.setterPrefix(attr), sanitized_name });
             // For nullable types, the setter parameter must also be nullable
             // Per WebIDL spec: undefined/null JS values convert to null for nullable types
             if (attr.idlType.nullable) {

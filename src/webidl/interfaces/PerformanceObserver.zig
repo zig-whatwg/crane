@@ -34,15 +34,18 @@ pub const PerformanceObserver = struct {
         };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-            .{ "supportedEntryTypes", "get_supportedEntryTypes", null },
-        };
+        pub const properties = .{};
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "observe", "call_observe", 0 },
             .{ "disconnect", "call_disconnect", 0 },
             .{ "takeRecords", "call_takeRecords", 0 },
+        };
+
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "supportedEntryTypes", "get_static_supportedEntryTypes", null },
         };
 
         /// Methods defined/overridden by this interface
@@ -56,9 +59,7 @@ pub const PerformanceObserver = struct {
         pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-            .{ "supportedEntryTypes", "get_supportedEntryTypes", null },
-        };
+        pub const eager_properties = .{};
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
@@ -75,8 +76,6 @@ pub const PerformanceObserver = struct {
     );
 
     const delegates = .{
-        .get_supportedEntryTypes = &get_supportedEntryTypes,
-
         .call_disconnect = &call_disconnect,
         .call_observe = &call_observe,
         .call_takeRecords = &call_takeRecords,
@@ -115,8 +114,8 @@ pub const PerformanceObserver = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try PerformanceObserverImpl.get_supportedEntryTypes(instance);
+    pub fn get_static_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PerformanceObserverImpl.get_static_supportedEntryTypes(instance);
     }
 
     pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(PerformanceObserverInit)) anyerror!void {

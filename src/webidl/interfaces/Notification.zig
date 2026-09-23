@@ -48,8 +48,6 @@ pub const Notification = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "permission", "get_permission", null },
-            .{ "maxActions", "get_maxActions", null },
             .{ "onclick", "get_onclick", "set_onclick" },
             .{ "onshow", "get_onshow", "set_onshow" },
             .{ "onerror", "get_onerror", "set_onerror" },
@@ -82,6 +80,12 @@ pub const Notification = struct {
             .{ "requestPermission", "call_static_requestPermission", 0 },
         };
 
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "permission", "get_static_permission", null },
+            .{ "maxActions", "get_static_maxActions", null },
+        };
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
@@ -98,8 +102,6 @@ pub const Notification = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "permission", "get_permission", null },
-            .{ "maxActions", "get_maxActions", null },
             .{ "onclick", "get_onclick", "set_onclick" },
             .{ "onshow", "get_onshow", "set_onshow" },
             .{ "onerror", "get_onerror", "set_onerror" },
@@ -169,13 +171,11 @@ pub const Notification = struct {
         .get_icon = &get_icon,
         .get_image = &get_image,
         .get_lang = &get_lang,
-        .get_maxActions = &get_maxActions,
         .get_navigate = &get_navigate,
         .get_onclick = &get_onclick,
         .get_onclose = &get_onclose,
         .get_onerror = &get_onerror,
         .get_onshow = &get_onshow,
-        .get_permission = &get_permission,
         .get_renotify = &get_renotify,
         .get_requireInteraction = &get_requireInteraction,
         .get_silent = &get_silent,
@@ -224,12 +224,12 @@ pub const Notification = struct {
         return try NotificationImpl.call_constructor(ctx, title, options);
     }
 
-    pub fn get_permission(instance: *runtime.Instance) anyerror!NotificationPermission {
-        return try NotificationImpl.get_permission(instance);
+    pub fn get_static_permission(instance: *runtime.Instance) anyerror!NotificationPermission {
+        return try NotificationImpl.get_static_permission(instance);
     }
 
-    pub fn get_maxActions(instance: *runtime.Instance) anyerror!u32 {
-        return try NotificationImpl.get_maxActions(instance);
+    pub fn get_static_maxActions(instance: *runtime.Instance) anyerror!u32 {
+        return try NotificationImpl.get_static_maxActions(instance);
     }
 
     pub fn get_onclick(instance: *runtime.Instance) anyerror!EventHandler {

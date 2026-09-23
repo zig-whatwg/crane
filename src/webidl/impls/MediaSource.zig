@@ -100,10 +100,13 @@ pub fn get_onsourceclose(instance: *runtime.Instance) anyerror!typedefs.EventHan
     return error.NotImplemented;
 }
 
-/// Getter for canConstructInDedicatedWorker
-pub fn get_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {
+/// Static getter for canConstructInDedicatedWorker
+/// Spec: https://w3c.github.io/media-source/#dom-mediasource-canconstructindedicatedworker
+///
+/// "Returns true." MediaSource is exposed to dedicated workers.
+pub fn get_static_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    return true;
 }
 
 /// Setter for duration

@@ -54,7 +54,6 @@ pub const MediaSource = struct {
             .{ "onsourceopen", "get_onsourceopen", "set_onsourceopen" },
             .{ "onsourceended", "get_onsourceended", "set_onsourceended" },
             .{ "onsourceclose", "get_onsourceclose", "set_onsourceclose" },
-            .{ "canConstructInDedicatedWorker", "get_canConstructInDedicatedWorker", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -69,6 +68,11 @@ pub const MediaSource = struct {
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
+        };
+
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "canConstructInDedicatedWorker", "get_static_canConstructInDedicatedWorker", null },
         };
 
         /// Methods defined/overridden by this interface
@@ -99,7 +103,6 @@ pub const MediaSource = struct {
             .{ "onsourceopen", "get_onsourceopen", "set_onsourceopen" },
             .{ "onsourceended", "get_onsourceended", "set_onsourceended" },
             .{ "onsourceclose", "get_onsourceclose", "set_onsourceclose" },
-            .{ "canConstructInDedicatedWorker", "get_canConstructInDedicatedWorker", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -127,7 +130,6 @@ pub const MediaSource = struct {
 
     const delegates = .{
         .get_activeSourceBuffers = &get_activeSourceBuffers,
-        .get_canConstructInDedicatedWorker = &get_canConstructInDedicatedWorker,
         .get_duration = &get_duration,
         .get_handle = &get_handle,
         .get_onsourceclose = &get_onsourceclose,
@@ -236,8 +238,8 @@ pub const MediaSource = struct {
         try MediaSourceImpl.set_onsourceclose(instance, value);
     }
 
-    pub fn get_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {
-        return try MediaSourceImpl.get_canConstructInDedicatedWorker(instance);
+    pub fn get_static_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {
+        return try MediaSourceImpl.get_static_canConstructInDedicatedWorker(instance);
     }
 
     pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {

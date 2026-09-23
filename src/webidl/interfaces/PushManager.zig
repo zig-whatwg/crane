@@ -35,15 +35,18 @@ pub const PushManager = struct {
         };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-            .{ "supportedContentEncodings", "get_supportedContentEncodings", null },
-        };
+        pub const properties = .{};
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "subscribe", "call_subscribe", 0 },
             .{ "getSubscription", "call_getSubscription", 0 },
             .{ "permissionState", "call_permissionState", 0 },
+        };
+
+        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)
+        pub const static_properties = .{
+            .{ "supportedContentEncodings", "get_static_supportedContentEncodings", null },
         };
 
         /// Methods defined/overridden by this interface
@@ -57,9 +60,7 @@ pub const PushManager = struct {
         pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-            .{ "supportedContentEncodings", "get_supportedContentEncodings", null },
-        };
+        pub const eager_properties = .{};
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
@@ -76,8 +77,6 @@ pub const PushManager = struct {
     );
 
     const delegates = .{
-        .get_supportedContentEncodings = &get_supportedContentEncodings,
-
         .call_getSubscription = &call_getSubscription,
         .call_permissionState = &call_permissionState,
         .call_subscribe = &call_subscribe,
@@ -108,8 +107,8 @@ pub const PushManager = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try PushManagerImpl.get_supportedContentEncodings(instance);
+    pub fn get_static_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PushManagerImpl.get_static_supportedContentEncodings(instance);
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {

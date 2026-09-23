@@ -120,10 +120,14 @@ pub fn get_incomingUnidirectionalStreams(instance: *runtime.Instance) anyerror!*
     return error.NotImplemented;
 }
 
-/// Getter for supportsReliableOnly
-pub fn get_supportsReliableOnly(instance: *runtime.Instance) anyerror!bool {
+/// Static getter for supportsReliableOnly
+/// Spec: https://w3c.github.io/webtransport/#dom-webtransport-supportsreliableonly
+///
+/// True if the user agent supports WebTransport sessions over exclusively
+/// reliable connections. Crane has no WebTransport transport at all.
+pub fn get_static_supportsReliableOnly(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    return false;
 }
 
 /// Setter for anticipatedConcurrentIncomingUnidirectionalStreams

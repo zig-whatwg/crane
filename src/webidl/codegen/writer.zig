@@ -342,6 +342,19 @@ pub fn writeStructEnd(writer: anytype) !void {
 ///     };
 /// };
 /// ```
+/// The generated names are the map the binding finds an impl by: a regular
+/// attribute's accessors are `get_<name>` / `set_<name>`, a static one's
+/// (WebIDL §3.7.6: a property of the interface object) `get_static_<name>` /
+/// `set_static_<name>` - as a static operation's is `call_static_<name>`.
+pub fn getterPrefix(attr: types.Attribute) []const u8 {
+    return if (attr.static) "get_static_" else "get_";
+}
+
+/// See `getterPrefix`.
+pub fn setterPrefix(attr: types.Attribute) []const u8 {
+    return if (attr.static) "set_static_" else "set_";
+}
+
 pub fn writeMetadata(
     writer: anytype,
     interface_name: []const u8,
@@ -358,13 +371,25 @@ pub fn writeMetadata(
     is_mixin: bool,
     is_callback: bool,
     iterable: ?types.Iterable,
-    own_attributes: []const types.Attribute,
+    /// Regular and static alike; see `own_attributes` below.
+    own_attributes_and_statics: []const types.Attribute,
     async_iterable: ?types.AsyncIterable,
     /// Every overload of every own operation (see `writeOverloadDelegates`);
     /// only each method's `length` is taken from it here.
     overload_ops: []const types.Operation,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
+
+    // WebIDL §3.7.6: a regular attribute is a property of the interface
+    // prototype object, a static one of the interface object. Every instance
+    // table below is built from the regular attributes; `static_properties`
+    // from the rest.
+    var regular_attributes = std.ArrayList(types.Attribute).empty;
+    defer regular_attributes.deinit(std.heap.page_allocator);
+    for (own_attributes_and_statics) |attr| {
+        if (!attr.static) try regular_attributes.append(std.heap.page_allocator, attr);
+    }
+    const own_attributes: []const types.Attribute = regular_attributes.items;
 
     try writer.writeAll("    pub const Meta = struct {\n");
     try writer.print("        pub const name = \"{s}\";\n", .{interface_name});
@@ -661,6 +686,31 @@ pub fn writeMetadata(
                     try writeSanitizedName(writer, name);
                     try writer.print("\", {d} }},\n", .{arity});
                 }
+            }
+        }
+        try writer.writeAll("        };\n");
+    }
+
+    // Static attributes: accessor properties of the interface object, bound
+    // through `get_static_<name>` / `set_static_<name>`.
+    var has_static_attributes = false;
+    for (own_attributes_and_statics) |attr| {
+        if (attr.static) has_static_attributes = true;
+    }
+    if (has_static_attributes) {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// Static attribute binding hints for V8Interface (JS name, getter fn name, setter fn name or null)\n");
+        try writer.writeAll("        pub const static_properties = .{\n");
+        for (own_attributes_and_statics) |attr| {
+            if (!attr.static) continue;
+            try writer.print("            .{{ \"{s}\", \"get_static_", .{attr.name});
+            try writeSanitizedName(writer, attr.name);
+            if (attr.readonly) {
+                try writer.writeAll("\", null },\n");
+            } else {
+                try writer.writeAll("\", \"set_static_");
+                try writeSanitizedName(writer, attr.name);
+                try writer.writeAll("\" },\n");
             }
         }
         try writer.writeAll("        };\n");
@@ -1983,8 +2033,10 @@ pub fn writeVTable(
     var getters = std.ArrayList(VTableEntry).empty;
     defer getters.deinit(allocator);
 
-    // Add attribute getters - ONLY for own attributes (not inherited)
+    // Add attribute getters - ONLY for own attributes (not inherited). A
+    // static attribute has no instance to dispatch on.
     for (own_attributes) |attr| {
+        if (attr.static) continue;
         const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
         const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
 
@@ -2040,6 +2092,7 @@ pub fn writeVTable(
     defer setters.deinit(allocator);
 
     for (own_attributes) |attr| {
+        if (attr.static) continue;
         // Generate setter for non-readonly OR [Replaceable] OR [PutForwards] OR [LegacyLenientSetter] readonly attributes
         const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
         const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
@@ -2989,7 +3042,7 @@ fn writeLegacyNullToEmpty(
         if (attr.readonly or !nullToEmpty(attr.extAttrs, attr.idlType)) continue;
         const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
         defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
-        try writer.print("        .{{ \"set_{s}\", 0b1 }},\n", .{sanitized_name});
+        try writer.print("        .{{ \"{s}{s}\", 0b1 }},\n", .{ setterPrefix(attr), sanitized_name });
     }
     const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
     defer overload.freeOverloadSets(allocator, overload_sets);
@@ -3407,11 +3460,14 @@ pub fn writeDelegateFunctions(
         // Write extended attributes as comment
         try writeExtendedAttributesComment(writer, attr.extAttrs);
 
+        const get_prefix = getterPrefix(attr);
+        const set_prefix = setterPrefix(attr);
+
         // For nullable types, return ?T instead of T (allows returning null instead of error)
         if (is_nullable) {
-            try writer.print("    pub fn get_{s}(instance: *runtime.Instance) anyerror!?{s} {{\n", .{ sanitized_name, return_type });
+            try writer.print("    pub fn {s}{s}(instance: *runtime.Instance) anyerror!?{s} {{\n", .{ get_prefix, sanitized_name, return_type });
         } else {
-            try writer.print("    pub fn get_{s}(instance: *runtime.Instance) anyerror!{s} {{\n", .{ sanitized_name, return_type });
+            try writer.print("    pub fn {s}{s}(instance: *runtime.Instance) anyerror!{s} {{\n", .{ get_prefix, sanitized_name, return_type });
         }
 
         // Use caching for [SameObject] attributes (all attributes here are own)
@@ -3428,7 +3484,7 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        return value;\n");
         } else {
             // Static attributes or non-[SameObject] - delegate directly to impl
-            try writer.print("        return try {s}.get_{s}(instance);\n", .{ impl_name, sanitized_name });
+            try writer.print("        return try {s}.{s}{s}(instance);\n", .{ impl_name, get_prefix, sanitized_name });
         }
 
         try writer.writeAll("    }\n\n");
@@ -3523,9 +3579,9 @@ pub fn writeDelegateFunctions(
             // For nullable types, the setter parameter must also be nullable
             // Per WebIDL spec: undefined/null JS values convert to null for nullable types
             if (is_nullable) {
-                try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: ?{s}) anyerror!void {{\n", .{ sanitized_name, return_type });
+                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: ?{s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, return_type });
             } else {
-                try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ sanitized_name, return_type });
+                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, return_type });
             }
 
             if (has_ce_reactions) {
@@ -3542,7 +3598,7 @@ pub fn writeDelegateFunctions(
                 try writer.print("        state.own.cached_{s} = null; // Invalidate [SameObject] cache\n", .{sanitized_name});
             }
 
-            try writer.print("        try {s}.set_{s}(instance, value);\n", .{ impl_name, sanitized_name });
+            try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ impl_name, set_prefix, sanitized_name });
             try writer.writeAll("    }\n\n");
         }
     }

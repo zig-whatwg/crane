@@ -53,8 +53,10 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PressureUpdate
     return instance;
 }
 
-/// Getter for knownSources
-pub fn get_knownSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Static getter for knownSources
+/// TODO: a [SameObject] FrozenArray per realm, which needs a per-realm cache
+/// the static call vehicle does not have yet.
+pub fn get_static_knownSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

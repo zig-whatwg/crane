@@ -66,8 +66,10 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObs
     return instance;
 }
 
-/// Getter for supportedEntryTypes
-pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Static getter for supportedEntryTypes
+/// TODO: a [SameObject] FrozenArray per realm, which needs a per-realm cache
+/// the static call vehicle does not have yet.
+pub fn get_static_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

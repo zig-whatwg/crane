@@ -40,8 +40,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for supportedContentEncodings
-pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Static getter for supportedContentEncodings
+/// TODO: a [SameObject] FrozenArray per realm, which needs a per-realm cache
+/// the static call vehicle does not have yet.
+pub fn get_static_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

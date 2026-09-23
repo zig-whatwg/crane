@@ -54,16 +54,32 @@ pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options:
     return instance;
 }
 
-/// Getter for permission
-pub fn get_permission(instance: *runtime.Instance) anyerror!enums.NotificationPermission {
+/// Static getter for permission
+/// Spec: https://notifications.spec.whatwg.org/#dom-notification-permission
+///
+/// "The static permission getter steps are to return the result of getting
+/// the notification permission state" - the current permission state for
+/// "notifications", with "prompt" answered as "default".
+///
+/// No permission decision can have been made: nothing asks the host yet (no
+/// NotificationBackend from src/platform/ is wired into the browser), so the
+/// current state is the permission's default, "prompt". TODO: ask the host's
+/// NotificationBackend once the browser holds one.
+pub fn get_static_permission(instance: *runtime.Instance) anyerror!enums.NotificationPermission {
     _ = instance;
-    return error.NotImplemented;
+    return ._default_;
 }
 
-/// Getter for maxActions
-pub fn get_maxActions(instance: *runtime.Instance) anyerror!u32 {
+/// Static getter for maxActions
+/// Spec: https://notifications.spec.whatwg.org/#dom-notification-maxactions
+///
+/// "The static maxActions getter steps are to return the maximum number of
+/// actions supported." With no host NotificationBackend wired in, nothing can
+/// display a notification, so none are. TODO: ask the host's backend
+/// (getMaxActions) once the browser holds one.
+pub fn get_static_maxActions(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Getter for onclick
