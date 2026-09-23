@@ -4437,6 +4437,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     return @ptrCast(str);
                 }
                 return null;
+            } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                // USVString. Without this branch every LAZY string attribute -
+                // baseURI among them - fell through to "unknown type" and read
+                // as undefined, while the cleanup above still freed the string.
+                if (v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len))) |str| {
+                    return @ptrCast(str);
+                }
+                return null;
             } else if (PayloadType == *runtime.Instance) {
                 // Instance pointer - wrap in V8 object with correct prototype
                 const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
