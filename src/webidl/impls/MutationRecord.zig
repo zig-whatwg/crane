@@ -222,7 +222,7 @@ pub fn get_attributeName(instance: *runtime.Instance) anyerror!?runtime.DOMStrin
     if (internal.attribute_name) |name| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, name);
     }
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
 /// DOM §7.2 - MutationRecord.attributeNamespace
@@ -234,7 +234,7 @@ pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?runtime.DOM
     if (internal.attribute_namespace) |ns| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, ns);
     }
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
 /// DOM §7.2 - MutationRecord.oldValue
@@ -246,5 +246,5 @@ pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     if (internal.old_value) |value| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, value);
     }
-    return runtime.DOMString.initEmpty();
+    return null;
 }
