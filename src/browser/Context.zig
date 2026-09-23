@@ -241,7 +241,7 @@ pub fn clearTimerInterface() void {
             if (current_timer_interface) |timer| {
                 _ = timer.clearTimeout(wrapper.getData().current_timer_id);
             }
-            wrapper.destroy();
+            destroyTimer(wrapper);
         }
         map.deinit();
         timer_contexts = null;
@@ -274,32 +274,51 @@ pub fn clearPendingTimers() void {
             const wrapper = entry.value_ptr.*;
             // Cancel the timer at the libuv level
             if (current_timer_interface) |timer| {
-                timer.clearTimeout(wrapper.getData().current_timer_id);
+                _ = timer.clearTimeout(wrapper.getData().current_timer_id);
             }
-            // Destroy the timer wrapper
-            wrapper.destroy();
+            destroyTimer(wrapper);
         }
         map.clearRetainingCapacity();
     }
 }
 
-/// Register a timer context for cleanup tracking (both one-shot and intervals)
-fn registerTimerContext(timer_id: TimerId, wrapper: *V8TimerCallback) void {
-    if (timer_contexts) |*map| {
-        map.put(timer_id, wrapper) catch |err| {
-            // If we can't track the timer, we must destroy it to prevent leaks
-            log.debug("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
-            wrapper.destroy();
-        };
-    } else {
-        // timer_contexts is null - this shouldn't happen if setTimerInterface was called
-        // Destroy the context to prevent memory leak
-        log.debug("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
-        wrapper.destroy();
+/// Schedule `wrapper`'s first run and enter it in the map of active timers
+/// under the id returned to script. Null when either fails, in which case
+/// the wrapper has been freed.
+///
+/// The id is the manager's id for this FIRST run, and it stays the timer's id
+/// for its whole life: an interval's repeats get new manager ids, but the timer
+/// initialization steps run again "given ... id", so clearInterval must keep
+/// working with the id setInterval returned. It used to be re-keyed to each
+/// repeat's manager id, so after the first repeat clearInterval(id) found
+/// nothing and the interval ran until the page went away.
+fn scheduleTimer(timer: TimerInterface, wrapper: *V8TimerCallback, delay_ms: u64) ?TimerId {
+    const map = if (timer_contexts) |*m| m else {
+        destroyTimer(wrapper);
+        return null;
+    };
+    const id = timer.setTimeout(delay_ms, V8TimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+    if (id == 0) {
+        destroyTimer(wrapper);
+        return null;
     }
+    wrapper.getData().id = id;
+    wrapper.getData().current_timer_id = id;
+    map.put(id, wrapper) catch {
+        // Untracked, it could never be cleared or cleaned up. Cancel before
+        // freeing: a scheduled timer holds the wrapper.
+        _ = timer.clearTimeout(id);
+        destroyTimer(wrapper);
+        return null;
+    };
+    return id;
 }
 
 /// Unregister a timer context (cancels and destroys it)
+///
+/// Timer IDs are looked up in the map and nowhere else. Passing script's number
+/// straight to the manager, as clearTimeout used to, cancelled whatever manager
+/// timer had that id - an animation frame, an AbortSignal timeout.
 fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
@@ -323,13 +342,13 @@ fn unregisterTimerContext(timer_id: TimerId) void {
             // ownership passes to the callback, which sees `cancelled` and destroys
             // it when it fires.
             const cancelled = if (current_timer_interface) |timer|
-                timer.clearTimeout(timer_id)
+                timer.clearTimeout(wrapper.getData().current_timer_id)
             else
                 false;
 
             // Never free a wrapper whose callback is on the stack - that handler
             // still reads `data` after the callback returns and frees it itself.
-            if (cancelled and !wrapper.getData().executing) wrapper.destroy();
+            if (cancelled and !wrapper.getData().executing) destroyTimer(wrapper);
         }
     }
 }
@@ -338,27 +357,52 @@ fn unregisterTimerContext(timer_id: TimerId) void {
 // V8 Timer Context Types
 // ============================================================================
 
+/// A converted TimerHandler - `(TrustedScript or DOMString or Function)`.
+///
+/// Both arms are OWNED Globals, released by `V8TimerContextData.release`.
+const TimerHandler = union(enum) {
+    /// A callable handler: WebIDL's union conversion picks the Function member.
+    function: *v8.ffi.Function,
+    /// Anything else, converted by ToString when setTimeout or setInterval
+    /// was called. (A TrustedScript converts the same way: its stringifier
+    /// is its data.)
+    string: *v8.ffi.String,
+
+    fn dispose(self: TimerHandler) void {
+        switch (self) {
+            .function => |function| v8.ffi.v8_Global_Dispose(@ptrCast(function)),
+            .string => |source| v8.ffi.v8_String_Dispose(source),
+        }
+    }
+};
+
 /// V8 Timer Context Data
 ///
-/// Holds the V8 function reference and metadata for timer/interval callbacks.
-/// This works for short-lived tests but could cause issues if V8 GCs
-/// the function before the timer fires. For production use, the V8 FFI
-/// would need to expose v8::Global<v8::Function> creation.
-///
-/// NOTE: This stores raw V8 function pointers without proper persistent handles.
-/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+/// Everything one setTimeout or setInterval needs when it fires. Every V8
+/// handle in it is an OWNED Global - `info.get` and `v8_Isolate_GetCurrentContext`
+/// each allocate one per call - and `release` disposes them all. Nothing did
+/// before: the handler and the context leaked on every call, and a Global of a
+/// context keeps that realm's whole heap alive, so every page that ever set a
+/// timer stayed in memory until the isolate went away.
 const V8TimerContextData = struct {
-    /// Raw pointer to the V8 function (not GC-protected!)
-    callback_fn: *v8.ffi.Function,
+    handler: TimerHandler,
+    /// `any... arguments`, passed to a Function handler on every run. OWNED
+    /// Globals, in a slice from the wrapper's allocator.
+    arguments: []*v8.ffi.Value,
     /// V8 isolate
     isolate: *v8.ffi.Isolate,
-    /// V8 context (needed because timer callbacks fire outside of active context)
+    /// The realm the timer was set in. OWNED.
     v8_context: *v8.ffi.Context,
     /// Whether this is an interval (repeating) timer - affects cleanup
     is_interval: bool,
-    /// For intervals: the delay in ms for rescheduling
-    interval_delay_ms: u64 = 0,
-    /// For intervals: the current timer ID (updated on each reschedule)
+    /// The timeout after conversion and step 4 (negative becomes 0), before
+    /// the nesting clamp: an interval re-runs the timer initialization steps
+    /// with it, and each repeat clamps afresh.
+    timeout_ms: i64 = 0,
+    /// The id setTimeout/setInterval returned, and this timer's key in
+    /// `timer_contexts`. Stable for the timer's life (see scheduleTimer).
+    id: TimerId = 0,
+    /// The manager's id for the pending run. An interval gets a new one per repeat.
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
@@ -378,6 +422,15 @@ const V8TimerContextData = struct {
     /// While this is set, the running handler owns the wrapper and is the only
     /// thing allowed to free it.
     executing: bool = false,
+
+    /// Dispose every handle this timer owns. Only `destroyTimer` calls it.
+    fn release(self: *V8TimerContextData, allocator: std.mem.Allocator) void {
+        self.handler.dispose();
+        for (self.arguments) |argument| v8.ffi.v8_Global_Dispose(argument);
+        allocator.free(self.arguments);
+        self.arguments = &.{};
+        v8.ffi.v8_Context_Dispose(self.v8_context);
+    }
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -388,179 +441,119 @@ const V8TimerContextData = struct {
 /// the allocator internally for no-argument destroy().
 const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
 
-/// Create a new V8 timer context wrapper
-fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, v8_context: *v8.ffi.Context, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerCallback {
-    // Verify it's a function
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        return error.NotAFunction;
-    }
+/// Free a timer wrapper and every handle it owns. EVERY path that frees one
+/// goes through here; `wrapper.destroy()` alone leaks the handles.
+fn destroyTimer(wrapper: *V8TimerCallback) void {
+    wrapper.getData().release(wrapper.allocator);
+    wrapper.destroy();
+}
 
-    const callback_fn = if (is_interval) &v8IntervalHandler else &v8TimerHandler;
-    return try V8TimerCallback.create(
-        allocator,
-        callback_fn,
-        .{
-            .callback_fn = @ptrCast(callback_value),
-            .isolate = isolate,
-            .v8_context = v8_context,
-            .is_interval = is_interval,
-        },
-    );
+/// Timer initialization step 8's task, steps 8.3-8.5: run the handler in the
+/// timer's realm, at the timer's nesting level.
+fn runTimerTask(data: *V8TimerContextData) void {
+    const isolate = data.isolate;
+    const context = data.v8_context;
+
+    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
+    // exactly where isolate confinement would break if it is broken.
+    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
+
+    // A task runs from the event loop: V8 has opened no HandleScope and
+    // entered no context for it.
+    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
+    defer v8.ffi.v8_HandleScope_Dispose(scope);
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    // Step 1: thisArg is the WindowProxy - Context::Global is the global proxy.
+    const this_arg = v8.ffi.v8_Context_Global(context) orelse return;
+    defer v8.ffi.v8_Object_Dispose(this_arg);
+
+    // The "current timer nesting level" is this timer's level for the DURATION OF
+    // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
+    // restored before the microtask checkpoint the caller performs: per HTML the
+    // checkpoint runs after the task's callback returns, so a timer scheduled from a
+    // microtask must NOT inherit the task's nesting level and must not be clamped to
+    // 4ms. (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
+    const saved_nesting = v8.native_timer.nesting_level;
+    v8.native_timer.nesting_level = data.nesting_level;
+    defer v8.native_timer.nesting_level = saved_nesting;
+
+    // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
+    v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+    // This handler owns the wrapper for the duration of the callback, so a
+    // clearTimeout/clearInterval from inside it defers the free to us.
+    data.executing = true;
+    defer data.executing = false;
+
+    switch (data.handler) {
+        // Step 8.4: invoke handler given arguments and "report", with callback
+        // this value set to thisArg.
+        .function => |function| invokeReporting(context, function, this_arg, data.arguments),
+        // Step 8.5: create a classic script from the string and run it.
+        .string => |source| html_mod.script_execution.runTimerHandlerString(context, source),
+    }
 }
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn v8TimerHandler(data: *V8TimerContextData) void {
-    // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
+    // Step 8.9: remove global's map[id]. Before the run rather than after, so a
+    // clearTimeout(id) from inside the callback finds nothing to free under us.
     if (timer_contexts) |*map| {
-        _ = map.remove(data.current_timer_id);
+        _ = map.remove(data.id);
     }
 
-    const isolate = data.isolate;
-    const context = data.v8_context;
-
-    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
-    // exactly where isolate confinement would break if it is broken.
-    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
-
-    // Enter the V8 context before invoking the callback
-    // Timer callbacks fire from the event loop when no context is active
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    const global = v8.ffi.v8_Context_Global(context) orelse {
-        return;
-    };
-
-    {
-        // The "current timer nesting level" is this timer's level for the DURATION OF
-        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
-        // restored before the microtask checkpoint below: per HTML the checkpoint runs
-        // after the task's callback returns, so a timer scheduled from a microtask must
-        // NOT inherit the task's nesting level and must not be clamped to 4ms.
-        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
-        const saved_nesting = v8.native_timer.nesting_level;
-        v8.native_timer.nesting_level = data.nesting_level;
-        defer v8.native_timer.nesting_level = saved_nesting;
-
-        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
-        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
-
-        // This handler owns the wrapper for the duration of the callback, so a
-        // clearTimeout/clearInterval from inside it defers the free to us.
-        data.executing = true;
-        defer data.executing = false;
-
-        // Invoke the V8 function (stored directly, not via persistent handle)
-        invokeReporting(context, data.callback_fn, global, &.{});
-    }
+    runTimerTask(data);
 
     // Run microtasks after the timer callback (per event loop semantics)
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(data.isolate);
 
     // Destroy the wrapper - this is a one-shot timer, so clean up after execution
     // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
     const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-    wrapper.destroy();
+    destroyTimer(wrapper);
 }
 
 /// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
 fn v8IntervalHandler(data: *V8TimerContextData) void {
+    const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+
     // Check if interval was cancelled
     if (data.cancelled) {
-        if (timer_contexts) |*map| {
-            _ = map.remove(data.current_timer_id);
-        }
         // unregisterTimerContext could not confirm cancellation (cross-realm), so it
         // left the wrapper alive and handed ownership here. Free it now - this is the
         // last time the timer system will reference it.
-        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-        wrapper.destroy();
-        return;
+        return destroyTimer(wrapper);
     }
 
-    const isolate = data.isolate;
-    const context = data.v8_context;
-
-    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
-    // exactly where isolate confinement would break if it is broken.
-    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
-
-    // Enter the V8 context before invoking the callback
-    // Timer callbacks fire from the event loop when no context is active
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    const global = v8.ffi.v8_Context_Global(context) orelse return;
-
-    {
-        // The "current timer nesting level" is this timer's level for the DURATION OF
-        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
-        // restored before the microtask checkpoint below: per HTML the checkpoint runs
-        // after the task's callback returns, so a timer scheduled from a microtask must
-        // NOT inherit the task's nesting level and must not be clamped to 4ms.
-        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
-        const saved_nesting = v8.native_timer.nesting_level;
-        v8.native_timer.nesting_level = data.nesting_level;
-        defer v8.native_timer.nesting_level = saved_nesting;
-
-        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
-        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
-
-        // This handler owns the wrapper for the duration of the callback, so a
-        // clearTimeout/clearInterval from inside it defers the free to us.
-        data.executing = true;
-        defer data.executing = false;
-
-        // Invoke the V8 function
-        invokeReporting(context, data.callback_fn, global, &.{});
-    }
+    runTimerTask(data);
 
     // Run microtasks after the timer callback
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(data.isolate);
 
-    // Reschedule the interval if not cancelled
+    // Steps 8.6-8.8: still in the map - not cleared by the callback or its
+    // microtasks - so run the timer initialization steps again, given the
+    // same id. Step 3 there: the running task is this timer's, so its nesting
+    // level is this one's, and step 5 clamps with it; step 9 nests one deeper.
     if (!data.cancelled) {
         if (getTimerInterface()) |timer| {
-            // Get the wrapper pointer from the data pointer
-            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-
-            const new_timer_id = timer.setTimeout(
-                data.interval_delay_ms,
-                V8TimerCallback.getTrampolineCallback(),
-                wrapper.eraseForFFI(),
-            );
+            const delay: u64 = @intCast(clampTimeout(data.timeout_ms, data.nesting_level));
+            data.nesting_level +|= 1;
+            const new_timer_id = timer.setTimeout(delay, V8TimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
             if (new_timer_id != 0) {
-                // Update the timer ID for potential clearInterval calls
-                const old_id = data.current_timer_id;
+                // The id script holds stays the key; only the pending run changes.
                 data.current_timer_id = new_timer_id;
-                // Update the timer context map with new ID
-                if (timer_contexts) |*map| {
-                    _ = map.remove(old_id);
-                    map.put(new_timer_id, wrapper) catch {};
-                }
-            } else {
-                // Failed to reschedule, clean up
-                if (timer_contexts) |*map| {
-                    _ = map.remove(data.current_timer_id);
-                }
-                wrapper.destroy();
+                return;
             }
-        } else {
-            // No timer interface, clean up
-            if (timer_contexts) |*map| {
-                _ = map.remove(data.current_timer_id);
-            }
-            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-            wrapper.destroy();
         }
-    } else {
-        // Cancelled, clean up
-        if (timer_contexts) |*map| {
-            _ = map.remove(data.current_timer_id);
-        }
-        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-        wrapper.destroy();
     }
+
+    // Cancelled, or it could not be rescheduled: this was its last run.
+    if (timer_contexts) |*map| {
+        if (map.get(data.id) == wrapper) _ = map.remove(data.id);
+    }
+    destroyTimer(wrapper);
 }
 
 /// Context type for determining which globals to register
@@ -2139,264 +2132,124 @@ fn cancelAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callco
     }
 }
 
+/// setTimeout(handler, timeout, ...arguments)
 fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Get the callback function (first argument)
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    const callback_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    // Get delay (second argument, default 0)
-    var delay_ms: i64 = 0;
-    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
-        const delay_value = info.get(1);
-        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
-            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-                const result = v8.ffi.v8_Integer_New(isolate, 0);
-                info.setReturnValue(@ptrCast(result));
-                return;
-            };
-            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
-            // Safety check for NaN/Inf/negative values
-            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
-                delay_ms = @intFromFloat(delay_f64);
-            }
-        }
-    }
-
-    // Get timer interface from thread-local storage
-    const timer = getTimerInterface() orelse {
-        // Fallback: execute immediately if no timer interface
-        const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-            const result = v8.ffi.v8_Integer_New(isolate, 0);
-            info.setReturnValue(@ptrCast(result));
-            return;
-        };
-        const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
-        const global = v8.ffi.v8_Context_Global(context) orelse {
-            const result = v8.ffi.v8_Integer_New(isolate, 0);
-            info.setReturnValue(@ptrCast(result));
-            return;
-        };
-        invokeReporting(context, callback_fn, global, &.{});
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    const allocator = current_allocator orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Get the current V8 context - needed for timer callback execution
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Create typed timer context wrapper (one-shot timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, v8_context, callback_value, false) catch {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Timer initialisation steps (HTML s8.6): clamp before scheduling, and record
-    // this timer's nesting level so its own callback nests one deeper.
-    const nesting = v8.native_timer.nesting_level + 1;
-    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
-    timer_wrapper.getData().nesting_level = nesting;
-
-    // Schedule the timer using TimerInterface with typed callback trampoline
-    const delay_u64: u64 = @intCast(clamped_ms);
-    const timer_id = timer.setTimeout(
-        delay_u64,
-        V8TimerCallback.getTrampolineCallback(),
-        timer_wrapper.eraseForFFI(),
-    );
-    if (timer_id == 0) {
-        timer_wrapper.destroy();
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    // Store the timer ID in the context so the callback can unregister it
-    timer_wrapper.getData().current_timer_id = timer_id;
-
-    // Register the timer context for cleanup tracking (prevents memory leak on deinit)
-    registerTimerContext(timer_id, timer_wrapper);
-
-    // Return timer ID (truncate to i32 for V8 Integer)
-    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
-    info.setReturnValue(@ptrCast(result));
+    timerInitializationFromCall(info, false);
 }
 
-/// clearTimeout callback - cancels a pending timer
+/// clearTimeout(id) and clearInterval(id): one algorithm, "clear the timer
+/// with id from the map of setTimeout and setInterval IDs", so either clears
+/// either kind.
 fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Get timer ID (first argument)
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-            info.setReturnValue(undef_value);
-        }
-        return;
-    }
+    if (info.v8_FunctionCallbackInfo_Length() < 1) return;
 
     const id_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsNumber(id_value)) {
-        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-            info.setReturnValue(undef_value);
-        }
-        return;
-    }
+    defer v8.ffi.v8_Global_Dispose(id_value);
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Context_Dispose(context);
 
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-            info.setReturnValue(undef_value);
-        }
-        return;
-    };
+    // `optional long id = 0`: ToInt32, like the timeout - so "5" is 5, and
+    // a throwing valueOf propagates.
+    var id: i32 = 0;
+    if (!v8.ffi.v8_Value_ToInt32(id_value, context, &id)) return;
+    if (id <= 0) return;
 
-    const timer_id_f64 = v8.ffi.v8_Value_NumberValue(id_value, context);
-
-    // Safety check: ensure the float is a valid positive integer that fits in TimerId
-    if (std.math.isNan(timer_id_f64) or std.math.isInf(timer_id_f64) or
-        timer_id_f64 < 0 or timer_id_f64 > @as(f64, @floatFromInt(std.math.maxInt(TimerId))))
-    {
-        // Invalid timer ID - just return without doing anything
-        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-            info.setReturnValue(undef_value);
-        }
-        return;
-    }
-    const timer_id: TimerId = @intFromFloat(timer_id_f64);
-
-    // Get timer interface and cancel the timer.
-    //
-    // Result discarded here on purpose: unregisterTimerContext below performs the
-    // authoritative cancel-and-free, and only frees when cancellation is confirmed.
-    if (getTimerInterface()) |timer| {
-        _ = timer.clearTimeout(timer_id);
-    }
-
-    // Clean up interval context if this was an interval timer
-    // (clearTimeout and clearInterval use the same underlying mechanism)
-    unregisterTimerContext(timer_id);
-
-    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-        info.setReturnValue(undef_value);
-    }
+    // The map, and nothing but the map, decides what an id names.
+    unregisterTimerContext(@intCast(id));
 }
 
-/// setInterval callback - schedules repeating callback using TimerManager
+/// setInterval(handler, timeout, ...arguments)
 fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    timerInitializationFromCall(info, true);
+}
+
+/// The binding of `long setTimeout(TimerHandler handler, optional long
+/// timeout = 0, any... arguments)` and of setInterval: WebIDL argument
+/// conversion, then the timer initialization steps.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
+fn timerInitializationFromCall(info: *const v8.ffi.FunctionCallbackInfo, repeat: bool) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const argc: usize = @intCast(@max(info.v8_FunctionCallbackInfo_Length(), 0));
 
-    // Get the callback function (first argument)
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
+    // `handler` is required: WebIDL throws a TypeError for a call without it.
+    if (argc < 1) {
+        return throwTypeError(isolate, info, if (repeat)
+            "Failed to execute 'setInterval' on 'Window': 1 argument required, but only 0 present."
+        else
+            "Failed to execute 'setTimeout' on 'Window': 1 argument required, but only 0 present.");
     }
 
-    const callback_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
+    // OWNED - handed to the timer below, disposed on every other way out.
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    var context_owned = true;
+    defer if (context_owned) v8.ffi.v8_Context_Dispose(context);
+
+    // TimerHandler is (TrustedScript or DOMString or Function). A callable
+    // value is the Function member; anything else is converted by ToString
+    // HERE, at the call - which runs script (evil-spec-example.any.js has a
+    // toString() that itself calls setTimeout) and can throw. A null from
+    // ToString means it threw: the exception is pending, and returning now
+    // rethrows it to the caller.
+    const handler_value = info.get(0);
+    const handler: TimerHandler = if (v8.ffi.v8_Value_IsFunction(handler_value))
+        .{ .function = @ptrCast(handler_value) }
+    else blk: {
+        defer v8.ffi.v8_Global_Dispose(handler_value);
+        break :blk .{ .string = v8.ffi.v8_Value_ToString(handler_value, context) orelse return };
+    };
+    var handler_owned = true;
+    defer if (handler_owned) handler.dispose();
+
+    // `optional long timeout = 0` is ToInt32: ToNumber - script again, and
+    // it can throw - then modulo 2^32, so 2**32 is 0 rather than 49 days.
+    var timeout: i32 = 0;
+    if (argc >= 2) {
+        const timeout_value = info.get(1);
+        defer v8.ffi.v8_Global_Dispose(timeout_value);
+        if (!v8.ffi.v8_Value_IsUndefined(timeout_value) and
+            !v8.ffi.v8_Value_ToInt32(timeout_value, context, &timeout)) return;
     }
 
-    // Get delay (second argument, default 0)
-    var delay_ms: i64 = 0;
-    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
-        const delay_value = info.get(1);
-        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
-            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-                const result = v8.ffi.v8_Integer_New(isolate, 0);
-                info.setReturnValue(@ptrCast(result));
-                return;
-            };
-            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
-            // Safety check for NaN/Inf/negative values
-            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
-                delay_ms = @intFromFloat(delay_f64);
-            }
-        }
-    }
+    const timer = getTimerInterface() orelse return setIntegerReturn(info, isolate, 0);
+    const allocator = current_allocator orelse return setIntegerReturn(info, isolate, 0);
 
-    // Get timer interface from thread-local storage
-    const timer = getTimerInterface() orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
+    // `any... arguments`, for every run of a Function handler.
+    const arguments = allocator.alloc(*v8.ffi.Value, argc -| 2) catch return setIntegerReturn(info, isolate, 0);
+    for (arguments, 2..) |*argument, i| argument.* = info.get(@intCast(i));
+    var arguments_owned = true;
+    defer if (arguments_owned) {
+        for (arguments) |argument| v8.ffi.v8_Global_Dispose(argument);
+        allocator.free(arguments);
     };
 
-    const allocator = current_allocator orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
+    // Step 3: this timer's nesting level is one deeper than the running
+    // task's, if that task is a timer's; 0 otherwise.
+    const nesting = v8.native_timer.nesting_level;
+    // Step 4: a negative timeout is 0.
+    const timeout_ms: i64 = @max(timeout, 0);
 
-    // Get the current V8 context - needed for interval callback execution
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
+    const wrapper = V8TimerCallback.create(allocator, if (repeat) &v8IntervalHandler else &v8TimerHandler, .{
+        .handler = handler,
+        .arguments = arguments,
+        .isolate = isolate,
+        .v8_context = context,
+        .is_interval = repeat,
+        .timeout_ms = timeout_ms,
+        // Steps 9-10.
+        .nesting_level = nesting + 1,
+    }) catch return setIntegerReturn(info, isolate, 0);
+    // The wrapper owns them now; destroyTimer releases them.
+    context_owned = false;
+    handler_owned = false;
+    arguments_owned = false;
 
-    // Create typed timer context wrapper (interval timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, v8_context, callback_value, true) catch {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Timer initialisation steps (HTML s8.6), same as setTimeout. The stored delay is
-    // the CLAMPED one, so every repeat in v8IntervalHandler inherits it rather than
-    // re-deriving an unclamped value.
-    const nesting = v8.native_timer.nesting_level + 1;
-    const clamped_ms = clampTimeout(delay_ms, v8.native_timer.nesting_level);
-    const delay_u64: u64 = @intCast(clamped_ms);
-    timer_wrapper.getData().interval_delay_ms = delay_u64;
-    timer_wrapper.getData().nesting_level = nesting;
-
-    // Schedule the first timeout (intervals reschedule themselves in v8IntervalHandler)
-    const timer_id = timer.setTimeout(
-        delay_u64,
-        V8TimerCallback.getTrampolineCallback(),
-        timer_wrapper.eraseForFFI(),
-    );
-    if (timer_id == 0) {
-        timer_wrapper.destroy();
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    // Store the timer ID in the context so it can be used for rescheduling
-    timer_wrapper.getData().current_timer_id = timer_id;
-
-    // Register the interval context for cleanup when clearInterval is called
-    registerTimerContext(timer_id, timer_wrapper);
-
-    // Return timer ID (truncate to i32 for V8 Integer)
-    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
-    info.setReturnValue(@ptrCast(result));
+    // Step 5: the 4ms clamp past nesting level 5. Steps 11-14: schedule, and
+    // return the id.
+    const delay: u64 = @intCast(clampTimeout(timeout_ms, nesting));
+    const id = scheduleTimer(timer, wrapper, delay) orelse return setIntegerReturn(info, isolate, 0);
+    setIntegerReturn(info, isolate, @intCast(@as(u32, @truncate(id))));
 }
 
 /// addEventListener callback - delegates to EventTarget WebIDL implementation
@@ -2769,18 +2622,12 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
 /// Helper to throw TypeError
 fn throwTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
+    _ = info;
+    // Both are owned Globals; ThrowException takes its own reference.
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
+    defer v8.ffi.v8_String_Dispose(error_msg);
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+    defer v8.ffi.v8_Global_Dispose(error_val);
     v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
 }
 
