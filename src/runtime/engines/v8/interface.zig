@@ -398,6 +398,51 @@ fn convertArgReleasing(
     return conv.fromV8Value(T, allocator, isolate, context, arg);
 }
 
+/// WebIDL [LegacyNullToEmptyString] (3.3.23): the arguments of `fn_name` -
+/// bit i for argument i, bit 0 for an attribute setter's value - for which
+/// JavaScript null converts to "" instead of "null". Codegen writes the table
+/// (`legacy_null_to_empty` in a generated interface) from the IDL; an
+/// interface without one answers 0 and converts as before.
+pub fn legacyNullToEmptyMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
+    if (!@hasDecl(Interface, "legacy_null_to_empty")) return 0;
+    inline for (Interface.legacy_null_to_empty) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], fn_name)) return entry[1];
+    }
+    return 0;
+}
+
+/// `value` itself, or - when it is null and [LegacyNullToEmptyString] applies -
+/// a new empty string in its place. The argument handles here are owned
+/// (`v8_FunctionCallbackInfo_GetArgument` allocates), so the replaced handle is
+/// disposed and the caller owns the substitute exactly as it owned `value`.
+fn nullToEmptyString(isolate: *v8.Isolate, value: *v8.Value) *v8.Value {
+    if (!v8.v8_Value_IsNull(value)) return value;
+    const empty = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return value;
+    v8.v8_Value_Dispose(value);
+    return @ptrCast(empty);
+}
+
+/// A FunctionCallbackInfo whose `get` applies [LegacyNullToEmptyString] to the
+/// arguments `mask` names, so every arity of `callMethodWithArgs` converts
+/// through one place.
+fn ArgView(comptime mask: u32) type {
+    return struct {
+        raw: *const v8.FunctionCallbackInfo,
+        isolate: *v8.Isolate,
+
+        pub inline fn length(self: @This()) c_int {
+            return self.raw.length();
+        }
+
+        pub inline fn get(self: @This(), index: c_int) *v8.Value {
+            const value = self.raw.get(index);
+            if (comptime mask == 0) return value;
+            if (index >= 32 or (mask >> @intCast(index)) & 1 == 0) return value;
+            return nullToEmptyString(self.isolate, value);
+        }
+    };
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -2808,6 +2853,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         params,
                         webidl_param_count,
                         ReturnType,
+                        comptime legacyNullToEmptyMask(Interface, zig_name),
                         instance,
                         info,
                         allocator,
@@ -3058,13 +3104,15 @@ pub fn V8Interface(comptime Interface: type) type {
             comptime params: anytype,
             comptime webidl_param_count: usize,
             comptime ReturnType: type,
+            comptime null_to_empty: u32,
             instance: *runtime.Instance,
-            info: *const v8.FunctionCallbackInfo,
+            raw_info: *const v8.FunctionCallbackInfo,
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
             return_context: *v8.Context,
         ) !?*v8.Value {
+            const info = ArgView(null_to_empty){ .raw = raw_info, .isolate = isolate };
             const js_arg_count = info.length();
 
             // Call method based on parameter count
@@ -3078,7 +3126,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime isVariadicParam(Param1Type)) {
                         // Collect all JS arguments into a slice
                         const ElemType = @typeInfo(Param1Type).pointer.child;
-                        const arg1 = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info, 0);
+                        const arg1 = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info.raw, 0);
                         // Free each element in the slice, then free the slice itself
                         defer {
                             if (comptime needsArgCleanup(ElemType)) {
@@ -7243,7 +7291,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined
-                    const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
+                    const raw_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
+                    const new_value_v8 = if (comptime legacyNullToEmptyMask(Interface, setter_name_param) != 0)
+                        nullToEmptyString(isolate_inner, raw_value_v8)
+                    else
+                        raw_value_v8;
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
@@ -7794,6 +7846,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         params,
                         webidl_param_count,
                         ReturnType,
+                        comptime legacyNullToEmptyMask(Interface, zig_name),
                         template_instance,
                         info,
                         allocator,

@@ -316,6 +316,25 @@ pub const CSSPageDescriptors = struct {
         try CSSPageDescriptorsImpl.set_bleed(instance, value);
     }
 
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_margin", 0b1 },
+        .{ "set_marginTop", 0b1 },
+        .{ "set_marginRight", 0b1 },
+        .{ "set_marginBottom", 0b1 },
+        .{ "set_marginLeft", 0b1 },
+        .{ "set_margin_top", 0b1 },
+        .{ "set_margin_right", 0b1 },
+        .{ "set_margin_bottom", 0b1 },
+        .{ "set_margin_left", 0b1 },
+        .{ "set_size", 0b1 },
+        .{ "set_pageOrientation", 0b1 },
+        .{ "set_page_orientation", 0b1 },
+        .{ "set_marks", 0b1 },
+        .{ "set_bleed", 0b1 },
+    };
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

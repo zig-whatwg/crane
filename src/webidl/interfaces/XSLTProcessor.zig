@@ -161,4 +161,12 @@ pub const XSLTProcessor = struct {
     pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
         return try XSLTProcessorImpl.call_importStylesheet(instance, style);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "call_setParameter", 0b1 },
+        .{ "call_removeParameter", 0b1 },
+        .{ "call_getParameter", 0b1 },
+    };
 };

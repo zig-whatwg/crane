@@ -717,4 +717,50 @@ pub const CSSFontFaceDescriptors = struct {
     pub fn set_subscript_size_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscript_size_override(instance, value);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_src", 0b1 },
+        .{ "set_fontFamily", 0b1 },
+        .{ "set_font_family", 0b1 },
+        .{ "set_fontStyle", 0b1 },
+        .{ "set_font_style", 0b1 },
+        .{ "set_fontWeight", 0b1 },
+        .{ "set_font_weight", 0b1 },
+        .{ "set_fontStretch", 0b1 },
+        .{ "set_font_stretch", 0b1 },
+        .{ "set_fontWidth", 0b1 },
+        .{ "set_font_width", 0b1 },
+        .{ "set_fontSize", 0b1 },
+        .{ "set_font_size", 0b1 },
+        .{ "set_sizeAdjust", 0b1 },
+        .{ "set_size_adjust", 0b1 },
+        .{ "set_unicodeRange", 0b1 },
+        .{ "set_unicode_range", 0b1 },
+        .{ "set_fontFeatureSettings", 0b1 },
+        .{ "set_font_feature_settings", 0b1 },
+        .{ "set_fontVariationSettings", 0b1 },
+        .{ "set_font_variation_settings", 0b1 },
+        .{ "set_fontNamedInstance", 0b1 },
+        .{ "set_font_named_instance", 0b1 },
+        .{ "set_fontDisplay", 0b1 },
+        .{ "set_font_display", 0b1 },
+        .{ "set_fontLanguageOverride", 0b1 },
+        .{ "set_font_language_override", 0b1 },
+        .{ "set_ascentOverride", 0b1 },
+        .{ "set_ascent_override", 0b1 },
+        .{ "set_descentOverride", 0b1 },
+        .{ "set_descent_override", 0b1 },
+        .{ "set_lineGapOverride", 0b1 },
+        .{ "set_line_gap_override", 0b1 },
+        .{ "set_superscriptPositionOverride", 0b1 },
+        .{ "set_superscript_position_override", 0b1 },
+        .{ "set_subscriptPositionOverride", 0b1 },
+        .{ "set_subscript_position_override", 0b1 },
+        .{ "set_superscriptSizeOverride", 0b1 },
+        .{ "set_superscript_size_override", 0b1 },
+        .{ "set_subscriptSizeOverride", 0b1 },
+        .{ "set_subscript_size_override", 0b1 },
+    };
 };

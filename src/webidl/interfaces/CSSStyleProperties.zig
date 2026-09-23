@@ -125,6 +125,12 @@ pub const CSSStyleProperties = struct {
         try CSSStylePropertiesImpl.set_cssFloat(instance, value);
     }
 
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_cssFloat", 0b1 },
+    };
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

@@ -416,6 +416,12 @@ pub const IDLType = struct {
     /// Union types (e.g., (DOMString or long))
     unionTypes: ?[]IDLType = null,
 
+    /// A union member annotated [LegacyNullToEmptyString] - the one place a
+    /// type, rather than its attribute or argument, carries an extended
+    /// attribute the binding needs: `(TrustedHTML or [LegacyNullToEmptyString]
+    /// DOMString) innerHTML`.
+    legacy_null_to_empty: bool = false,
+
     /// Sequence element type (e.g., sequence<DOMString>)
     sequence: ?*IDLType = null,
 

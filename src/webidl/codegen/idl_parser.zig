@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const extattr = @import("extattr.zig");
 const types = @import("types.zig");
 
 const Lexer = lexer.Lexer;
@@ -1048,13 +1049,17 @@ pub const Parser = struct {
 
         try union_str.append(self.allocator, '(');
 
-        // Parse first type (skip extended attributes if present)
+        // Parse first type (a member's extended attributes are dropped except
+        // [LegacyNullToEmptyString], which changes how the binding converts)
+        var first_null_to_empty = false;
         if (self.current_token.type == .left_bracket) {
             var ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
             defer ext_attrs.deinit(self.allocator);
             try self.parseExtendedAttributes(&ext_attrs);
+            first_null_to_empty = extattr.isLegacyNullToEmptyString(ext_attrs.items);
         }
-        const first_type = try self.parseSimpleType();
+        var first_type = try self.parseSimpleType();
+        first_type.legacy_null_to_empty = first_null_to_empty;
         try union_str.appendSlice(self.allocator, first_type.type);
         try union_types_list.append(self.allocator, first_type);
 
@@ -1063,13 +1068,16 @@ pub const Parser = struct {
             try self.advance(); // consume 'or'
             try union_str.appendSlice(self.allocator, " or ");
 
-            // Skip extended attributes if present on union member
+            // A union member's extended attributes, as for the first member
+            var next_null_to_empty = false;
             if (self.current_token.type == .left_bracket) {
                 var ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
                 defer ext_attrs.deinit(self.allocator);
                 try self.parseExtendedAttributes(&ext_attrs);
+                next_null_to_empty = extattr.isLegacyNullToEmptyString(ext_attrs.items);
             }
-            const next_type = try self.parseSimpleType();
+            var next_type = try self.parseSimpleType();
+            next_type.legacy_null_to_empty = next_null_to_empty;
             try union_str.appendSlice(self.allocator, next_type.type);
             try union_types_list.append(self.allocator, next_type);
         }

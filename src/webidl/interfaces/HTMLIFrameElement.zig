@@ -725,4 +725,11 @@ pub const HTMLIFrameElement = struct {
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLIFrameElementImpl.call_getSVGDocument(instance);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_marginHeight", 0b1 },
+        .{ "set_marginWidth", 0b1 },
+    };
 };

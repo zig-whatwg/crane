@@ -401,4 +401,10 @@ pub const HTMLTableRowElement = struct {
 
         return try HTMLTableRowElementImpl.call_deleteCell(instance, index);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_bgColor", 0b1 },
+    };
 };

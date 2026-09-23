@@ -2150,4 +2150,11 @@ pub const Element = struct {
             .{ .function = "call_scrollTo__1", .implemented = @hasDecl(ElementImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_innerHTML", 0b1 },
+        .{ "set_outerHTML", 0b1 },
+    };
 };

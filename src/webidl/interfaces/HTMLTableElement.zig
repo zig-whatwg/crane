@@ -601,4 +601,12 @@ pub const HTMLTableElement = struct {
 
         return try HTMLTableElementImpl.call_deleteTHead(instance);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_bgColor", 0b1 },
+        .{ "set_cellPadding", 0b1 },
+        .{ "set_cellSpacing", 0b1 },
+    };
 };

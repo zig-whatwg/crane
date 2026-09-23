@@ -337,4 +337,10 @@ pub const ShadowRoot = struct {
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         return try ShadowRootImpl.call_getHTML(instance, options);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_innerHTML", 0b1 },
+    };
 };

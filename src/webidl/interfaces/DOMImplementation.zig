@@ -124,4 +124,10 @@ pub const DOMImplementation = struct {
 
         return try DOMImplementationImpl.call_createDocumentType(instance, name, publicId, systemId);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "call_createDocument", 0b10 },
+    };
 };

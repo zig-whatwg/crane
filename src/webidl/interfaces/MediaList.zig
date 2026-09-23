@@ -135,4 +135,10 @@ pub const MediaList = struct {
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?CSSOMString {
         return try MediaListImpl.call_item(instance, index);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_mediaText", 0b1 },
+    };
 };

@@ -182,6 +182,12 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.call_item(instance, index);
     }
 
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "call_setProperty", 0b110 },
+    };
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

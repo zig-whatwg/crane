@@ -419,4 +419,11 @@ pub const HTMLFrameElement = struct {
 
         try HTMLFrameElementImpl.set_marginWidth(instance, value);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_marginHeight", 0b1 },
+        .{ "set_marginWidth", 0b1 },
+    };
 };

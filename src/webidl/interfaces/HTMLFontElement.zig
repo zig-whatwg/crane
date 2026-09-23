@@ -307,4 +307,10 @@ pub const HTMLFontElement = struct {
 
         try HTMLFontElementImpl.set_size(instance, value);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_color", 0b1 },
+    };
 };

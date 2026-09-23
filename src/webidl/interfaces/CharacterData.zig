@@ -256,4 +256,10 @@ pub const CharacterData = struct {
 
         return try CharacterDataImpl.call_replaceWith(instance, nodes);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_data", 0b1 },
+    };
 };

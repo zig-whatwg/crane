@@ -1000,4 +1000,10 @@ pub const CanvasRenderingContext2D = struct {
             .{ .function = "call_clip__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_clip__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
     };
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "call_createPattern", 0b10 },
+    };
 };

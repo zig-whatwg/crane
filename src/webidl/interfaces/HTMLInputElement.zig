@@ -1201,4 +1201,10 @@ pub const HTMLInputElement = struct {
             .{ .function = "call_setRangeText__1", .implemented = @hasDecl(HTMLInputElementImpl, "call_setRangeText__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
     };
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_value", 0b1 },
+    };
 };

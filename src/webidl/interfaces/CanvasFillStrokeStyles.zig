@@ -148,4 +148,10 @@ pub const CanvasFillStrokeStyles = struct {
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
         return try CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "call_createPattern", 0b10 },
+    };
 };

@@ -2178,4 +2178,11 @@ pub const HTMLElement = struct {
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         return try HTMLElementImpl.call_focus(instance, options);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_innerText", 0b1 },
+        .{ "set_outerText", 0b1 },
+    };
 };

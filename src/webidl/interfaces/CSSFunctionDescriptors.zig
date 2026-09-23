@@ -117,4 +117,10 @@ pub const CSSFunctionDescriptors = struct {
     pub fn set_result(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFunctionDescriptorsImpl.set_result(instance, value);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_result", 0b1 },
+    };
 };

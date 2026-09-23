@@ -633,4 +633,14 @@ pub const HTMLBodyElement = struct {
     pub fn set_onportalactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try HTMLBodyElementImpl.set_onportalactivate(instance, value);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_text", 0b1 },
+        .{ "set_link", 0b1 },
+        .{ "set_vLink", 0b1 },
+        .{ "set_aLink", 0b1 },
+        .{ "set_bgColor", 0b1 },
+    };
 };

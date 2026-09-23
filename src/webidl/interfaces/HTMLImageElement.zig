@@ -732,4 +732,10 @@ pub const HTMLImageElement = struct {
     pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HTMLImageElementImpl.call_decode(instance);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_border", 0b1 },
+    };
 };

@@ -636,4 +636,10 @@ pub const HTMLObjectElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLObjectElementImpl.call_checkValidity(instance);
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_border", 0b1 },
+    };
 };

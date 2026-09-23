@@ -2955,6 +2955,83 @@ fn writeOverloadDelegates(
     try writer.writeAll("    };\n\n");
 }
 
+/// WebIDL [LegacyNullToEmptyString] (3.3.23): a DOMString annotated with it
+/// converts JavaScript null to "" rather than to "null". The binding converts
+/// by Zig type alone, so it needs to be told which values carry it:
+///
+///     pub const legacy_null_to_empty = .{
+///         .{ "call_createDocument", 0b10 },   // bit i = argument i
+///         .{ "set_data", 0b1 },               // an attribute's value
+///     };
+///
+/// Keyed by the Zig function the binding installs - own members only, since an
+/// inherited one binds through its own interface's template.
+fn writeLegacyNullToEmpty(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    overload_ops: []const types.Operation,
+) !void {
+    const allocator = std.heap.page_allocator;
+
+    var any = false;
+    for (own_attributes) |attr| {
+        if (!attr.readonly and nullToEmpty(attr.extAttrs, attr.idlType)) any = true;
+    }
+    for (overload_ops) |op| {
+        if (legacyNullToEmptyMask(op) != 0) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL [LegacyNullToEmptyString]: the values null converts to \"\" for\n");
+    try writer.writeAll("    /// (bit i = argument i; an attribute setter's value is bit 0).\n");
+    try writer.writeAll("    pub const legacy_null_to_empty = .{\n");
+    for (own_attributes) |attr| {
+        if (attr.readonly or !nullToEmpty(attr.extAttrs, attr.idlType)) continue;
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
+        try writer.print("        .{{ \"set_{s}\", 0b1 }},\n", .{sanitized_name});
+    }
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        // An unresolvable overload set binds one function taking a union of
+        // argument lists; nothing there converts argument by argument.
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = legacyNullToEmptyMask(op);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+/// [LegacyNullToEmptyString] on the member itself or on one of its union's
+/// member types.
+fn nullToEmpty(ext_attrs: []const types.ExtendedAttribute, idl_type: types.IDLType) bool {
+    if (@import("extattr.zig").isLegacyNullToEmptyString(ext_attrs)) return true;
+    const members = idl_type.unionTypes orelse return false;
+    for (members) |m| {
+        if (m.legacy_null_to_empty) return true;
+    }
+    return false;
+}
+
+fn legacyNullToEmptyMask(op: types.Operation) u32 {
+    var mask: u32 = 0;
+    for (op.arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (nullToEmpty(arg.extAttrs, arg.idlType)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
 fn isResolvableOverloadSet(set: overload.OverloadSet) bool {
     if (!set.isOverloaded()) return false;
     for (set.operations) |op| {
@@ -3491,6 +3568,9 @@ pub fn writeDelegateFunctions(
     // The other overloads of each overloaded operation, and the table the
     // binding resolves among them with.
     try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops);
+
+    // Which string arguments and attribute values null converts to "" for.
+    try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
 
     // Write serialize delegate for stringifier interfaces
     // Per WebIDL spec, bare stringifier declarations generate a toString() method
