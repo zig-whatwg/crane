@@ -108,6 +108,30 @@ missed two use-after-frees that shipped.
 ./zig-out/bin/wpt_runner html/webappapis/timers/ --parallel=3   # x3, count crashes
 ```
 
+### Keep the progress report current
+
+`wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
+from journals, and only from journals under `wpt-results/` (and its
+subdirectories): it keeps the latest record per file, ordered by the journal
+file's mtime, and accumulates them in `tmp/wpt-progress-state.json`. A run
+whose journal lands anywhere else - a scratchpad, `tmp/sweepNN/` - never
+reaches the page.
+
+After every feature commit:
+
+1. **Put its WPT runs where the report reads them.** Point `--output` at
+   `wpt-results/<label>/` (e.g. `wpt-results/ab-<short-sha>/`), or copy a run's
+   `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the mtime, and
+   the mtime decides which result is latest.
+2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir /tmp/crane-z16-cache`.
+3. **Report the headline** - blocking files and passing subtests from the page -
+   in your summary.
+
+And at least once per working session, or every few feature commits: a full
+worklist sweep at HEAD, from a frozen copy of the runner, into
+`wpt-results/sweep-<short-sha>/`, then regenerate. Targeted runs keep the areas
+you touched current; only a sweep catches what moved elsewhere.
+
 ---
 
 ## Tests come first
@@ -183,8 +207,12 @@ hottest paths.
 ```bash
 zig fmt src/ tests/ tools/
 zig build wpt-runner -j2 --cache-dir /tmp/crane-z16-cache   # the one artifact WPT needs
-zig build test       -j2 --cache-dir /tmp/crane-z16-cache
+zig build test       -j2 --cache-dir /tmp/crane-z16-cache   # includes lint-impls
 ```
+
+`zig build test` runs `lint-impls`, the impls-boundary ratchet (see "The impls
+boundary"), so it fails on any new reference into an impl from code that does
+not own it.
 
 **Never run a bare `zig build`, and always pass `-j2`.** `build.zig` installs
 19 artifacts, and every one that embeds the tree is a separate root-module
@@ -226,6 +254,35 @@ through a libc file it writes into the cache root. So a plain
 
 All three must pass. For changes to V8 handle ownership, they are not
 sufficient — see the regression protocol above.
+
+---
+
+## Tools are Zig
+
+Crane is a Zig repo, and its tools are Zig. Anything committed to `tools/` or
+run by `build.zig` is written in Zig, built by `build.zig` for the host
+(`.target = b.graph.host`, as `codegen` is), and tested with `std.testing`
+test blocks that `zig build test` runs. No Python, shell or JavaScript tools -
+with one exception, the existing WPT tools (below).
+
+- **A gate must not add an interpreter to the build.** A Python lint wired into
+  `zig build test` makes every machine that builds Crane need Python to run its
+  tests, and cannot be tested the way this repo tests things.
+- **Tests first applies to tools.** Pin a tool's rules in `std.testing` blocks
+  before relying on it - the Zig port of the impls-boundary lint caught a swap
+  the first draft's rule could not see.
+- **Scratch analysis is not a tool** - a throwaway query over a journal in the
+  scratchpad is fine. The moment it is committed, wired into a build step, or
+  anyone would run it twice, it is written in Zig.
+- **The existing WPT tools are allowed as they are, in whatever language they
+  are written in.** That is the upstream harness in `tests/wpt/` (`wpt serve`
+  and the rest of WPT's own tooling are Python) and Crane's WPT scripts,
+  `tools/wpt_progress.py` (run by `zig build wpt-progress`) and
+  `tools/wpt_subset.py`. Use and maintain them without porting them. A NEW tool
+  is Zig, WPT-related or not.
+- **Any other non-Zig tool is debt, not precedent:** today that is
+  `tools/update_impl_signatures.py`. Port it to Zig when you next need to change
+  it; never add another.
 
 ---
 
@@ -283,29 +340,72 @@ merge by hand, preserving your implementation.
 
 ## The impls boundary
 
-Two directions, one rule: **impls are private.**
+One rule, applied strictly: **state is reached through the impl that owns it.**
+How depends on where the caller stands relative to the owner:
 
 ```
-External code      ->  interfaces, never impls
-Impl -> other type ->  interfaces, never impls
-Impl -> itself     ->  fine
+Impl -> itself or an ANCESTOR  ->  the ancestor's impl, directly
+Impl -> any other type         ->  interfaces; no IDL member -> a src/dom/ hook
+External code                  ->  interfaces; no IDL member -> a src/dom/ hook
 ```
 
-Interfaces are the stable API and may add CEReactions, validation and other
-cross-cutting concerns. A direct impl call bypasses all of it.
+1. **Your own type and your ancestors: go through the impl.** An impl IS its
+   ancestors, so it reaches their state through their impls - Text, Attr,
+   Document and the ParentNode mixin set a node's document with
+   `NodeImpl.setOwnerDocument`, because every one of them is a Node. A mixin's
+   ancestors are the ones every type that includes it shares (ParentNode is
+   included only by Node types, so Node is its ancestor; Element is not).
+   **Never use a `src/dom/` hook, or read an ancestor's generated state, to reach
+   state your own hierarchy owns** - that is a detour around the impl.
+2. **Another type, with an IDL member: the interface.**
+   `interfaces.Node.get_ownerDocument(n)` from Range, not
+   `NodeImpl.getOwnerDocument(n)`. IDL constants too:
+   `interfaces.Node.get_DOCUMENT_NODE()`. Interfaces are the stable API and may
+   add CEReactions, validation and other cross-cutting concerns; a direct impl
+   call bypasses all of it.
+3. **Another type, no IDL surface: a hook the owner installs.** Setting a node's
+   document from DOMImplementation or the HTML parsers, joining a live range to
+   its document from Document, setting up a traverser, making a collection live -
+   the owning impl installs the step into a hook module in `src/dom/`
+   (`node_document.zig`, `range_boundaries.zig`, `traversal.zig`,
+   `live_collections.zig`, `abort_algorithms.zig`), each declaring its owners on
+   a `//! lint-impls: hook for <Owner>` line. Add a hook module for a new step
+   rather than an import. An ANCESTOR that needs a descendant's state - the
+   AbstractRange getters reading a Range's boundary points - is in this case too:
+   a base type cannot depend on its subclasses, so that is dispatch through a
+   hook the subclasses install.
 
-When an impl needs internal state another type owns, move the algorithm *into*
-that impl and add a delegate on its interface.
+Never `@import("Other.zig")` a type that is not your ancestor in new code, and
+never cast another impl's `_internal` to its `InternalState` and write through it.
 
-Check with:
+**Both halves are checked, and `zig build test` runs the check:**
 
 ```bash
-zig build lint-impls
+zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache                # fails on any new reference into an impl
+zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache -- --update    # after paying debt down: record the lower baseline
 ```
 
-The count is whatever that prints — **do not write it down here.** The last
-hardcoded figure said "53 files, 245 instances" and was 138/434 by the time
-anyone checked.
+`tools/lint_impls_boundary.zig` reads each impl's ancestry from the generated
+interfaces (`ParentInterface`, `MixinTypes`) and enforces:
+
+- **Strictly, with no baseline:** a hook used from inside the hierarchy that
+  owns it - Text calling `node_document.set` - fails, naming file and line. The
+  owner installing it, and naming its types (TitleCase members), are fine.
+- **As a ratchet:** references into any impl that is not the file's own type or
+  an ancestor, per file AND per `Impl.member`, against
+  `tools/impls_boundary_baseline.txt`. A count that rises fails; so does a pair
+  the baseline lacks - which is what catches a swap, one reference traded for a
+  new one at the same total. Calling a non-ancestor's `init` counts: creating
+  another type through its impl is a reference into it.
+
+The generated layers (interfaces, mixins, namespaces, codegen) are skipped:
+delegating to impls is their job.
+
+The baseline only goes down. `--update` refuses to record an increase, and
+editing the file by hand to make the check pass defeats the only thing that
+stops this debt growing. The count is whatever the baseline says - **do not
+write it down here.** The last hardcoded figure said "53 files, 245 instances"
+and was 138/434 by the time anyone checked.
 
 ---
 
@@ -386,7 +486,10 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 
 - Memory leaks, Zig or C++
 - Committing a hand-edited generated file
-- Calling impls across the boundary in **new** code
+- Calling impls across the boundary in **new** code - `zig build lint-impls`
+  (part of `zig build test`) enforces it
+- A new tool written in anything but Zig (the existing WPT tools excepted) -
+  see "Tools are Zig"
 - Deviating from a spec algorithm without saying why
 - Debug output in the hot path — `std.log.scoped`, never `std.debug.print`; no
   unguarded `fprintf` in `v8_wrapper.cpp`. A prototype-chain dump guarded only
@@ -397,7 +500,9 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 
 ## Known debt — do not add to it
 
-- 434 impls-boundary violations (`zig build lint-impls`)
+- References into impls from code that does not own them - recorded in
+  `tools/impls_boundary_baseline.txt`, which may only go down
+- Non-Zig tools outside the WPT exception: `tools/update_impl_signatures.py`
 - Untested and undocumented code exists
 
 These are real and being paid down. Saying "zero tolerance" about them trains
@@ -2993,3 +3098,48 @@ answers it.**
 **Fix**: the binding records a private-property edge from the owner's wrapper to the child's (`v8_Object_SetPrivateRef`) whenever it returns an attribute whose state has a `cached_<name>` field. That is the edge Blink draws by tracing. It covers every generated `[SameObject]` attribute at once. `same_object.zig`'s `Pin` remains for owners that are not wrappers.
 
 **Takeaway**: **Any native pointer from one GC-managed object to another needs an edge V8 can see. A private property on the owner's wrapper is the cheapest one.**
+
+---
+
+### Workflow: A rule with no check that passes today is a suggestion
+
+**Date**: 2026-09-23
+**Lesson**: "Calling impls across the boundary in new code" was already non-negotiable, and six new cross-impl references landed in five commits in one day, because nothing checked them.
+
+**Why**: `zig build lint-impls` listed the files that imported the impls module from outside allowed directories. It never looked at one impl calling another, and it failed on files that predated it - so it failed every run, gated nothing, and nobody ran it.
+
+**What Happened**: a review asked whether the rule was being followed. The audit found `Document -> RangeImpl.joinDocument`, `ParentNode -> HTMLCollectionImpl.makeLive`, `NodeIterator -> NodeImpl.getNodeType`, `Document -> NodeImpl.setOwnerDocument`, and `src/dom/mutation.zig -> impls.Node.getOwnerDocument` - and 36 sites across the impls, the parsers and the context manager setting a node's document through `NodeImpl.setOwnerDocument`. `src/webidl/interfaces/` itself was clean: regenerated from the IDL, every file matched byte for byte.
+
+**Fix**: each call now goes through the owner's impl if the caller is in the owner's hierarchy, through an interface if it is not and an IDL member exists, and otherwise through a `src/dom/` hook the owning impl installs (`node_document.zig`, `traversal.zig`, `live_collections.zig`, `range_boundaries.zig`) - see the next lesson for how the first route was got wrong at first. `tools/lint_impls_boundary.zig` is a per-file, per-`Impl.member` ratchet that `zig build test` runs; a new cross-type reference and the `getNodeType` swap in NodeIterator both fail it with the file, line and code.
+
+**Takeaway**: **A rule needs a check that passes today and fails on regression. Ratchet it on today's number, key it finely enough to see a swap, and put it in the step everyone already runs.**
+
+---
+
+### Architecture: Inside a hierarchy, go through the impl - a hook there is a detour
+
+**Date**: 2026-09-23
+**Lesson**: Moving every `NodeImpl.setOwnerDocument` call onto the `node_document` hook was wrong for the callers that ARE Nodes. Text, Attr, Document and the ParentNode mixin reach node-document state through the Node impl directly: it is their ancestor, so it is their own state.
+
+**Why**: A hook is the owner's step made available to code OUTSIDE its hierarchy - DOMImplementation, the HTML parsers, the context manager - which may not import the owner's impl. A subtype routing through it instead of calling its ancestor's impl reaches the state by a side door, which is exactly what the impls boundary exists to stop.
+
+**What Happened**: a review stopped at `Text.zig:249` - `node_document.set(new_node, doc)` in `splitText` - and asked why Text was not going through the impl. The audit found 16 such detours: Document 12, ParentNode 2, Text 1, Attr 1. The remaining 20 hook uses - DOMImplementation, HTMLParser, the src/html parser adapters, the context manager - are outside the Node hierarchy and correct.
+
+**Fix**: the 16 call `NodeImpl.setOwnerDocument` again. The lint now reads each impl's ancestry from the generated interfaces, stops counting references to ancestors, and fails - strictly, with no baseline - on any hook used from inside its owner's hierarchy (hooks declare owners on a `//! lint-impls: hook for <Owner>` line). Reintroducing the Text call fails it at `Text.zig:248`.
+
+**Takeaway**: **"Impls are private" is about other types. Your ancestors are you: go through their impl. Hooks are for strangers.**
+
+---
+
+### Workflow: Tools are Zig, and so are their gates
+
+**Date**: 2026-09-23
+**Lesson**: The first version of that ratchet was a Python script meant to run inside `zig build test`.
+
+**Why**: It was quick to write, and `tools/` already held Python - which is how the existing exceptions got there too.
+
+**What Happened**: a Python gate adds an interpreter to the build of a Zig project, and it could not be tested the way this repo tests code. Its count-only rule also missed a swap (one reference traded for another at an equal total) - the case a `std.testing` test in the Zig port pinned first.
+
+**Fix**: `tools/lint_impls_boundary.zig`, built for the host by `build.zig`, its rules pinned by `std.testing` tests that `zig build test` runs; the rule is written up under "Tools are Zig".
+
+**Takeaway**: **Write the tool in the language the repo builds with, tests first. The existing WPT tools are the one sanctioned exception; any other .py file in `tools/` is debt, not precedent.**

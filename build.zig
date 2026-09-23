@@ -3925,53 +3925,46 @@ pub fn build(b: *std.Build) void {
     interfaces_step.dependOn(&run_interfaces_check.step);
 
     // ========================================================================
-    // LINT: Check for impls imports outside allowed locations
+    // LINT: the impls boundary, as a ratchet
     // ========================================================================
-    // Golden Rule #12: External code must use interfaces, not impls directly
-    // This lint step scans for @import("impls") in files that shouldn't have it
+    // AGENTS.md "The impls boundary": impls are private. tools/lint_impls_boundary.zig
+    // counts every reference into an impl from code that does not own it - per file
+    // and per Impl.member - and fails if any rises above
+    // tools/impls_boundary_baseline.txt or a new one appears. The baseline only goes
+    // down: `zig build lint-impls -- --update` records a paid-down tree and refuses
+    // to record an increase.
     //
-    // Allowed locations:
-    // - src/webidl/impls/ - impl files can import other impls
-    // - src/webidl/interfaces/ - generated interfaces delegate to impls
-    // - src/webidl/mixins/ - mixins delegate to impls
-    // - src/webidl/namespaces/ - namespaces delegate to impls
-    // - src/webidl/codegen/ - codegen generates code that uses impls
-    // - src/runtime/ - runtime needs internal access for V8 bindings
-    // - src/root.zig - comment only
-    // - src/streams/internal/algorithms/reader_ops.zig - documented internal algorithm
-
-    const lint_impls_step = b.step("lint-impls", "Check for impls imports outside allowed locations");
-
-    const lint_impls = b.addSystemCommand(&[_][]const u8{
-        "sh",
-        "-c",
-        \\# Find files that import impls outside of allowed locations
-        \\
-        \\VIOLATIONS=$(grep -r '@import("impls")' src/ --include='*.zig' -l 2>/dev/null | \
-        \\    grep -v 'src/webidl/impls/' | \
-        \\    grep -v 'src/webidl/interfaces/' | \
-        \\    grep -v 'src/webidl/mixins/' | \
-        \\    grep -v 'src/webidl/namespaces/' | \
-        \\    grep -v 'src/webidl/codegen/' | \
-        \\    grep -v 'src/runtime/' | \
-        \\    grep -v 'src/root.zig' | \
-        \\    grep -v 'src/streams/internal/algorithms/reader_ops.zig' || true)
-        \\
-        \\if [ -n "$VIOLATIONS" ]; then
-        \\    echo "ERROR: Found @import(\"impls\") in files that should use interfaces:"
-        \\    echo "$VIOLATIONS"
-        \\    echo ""
-        \\    echo "Per Golden Rule #12, external code must use interfaces, not impls."
-        \\    echo "Allowed locations: src/webidl/{impls,interfaces,mixins,namespaces,codegen}/, src/runtime/"
-        \\    echo "See AGENTS.md for details."
-        \\    exit 1
-        \\fi
-        \\
-        \\echo "✅ No impls import violations found"
-        ,
+    // `zig build test` depends on it, so the pre-commit suite cannot pass with a new
+    // cross-impl reference. (The check it replaces listed files importing impls
+    // outside allowed directories, failed on files that predated it, and so gated
+    // nothing; impl-to-impl calls were not checked at all.)
+    const lint_impls_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_impls_boundary.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_impls_exe = b.addExecutable(.{
+        .name = "lint_impls_boundary",
+        .root_module = lint_impls_module,
     });
 
+    const lint_impls_step = b.step("lint-impls", "Fail on new references into impls (use -- --update after paying debt down)");
+    const lint_impls = b.addRunArtifact(lint_impls_exe);
+    // It reads src/ and the baseline, which the build graph does not track.
+    lint_impls.has_side_effects = true;
+    lint_impls.setCwd(b.path("."));
+    if (b.args) |args| lint_impls.addArgs(args);
     lint_impls_step.dependOn(&lint_impls.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_impls_check = b.addRunArtifact(lint_impls_exe);
+    lint_impls_check.has_side_effects = true;
+    lint_impls_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_impls_check.step);
+    const lint_impls_tests = b.addTest(.{ .root_module = lint_impls_module });
+    test_step.dependOn(&b.addRunArtifact(lint_impls_tests).step);
 
     // ========================================================================
     // HELP: Available JavaScript Engines

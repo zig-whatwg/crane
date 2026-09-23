@@ -9,6 +9,8 @@
 //!
 //! AbortSignal installs the implementation when the first signal is created,
 //! which is necessarily before anyone holds a signal to add an algorithm to.
+//!
+//! lint-impls: hook for AbortSignal
 
 const runtime = @import("runtime");
 

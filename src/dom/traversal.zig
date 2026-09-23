@@ -6,6 +6,8 @@
 //! impl installs its set-up step when it creates an object - necessarily before
 //! Document can hold one to set up - and Document calls it here. The same shape
 //! as `abort_algorithms.zig`.
+//!
+//! lint-impls: hook for NodeIterator, TreeWalker
 
 const runtime = @import("runtime");
 
