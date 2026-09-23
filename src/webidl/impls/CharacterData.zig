@@ -125,12 +125,11 @@ pub const InternalState = struct {
     /// This is the core operation for replaceData, insertData, deleteData, appendData
     pub fn replaceData(self: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
         const current_len = self.getLength();
-        var count = count_param;
+        if (offset > current_len) return error.IndexSizeError;
 
-        // Clamp count to available length
-        if (offset + count > current_len) {
-            count = current_len - offset;
-        }
+        // Clamp count to available length. Compared as a difference: offset
+        // plus a count near 2^32 - `deleteData(1, 0xFFFFFFFF)` - wraps.
+        const count = @min(count_param, current_len - offset);
 
         const new_len = current_len - count + @as(u32, @intCast(data.len));
 
@@ -311,8 +310,10 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
     // The V8 callback will free returned strings using instance.ctx.allocator
     const allocator = instance.ctx.allocator;
 
-    // Step 3: Handle overflow - return from offset to end
-    if (offset + count > length) {
+    // Step 3: "If offset plus count is greater than length, return a string
+    // whose value is the code units from the offsetth code unit to the end."
+    // Compared as a difference: offset plus a count near 2^32 wraps.
+    if (count > length - offset) {
         return runtime.DOMString.initDupe(allocator, data[offset..]);
     }
 
@@ -421,10 +422,10 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
         return error.IndexSizeError;
     }
 
-    // Step 4: Queue mutation record
-    // TODO: Call dom.mutation_observer_algorithms.queueMutationRecord
-    // This requires converting runtime.Instance to the Node type expected by the algorithm
-    // For now, skip mutation observer notification until type bridge is established
+    // Step 4: "Queue a mutation record of "characterData" for node with
+    // null, null, node's data, « », « », null, and null." Before step 5
+    // changes the data: the record copies it.
+    try dom.mutation_observer_algorithms.queueCharacterDataMutationRecord(instance, internal.getData());
 
     // Steps 3, 5-7: Replace data using InternalState's optimized method
     // This handles inline vs heap storage automatically
@@ -433,7 +434,6 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     // Steps 8-11: Update live ranges
     // TODO: Call dom.range_tracking.updateRangesAfterReplace
     // This requires access to owner_document from Node's inherited state
-    _ = instance;
 
     // Step 12: Run children changed steps for parent
     // TODO: Call dom.mutation.runChildrenChangedSteps

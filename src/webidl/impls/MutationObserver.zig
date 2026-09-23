@@ -65,6 +65,11 @@ pub const InternalState = struct {
     /// Queue of pending mutation records
     record_queue: std.ArrayListUnmanaged(*runtime.Instance),
 
+    /// Every attributeFilter this observer has registered and not yet
+    /// replaced or disconnected. The registrations on the observed nodes
+    /// borrow these lists; the observer owns them.
+    attribute_filters: std.ArrayListUnmanaged([]const []const u8) = .empty,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         _ = allocator;
         return .{
@@ -86,6 +91,42 @@ pub const InternalState = struct {
         };
     }
 
+    /// An owned copy of an `attributeFilter` sequence, kept until released.
+    fn keepFilter(self: *InternalState, filter: []const runtime.DOMString) ![]const []const u8 {
+        const names = try self.allocator.alloc([]const u8, filter.len);
+        var copied: usize = 0;
+        errdefer {
+            for (names[0..copied]) |name| self.allocator.free(name);
+            self.allocator.free(names);
+        }
+        for (filter) |name| {
+            names[copied] = try self.allocator.dupe(u8, name.asSlice());
+            copied += 1;
+        }
+        try self.attribute_filters.append(self.allocator, names);
+        return names;
+    }
+
+    /// Free one filter `keepFilter` returned, once no registration uses it.
+    fn releaseFilter(self: *InternalState, filter: []const []const u8) void {
+        for (self.attribute_filters.items, 0..) |kept, i| {
+            if (kept.ptr != filter.ptr) continue;
+            freeFilter(self.allocator, kept);
+            _ = self.attribute_filters.swapRemove(i);
+            return;
+        }
+    }
+
+    fn releaseAllFilters(self: *InternalState) void {
+        for (self.attribute_filters.items) |kept| freeFilter(self.allocator, kept);
+        self.attribute_filters.clearAndFree(self.allocator);
+    }
+
+    fn freeFilter(allocator: std.mem.Allocator, filter: []const []const u8) void {
+        for (filter) |name| allocator.free(name);
+        allocator.free(filter);
+    }
+
     pub fn deinit(self: *InternalState) void {
         // Dispose Global handle for callback
         v8_engine.disposeOptionalGlobalHandle(&self.callback);
@@ -98,6 +139,8 @@ pub const InternalState = struct {
             runtime.Instance.deinit(record);
         }
         self.record_queue.deinit(self.allocator);
+
+        self.releaseAllFilters();
     }
 };
 
@@ -248,9 +291,15 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
     const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target));
     log.debug("[MO_OBSERVE] target_nodebase={?*}\n", .{target_nodebase});
 
-    // Build registered observer options
-    // Note: attribute_filter conversion from DOMString[] to []const u8[] is deferred
-    // For now, we skip the attribute filter matching since DOMString requires conversion
+    // The filter's strings belong to the binding and die with this call; the
+    // registration keeps the observer's own copy. The observer tracks every
+    // copy, so one a failed registration never used is still freed by
+    // disconnect() or the observer's teardown.
+    const attribute_filter: ?[]const []const u8 = if (opts.attributeFilter) |filter|
+        try internal.keepFilter(filter)
+    else
+        null;
+
     const reg_options = RegisteredObserver.Options{
         .child_list = childList,
         .attributes = attributes,
@@ -258,7 +307,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
         .subtree = opts.subtree orelse false,
         .attribute_old_value = opts.attributeOldValue orelse false,
         .character_data_old_value = opts.characterDataOldValue orelse false,
-        .attribute_filter = null, // TODO: Convert DOMString[] to []const u8[]
+        .attribute_filter = attribute_filter,
     };
 
     // Step 7: For each registered of target's registered observer list,
@@ -280,7 +329,9 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
                         .observer = observer_handle.?,
                         .options = reg_options,
                     };
+                    const replaced_filter = registered.options.attribute_filter;
                     _ = nodebase.registered_observers.replace(i, new_registered) catch {};
+                    if (replaced_filter) |filter| internal.releaseFilter(filter);
                     found_existing = true;
                     break;
                 }
@@ -356,6 +407,9 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 
     // Clear node list
     internal.node_list.clearRetainingCapacity();
+
+    // No registration is left to use a filter.
+    internal.releaseAllFilters();
 }
 
 /// DOM §7.1 - MutationObserver.takeRecords()
@@ -547,45 +601,35 @@ pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Ins
     // Wrap the observer instance as V8 object for the second argument
     const observer_v8 = conv.instanceToV8(isolate, instance);
 
-    // Get undefined for 'this' value
-    // v8_Undefined returns a Global<Value>*
-    const recv_global = v8_engine.ffi.v8_Undefined(isolate) orelse {
-        for (records) |record| {
-            runtime.Instance.deinit(record);
-        }
-        return error.OutOfMemory;
-    };
+    // Step 6.4: "invoke mo's callback with « records, mo », "report", and
+    // mo" - the observer is the callback this value as well as its second
+    // argument. Both handles are Globals: the array is ours, the observer's
+    // is the wrapper cache's, borrowed.
+    const global_args = [2]*v8_engine.ffi.Value{ @ptrCast(records_array), observer_v8 };
+    defer v8_engine.ffi.v8_Global_Dispose(@ptrCast(records_array));
 
-    // All values are already Global handles from V8 API:
-    // - records_array: Global<Array>* from v8_Array_New
-    // - observer_v8: Global<Value>* from instanceToV8
-    // - recv_global: Global<Value>* from v8_Undefined
-    // v8_Function_Call_Safe expects Global handles, so we can use them directly
-
-    // Prepare arguments: [records, observer]
-    var global_args: [2]*v8_engine.ffi.Value = .{
-        @ptrCast(records_array),
-        observer_v8,
-    };
-
-    // Get the callback function - callback_global is a GlobalHandle which wraps a Global<Function>*
-    // We need to get its raw pointer for the FFI call
-    const func_ptr = callback_global.ptr;
-
-    // Call the callback function
-    // All arguments are Global handles as expected by v8_Function_Call_Safe
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        @ptrCast(func_ptr),
+    var threw = false;
+    const result = v8_engine.ffi.v8_Function_CallCatching(
         context,
-        @ptrCast(recv_global),
+        @ptrCast(callback_global.ptr),
+        observer_v8,
         2,
-        @ptrCast(&global_args),
+        &global_args,
+        &threw,
     );
-    defer v8_engine.ffi.v8_FreeFunctionCallResult(result);
+    const value = result orelse return;
+    defer v8_engine.ffi.v8_Global_Dispose(value);
 
-    // Check for errors but don't propagate - per spec, callback errors
-    // should be reported but not stop other observers
-    _ = result.error_info;
+    // "report": an exception the callback throws is reported for the global
+    // of the realm it was created in, and does not stop the other observers.
+    if (threw) {
+        const report = @import("html").report_exception;
+        const creation = v8_engine.ffi.v8_Function_GetCreationContext(@ptrCast(callback_global.ptr));
+        defer if (creation) |c| v8_engine.ffi.v8_Context_Dispose(c);
+        const global = (if (creation) |c| report.globalForContext(c) else null) orelse
+            report.globalForContext(context) orelse return;
+        _ = report.reportException(global, value, .{});
+    }
 
     // Note: Records are V8 garbage collected after wrapping, we don't need to free them
     // The V8 wrapper cache maintains the instance lifetime

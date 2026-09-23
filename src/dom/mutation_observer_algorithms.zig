@@ -243,7 +243,7 @@ pub fn queueTreeMutationRecord(
     // addedNodes, removedNodes, previousSibling, and nextSibling
     try queueMutationRecordInternal(
         allocator,
-        "childList",
+        .child_list,
         target,
         null, // name
         null, // namespace
@@ -258,6 +258,124 @@ pub fn queueTreeMutationRecord(
 // Import NodeList impl for accessing length
 const NodeListImpl = @import("impls").NodeList;
 const runtime = @import("runtime");
+const NodeBase = @import("node_base.zig").NodeBase;
+const RegisteredObserverOptions = @import("registered_observer.zig").RegisteredObserver.Options;
+
+/// The three record types "queue a mutation record" takes.
+pub const MutationType = enum {
+    attributes,
+    character_data,
+    child_list,
+
+    /// The string MutationRecord.type reports.
+    pub fn name(self: MutationType) []const u8 {
+        return switch (self) {
+            .attributes => "attributes",
+            .character_data => "characterData",
+            .child_list => "childList",
+        };
+    }
+};
+
+/// "Queue a mutation record" step 3.1: whether `options`, registered on a
+/// node that is (or is not) the target, wants a record of this type. The
+/// spec lists the conditions under which the observer is skipped; this is
+/// their negation.
+fn wantsRecord(
+    options: RegisteredObserverOptions,
+    node_is_target: bool,
+    mutation_type: MutationType,
+    name: ?[]const u8,
+    namespace: ?[]const u8,
+) bool {
+    // "node is not target and options["subtree"] is false"
+    if (!node_is_target and !options.subtree) return false;
+    switch (mutation_type) {
+        .attributes => {
+            // "type is "attributes" and options["attributes"] either does not
+            // exist or is false"
+            if (!options.attributes) return false;
+            // "type is "attributes", options["attributeFilter"] exists, and
+            // options["attributeFilter"] does not contain name or namespace
+            // is non-null"
+            if (options.attribute_filter) |filter| {
+                if (namespace != null) return false;
+                const attr_name = name orelse return false;
+                for (filter) |filtered| {
+                    if (std.mem.eql(u8, filtered, attr_name)) break;
+                } else return false;
+            }
+            return true;
+        },
+        // "type is "characterData" and options["characterData"] either does
+        // not exist or is false"
+        .character_data => return options.character_data,
+        // "type is "childList" and options["childList"] is false"
+        .child_list => return options.child_list,
+    }
+}
+
+/// Would "queue a mutation record" of this type for `target` find any
+/// interested observer? The same walk as its steps 2 and 3, asked before a
+/// record or its node lists exist - the question Blink's
+/// MutationObserverInterestGroup answers first - so that a mutation nobody
+/// observes costs one walk up the ancestors and allocates nothing.
+pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, name: ?[]const u8, namespace: ?[]const u8) bool {
+    var current: ?*NodeBase = target;
+    while (current) |node| : (current = node.parent_node) {
+        for (0..node.registered_observers.len) |i| {
+            const registered = node.registered_observers.get(i) orelse continue;
+            if (wantsRecord(registered.options, node == target, mutation_type, name, namespace)) return true;
+        }
+    }
+    return false;
+}
+
+/// DOM "handle attribute changes" step 1: "Queue a mutation record of
+/// "attributes" for element with attribute's local name, attribute's
+/// namespace, oldValue, « », « », null, and null."
+///
+/// The strings are copied into each record; the caller's may be freed as soon
+/// as this returns.
+pub fn queueAttributeMutationRecord(
+    element: *runtime.Instance,
+    local_name: []const u8,
+    namespace: ?[]const u8,
+    old_value: ?[]const u8,
+) !void {
+    try queueRecordWithoutNodes(.attributes, element, local_name, namespace, old_value);
+}
+
+/// DOM "replace data" step 4: "Queue a mutation record of "characterData" for
+/// node with null, null, node's data, « », « », null, and null."
+///
+/// `old_data` is copied into each record; it may change once this returns.
+pub fn queueCharacterDataMutationRecord(node: *runtime.Instance, old_data: []const u8) !void {
+    try queueRecordWithoutNodes(.character_data, node, null, null, old_data);
+}
+
+/// A record whose added and removed nodes are « » and whose siblings are
+/// null - every "attributes" and "characterData" record. Nothing is built
+/// unless an observer wants it.
+fn queueRecordWithoutNodes(
+    mutation_type: MutationType,
+    target: *runtime.Instance,
+    name: ?[]const u8,
+    namespace: ?[]const u8,
+    old_value: ?[]const u8,
+) !void {
+    const instance_bridge = @import("instance_bridge.zig");
+    const base = instance_bridge.getNodeBase(@ptrCast(target)) orelse return;
+    if (!hasInterestedObservers(base, mutation_type, name, namespace)) return;
+
+    const allocator = target.ctx.allocator;
+    const added_nodes = try interfaces.NodeList.init(allocator, target.ctx);
+    errdefer interfaces.NodeList.deinit(added_nodes);
+    const removed_nodes = try interfaces.NodeList.init(allocator, target.ctx);
+    errdefer interfaces.NodeList.deinit(removed_nodes);
+
+    try queueMutationRecordInternal(allocator, mutation_type, target, name, namespace, old_value, added_nodes, removed_nodes, null, null);
+}
 
 /// Internal version of queueMutationRecord that uses runtime.Instance
 /// This avoids the architectural mismatch with the old interface-based signatures
@@ -265,7 +383,7 @@ const runtime = @import("runtime");
 /// Spec: https://dom.spec.whatwg.org/#queueing-a-mutation-record
 fn queueMutationRecordInternal(
     allocator: Allocator,
-    mutation_type: []const u8,
+    mutation_type: MutationType,
     target: *runtime.Instance,
     name: ?[]const u8,
     namespace: ?[]const u8,
@@ -287,81 +405,24 @@ fn queueMutationRecordInternal(
         return;
     };
 
-    std.log.debug("[MutationObserver] queueMutationRecordInternal: type={s}, target Instance={*}, target NodeBase={*}", .{ mutation_type, target, target_nodebase });
-
-    // Step 1: Let interestedObservers be an empty map
-    // Maps observer instance to mappedOldValue
-    var interested_observers = std.AutoHashMap(*runtime.Instance, ?[]const u8).init(allocator);
-    defer interested_observers.deinit();
+    // Step 1: "Let interestedObservers be an empty map." An ORDERED map:
+    // the order observers enter it is the order they join the pending
+    // mutation observers, which is the order their callbacks run.
+    const Interested = struct { observer: *runtime.Instance, mapped_old_value: ?[]const u8 };
+    var interested_observers: std.ArrayListUnmanaged(Interested) = .empty;
+    defer interested_observers.deinit(allocator);
 
     // Step 2: Let nodes be the inclusive ancestors of target
     // Walk from target up to root
-    var ancestors_count: usize = 0;
-    var current: ?*@import("node_base.zig").NodeBase = target_nodebase;
+    var current: ?*NodeBase = target_nodebase;
     while (current) |node| : (current = node.parent_node) {
-        ancestors_count += 1;
-        if (node.registered_observers.len > 0) {
-            std.log.debug("[MutationObserver] Checking node {*} with {} registered observers", .{ node, node.registered_observers.len });
-        }
         // Step 3: For each node in nodes, for each registered of node's registered observer list
         for (0..node.registered_observers.len) |i| {
             const registered = node.registered_observers.get(i) orelse continue;
             const options = registered.options;
 
-            // Step 3.2: If NONE of the following are true, then continue (skip this observer)
-            var should_skip = false;
-
-            // - node is not target and options["subtree"] is false
-            if (node != target_nodebase and !options.subtree) {
-                should_skip = true;
-            }
-
-            // - type is "attributes" and options["attributes"] is false
-            if (!should_skip and std.mem.eql(u8, mutation_type, "attributes")) {
-                if (!options.attributes) {
-                    should_skip = true;
-                }
-                // - type is "attributes", options["attributeFilter"] exists, and
-                //   options["attributeFilter"] does not contain name or namespace is non-null
-                if (!should_skip) {
-                    if (options.attribute_filter) |filter| {
-                        if (namespace != null) {
-                            should_skip = true;
-                        } else if (name) |attr_name| {
-                            var found = false;
-                            for (filter) |filter_name| {
-                                if (std.mem.eql(u8, filter_name, attr_name)) {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if (!found) should_skip = true;
-                        }
-                    }
-                }
-            }
-
-            // - type is "characterData" and options["characterData"] is false
-            if (!should_skip and std.mem.eql(u8, mutation_type, "characterData")) {
-                if (!options.character_data) {
-                    should_skip = true;
-                }
-            }
-
-            // - type is "childList" and options["childList"] is false
-            if (!should_skip and std.mem.eql(u8, mutation_type, "childList")) {
-                if (!options.child_list) {
-                    should_skip = true;
-                    std.log.debug("[MutationObserver] Skipping observer: childList=false", .{});
-                }
-            }
-
-            if (should_skip) {
-                std.log.debug("[MutationObserver] Observer skipped for mutation type '{s}'", .{mutation_type});
-                continue;
-            }
-
-            std.log.debug("[MutationObserver] Found interested observer! node={*}, options.childList={}", .{ node, options.child_list });
+            // Step 3.1: skip an observer that does not want this record.
+            if (!wantsRecord(options, node == target_nodebase, mutation_type, name, namespace)) continue;
 
             // Step 3.2.1: Let mo be registered's observer
             const observer_ptr = handles.mutationObserverToAnyopaque(registered.observer) orelse {
@@ -371,37 +432,38 @@ fn queueMutationRecordInternal(
             const mo: *runtime.Instance = @ptrCast(@alignCast(observer_ptr));
             std.log.debug("[MutationObserver] Observer instance: {*}", .{mo});
 
-            // Step 3.2.2: If interestedObservers[mo] does not exist, then set it to null
-            if (!interested_observers.contains(mo)) {
-                try interested_observers.put(mo, null);
-                std.log.debug("[MutationObserver] Added observer to interested_observers map", .{});
-            }
+            // Step 3.2.2: "If interestedObservers[mo] does not exist, then
+            // set interestedObservers[mo] to null."
+            const slot = for (interested_observers.items) |*item| {
+                if (item.observer == mo) break item;
+            } else blk: {
+                try interested_observers.append(allocator, .{ .observer = mo, .mapped_old_value = null });
+                break :blk &interested_observers.items[interested_observers.items.len - 1];
+            };
 
-            // Step 3.2.3: If either type is "attributes" and options["attributeOldValue"] is true,
-            // or type is "characterData" and options["characterDataOldValue"] is true,
-            // then set interestedObservers[mo] to oldValue
-            if (std.mem.eql(u8, mutation_type, "attributes") and options.attribute_old_value) {
-                try interested_observers.put(mo, old_value);
-            } else if (std.mem.eql(u8, mutation_type, "characterData") and options.character_data_old_value) {
-                try interested_observers.put(mo, old_value);
+            // Step 3.2.3: "If either type is "attributes" and
+            // options["attributeOldValue"] is true, or type is
+            // "characterData" and options["characterDataOldValue"] is true,
+            // then set interestedObservers[mo] to oldValue."
+            if ((mutation_type == .attributes and options.attribute_old_value) or
+                (mutation_type == .character_data and options.character_data_old_value))
+            {
+                slot.mapped_old_value = old_value;
             }
         }
     }
 
     // Step 4: For each observer → mappedOldValue of interestedObservers
-    std.log.debug("[MutationObserver] interested_observers count: {}", .{interested_observers.count()});
-    var it = interested_observers.iterator();
-    while (it.next()) |entry| {
-        const observer = entry.key_ptr.*;
-        const mapped_old_value = entry.value_ptr.*;
-        std.log.debug("[MutationObserver] Processing interested observer: {*}", .{observer});
+    for (interested_observers.items) |entry| {
+        const observer = entry.observer;
+        const mapped_old_value = entry.mapped_old_value;
 
         // Step 4.1: Let record be a new MutationRecord object
         const ctx = target.ctx;
         const record = try MutationRecordImpl.create(
             allocator,
             ctx,
-            mutation_type,
+            mutation_type.name(),
             target,
             added_nodes,
             removed_nodes,

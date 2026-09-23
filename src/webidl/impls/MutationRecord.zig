@@ -81,10 +81,12 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // NodeLists and Nodes are owned elsewhere, we don't free them
-        // Strings (mutation_type, attribute_name, etc.) may need freeing
-        // depending on how they're allocated
-        _ = self;
+        // NodeLists and Nodes are owned elsewhere, we don't free them.
+        // `mutation_type` is a literal. The attribute strings are this
+        // record's own copies: `create` took them.
+        if (self.attribute_name) |name| self.allocator.free(name);
+        if (self.attribute_namespace) |ns| self.allocator.free(ns);
+        if (self.old_value) |value| self.allocator.free(value);
     }
 };
 
@@ -150,6 +152,15 @@ pub fn create(
     const instance = try init(allocator, State, &MutationRecord.vtable, ctx);
     errdefer deinit(instance);
 
+    // The strings are copied: an attribute's name and old value belong to
+    // its element, which frees them as soon as the change that queued this
+    // record is done - long before an observer reads them.
+    const name_copy: ?[]const u8 = if (attribute_name) |n| try allocator.dupe(u8, n) else null;
+    errdefer if (name_copy) |n| allocator.free(n);
+    const namespace_copy: ?[]const u8 = if (attribute_namespace) |ns| try allocator.dupe(u8, ns) else null;
+    errdefer if (namespace_copy) |ns| allocator.free(ns);
+    const old_value_copy: ?[]const u8 = if (old_value) |v| try allocator.dupe(u8, v) else null;
+
     const internal = getInternal(instance);
     internal.mutation_type = mutation_type;
     internal.target = target;
@@ -157,9 +168,9 @@ pub fn create(
     internal.removed_nodes = removed_nodes;
     internal.previous_sibling = previous_sibling;
     internal.next_sibling = next_sibling;
-    internal.attribute_name = attribute_name;
-    internal.attribute_namespace = attribute_namespace;
-    internal.old_value = old_value;
+    internal.attribute_name = name_copy;
+    internal.attribute_namespace = namespace_copy;
+    internal.old_value = old_value_copy;
 
     return instance;
 }

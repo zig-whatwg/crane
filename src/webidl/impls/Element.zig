@@ -1637,7 +1637,12 @@ fn handleAttributeChanges(
 ) void {
     // Step 1: "Queue a mutation record of "attributes" for element with
     // attribute's local name, attribute's namespace, oldValue, « », « »,
-    // null, and null." (Mutation observers for attributes: next commit.)
+    // null, and null." The record copies what it keeps. A failure to queue
+    // one must not skip the change steps below - the attribute has already
+    // changed, and its caches must follow.
+    dom.mutation_observer_algorithms.queueAttributeMutationRecord(instance, local_name, namespace, old_value) catch |err| {
+        std.log.scoped(.element).warn("attributes mutation record not queued: {}", .{err});
+    };
 
     // Step 2: "If element is custom, then enqueue a custom element callback
     // reaction with element, callback name "attributeChangedCallback", and

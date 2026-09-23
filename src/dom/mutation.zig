@@ -427,6 +427,11 @@ fn queueTreeMutationRecord(
 
     // Get the target as a runtime.Instance via the instance bridge
     const target_nodebase: *NodeBase = @ptrCast(target);
+
+    // Nothing is built unless an observer wants the record: these two lists
+    // were made on every insert and remove, and nothing freed them until the
+    // page ended.
+    if (!mutation_observer.hasInterestedObservers(target_nodebase, .child_list, null, null)) return;
     const target_instance_ptr = instance_bridge.getInstance(target_nodebase) orelse {
         // Target is not a registered runtime.Instance - cannot queue mutation record
         // This can happen for nodes created purely through NodeBase (e.g., during parsing)
