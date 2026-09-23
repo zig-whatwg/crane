@@ -172,6 +172,30 @@ pub fn fromV8UnsignedLong(
     return v8.v8_Value_Uint32Value(value, context);
 }
 
+/// WebIDL § 3.2.4 ConvertToInt, steps 6-10, for a number `x` already
+/// produced by ToNumber: NaN, +-0 and +-Infinity give 0; anything else is
+/// truncated and wrapped modulo 2^bitLength, into the signed range for a
+/// signed type. Never throws - that is [EnforceRange]'s job, not the default.
+pub fn convertToInt(comptime T: type, x: f64) T {
+    const info = @typeInfo(T).int;
+    // Step 6
+    if (std.math.isNan(x) or std.math.isInf(x) or x == 0) return 0;
+    // Step 7: IntegerPart(x)
+    const truncated = @trunc(x);
+    // Steps 8-9: x modulo 2^bitLength, in [0, 2^bitLength), on exact
+    // integers - a double modulo loses bits once the result needs more than
+    // 53. A double of magnitude 2^116 or more is a multiple of 2^64, so it
+    // wraps to 0; anything smaller fits an i128 exactly.
+    if (@abs(truncated) >= 0x1p116) return 0;
+    const whole: i128 = @intFromFloat(truncated);
+    const wrapped: i128 = @mod(whole, @as(i128, 1) << info.bits);
+    const Unsigned = std.meta.Int(.unsigned, info.bits);
+    const bits: Unsigned = @intCast(wrapped);
+    // Step 10: a value at or past 2^(bitLength-1) is negative - which is
+    // exactly the two's-complement reading of the same bits.
+    return @bitCast(bits);
+}
+
 /// Convert V8 Value to Zig i64 (long long)
 pub fn fromV8LongLong(
     context: *v8.Context,
@@ -1086,19 +1110,17 @@ pub fn fromV8Value(
         return ConversionError.TypeError;
     }
 
-    // Handle integers (beyond WebIDL standard types)
+    // Handle integers: WebIDL § 3.2.4 ConvertToInt, for a type with neither
+    // [EnforceRange] nor [Clamp].
     if (type_info == .int) {
-        if (!v8.v8_Value_IsNumber(value)) {
+        // Step 1: x = ToNumber(V). ToNumber throws a TypeError for a Symbol or
+        // a BigInt. An object's valueOf can throw too; NumberValue then
+        // answers 0 and V8 rethrows the pending exception when the binding
+        // returns, so the call runs with 0 first - a known gap.
+        if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
             return ConversionError.TypeError;
         }
-        const num_value = v8.v8_Value_NumberValue(value, context);
-
-        // Check range and convert
-        const int_value: i64 = @intFromFloat(num_value);
-        if (!runtime.isInRange(T, int_value)) {
-            return ConversionError.RangeError;
-        }
-        return @intCast(int_value);
+        return convertToInt(T, v8.v8_Value_NumberValue(value, context));
     }
 
     // Handle enums (convert from string or integer)

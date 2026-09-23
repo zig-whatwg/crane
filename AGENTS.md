@@ -2947,3 +2947,49 @@ answers it.**
 **Fix**: parse `src` against `node.baseURI` through the URL interface (HTML's shared attribute processing steps), implement `baseURI` per HTML's document base URL, take host and port from the authority, and let the integration own the host bytes. moving-between-documents: 52 TIMEOUT -> 52 OK, 260/260 subtests.
 
 **Takeaway**: **Test a feature with the URL shapes the corpus actually uses. A probe written with an absolute URL passes against an engine that cannot resolve a relative one - and `Origin`-style structs that borrow their strings need an owner as much as any pointer does.**
+
+---
+
+### Codegen: An extended attribute the generator detects and never emits is silently ignored
+
+**Date**: 2026-09-23
+**Lesson**: `extattr.isLegacyNullToEmptyString` existed, with a test, and nothing called it - so every `[LegacyNullToEmptyString]` value (124 across the IDL: `innerHTML`, `CharacterData.data`, `createDocument`'s qualifiedName, the HTML colour attributes, CSSOM) turned `null` into `"null"`.
+
+**What Happened**: `dom/common.js` builds its fixtures with `createDocument(null, null, doctype)`. That created an element named `null`, so the fixture's `xmlDoc.appendChild(element)` threw HierarchyRequestError inside `setup()`, and 23 `dom/ranges` files ERRORed with zero subtests and the message `[object DOMException]`. A probe that evaluated `setupRangeTests` one statement at a time named the line in one run. dom nodes/traversal/ranges: blocking 52 -> 32, passing subtests 3,237 -> 7,316.
+
+**Fix**: codegen writes a `legacy_null_to_empty` table (Zig function name, bit per argument), and keeps the annotation on union member types, where `innerHTML` carries it. The binding swaps a JS `null` for `""` before conversion.
+
+**Takeaway**: **Grep the generator for every `is<ExtAttr>` helper's callers. A detected-but-unused attribute is a whole class of values converted wrong, and the tests it breaks fail far from the conversion.**
+
+---
+
+### Architecture: A proxy with a `get` trap pays an invariant check on every read
+
+**Date**: 2026-09-23
+**Lesson**: ES 10.5.8 step 9 makes V8 compare a `get` trap's result against the target's own property descriptor on every read. On a legacy platform object that descriptor comes from our indexed interceptor, so `list[i]` built a descriptor object per access - two thirds of a profiled NodeList loop.
+
+**Fix**: no `get` trap (2eb625514). V8 then forwards `[[Get]]` with the proxy as receiver, which is safe because every path that unwraps a receiver's internal fields looks through a proxy. NodeList index read 3.4 us -> 0.7 us. The `NodeList-static-length-getter-tampered-*` files do ~125M indexed reads and still need about 10x more; the remaining cost is a heap-allocated `Global` per handle crossing the FFI, plus `v8_wrapper.cpp` compiled at `-O0` in Debug.
+
+**Takeaway**: **Profile before optimising a binding: the cost was in V8's proxy semantics, not in our code.**
+
+---
+
+### Architecture: An inherited attribute's impl reads state only its own interface writes
+
+**Date**: 2026-09-23
+**Lesson**: `startContainer`/`startOffset`/`endContainer`/`endOffset`/`collapsed` are AbstractRange attributes, so the binding answers them through `AbstractRange.zig` for every range. That impl read AbstractRange's generated state, which neither Range nor StaticRange ever wrote - both keep their boundary points in their own `InternalState`. Every range read `startContainer` as `undefined`, and `Range-selectNode.html` passed 0 of 292.
+
+**Fix**: `src/dom/range_boundaries.zig`: each subclass installs a provider, and AbstractRange's getters ask it - the `abort_algorithms.zig` shape, no impl-to-impl call and no mirrored copy to go stale. Range-selectNode 0 -> 280/292.
+
+**Takeaway**: **When a parent interface declares an attribute, check who writes the state its impl reads. A subclass with its own `InternalState` usually does not.**
+
+---
+
+### Architecture: A [SameObject] child lives as long as its owner's wrapper
+
+**Date**: 2026-09-23
+**Lesson**: The generated `[SameObject]` getter caches the child as a bare `*runtime.Instance`. Nothing kept the child's wrapper alive, so a GC freed `node.childNodes` under the cache, and the next read wrapped whatever the slab had put there: `length` read `undefined`, `Range-*` files SEGVed in teardown.
+
+**Fix**: the binding records a private-property edge from the owner's wrapper to the child's (`v8_Object_SetPrivateRef`) whenever it returns an attribute whose state has a `cached_<name>` field. That is the edge Blink draws by tracing. It covers every generated `[SameObject]` attribute at once. `same_object.zig`'s `Pin` remains for owners that are not wrappers.
+
+**Takeaway**: **Any native pointer from one GC-managed object to another needs an edge V8 can see. A private property on the owner's wrapper is the cheapest one.**
