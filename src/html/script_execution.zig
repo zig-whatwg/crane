@@ -2499,6 +2499,17 @@ fn fireAtScriptElement(
 ) void {
     const ctx = script_element.ctx;
 
+    // Callers include the parser - executeScriptsWhenParsingFinished runs a
+    // deferred script and fires its load event from loadHTML, not from V8 -
+    // so there may be no HandleScope and no entered context. Dispatch wraps
+    // the event for its listeners, and a handle created with no scope is a
+    // V8 fatal error in HandleScope::Extend: 5 CRASHes in one worklist sweep,
+    // four of them render-blocking files with a deferred script. A nested
+    // scope costs nothing when the caller did have one. Null: the context is
+    // gone and nobody is left to hear the event.
+    const scope = @import("v8").JsScope.init(ctx) orelse return;
+    defer scope.deinit();
+
     const event = interfaces.Event.call_constructor(
         ctx,
         runtime.DOMString.initInterned(event_type),
