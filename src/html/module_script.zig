@@ -97,6 +97,11 @@ pub const ModuleScript = struct {
     /// Marks a node already visited by the current `findByIdentityHash` walk.
     search_epoch: u32 = 0,
 
+    /// Links in `live_scripts`, while this script has a JavaScript record.
+    live_prev: ?*ModuleScript = null,
+    live_next: ?*ModuleScript = null,
+    live: bool = false,
+
     pub const Child = struct {
         /// Owned copy of the request's specifier.
         specifier: []const u8,
@@ -118,6 +123,7 @@ pub const ModuleScript = struct {
     /// Release the script, its V8 handles and its edge list. Children are not
     /// freed - the module map owns them.
     pub fn destroy(self: *ModuleScript) void {
+        untrack(self);
         if (self.record) |record| ffi.v8_Module_Dispose(record);
         if (self.parse_error) |value| ffi.v8_Global_Dispose(value);
         if (self.error_to_rethrow) |value| ffi.v8_Global_Dispose(value);
@@ -208,10 +214,56 @@ pub fn createJavaScriptModuleScript(
     if (result.module) |module| {
         script.record = module;
         script.identity_hash = ffi.v8_Module_GetIdentityHash(module);
+        track(isolate, script);
     } else {
         script.parse_error = takeException(result.error_info);
     }
     return script;
+}
+
+// =============================================================================
+// import.meta
+// =============================================================================
+
+/// Every live module script with a JavaScript record, for V8's import.meta
+/// callback, which names a module only by identity. A module map owns each
+/// script; this only links them. Main thread only: worker module scripts go
+/// through html/workers/module_worker.zig.
+var live_scripts: ?*ModuleScript = null;
+var import_meta_installed: bool = false;
+
+fn track(isolate: *ffi.Isolate, script: *ModuleScript) void {
+    if (!import_meta_installed) {
+        ffi.v8_Isolate_SetImportMetaUrlCallback(isolate, &importMetaUrl);
+        import_meta_installed = true;
+    }
+    script.live_prev = null;
+    script.live_next = live_scripts;
+    if (live_scripts) |head| head.live_prev = script;
+    live_scripts = script;
+    script.live = true;
+}
+
+fn untrack(script: *ModuleScript) void {
+    if (!script.live) return;
+    if (script.live_prev) |prev| prev.live_next = script.live_next else live_scripts = script.live_next;
+    if (script.live_next) |next| next.live_prev = script.live_prev;
+    script.live = false;
+}
+
+/// HTML "HostGetImportMetaProperties": import.meta.url is the module script's
+/// base URL - the response URL for a fetched script, the document's base URL
+/// for an inline one.
+fn importMetaUrl(identity_hash: c_int, module: *ffi.Module, len: *usize) callconv(.c) ?[*]const u8 {
+    var it = live_scripts;
+    while (it) |script| : (it = script.live_next) {
+        if (script.identity_hash != identity_hash) continue;
+        const record = script.record orelse continue;
+        if (!ffi.v8_Module_Equals(record, module)) continue;
+        len.* = script.base_url.len;
+        return script.base_url.ptr;
+    }
+    return null;
 }
 
 /// Create a JSON module script.

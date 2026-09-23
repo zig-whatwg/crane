@@ -4983,6 +4983,40 @@ static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
     return handle_scope.Escape(resolver->GetPromise());
 }
 
+// import.meta - HTML "HostGetImportMetaProperties": its url is the module
+// script's base URL. Zig keeps the module scripts and their URLs
+// (src/html/module_script.zig), so this asks it for the script whose record is
+// `module`; V8 names a module only by object identity. V8 hands the callback a
+// fresh object with a null prototype (v8-callbacks.h,
+// HostInitializeImportMetaObjectCallback) - properties are ours to add.
+typedef const char* (*ImportMetaUrlCallback)(int identity_hash, Global<Module>* module, size_t* len);
+static ImportMetaUrlCallback g_import_meta_url_callback = nullptr;
+
+static void V8HostInitializeImportMetaObjectCallback(Local<Context> context, Local<Module> module, Local<Object> meta) {
+    if (!g_import_meta_url_callback) return;
+    Isolate* isolate = context->GetIsolate();
+    Global<Module> handle(isolate, module);
+    size_t len = 0;
+    const char* url = g_import_meta_url_callback(module->GetIdentityHash(), &handle, &len);
+    if (!url) return;
+    Local<String> value;
+    if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
+    (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
+}
+
+void v8_Isolate_SetImportMetaUrlCallback(Isolate* isolate, ImportMetaUrlCallback callback) {
+    g_import_meta_url_callback = callback;
+    isolate->SetHostInitializeImportMetaObjectCallback(V8HostInitializeImportMetaObjectCallback);
+}
+
+/// Whether two module handles name the same module.
+bool v8_Module_Equals(Global<Module>* a, Global<Module>* b) {
+    if (!a || !b) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return a->Get(isolate) == b->Get(isolate);
+}
+
 /// Set the dynamic import callback for the current isolate
 /// This callback is invoked whenever import() is used in JavaScript
 void v8_Isolate_SetHostImportModuleDynamicallyCallback(

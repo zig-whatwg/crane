@@ -1017,6 +1017,13 @@ pub extern fn v8_Object_GetPrototypeV2(object: *Object) ?*Value;
 
 pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const PropertyCallbackInfo) callconv(.c) void;
 
+/// import.meta.url, looked up by the module's identity hash and checked with
+/// v8_Module_Equals; returns the URL's bytes (borrowed for the call) or null.
+pub const ImportMetaUrlCallback = *const fn (identity_hash: c_int, module: *Module, len: *usize) callconv(.c) ?[*]const u8;
+pub extern fn v8_Isolate_SetImportMetaUrlCallback(isolate: *Isolate, callback: ImportMetaUrlCallback) void;
+/// Whether two module handles name the same module.
+pub extern fn v8_Module_Equals(a: *Module, b: *Module) bool;
+
 pub extern fn v8_Object_SetLazyDataProperty(
     object: *Object,
     context: *Context,
