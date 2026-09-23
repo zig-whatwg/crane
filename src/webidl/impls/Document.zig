@@ -997,10 +997,21 @@ pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.
 /// HTML §7.7.2 - Returns the Location object for the document
 /// Spec: https://html.spec.whatwg.org/multipage/history.html#dom-document-location
 /// Returns null if the document is not associated with a browsing context
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-location
+/// "The Document object's location getter steps are to return this's relevant
+/// global object's Location object, if this is fully active, and null
+/// otherwise."
+///
+/// Fully active: the document its window still shows, in a browsing context
+/// that has not been discarded - removing an iframe discards its context and
+/// every one below it, which is what `closed` reports. A document with no
+/// window (createHTMLDocument, DOMParser) is not fully active either.
 pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // Location object not yet implemented - return null (no browsing context)
-    return null;
+    const window = (try get_defaultView(instance)) orelse return null;
+    if (interfaces.Window.get_closed(window) catch true) return null;
+    const shown = interfaces.Window.get_document(window) catch return null;
+    if (shown != instance) return null;
+    return interfaces.Window.get_location(window) catch null;
 }
 
 /// Getter for domain
