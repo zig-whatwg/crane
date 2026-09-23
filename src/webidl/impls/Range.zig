@@ -21,6 +21,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Range = interfaces.Range;
 const range_boundaries = @import("dom").range_boundaries;
+const document_internals = @import("dom").document_internals;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
@@ -62,6 +63,11 @@ pub const InternalState = struct {
 
     /// Owner document - needed for per-document range tracking
     owner_document: ?*runtime.Instance,
+    /// The owner document's slab generation when this range registered with
+    /// it. The document keeps a plain list of its live ranges and walks it on
+    /// every mutation, so a range must leave the list when it is freed - but
+    /// only if the document it joined is still the object at that address.
+    owner_generation: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -119,8 +125,18 @@ fn boundariesOf(range: *runtime.Instance) ?range_boundaries.Boundaries {
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        // TODO: Unregister from document's range list
-        // internal.owner_document.?.unregisterRange(instance);
+        // Leave the document's live-range list, which mutation.zig walks on
+        // every insert and remove. Blink holds that list weakly
+        // (HeapHashSet<WeakMember<Range>>); here the range removes itself.
+        // Teardown can free the document first, and the slab reissues its
+        // address, so check it is still the document the range joined.
+        if (internal.owner_document) |doc| {
+            if (internal.owner_generation != 0 and
+                runtime.SlabAllocator.generationOf(doc) == internal.owner_generation)
+            {
+                document_internals.unregisterRange(doc, instance);
+            }
+        }
         const Arena = @import("runtime").ArenaAllocator;
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
@@ -133,19 +149,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The new Range() constructor steps are to set this's start and end to
 /// (current global object's associated Document, 0).
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    // "the current global object's associated Document"
+    const document = currentDocument(ctx) orelse return error.InvalidStateError;
+
     const instance = try init(ctx.allocator, State, &Range.vtable, ctx);
     errdefer deinit(instance);
 
-    // TODO: Get document from current global object
-    // For now, leave boundary points as null (will need document to set)
-    // const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // internal.start_container = document_node;
-    // internal.start_offset = 0;
-    // internal.end_container = document_node;
-    // internal.end_offset = 0;
-    // internal.owner_document = document;
+    // Set this's start and end to (document, 0), and make it live: a live
+    // range is registered with its node document so mutations move it.
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.start_container = document;
+    internal.start_offset = 0;
+    internal.end_container = document;
+    internal.end_offset = 0;
+    try joinDocument(internal, instance, document);
 
     return instance;
+}
+
+/// Register `range` as one of `document`'s live ranges, remembering which
+/// document it joined so `deinit` can leave again.
+pub fn joinDocument(internal: *InternalState, range: *runtime.Instance, document: *runtime.Instance) !void {
+    try document_internals.registerRange(document, range);
+    internal.owner_document = document;
+    internal.owner_generation = runtime.SlabAllocator.generationOf(document);
+}
+
+/// The current global object's associated Document: the realm's Window's
+/// document.
+fn currentDocument(ctx: runtime.Context) ?*runtime.Instance {
+    const realm = ctx.realm orelse return null;
+    const window_ptr = realm.global_object orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+    return interfaces.Window.get_document(window) catch null;
 }
 
 // =============================================================================
@@ -1024,9 +1060,13 @@ pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
     newInternal.start_offset = internal.start_offset;
     newInternal.end_container = internal.end_container;
     newInternal.end_offset = internal.end_offset;
-    newInternal.owner_document = internal.owner_document;
 
-    // TODO: Register with document
+    // The clone is a live range too, in the same document.
+    if (internal.owner_document) |doc| {
+        if (runtime.SlabAllocator.generationOf(doc) == internal.owner_generation) {
+            try joinDocument(newInternal, newRange, doc);
+        }
+    }
 
     return newRange;
 }

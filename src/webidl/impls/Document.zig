@@ -4438,11 +4438,10 @@ pub fn call_createRange(instance: *runtime.Instance) anyerror!*runtime.Instance 
         range_internal.start_offset = 0;
         range_internal.end_container = instance;
         range_internal.end_offset = 0;
-        range_internal.owner_document = instance;
+        // Register this range with the document, recording which document
+        // it joined so the range can leave the list when it is freed.
+        try RangeImpl.joinDocument(range_internal, range, instance);
     }
-
-    // Register this range with the document
-    try registerRange(instance, range);
 
     // Step 3: Return range
     return range;

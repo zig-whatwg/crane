@@ -799,7 +799,7 @@ pub fn insert(
 
         // Update live ranges: For each live range whose start/end node is parent
         // and offset > child's index, increase offset by count
-        if (parent.owner_document) |doc| {
+        if (nodeDocument(parent)) |doc| {
             updateRangesForInsertionWithCount(doc, parent, child_idx, count);
         }
     }
@@ -1066,7 +1066,7 @@ pub fn appendChildren(
     }
 
     // Step 6: Update live ranges if document is available
-    if (parent.owner_document) |doc| {
+    if (nodeDocument(parent)) |doc| {
         const start_idx = parent.child_nodes.size() - children.len;
         updateRangesForInsertionWithCount(doc, parent, start_idx, children.len);
     }
@@ -1226,7 +1226,7 @@ pub fn insertChildrenBefore(
     }
 
     // Update live ranges
-    if (parent.owner_document) |doc| {
+    if (nodeDocument(parent)) |doc| {
         updateRangesForInsertionWithCount(doc, parent, insert_idx, children.len);
     }
 
@@ -1768,7 +1768,7 @@ pub fn move(
         const child_index = getChildIndex(c) orelse 0;
 
         // Get the document for range tracking
-        if (new_parent.owner_document) |doc| {
+        if (nodeDocument(new_parent)) |doc| {
             // Step 17.1: For each live range whose start node is newParent and start offset
             // is greater than child's index, increase its start offset by 1
             updateRangesForInsertion(doc, new_parent, child_index);
@@ -1859,12 +1859,24 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
 ///   - target: *Node (WebIDL interface)
 ///   - added_nodes: *NodeList (WebIDL interface)
 ///   - removed_nodes: *NodeList (WebIDL interface)
+/// `node`'s node document, which the live-range and NodeIterator steps key
+/// their lists on. `NodeBase.owner_document` is written only by `adopt`, so it
+/// is null for nearly every node - the document lives in the Node impl's state,
+/// which is where `runLiveRangeSplitSteps` already reads it. A document is its
+/// own node document.
+fn nodeDocument(node: anytype) ?*runtime.Instance {
+    const base: *NodeBase = @ptrCast(@constCast(node));
+    const instance_opaque = instance_bridge.getInstance(base) orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_opaque));
+    if (base.node_type == DOCUMENT_NODE) return instance;
+    return impls.Node.getOwnerDocument(instance);
+}
+
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove steps 4-7
 fn runLiveRangePreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of live ranges
-    const doc = node.owner_document orelse return;
-    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+    const doc_instance = nodeDocument(node) orelse return;
 
     // Get the parent and index for updating boundary points
     const parent = node.parent_node orelse return;
@@ -2015,8 +2027,7 @@ pub fn runLiveRangeSplitSteps(
 /// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
 fn runNodeIteratorPreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of NodeIterators
-    const doc = node.owner_document orelse return;
-    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+    const doc_instance = nodeDocument(node) orelse return;
 
     // Access the document's internal state to get the node_iterators list
     const internal = document_internals.getInternal(doc_instance) orelse return;
