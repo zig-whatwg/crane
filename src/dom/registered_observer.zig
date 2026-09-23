@@ -16,6 +16,12 @@ pub const RegisteredObserver = struct {
     /// The observer object (typed handle to avoid circular import with MutationObserver)
     observer: *handles.MutationObserverHandle,
 
+    /// The observer's slab generation when it registered. The observer keeps
+    /// itself alive while it has registrations, but a teardown sweep frees
+    /// objects in no particular order; the generation is what tells a node
+    /// whether the observer it lists is still that observer.
+    observer_generation: u64 = 0,
+
     /// Options for observation
     options: Options,
 

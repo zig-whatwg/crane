@@ -26,6 +26,7 @@ const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const RegisteredObserver = dom_module.node_base.RegisteredObserverType;
 const handles = dom_module.handles;
+const same_object = @import("same_object.zig");
 
 pub const State = MutationObserver.State;
 
@@ -47,20 +48,21 @@ pub const InternalState = struct {
     /// V8 isolate for Global handle operations
     isolate: ?*v8_engine.ffi.Isolate = null,
 
-    /// List of weak references to nodes being observed
+    /// The nodes this observer is registered on - "a list of weak references
+    /// to nodes". A node going away removes itself (through
+    /// `dom.observer_registrations`); the slab generation in each link covers
+    /// the teardown sweep, which frees nodes and observers in no order.
     ///
     /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
-    ///
-    /// Implementation note:
-    /// In garbage-collected languages (JavaScript), "weak references" means the GC
-    /// can collect nodes even while observed. In Zig with manual memory management,
-    /// "weak" means we don't own the nodes (don't call deinit on them).
-    ///
-    /// Lifetime contract:
-    /// - MutationObserver does NOT own observed nodes
-    /// - Caller must ensure nodes outlive the observer, OR
-    /// - Caller must call disconnect() before freeing observed nodes
-    node_list: std.ArrayListUnmanaged(*runtime.Instance),
+    node_list: std.ArrayListUnmanaged(same_object.Link),
+
+    /// The observer's own wrapper, held while any node lists it. A node's
+    /// registered observers are strong references in the spec; nothing else
+    /// here would keep an observer alive that script no longer names, and a
+    /// collected observer left every node that listed it pointing into the
+    /// slab - `enqueueRecord` then wrote into freed memory on the next
+    /// mutation, a crash charged to whichever file ran next.
+    self_pin: same_object.Pin = .{},
 
     /// Queue of pending mutation records
     record_queue: std.ArrayListUnmanaged(*runtime.Instance),
@@ -133,6 +135,7 @@ pub const InternalState = struct {
 
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
+        self.self_pin.release();
 
         // Free MutationRecord instances we own
         for (self.record_queue.items) |record| {
@@ -162,6 +165,10 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
+    // A node going away reaches its observers through this hook. Installed
+    // before this observer can register anywhere.
+    dom_module.observer_registrations.install(.{ .node_released = &nodeReleasedHook });
+
     // Initialize internal state using ArenaAllocator
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
@@ -179,6 +186,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        // Nothing may name this observer once it is gone: not a node it is
+        // registered on, not the agent's pending mutation observers.
+        unregisterFromNodes(instance, internal);
+        dom_module.mutation_observer_algorithms.forgetObserver(instance);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
         // Return the block itself, not just what it points to. The comment this
@@ -327,6 +338,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
                     // Note: In the spec this also clears transient registered observers
                     const new_registered = RegisteredObserver{
                         .observer = observer_handle.?,
+                        .observer_generation = runtime.SlabAllocator.generationOf(instance),
                         .options = reg_options,
                     };
                     const replaced_filter = registered.options.attribute_filter;
@@ -343,6 +355,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
             if (observer_handle) |obs_handle| {
                 const new_registered = RegisteredObserver{
                     .observer = obs_handle,
+                    .observer_generation = runtime.SlabAllocator.generationOf(instance),
                     .options = reg_options,
                 };
                 nodebase.registered_observers.append(new_registered) catch return error.OutOfMemory;
@@ -350,21 +363,62 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
             }
         }
     } else {
-        std.log.debug("[MutationObserver] observe: WARNING - target_nodebase is null!", .{});
+        // Not a node with a tree position: there is nothing to register on.
+        return;
     }
 
-    // Also maintain the observer's node list for disconnect()
-    // Check if target is already in the node list
-    var target_in_list = false;
-    for (internal.node_list.items) |node| {
-        if (node == target) {
-            target_in_list = true;
-            break;
+    // Step 8's other half: "Append a weak reference to target to this's node
+    // list", once per node.
+    const target_in_list = for (internal.node_list.items) |link| {
+        if (link.instance == target and link.isLive()) break true;
+    } else false;
+    if (!target_in_list) {
+        internal.node_list.append(internal.allocator, same_object.Link.to(target)) catch return error.OutOfMemory;
+    }
+
+    // Registered: stay alive for as long as a node lists this observer.
+    internal.self_pin.hold(instance);
+}
+
+/// Remove every registration whose observer is `instance` from the nodes in
+/// its node list that are still alive, and empty the list. The first step of
+/// disconnect(), and the observer's own teardown.
+fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) void {
+    const instance_ptr: *anyopaque = @ptrCast(instance);
+    for (internal.node_list.items) |link| {
+        if (!link.isLive()) continue;
+        const nodebase = instance_bridge.getNodeBase(@ptrCast(link.instance)) orelse continue;
+        var i: usize = 0;
+        while (i < nodebase.registered_observers.len) {
+            const registered = nodebase.registered_observers.get(i) orelse break;
+            if (handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr) {
+                _ = nodebase.registered_observers.remove(i) catch break;
+                continue;
+            }
+            i += 1;
         }
     }
-    if (!target_in_list) {
-        internal.node_list.append(internal.allocator, target) catch return error.OutOfMemory;
+    internal.node_list.clearRetainingCapacity();
+}
+
+/// `dom.observer_registrations`: `node` is going away while this observer is
+/// registered on it. Forget it; with no node left, stop holding itself.
+fn nodeReleasedHook(observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void {
+    // The teardown sweep may have freed the observer first.
+    if (runtime.SlabAllocator.generationOf(observer) != generation) return;
+    const state = observer.getState(State);
+    const internal_ptr = state.own._internal orelse return;
+    const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+
+    var i: usize = 0;
+    while (i < internal.node_list.items.len) {
+        if (internal.node_list.items[i].instance == node) {
+            _ = internal.node_list.swapRemove(i);
+            continue;
+        }
+        i += 1;
     }
+    if (internal.node_list.items.len == 0) internal.self_pin.release();
 }
 
 /// DOM §7.1 - MutationObserver.disconnect()
@@ -375,29 +429,11 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
 pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
-    const instance_ptr: *anyopaque = @ptrCast(instance);
 
-    // Step 1: For each node of this's node list, remove any registered
-    // observer from node's registered observer list for which this is
-    // the observer.
-    for (internal.node_list.items) |node| {
-        const nodebase = instance_bridge.getNodeBase(@ptrCast(node)) orelse continue;
-
-        // Find and remove registered observers for this MutationObserver
-        var i: usize = 0;
-        while (i < nodebase.registered_observers.len) {
-            if (nodebase.registered_observers.get(i)) |registered| {
-                const registered_handle = handles.mutationObserverToAnyopaque(registered.observer);
-                if (registered_handle == instance_ptr) {
-                    // Remove this registration
-                    _ = nodebase.registered_observers.remove(i) catch continue;
-                    // Don't increment i, check the same index again
-                    continue;
-                }
-            }
-            i += 1;
-        }
-    }
+    // Step 1: "For each node of this's node list, remove any registered
+    // observer from node's registered observer list for which this is the
+    // observer."
+    unregisterFromNodes(instance, internal);
 
     // Step 2: Empty this's record queue after freeing records we own.
     for (internal.record_queue.items) |record| {
@@ -405,11 +441,9 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     }
     internal.record_queue.clearRetainingCapacity();
 
-    // Clear node list
-    internal.node_list.clearRetainingCapacity();
-
-    // No registration is left to use a filter.
+    // No registration is left to use a filter, or to keep this alive.
     internal.releaseAllFilters();
+    internal.self_pin.release();
 }
 
 /// DOM §7.1 - MutationObserver.takeRecords()
@@ -485,51 +519,12 @@ pub fn getCallback(instance: *runtime.Instance) ?*anyopaque {
     return null;
 }
 
-/// Get the node list for this observer
-///
-/// Used by the notify mutation observers algorithm.
-pub fn getNodeList(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance);
-    return internal.node_list.items;
-}
-
 /// Get the record queue for this observer
 ///
 /// Used by the notify mutation observers algorithm.
 pub fn getRecordQueue(instance: *runtime.Instance) []const *runtime.Instance {
     const internal = getInternal(instance);
     return internal.record_queue.items;
-}
-
-/// Check if this observer is observing a specific node
-///
-/// Useful for caller to verify observation state before node cleanup.
-/// Returns true if the node is in this observer's node list.
-pub fn isObserving(instance: *runtime.Instance, node: *const runtime.Instance) bool {
-    const internal = getInternal(instance);
-    for (internal.node_list.items) |observed_node| {
-        if (observed_node == node) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/// Remove a node from the observation list
-///
-/// This is an internal helper for cases where a node needs to be
-/// removed from observation without calling disconnect().
-/// Useful when node is about to be freed.
-pub fn unobserveNode(instance: *runtime.Instance, node: *const runtime.Instance) void {
-    const internal = getInternal(instance);
-    var i: usize = 0;
-    while (i < internal.node_list.items.len) {
-        if (internal.node_list.items[i] == node) {
-            _ = internal.node_list.orderedRemove(i);
-            return;
-        }
-        i += 1;
-    }
 }
 
 /// Clear the record queue

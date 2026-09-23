@@ -65,6 +65,20 @@ pub fn getAgent(allocator: Allocator) !*MutationObserverAgent {
     return &global_agent.?;
 }
 
+/// A MutationObserver is going away: take it off the surrounding agent's
+/// pending mutation observers, so the notify microtask cannot reach it.
+pub fn forgetObserver(observer: *runtime.Instance) void {
+    const agent = if (global_agent) |*a| a else return;
+    var i: usize = 0;
+    while (i < agent.pending_observers.len) {
+        if (agent.pending_observers.get(i) == observer) {
+            _ = agent.pending_observers.remove(i) catch break;
+            continue;
+        }
+        i += 1;
+    }
+}
+
 /// Reset the agent state (for testing)
 pub fn resetAgent() void {
     if (global_agent) |*agent| {
@@ -552,6 +566,13 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     defer notify_set.deinit();
     try notify_set.appendSlice(agent.pending_observers.items());
 
+    // Each observer's slab generation now: a callback earlier in the loop can
+    // run script, and script can let a later observer go - its teardown takes
+    // it off the pending list, but not off this clone.
+    const generations = try allocator.alloc(u64, notify_set.len);
+    defer allocator.free(generations);
+    for (notify_set.items(), 0..) |mo, i| generations[i] = runtime.SlabAllocator.generationOf(mo);
+
     std.log.debug("[MutationObserver] notifySet has {} observers", .{notify_set.len});
 
     // Step 3: Empty the surrounding agent's pending mutation observers
@@ -560,7 +581,9 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     // Step 4: (signal slots - not implemented yet, skip)
 
     // Step 6: For each mo of notifySet
-    for (notify_set.items()) |mo_instance| {
+    for (notify_set.items(), 0..) |mo_instance, mo_index| {
+        if (runtime.SlabAllocator.generationOf(mo_instance) != generations[mo_index]) continue;
+
         // Step 6.1: Let records be a clone of mo's record queue
         const records = MutationObserverImpl.getRecordQueue(mo_instance);
 

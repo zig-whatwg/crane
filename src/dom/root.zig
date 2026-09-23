@@ -57,6 +57,7 @@ pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
+pub const observer_registrations = @import("observer_registrations.zig");
 pub const traversal = @import("traversal.zig");
 pub const live_collections = @import("live_collections.zig");
 pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.zig");
