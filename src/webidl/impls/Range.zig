@@ -20,6 +20,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Range = interfaces.Range;
+const range_boundaries = @import("dom").range_boundaries;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
@@ -97,8 +98,21 @@ pub fn init(
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
+    range_boundaries.install(&boundariesOf);
 
     return instance;
+}
+
+/// This kind of range's answer to AbstractRange's boundary-point getters.
+fn boundariesOf(range: *runtime.Instance) ?range_boundaries.Boundaries {
+    if (range.stateAs(State) == null) return null;
+    const internal = getInternal(range) orelse return null;
+    return .{
+        .start_container = internal.start_container orelse return null,
+        .start_offset = internal.start_offset,
+        .end_container = internal.end_container orelse return null,
+        .end_offset = internal.end_offset,
+    };
 }
 
 /// Deinitialize instance

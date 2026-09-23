@@ -15,6 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const AbstractRange = interfaces.AbstractRange;
+const range_boundaries = @import("dom").range_boundaries;
 
 pub const State = AbstractRange.State;
 
@@ -83,41 +84,45 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://dom.spec.whatwg.org/#dom-range-startcontainer
 /// Returns the node at the start of the range
 pub fn get_startContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.startContainer;
+    return (try boundaries(instance)).start_container;
 }
 
 /// Getter for startOffset
 /// Spec: https://dom.spec.whatwg.org/#dom-range-startoffset
 /// Returns the offset within the start node
 pub fn get_startOffset(instance: *runtime.Instance) anyerror!u32 {
-    const state = instance.getState(State);
-    return state.own.startOffset;
+    return (try boundaries(instance)).start_offset;
 }
 
 /// Getter for endContainer
 /// Spec: https://dom.spec.whatwg.org/#dom-range-endcontainer
 /// Returns the node at the end of the range
 pub fn get_endContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.endContainer;
+    return (try boundaries(instance)).end_container;
 }
 
 /// Getter for endOffset
 /// Spec: https://dom.spec.whatwg.org/#dom-range-endoffset
 /// Returns the offset within the end node
 pub fn get_endOffset(instance: *runtime.Instance) anyerror!u32 {
-    const state = instance.getState(State);
-    return state.own.endOffset;
+    return (try boundaries(instance)).end_offset;
 }
 
 /// Getter for collapsed
 /// Spec: https://dom.spec.whatwg.org/#dom-range-collapsed
-/// Returns true if the range's start and end are the same position
+/// "if its start node is its end node and its start offset is its end offset"
 pub fn get_collapsed(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    return state.own.startContainer == state.own.endContainer and
-        state.own.startOffset == state.own.endOffset;
+    const b = try boundaries(instance);
+    return b.start_container == b.end_container and b.start_offset == b.end_offset;
+}
+
+/// This range's start and end. They live in the subclass that maintains them -
+/// a live Range moves them on every mutation, a StaticRange never does - which
+/// answers through `dom.range_boundaries`. The generated state's own
+/// startContainer/endContainer fields are never written by either, so they
+/// are not read here.
+fn boundaries(instance: *runtime.Instance) !range_boundaries.Boundaries {
+    return range_boundaries.of(instance) orelse error.InvalidStateError;
 }
 
 // ============================================================================
