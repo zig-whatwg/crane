@@ -388,4 +388,23 @@ pub const SpeechRecognition = struct {
     pub fn call_static_available(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!runtime.JSValue {
         return try SpeechRecognitionImpl.call_static_available(instance, options);
     }
+
+    pub fn call_start__1(instance: *runtime.Instance, audioTrack: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(SpeechRecognitionImpl, "call_start__1")) {
+            return try SpeechRecognitionImpl.call_start__1(instance, audioTrack);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "start", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_start", .args = &.{} },
+            .{ .function = "call_start__1", .implemented = @hasDecl(SpeechRecognitionImpl, "call_start__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MediaStreamTrack")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MediaStreamTrack.State) } else .other)} }} },
+        } },
+    };
 };

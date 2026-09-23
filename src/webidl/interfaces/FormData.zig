@@ -156,6 +156,37 @@ pub const FormData = struct {
         return try FormDataImpl.call_append(instance, name, value);
     }
 
+    pub fn call_set__1(instance: *runtime.Instance, name: runtime.USVString, blobValue: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) anyerror!void {
+        if (comptime @hasDecl(FormDataImpl, "call_set__1")) {
+            return try FormDataImpl.call_set__1(instance, name, blobValue, filename);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_append__1(instance: *runtime.Instance, name: runtime.USVString, blobValue: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) anyerror!void {
+        if (comptime @hasDecl(FormDataImpl, "call_append__1")) {
+            return try FormDataImpl.call_append__1(instance, name, blobValue, filename);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "set", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_set", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+            .{ .function = "call_set__1", .implemented = @hasDecl(FormDataImpl, "call_set__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+        .{ "append", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_append", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+            .{ .function = "call_append__1", .implemented = @hasDecl(FormDataImpl, "call_append__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+    };
+
     /// Get entries for pair iterable support (used by V8 for iteration)
     /// Returns slice of entries with .name and .value fields
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const FormDataImpl.IterableEntry {

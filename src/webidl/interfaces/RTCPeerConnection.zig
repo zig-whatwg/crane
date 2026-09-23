@@ -107,7 +107,7 @@ pub const RTCPeerConnection = struct {
             .{ "getSenders", "call_getSenders", 0 },
             .{ "getReceivers", "call_getReceivers", 0 },
             .{ "getTransceivers", "call_getTransceivers", 0 },
-            .{ "addTrack", "call_addTrack", 2 },
+            .{ "addTrack", "call_addTrack", 1 },
             .{ "removeTrack", "call_removeTrack", 1 },
             .{ "addTransceiver", "call_addTransceiver", 1 },
             .{ "createDataChannel", "call_createDataChannel", 1 },
@@ -519,4 +519,71 @@ pub const RTCPeerConnection = struct {
     pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: runtime.JSValue, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
+
+    pub fn call_setRemoteDescription__1(instance: *runtime.Instance, description: RTCSessionDescriptionInit, successCallback: VoidFunction, failureCallback: RTCPeerConnectionErrorCallback) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "call_setRemoteDescription__1")) {
+            return try RTCPeerConnectionImpl.call_setRemoteDescription__1(instance, description, successCallback, failureCallback);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_addIceCandidate__1(instance: *runtime.Instance, candidate: RTCIceCandidateInit, successCallback: VoidFunction, failureCallback: RTCPeerConnectionErrorCallback) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "call_addIceCandidate__1")) {
+            return try RTCPeerConnectionImpl.call_addIceCandidate__1(instance, candidate, successCallback, failureCallback);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_createAnswer__1(instance: *runtime.Instance, successCallback: RTCSessionDescriptionCallback, failureCallback: RTCPeerConnectionErrorCallback) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "call_createAnswer__1")) {
+            return try RTCPeerConnectionImpl.call_createAnswer__1(instance, successCallback, failureCallback);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_createOffer__1(instance: *runtime.Instance, successCallback: RTCSessionDescriptionCallback, failureCallback: RTCPeerConnectionErrorCallback, options: webidl.Opt(RTCOfferOptions)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "call_createOffer__1")) {
+            return try RTCPeerConnectionImpl.call_createOffer__1(instance, successCallback, failureCallback, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_setLocalDescription__1(instance: *runtime.Instance, description: RTCLocalSessionDescriptionInit, successCallback: VoidFunction, failureCallback: RTCPeerConnectionErrorCallback) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "call_setLocalDescription__1")) {
+            return try RTCPeerConnectionImpl.call_setLocalDescription__1(instance, description, successCallback, failureCallback);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "setRemoteDescription", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_setRemoteDescription", .args = &.{.{ .kinds = &.{.dictionary} }} },
+            .{ .function = "call_setRemoteDescription__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_setRemoteDescription__1"), .args = &.{ .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
+        } },
+        .{ "addIceCandidate", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_addIceCandidate", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_addIceCandidate__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_addIceCandidate__1"), .args = &.{ .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
+        } },
+        .{ "createAnswer", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createAnswer", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_createAnswer__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_createAnswer__1"), .args = &.{ .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
+        } },
+        .{ "createOffer", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createOffer", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_createOffer__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_createOffer__1"), .args = &.{ .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "setLocalDescription", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_setLocalDescription", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_setLocalDescription__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_setLocalDescription__1"), .args = &.{ .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
+        } },
+    };
 };

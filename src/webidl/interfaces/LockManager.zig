@@ -105,4 +105,23 @@ pub const LockManager = struct {
     pub fn call_request(instance: *runtime.Instance, name: DOMString, callback: LockGrantedCallback) anyerror!runtime.JSValue {
         return try LockManagerImpl.call_request(instance, name, callback);
     }
+
+    pub fn call_request__1(instance: *runtime.Instance, name: DOMString, options: LockOptions, callback: LockGrantedCallback) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(LockManagerImpl, "call_request__1")) {
+            return try LockManagerImpl.call_request__1(instance, name, options, callback);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "request", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_request", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.callback_function} } } },
+            .{ .function = "call_request__1", .implemented = @hasDecl(LockManagerImpl, "call_request__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} } } },
+        } },
+    };
 };

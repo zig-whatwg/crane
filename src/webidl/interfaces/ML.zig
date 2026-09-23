@@ -97,4 +97,23 @@ pub const ML = struct {
     pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(MLContextOptions)) anyerror!runtime.JSValue {
         return try MLImpl.call_createContext(instance, options);
     }
+
+    pub fn call_createContext__1(instance: *runtime.Instance, gpuDevice: *runtime.Instance) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(MLImpl, "call_createContext__1")) {
+            return try MLImpl.call_createContext__1(instance, gpuDevice);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "createContext", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createContext", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_createContext__1", .implemented = @hasDecl(MLImpl, "call_createContext__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUDevice")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUDevice.State) } else .other)} }} },
+        } },
+    };
 };

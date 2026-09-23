@@ -53,9 +53,9 @@ pub const CookieStore = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "get", "call_get", 1 },
-            .{ "getAll", "call_getAll", 1 },
-            .{ "set", "call_set", 2 },
+            .{ "get", "call_get", 0 },
+            .{ "getAll", "call_getAll", 0 },
+            .{ "set", "call_set", 1 },
             .{ "delete", "call_delete", 1 },
         };
 
@@ -155,4 +155,59 @@ pub const CookieStore = struct {
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
         return try CookieStoreImpl.call_delete(instance, name);
     }
+
+    pub fn call_set__1(instance: *runtime.Instance, options: CookieInit) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CookieStoreImpl, "call_set__1")) {
+            return try CookieStoreImpl.call_set__1(instance, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_get__1(instance: *runtime.Instance, options: webidl.Opt(CookieStoreGetOptions)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CookieStoreImpl, "call_get__1")) {
+            return try CookieStoreImpl.call_get__1(instance, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_getAll__1(instance: *runtime.Instance, options: webidl.Opt(CookieStoreGetOptions)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CookieStoreImpl, "call_getAll__1")) {
+            return try CookieStoreImpl.call_getAll__1(instance, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_delete__1(instance: *runtime.Instance, options: CookieStoreDeleteOptions) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CookieStoreImpl, "call_delete__1")) {
+            return try CookieStoreImpl.call_delete__1(instance, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "set", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_set", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
+            .{ .function = "call_set__1", .implemented = @hasDecl(CookieStoreImpl, "call_set__1"), .args = &.{.{ .kinds = &.{.dictionary} }} },
+        } },
+        .{ "get", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_get", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_get__1", .implemented = @hasDecl(CookieStoreImpl, "call_get__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+        } },
+        .{ "getAll", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_getAll", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_getAll__1", .implemented = @hasDecl(CookieStoreImpl, "call_getAll__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+        } },
+        .{ "delete", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_delete", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_delete__1", .implemented = @hasDecl(CookieStoreImpl, "call_delete__1"), .args = &.{.{ .kinds = &.{.dictionary} }} },
+        } },
+    };
 };

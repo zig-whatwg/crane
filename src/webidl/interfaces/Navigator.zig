@@ -1211,4 +1211,32 @@ pub const Navigator = struct {
     pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
     }
+
+    pub fn call_getAutoplayPolicy__1(instance: *runtime.Instance, element: *runtime.Instance) anyerror!AutoplayPolicy {
+        if (comptime @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__1")) {
+            return try NavigatorImpl.call_getAutoplayPolicy__1(instance, element);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_getAutoplayPolicy__2(instance: *runtime.Instance, context: *runtime.Instance) anyerror!AutoplayPolicy {
+        if (comptime @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__2")) {
+            return try NavigatorImpl.call_getAutoplayPolicy__2(instance, context);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "getAutoplayPolicy", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_getAutoplayPolicy", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_getAutoplayPolicy__1", .implemented = @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "HTMLMediaElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLMediaElement.State) } else .other)} }} },
+            .{ .function = "call_getAutoplayPolicy__2", .implemented = @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__2"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioContext")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioContext.State) } else .other)} }} },
+        } },
+    };
 };

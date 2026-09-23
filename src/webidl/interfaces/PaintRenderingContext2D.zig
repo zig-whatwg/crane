@@ -91,7 +91,7 @@ pub const PaintRenderingContext2D = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 6 },
+            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
             .{ "createRadialGradient", "call_createRadialGradient", 6 },
@@ -586,4 +586,104 @@ pub const PaintRenderingContext2D = struct {
     pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         return try PaintRenderingContext2DImpl.call_clip(instance, fillRule);
     }
+
+    pub fn call_stroke__1(instance: *runtime.Instance, path: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_stroke__1")) {
+            return try PaintRenderingContext2DImpl.call_stroke__1(instance, path);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_isPointInPath__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_isPointInPath__1")) {
+            return try PaintRenderingContext2DImpl.call_isPointInPath__1(instance, path, x, y, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_drawImage__1(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_drawImage__1")) {
+            return try PaintRenderingContext2DImpl.call_drawImage__1(instance, image, dx, dy, dw, dh);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_drawImage__2(instance: *runtime.Instance, image: CanvasImageSource, sx: f64, sy: f64, sw: f64, sh: f64, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_drawImage__2")) {
+            return try PaintRenderingContext2DImpl.call_drawImage__2(instance, image, sx, sy, sw, sh, dx, dy, dw, dh);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_setTransform__1(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_setTransform__1")) {
+            return try PaintRenderingContext2DImpl.call_setTransform__1(instance, transform);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_fill__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_fill__1")) {
+            return try PaintRenderingContext2DImpl.call_fill__1(instance, path, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_isPointInStroke__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64) anyerror!bool {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_isPointInStroke__1")) {
+            return try PaintRenderingContext2DImpl.call_isPointInStroke__1(instance, path, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_clip__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
+        if (comptime @hasDecl(PaintRenderingContext2DImpl, "call_clip__1")) {
+            return try PaintRenderingContext2DImpl.call_clip__1(instance, path, fillRule);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "stroke", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_stroke", .args = &.{} },
+            .{ .function = "call_stroke__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_stroke__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }} },
+        } },
+        .{ "isPointInPath", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_isPointInPath", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_isPointInPath__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_isPointInPath__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+        .{ "drawImage", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_drawImage", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_drawImage__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__2", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_drawImage__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "setTransform", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_setTransform", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_setTransform__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_setTransform__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+        } },
+        .{ "fill", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_fill", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
+            .{ .function = "call_fill__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_fill__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+        .{ "isPointInStroke", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_isPointInStroke", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_isPointInStroke__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_isPointInStroke__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "clip", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_clip", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
+            .{ .function = "call_clip__1", .implemented = @hasDecl(PaintRenderingContext2DImpl, "call_clip__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+        } },
+    };
 };

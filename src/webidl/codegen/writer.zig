@@ -360,6 +360,9 @@ pub fn writeMetadata(
     iterable: ?types.Iterable,
     own_attributes: []const types.Attribute,
     async_iterable: ?types.AsyncIterable,
+    /// Every overload of every own operation (see `writeOverloadDelegates`);
+    /// only each method's `length` is taken from it here.
+    overload_ops: []const types.Operation,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
 
@@ -580,13 +583,11 @@ pub fn writeMetadata(
                 op.special.? == .setter;
 
             if (should_include) {
-                // Count required (non-optional) parameters for arity
-                var arity: usize = 0;
-                for (op.arguments) |arg| {
-                    if (!arg.optional) {
-                        arity += 1;
-                    }
-                }
+                // WebIDL's `length`: the fewest required arguments of any
+                // overload - "the length of the shortest argument list in the
+                // effective overload set". For a single operation that is its
+                // own count of required arguments.
+                const arity = overloadArity(overload_ops, op);
 
                 try writer.print("            .{{ \"{s}\", \"call_", .{name});
                 try writeSanitizedName(writer, name);
@@ -2607,6 +2608,24 @@ fn writeSingleOperation(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     _: bool, // has_static_collision - no longer used
 ) !void {
+    return writeOperationDelegate(writer, impl_name, op, type_registry, "", false);
+}
+
+/// Write one operation's delegate, named `call_<name><suffix>`.
+///
+/// `gated`: the impl may not provide this function yet - true for the
+/// overloads after the first, which impls grow into one at a time. The
+/// delegate then compiles either way and answers `error.NotImplemented` until
+/// the impl declares it; the `overloads` table records which is which, so the
+/// binding never picks an overload the impl lacks.
+fn writeOperationDelegate(
+    writer: anytype,
+    impl_name: []const u8,
+    op: types.Operation,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
+    suffix: []const u8,
+    gated: bool,
+) !void {
     const allocator = std.heap.page_allocator;
     const name = op.name orelse if (op.special) |special| @tagName(special) else return; // Skip unnamed operations without special type
 
@@ -2667,9 +2686,9 @@ fn writeSingleOperation(
 
     // Generate function name: call_static_<name> for static, call_<name> for instance
     if (is_static) {
-        try writer.print("    pub fn call_static_{s}(instance: *runtime.Instance", .{name});
+        try writer.print("    pub fn call_static_{s}{s}(instance: *runtime.Instance", .{ name, suffix });
     } else {
-        try writer.print("    pub fn call_{s}(instance: *runtime.Instance", .{name});
+        try writer.print("    pub fn call_{s}{s}(instance: *runtime.Instance", .{ name, suffix });
     }
 
     // Write parameters
@@ -2749,6 +2768,14 @@ fn writeSingleOperation(
         try writer.print(") anyerror!{s} {{\n", .{return_type});
     }
 
+    if (gated) {
+        if (is_static) {
+            try writer.print("        if (comptime @hasDecl({s}, \"call_static_{s}{s}\")) {{\n", .{ impl_name, name, suffix });
+        } else {
+            try writer.print("        if (comptime @hasDecl({s}, \"call_{s}{s}\")) {{\n", .{ impl_name, name, suffix });
+        }
+    }
+
     if (has_ce_reactions) {
         try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
         try writer.writeAll("        runtime.CEReactions.begin();\n");
@@ -2805,9 +2832,9 @@ fn writeSingleOperation(
 
     // Call impl with matching convention: call_static_<name> for static, call_<name> for instance
     if (is_static) {
-        try writer.print("        return try {s}.call_static_{s}(instance", .{ impl_name, name });
+        try writer.print("        return try {s}.call_static_{s}{s}(instance", .{ impl_name, name, suffix });
     } else {
-        try writer.print("        return try {s}.call_{s}(instance", .{ impl_name, name });
+        try writer.print("        return try {s}.call_{s}{s}(instance", .{ impl_name, name, suffix });
     }
 
     // Pass arguments
@@ -2825,7 +2852,234 @@ fn writeSingleOperation(
     }
 
     try writer.writeAll(");\n");
+    if (gated) {
+        try writer.writeAll("        } else {\n");
+        try writer.writeAll("            return error.NotImplemented;\n");
+        try writer.writeAll("        }\n");
+    }
     try writer.writeAll("    }\n\n");
+}
+
+/// WebIDL's `length` for `op`'s function object: the fewest required
+/// arguments of any overload with its name (instance and static kept apart).
+/// Spec: https://webidl.spec.whatwg.org/#dfn-create-operation-function
+fn overloadArity(overload_ops: []const types.Operation, op: types.Operation) usize {
+    var arity = requiredArgumentCount(op);
+    const name = op.name orelse return arity;
+    for (overload_ops) |other| {
+        const other_name = other.name orelse continue;
+        if (other.static != op.static or !std.mem.eql(u8, other_name, name)) continue;
+        arity = @min(arity, requiredArgumentCount(other));
+    }
+    return arity;
+}
+
+fn requiredArgumentCount(op: types.Operation) usize {
+    var count: usize = 0;
+    for (op.arguments) |arg| {
+        if (arg.optional or arg.variadic) break;
+        count += 1;
+    }
+    return count;
+}
+
+/// The overloads of each overloaded regular operation, after the first.
+///
+/// For `open` on XMLHttpRequest - `open(method, url)` and
+/// `open(method, url, async, username, password)` - this writes
+/// `call_open__1` with the second overload's arguments, delegating to
+/// `XMLHttpRequestImpl.call_open__1` once the impl declares it, and an entry in
+/// `overloads`:
+///
+///     pub const overloads = .{
+///         .{ "open", &[_]webidl.overload_resolution.Overload{
+///             .{ .function = "call_open", .args = &.{ ... } },
+///             .{ .function = "call_open__1", .implemented = @hasDecl(..), .args = &.{ ... } },
+///         } },
+///     };
+///
+/// The binding (`MethodCallback` in engines/v8/interface.zig) is installed for
+/// the FIRST overload, as it always was; when that function is called it runs
+/// the overload resolution algorithm over this table and forwards to the chosen
+/// overload. Each argument carries the categories step 12 of the algorithm
+/// distinguishes on - see `writeOverloadKinds`.
+///
+/// Static and special operations are not overloaded here: the whole IDL corpus
+/// has one static overload set (SubtleCrypto.supports) and the special ones
+/// are named-property handlers with their own binding.
+fn writeOverloadDelegates(
+    writer: anytype,
+    impl_name: []const u8,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
+    overload_ops: []const types.Operation,
+) !void {
+    const allocator = std.heap.page_allocator;
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+
+    var any = false;
+    for (overload_sets) |set| {
+        if (!isResolvableOverloadSet(set)) continue;
+        any = true;
+        for (set.operations[1..], 1..) |op, k| {
+            var suffix_buf: [16]u8 = undefined;
+            const suffix = try std.fmt.bufPrint(&suffix_buf, "__{d}", .{k});
+            try writeOperationDelegate(writer, impl_name, op, type_registry, suffix, true);
+        }
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL overload sets: every overload of each overloaded operation,\n");
+    try writer.writeAll("    /// in IDL order, for the overload resolution algorithm\n");
+    try writer.writeAll("    /// (webidl.overload_resolution). The binding is installed for the first\n");
+    try writer.writeAll("    /// overload and forwards to the one the arguments select.\n");
+    try writer.writeAll("    pub const overloads = .{\n");
+    for (overload_sets) |set| {
+        if (!isResolvableOverloadSet(set)) continue;
+        try writer.print("        .{{ \"{s}\", &[_]webidl.overload_resolution.Overload{{\n", .{set.name});
+        for (set.operations, 0..) |op, k| {
+            if (k == 0) {
+                try writer.print("            .{{ .function = \"call_{s}\", .args = &.{{", .{set.name});
+            } else {
+                try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl({s}, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, impl_name, set.name, k });
+            }
+            for (op.arguments, 0..) |arg, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.writeAll(" ");
+                try writeOverloadArg(writer, arg, type_registry);
+            }
+            try writer.writeAll(" } },\n");
+        }
+        try writer.writeAll("        } },\n");
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+fn isResolvableOverloadSet(set: overload.OverloadSet) bool {
+    if (!set.isOverloaded()) return false;
+    for (set.operations) |op| {
+        if (op.static or op.special != null or op.name == null) return false;
+    }
+    return true;
+}
+
+/// `.{ .kinds = &.{ ... }, .nullable = .., .optionality = .. }` for one argument.
+fn writeOverloadArg(
+    writer: anytype,
+    arg: types.Argument,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
+) !void {
+    try writer.writeAll(".{ .kinds = &.{");
+    var first = true;
+    const nullable = try writeOverloadKinds(writer, arg.idlType, type_registry, &first, 0);
+    try writer.writeAll(" }");
+    if (nullable) try writer.writeAll(", .nullable = true");
+    if (arg.variadic) {
+        try writer.writeAll(", .optionality = .variadic");
+    } else if (arg.optional) {
+        try writer.writeAll(", .optionality = .optional");
+    }
+    try writer.writeAll(" }");
+}
+
+const typed_array_names = [_][]const u8{
+    "Int8Array",      "Int16Array",   "Int32Array",        "Uint8Array",
+    "Uint16Array",    "Uint32Array",  "Uint8ClampedArray", "BigInt64Array",
+    "BigUint64Array", "Float16Array", "Float32Array",      "Float64Array",
+};
+
+const numeric_type_names = [_][]const u8{
+    "byte",  "octet",              "short",     "unsigned short",
+    "long",  "unsigned long",      "long long", "unsigned long long",
+    "float", "unrestricted float", "double",    "unrestricted double",
+};
+
+fn writeKind(writer: anytype, first: *bool, comptime fmt: []const u8, args: anytype) !void {
+    if (!first.*) try writer.writeAll(",");
+    first.* = false;
+    try writer.writeAll(" ");
+    try writer.print(fmt, args);
+}
+
+/// The step-12 categories of one IDL type: a union's flattened member types,
+/// a typedef's target, an interface's identity. Returns whether the type is,
+/// or includes, a nullable type.
+fn writeOverloadKinds(
+    writer: anytype,
+    t: types.IDLType,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
+    first: *bool,
+    depth: u8,
+) !bool {
+    var nullable = t.nullable;
+    if (t.unionTypes) |members| {
+        for (members) |member| {
+            if (try writeOverloadKinds(writer, member, type_registry, first, depth + 1)) nullable = true;
+        }
+        return nullable;
+    }
+
+    const name = t.type;
+    const eql = std.mem.eql;
+    for (numeric_type_names) |n| {
+        if (eql(u8, name, n)) {
+            try writeKind(writer, first, ".numeric", .{});
+            return nullable;
+        }
+    }
+    for (typed_array_names) |n| {
+        if (eql(u8, name, n)) {
+            try writeKind(writer, first, ".{{ .typed_array = \"{s}\" }}", .{n});
+            return nullable;
+        }
+    }
+    if (eql(u8, name, "DOMString") or eql(u8, name, "USVString") or eql(u8, name, "ByteString") or eql(u8, name, "CSSOMString")) {
+        try writeKind(writer, first, ".string", .{});
+    } else if (eql(u8, name, "boolean")) {
+        try writeKind(writer, first, ".boolean", .{});
+    } else if (eql(u8, name, "bigint")) {
+        try writeKind(writer, first, ".bigint", .{});
+    } else if (eql(u8, name, "object")) {
+        try writeKind(writer, first, ".object", .{});
+    } else if (eql(u8, name, "any")) {
+        try writeKind(writer, first, ".any", .{});
+    } else if (eql(u8, name, "sequence") or eql(u8, name, "FrozenArray") or eql(u8, name, "ObservableArray")) {
+        try writeKind(writer, first, ".sequence", .{});
+    } else if (eql(u8, name, "record")) {
+        try writeKind(writer, first, ".record", .{});
+    } else if (eql(u8, name, "ArrayBuffer") or eql(u8, name, "SharedArrayBuffer")) {
+        try writeKind(writer, first, ".array_buffer", .{});
+    } else if (eql(u8, name, "DataView")) {
+        try writeKind(writer, first, ".data_view", .{});
+    } else if (eql(u8, name, "ArrayBufferView") or eql(u8, name, "BufferSource") or eql(u8, name, "AllowSharedBufferSource")) {
+        if (!eql(u8, name, "ArrayBufferView")) try writeKind(writer, first, ".array_buffer", .{});
+        for (typed_array_names) |n| try writeKind(writer, first, ".{{ .typed_array = \"{s}\" }}", .{n});
+        try writeKind(writer, first, ".data_view", .{});
+    } else if (type_registry) |reg| {
+        const info = reg.resolve(name);
+        const kind = if (info) |i| i.kind else null;
+        if (kind == null) {
+            try writeKind(writer, first, ".other", .{});
+        } else switch (kind.?) {
+            .interface => try writeKind(writer, first, "(if (@hasDecl(@import(\"interfaces\"), \"{s}\")) webidl.overload_resolution.Kind{{ .interface = runtime.typeId(@import(\"interfaces\").{s}.State) }} else .other)", .{ name, name }),
+            .callback_interface => try writeKind(writer, first, ".callback_interface", .{}),
+            .dictionary => try writeKind(writer, first, ".dictionary", .{}),
+            .enum_type => try writeKind(writer, first, ".string", .{}),
+            .callback => try writeKind(writer, first, ".callback_function", .{}),
+            .typedef => {
+                const underlying = info.?.underlying_type;
+                if (underlying != null and depth < 8) {
+                    if (try writeOverloadKinds(writer, underlying.?, type_registry, first, depth + 1)) nullable = true;
+                } else {
+                    try writeKind(writer, first, ".other", .{});
+                }
+            },
+            else => try writeKind(writer, first, ".other", .{}),
+        }
+    } else {
+        try writeKind(writer, first, ".other", .{});
+    }
+    return nullable;
 }
 
 /// Write an overloaded operation with tagged union dispatch
@@ -3035,6 +3289,9 @@ pub fn writeDelegateFunctions(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     own_attributes: []const types.Attribute,
     own_operations: []const types.Operation,
+    /// Every overload of every own operation - `own_operations` has only the
+    /// first of each name. See `writeOverloadDelegates`.
+    overload_ops: []const types.Operation,
 ) !void {
     const allocator = std.heap.page_allocator;
 
@@ -3230,6 +3487,10 @@ pub fn writeDelegateFunctions(
             try writeSingleOperation(writer, impl_name, op, type_registry, false);
         }
     }
+
+    // The other overloads of each overloaded operation, and the table the
+    // binding resolves among them with.
+    try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops);
 
     // Write serialize delegate for stringifier interfaces
     // Per WebIDL spec, bare stringifier declarations generate a toString() method
@@ -3922,7 +4183,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -3936,7 +4197,7 @@ test "writeMetadata handles no base type" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
@@ -3949,7 +4210,7 @@ test "writeMetadata includes mixins" {
     const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -3966,7 +4227,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -3998,7 +4259,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{});
 
     const output = buffer.written();
 
@@ -4068,7 +4329,7 @@ test "writeDelegateFunctions generates attribute getters" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_nodeType(") != null);
@@ -4089,7 +4350,7 @@ test "writeDelegateFunctions generates setters for non-readonly attributes" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_textContent(") != null);
@@ -4117,7 +4378,7 @@ test "writeDelegateFunctions generates operation delegates" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &.{}, &ops);
+    try writeDelegateFunctions(writer, "NodeImpl", null, &.{}, &ops, &ops);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_appendChild(") != null);

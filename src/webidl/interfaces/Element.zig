@@ -245,15 +245,15 @@ pub const Element = struct {
             .{ "animate", "call_animate", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
             .{ "getRegionFlowRanges", "call_getRegionFlowRanges", 0 },
-            .{ "prepend", "call_prepend", 1 },
-            .{ "append", "call_append", 1 },
-            .{ "replaceChildren", "call_replaceChildren", 1 },
+            .{ "prepend", "call_prepend", 0 },
+            .{ "append", "call_append", 0 },
+            .{ "replaceChildren", "call_replaceChildren", 0 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replaceWith", "call_replaceWith", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
@@ -2107,4 +2107,47 @@ pub const Element = struct {
     pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(CheckVisibilityOptions)) anyerror!bool {
         return try ElementImpl.call_checkVisibility(instance, options);
     }
+
+    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(ElementImpl, "call_scroll__1")) {
+            return try ElementImpl.call_scroll__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_scrollBy__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(ElementImpl, "call_scrollBy__1")) {
+            return try ElementImpl.call_scrollBy__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_scrollTo__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(ElementImpl, "call_scrollTo__1")) {
+            return try ElementImpl.call_scrollTo__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "scroll", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scroll", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scroll__1", .implemented = @hasDecl(ElementImpl, "call_scroll__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "scrollBy", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollBy", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollBy__1", .implemented = @hasDecl(ElementImpl, "call_scrollBy__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "scrollTo", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollTo", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollTo__1", .implemented = @hasDecl(ElementImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+    };
 };

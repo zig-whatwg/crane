@@ -57,9 +57,9 @@ pub const DocumentFragment = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementById", "call_getElementById", 1 },
-            .{ "prepend", "call_prepend", 1 },
-            .{ "append", "call_append", 1 },
-            .{ "replaceChildren", "call_replaceChildren", 1 },
+            .{ "prepend", "call_prepend", 0 },
+            .{ "append", "call_append", 0 },
+            .{ "replaceChildren", "call_replaceChildren", 0 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },

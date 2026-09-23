@@ -218,4 +218,41 @@ pub const PresentationConnection = struct {
     pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         return try PresentationConnectionImpl.call_terminate(instance);
     }
+
+    pub fn call_send__1(instance: *runtime.Instance, data: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(PresentationConnectionImpl, "call_send__1")) {
+            return try PresentationConnectionImpl.call_send__1(instance, data);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_send__2(instance: *runtime.Instance, data: runtime.JSValue) anyerror!void {
+        if (comptime @hasDecl(PresentationConnectionImpl, "call_send__2")) {
+            return try PresentationConnectionImpl.call_send__2(instance, data);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_send__3(instance: *runtime.Instance, data: ArrayBufferView) anyerror!void {
+        if (comptime @hasDecl(PresentationConnectionImpl, "call_send__3")) {
+            return try PresentationConnectionImpl.call_send__3(instance, data);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "send", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_send", .args = &.{.{ .kinds = &.{.string} }} },
+            .{ .function = "call_send__1", .implemented = @hasDecl(PresentationConnectionImpl, "call_send__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other)} }} },
+            .{ .function = "call_send__2", .implemented = @hasDecl(PresentationConnectionImpl, "call_send__2"), .args = &.{.{ .kinds = &.{.array_buffer} }} },
+            .{ .function = "call_send__3", .implemented = @hasDecl(PresentationConnectionImpl, "call_send__3"), .args = &.{.{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }} },
+        } },
+    };
 };

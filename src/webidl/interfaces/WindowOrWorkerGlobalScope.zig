@@ -57,9 +57,9 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
             .{ "atob", "call_atob", 1 },
-            .{ "setTimeout", "call_setTimeout", 2 },
+            .{ "setTimeout", "call_setTimeout", 1 },
             .{ "clearTimeout", "call_clearTimeout", 0 },
-            .{ "setInterval", "call_setInterval", 2 },
+            .{ "setInterval", "call_setInterval", 1 },
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
@@ -309,4 +309,23 @@ pub const WindowOrWorkerGlobalScope = struct {
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
         return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
+
+    pub fn call_createImageBitmap__1(instance: *runtime.Instance, image: ImageBitmapSource, sx: i32, sy: i32, sw: i32, sh: i32, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowOrWorkerGlobalScopeImpl, "call_createImageBitmap__1")) {
+            return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap__1(instance, image, sx, sy, sw, sh, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(WindowOrWorkerGlobalScopeImpl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+    };
 };

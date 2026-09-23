@@ -41,10 +41,10 @@ pub const WebGL2RenderingContextOverloads = struct {
         pub const methods = .{
             .{ "bufferData", "call_bufferData", 3 },
             .{ "bufferSubData", "call_bufferSubData", 3 },
-            .{ "texImage2D", "call_texImage2D", 9 },
-            .{ "texSubImage2D", "call_texSubImage2D", 9 },
-            .{ "compressedTexImage2D", "call_compressedTexImage2D", 8 },
-            .{ "compressedTexSubImage2D", "call_compressedTexSubImage2D", 9 },
+            .{ "texImage2D", "call_texImage2D", 6 },
+            .{ "texSubImage2D", "call_texSubImage2D", 7 },
+            .{ "compressedTexImage2D", "call_compressedTexImage2D", 7 },
+            .{ "compressedTexSubImage2D", "call_compressedTexSubImage2D", 8 },
             .{ "uniform1fv", "call_uniform1fv", 2 },
             .{ "uniform2fv", "call_uniform2fv", 2 },
             .{ "uniform3fv", "call_uniform3fv", 2 },
@@ -217,4 +217,167 @@ pub const WebGL2RenderingContextOverloads = struct {
     pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
         return try WebGL2RenderingContextOverloadsImpl.call_uniform1fv(instance, location, data, srcOffset, srcLength);
     }
+
+    pub fn call_texSubImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texSubImage2D__1(instance, target, level, xoffset, yoffset, format, @"type", source);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texSubImage2D__2(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__2")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texSubImage2D__2(instance, target, level, xoffset, yoffset, width, height, format, @"type", pboOffset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texSubImage2D__3(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__3")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texSubImage2D__3(instance, target, level, xoffset, yoffset, width, height, format, @"type", source);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texSubImage2D__4(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, srcData: ArrayBufferView, srcOffset: u64) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__4")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texSubImage2D__4(instance, target, level, xoffset, yoffset, width, height, format, @"type", srcData, srcOffset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_compressedTexImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_compressedTexImage2D__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_compressedTexImage2D__1(instance, target, level, internalformat, width, height, border, srcData, srcOffset, srcLengthOverride);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texImage2D__1(instance, target, level, internalformat, format, @"type", source);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texImage2D__2(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__2")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texImage2D__2(instance, target, level, internalformat, width, height, border, format, @"type", pboOffset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texImage2D__3(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__3")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texImage2D__3(instance, target, level, internalformat, width, height, border, format, @"type", source);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_texImage2D__4(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, srcData: ArrayBufferView, srcOffset: u64) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__4")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_texImage2D__4(instance, target, level, internalformat, width, height, border, format, @"type", srcData, srcOffset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_compressedTexSubImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_compressedTexSubImage2D__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_compressedTexSubImage2D__1(instance, target, level, xoffset, yoffset, width, height, format, srcData, srcOffset, srcLengthOverride);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_bufferData__1(instance: *runtime.Instance, target: GLenum, srcData: ?AllowSharedBufferSource, usage: GLenum) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferData__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_bufferData__1(instance, target, srcData, usage);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_bufferData__2(instance: *runtime.Instance, target: GLenum, srcData: ArrayBufferView, usage: GLenum, srcOffset: u64, length: webidl.Opt(GLuint)) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferData__2")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_bufferData__2(instance, target, srcData, usage, srcOffset, length);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_bufferSubData__1(instance: *runtime.Instance, target: GLenum, dstByteOffset: GLintptr, srcData: ArrayBufferView, srcOffset: u64, length: webidl.Opt(GLuint)) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferSubData__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_bufferSubData__1(instance, target, dstByteOffset, srcData, srcOffset, length);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_readPixels__1(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, offset: GLintptr) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_readPixels__1")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_readPixels__1(instance, x, y, width, height, format, @"type", offset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_readPixels__2(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, dstData: ArrayBufferView, dstOffset: u64) anyerror!void {
+        if (comptime @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_readPixels__2")) {
+            return try WebGL2RenderingContextOverloadsImpl.call_readPixels__2(instance, x, y, width, height, format, @"type", dstData, dstOffset);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    /// WebIDL overload sets: every overload of each overloaded operation,
+    /// in IDL order, for the overload resolution algorithm
+    /// (webidl.overload_resolution). The binding is installed for the first
+    /// overload and forwards to the one the arguments select.
+    pub const overloads = .{
+        .{ "texSubImage2D", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_texSubImage2D", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
+            .{ .function = "call_texSubImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texSubImage2D__2", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texSubImage2D__3", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__3"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texSubImage2D__4", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texSubImage2D__4"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "compressedTexImage2D", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_compressedTexImage2D", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_compressedTexImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_compressedTexImage2D__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+        } },
+        .{ "texImage2D", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_texImage2D", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
+            .{ .function = "call_texImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texImage2D__2", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texImage2D__3", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__3"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_texImage2D__4", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_texImage2D__4"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "compressedTexSubImage2D", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_compressedTexSubImage2D", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_compressedTexSubImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_compressedTexSubImage2D__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+        } },
+        .{ "bufferData", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_bufferData", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_bufferData__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferData__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_bufferData__2", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferData__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+        } },
+        .{ "bufferSubData", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_bufferSubData", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } } } },
+            .{ .function = "call_bufferSubData__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_bufferSubData__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.other}, .optionality = .optional } } },
+        } },
+        .{ "readPixels", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_readPixels", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
+            .{ .function = "call_readPixels__1", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_readPixels__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_readPixels__2", .implemented = @hasDecl(WebGL2RenderingContextOverloadsImpl, "call_readPixels__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+        } },
+    };
 };
