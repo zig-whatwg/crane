@@ -875,32 +875,44 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
 
-    // The Window whose realm this script runs in: the accessor for
-    // cross-origin checks while it runs, and the global it reports to.
-    const global = v8.context_manager.getWindowForContext(context);
-    if (global) |win| v8.context_manager.pushAccessorWindow(win);
-    defer if (global != null) v8.context_manager.popAccessorWindow();
-
     const scope = ffi.v8_HandleScope_New(isolate) orelse return;
     defer ffi.v8_HandleScope_Dispose(scope);
 
     const source_str = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
     defer ffi.v8_String_Dispose(source_str);
 
+    runClassicSource(context, source_str, source_url, isMutedErrors(result));
+}
+
+/// Create a classic script from `source` and run it in `context`'s realm:
+/// "create a classic script" then "run a classic script" with rethrow errors
+/// false. `source_url` doubles as the resource name errors report as their
+/// filename. A parse error or a thrown exception is REPORTED for the realm's
+/// global; nothing is thrown to the caller.
+fn runClassicSource(context: *@import("v8").ffi.Context, source: *@import("v8").ffi.String, source_url: ?[]const u8, muted: bool) void {
+    const v8 = @import("v8");
+    const ffi = v8.ffi;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // The Window whose realm this script runs in: the accessor for
+    // cross-origin checks while it runs, and the global it reports to.
+    const global = v8.context_manager.getWindowForContext(context);
+    if (global) |win| v8.context_manager.pushAccessorWindow(win);
+    defer if (global != null) v8.context_manager.popAccessorWindow();
+
     // "Create a classic script": a script that does not parse has a parse
     // error, which step 6 turns into the evaluation status.
     const compiled = if (source_url) |url| blk: {
         const name = ffi.v8_String_NewFromUtf8(isolate, url.ptr, @intCast(url.len)) orelse return;
         defer ffi.v8_String_Dispose(name);
-        break :blk ffi.v8_Script_CompileWithOrigin_Safe(context, source_str, name);
-    } else ffi.v8_Script_Compile_Safe(context, source_str);
+        break :blk ffi.v8_Script_CompileWithOrigin_Safe(context, source, name);
+    } else ffi.v8_Script_Compile_Safe(context, source);
     defer ffi.v8_FreeScriptCompileResult(compiled);
 
     // Step 8.3.1: report an exception - the parse error (step 6), or what
     // evaluating threw - while the result that owns its error information is
     // still alive.
     const window = global orelse return;
-    const muted = isMutedErrors(result);
     if (compiled.script) |script| {
         defer ffi.v8_Script_Dispose(script);
         // Step 7: ScriptEvaluation.
@@ -911,6 +923,26 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     } else if (compiled.error_info) |info| {
         reportScriptException(window, info, muted);
     }
+}
+
+/// The timer initialization steps' task, step 8.5, for a string handler:
+/// create a classic script from `source` - the handler converted by ToString
+/// when setTimeout or setInterval was called - with the settings object's API
+/// base URL, and run it. Errors are reported, never thrown.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
+///
+/// Deviations, stated: step 8.5.3's EnsureCSPDoesNotBlockStringCompilation is
+/// not performed - nothing enforces CSP on eval() either - and the initiating
+/// script is not recorded, so step 8.5.7 never replaces the API base URL or
+/// the fetch options with that script's.
+pub fn runTimerHandlerString(context: *@import("v8").ffi.Context, source: *@import("v8").ffi.String) void {
+    const v8 = @import("v8");
+    const window = v8.context_manager.getWindowForContext(context) orelse return;
+    // Steps 8.5.4-8.5.6: the settings object's API base URL - for a Window,
+    // its document's base URL.
+    const document = interfaces.Window.get_document(window) catch null;
+    runClassicSource(context, source, documentBaseUrl(document, window), false);
 }
 
 /// A classic script's muted errors flag (see `ClassicScript.muted_errors`).
