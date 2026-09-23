@@ -280,39 +280,18 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // Helper Functions for Content Attribute Reflection
 // =============================================================================
 
-/// Get a content attribute value from this element
-/// Uses Element's getAttribute via findAttribute
+/// The value of this element's content attribute `name` (no namespace), or
+/// null when it has none.
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
-
-    // Search attributes for matching name using findAttribute
-    if (elem_internal.findAttribute(null, name)) |attr| {
-        return runtime.DOMString.initInterned(attr.value);
-    }
-    return null;
+    const attr = elem_internal.findAttribute(null, name) orelse return null;
+    return runtime.DOMString.initInterned(attr.value);
 }
 
-/// Set a content attribute value on this element
-/// Uses Element's setAttribute via findAttributeMut and addAttribute
+/// Set content attribute `name` - DOM "set an attribute value", the setter
+/// steps of a reflected attribute - so the change is observed like any other.
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
-
-    // Search for existing attribute using findAttributeMut
-    if (elem_internal.findAttributeMut(null, name)) |attr| {
-        // Update existing
-        elem_internal.allocator.free(attr.value);
-        attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
-        return;
-    }
-
-    // Add new attribute using addAttribute
-    const ElementModule = @import("Element.zig");
-    try elem_internal.addAttribute(ElementModule.AttributeEntry{
-        .namespace_uri = null,
-        .prefix = null,
-        .local_name = try elem_internal.allocator.dupe(u8, name),
-        .value = try elem_internal.allocator.dupe(u8, value.asSlice()),
-    });
+    try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
 }
 
 /// Check if a content attribute exists
@@ -321,10 +300,10 @@ fn hasContentAttribute(instance: *runtime.Instance, name: []const u8) bool {
     return elem_internal.findAttribute(null, name) != null;
 }
 
-/// Remove a content attribute
+/// Remove content attribute `name` - DOM "remove an attribute by namespace
+/// and local name" with a null namespace.
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return;
-    _ = elem_internal.removeAttribute(null, name);
+    ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, name);
 }
 
 // =============================================================================

@@ -471,25 +471,10 @@ fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.D
     return null;
 }
 
-/// Set a content attribute value on this element
+/// Set content attribute `name` - DOM "set an attribute value", the setter
+/// steps of a reflected attribute - so the change is observed like any other.
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
-
-    // Search for existing attribute using findAttributeMut
-    if (elem_internal.findAttributeMut(null, name)) |attr| {
-        // Update existing
-        elem_internal.allocator.free(attr.value);
-        attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
-        return;
-    }
-
-    // Add new attribute using addAttribute
-    try elem_internal.addAttribute(ElementImpl.AttributeEntry{
-        .namespace_uri = null,
-        .prefix = null,
-        .local_name = try elem_internal.allocator.dupe(u8, name),
-        .value = try elem_internal.allocator.dupe(u8, value.asSlice()),
-    });
+    try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
 }
 
 /// Check if a boolean content attribute exists (presence = true)
@@ -500,14 +485,11 @@ fn hasBooleanAttribute(instance: *runtime.Instance, name: []const u8) bool {
 
 /// Set or remove a boolean attribute (presence = true, absence = false)
 fn setBooleanAttribute(instance: *runtime.Instance, name: []const u8, value: bool) !void {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
-
     if (value) {
         // Set the attribute with empty value (presence means true)
         try setContentAttribute(instance, name, runtime.DOMString.initEmpty());
     } else {
-        // Remove the attribute using removeAttribute
-        _ = elem_internal.removeAttribute(null, name);
+        ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, name);
     }
 }
 
@@ -694,8 +676,7 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
         try setContentAttribute(instance, "crossorigin", v);
     } else {
         // Setting to null removes the attribute
-        const elem = ElementImpl.getInternal(instance) orelse return error.InvalidStateError;
-        _ = elem.removeAttribute(null, "crossorigin");
+        ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, "crossorigin");
     }
 }
 

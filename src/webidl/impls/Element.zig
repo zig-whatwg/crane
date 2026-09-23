@@ -19,6 +19,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const dom = @import("dom");
 const Element = interfaces.Element;
 
 // Import related impls
@@ -412,49 +413,83 @@ pub const InternalState = struct {
 
     /// Remove an attribute by namespace and local name
     pub fn removeAttribute(self: *InternalState, namespace_uri: ?[]const u8, local_name: []const u8) bool {
-        // Search inline first
-        var i: usize = 0;
-        while (i < self.inline_attr_count) : (i += 1) {
-            if (self.inline_attrs[i]) |entry| {
-                if (attributeMatches(&entry, namespace_uri, local_name)) {
-                    freeAttributeEntry(self.allocator, entry);
-                    // Shift remaining inline entries down
-                    var j = i;
-                    while (j + 1 < self.inline_attr_count) : (j += 1) {
-                        self.inline_attrs[j] = self.inline_attrs[j + 1];
-                    }
-                    self.inline_attrs[self.inline_attr_count - 1] = null;
-                    self.inline_attr_count -= 1;
+        const index = self.indexOfAttribute(namespace_uri, local_name) orelse return false;
+        freeAttributeEntry(self.allocator, self.takeAttributeAt(index));
+        return true;
+    }
 
-                    // If we have heap attrs, move one to inline to fill the gap
-                    if (self.heap_attrs) |*heap| {
-                        if (heap.items.len > 0) {
-                            const last = heap.pop();
-                            self.inline_attrs[self.inline_attr_count] = last;
-                            self.inline_attr_count += 1;
-                        }
-                    }
-                    return true;
+    /// The attribute at `index` in the attribute list, in list order.
+    pub fn attributeAt(self: *InternalState, index: usize) ?*AttributeEntry {
+        if (index < self.inline_attr_count) {
+            if (self.inline_attrs[index]) |*entry| return entry;
+            return null;
+        }
+        const heap = if (self.heap_attrs) |*h| h else return null;
+        const heap_index = index - self.inline_attr_count;
+        if (heap_index >= heap.items.len) return null;
+        return &heap.items[heap_index];
+    }
+
+    /// Index of the attribute whose namespace is `namespace_uri` and local
+    /// name is `local_name`. There is at most one.
+    pub fn indexOfAttribute(self: *const InternalState, namespace_uri: ?[]const u8, local_name: []const u8) ?usize {
+        var it = self.attributeIterator();
+        var index: usize = 0;
+        while (it.next()) |entry| : (index += 1) {
+            if (attributeMatches(entry, namespace_uri, local_name)) return index;
+        }
+        return null;
+    }
+
+    /// Index of the FIRST attribute whose qualified name is `qualified_name`.
+    /// Two attributes in different namespaces can share one.
+    pub fn indexOfQualifiedName(self: *const InternalState, qualified_name: []const u8) ?usize {
+        var it = self.attributeIterator();
+        var index: usize = 0;
+        while (it.next()) |entry| : (index += 1) {
+            if (qualifiedNameIs(entry, qualified_name)) return index;
+        }
+        return null;
+    }
+
+    /// Remove the attribute at `index` and hand its entry, strings and all, to
+    /// the caller. The list keeps its order: attribute order is observable
+    /// through `attributes` and `getAttributeNames()`.
+    pub fn takeAttributeAt(self: *InternalState, index: usize) AttributeEntry {
+        if (index < self.inline_attr_count) {
+            const entry = self.inline_attrs[index].?;
+            var j = index;
+            while (j + 1 < self.inline_attr_count) : (j += 1) {
+                self.inline_attrs[j] = self.inline_attrs[j + 1];
+            }
+            self.inline_attr_count -= 1;
+            self.inline_attrs[self.inline_attr_count] = null;
+
+            // The first heap attribute follows the last inline one, so it is
+            // the one that moves into the freed inline slot.
+            if (self.heap_attrs) |*heap| {
+                if (heap.items.len > 0) {
+                    self.inline_attrs[self.inline_attr_count] = heap.orderedRemove(0);
+                    self.inline_attr_count += 1;
                 }
             }
+            return entry;
         }
-
-        // Search heap
-        if (self.heap_attrs) |*heap| {
-            var hi: usize = 0;
-            while (hi < heap.items.len) : (hi += 1) {
-                const entry = heap.items[hi];
-                if (attributeMatches(&entry, namespace_uri, local_name)) {
-                    freeAttributeEntry(self.allocator, entry);
-                    _ = heap.orderedRemove(hi);
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return self.heap_attrs.?.orderedRemove(index - self.inline_attr_count);
     }
 };
+
+/// An attribute's qualified name is its local name if its namespace prefix is
+/// null, and otherwise its prefix, ":", and its local name. Compared in place.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-attribute-qualified-name
+fn qualifiedNameIs(entry: *const AttributeEntry, qualified_name: []const u8) bool {
+    const prefix = entry.prefix orelse return std.mem.eql(u8, entry.local_name, qualified_name);
+    return qualified_name.len == prefix.len + 1 + entry.local_name.len and
+        std.mem.startsWith(u8, qualified_name, prefix) and
+        qualified_name[prefix.len] == ':' and
+        std.mem.endsWith(u8, qualified_name, entry.local_name);
+}
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
@@ -489,6 +524,10 @@ pub fn init(
 
     // Set node type to ELEMENT_NODE
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
+
+    // The attribute list's hook, for its ancestors' use (cloning). Installed
+    // before any element can be cloned: this runs for every element.
+    dom.element_attributes.install(.{ .at = &attributeAtHook, .append = &appendAttributeHook });
 
     // Initialize Element's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -744,20 +783,7 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Add all attributes to the NamedNodeMap
     var iter = internal.attributeIterator();
     while (iter.next()) |entry| {
-        // Create an Attr node for each attribute entry
-        const attr = AttrImpl.createAttr(
-            internal.allocator,
-            instance.ctx,
-            entry.namespace_uri,
-            entry.prefix,
-            entry.local_name,
-            entry.value,
-        ) catch return error.OutOfMemory;
-
-        // Set owner element on the attr
-        AttrImpl.setOwnerElement(attr, instance) catch {};
-
-        // Add to NamedNodeMap
+        const attr = try makeAttrNode(instance, entry, .attached);
         NamedNodeMapImpl.addAttr(named_node_map, attr) catch return error.OutOfMemory;
     }
 
@@ -1531,101 +1557,312 @@ pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance
     return slot;
 }
 
-/// Setter for id
-/// DOM §4.8 - Sets the id attribute value
+/// Setter for id: `id` reflects "id".
+/// Spec: https://dom.spec.whatwg.org/#dom-element-id
 pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free old value
-    internal.id.deinit(internal.allocator);
-
-    // Clone and store new value
-    internal.id = try value.clone(internal.allocator);
-
-    // Also set as attribute
-    try setAttributeInternal(internal, null, null, "id", value.asSlice());
+    try setAttributeValue(instance, "id", value.asSlice(), null, null);
 }
 
-/// Setter for className
-/// DOM §4.8 - Sets the class attribute value
+/// Setter for className: `className` reflects "class".
+/// Spec: https://dom.spec.whatwg.org/#dom-element-classname
 pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free old value
-    internal.class_name.deinit(internal.allocator);
-
-    // Clone and store new value
-    internal.class_name = try value.clone(internal.allocator);
-
-    // Also set as attribute
-    try setAttributeInternal(internal, null, null, "class", value.asSlice());
+    try setAttributeValue(instance, "class", value.asSlice(), null, null);
 }
 
-/// Setter for slot
-/// DOM §4.8 - Sets the slot attribute value
+/// Setter for slot: `slot` reflects "slot".
+/// Spec: https://dom.spec.whatwg.org/#dom-element-slot
 pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free old value
-    internal.slot.deinit(internal.allocator);
-
-    // Clone and store new value
-    internal.slot = try value.clone(internal.allocator);
-
-    // Also set as attribute
-    try setAttributeInternal(internal, null, null, "slot", value.asSlice());
+    try setAttributeValue(instance, "slot", value.asSlice(), null, null);
 }
 
-/// Internal helper to get an attribute by namespace and local name
-fn getAttributeByNS(
-    internal: *InternalState,
-    namespace_uri: ?[]const u8,
-    local_name: []const u8,
-) ?*AttributeEntry {
-    // Step 1: Empty string namespace becomes null per spec
-    const ns = if (namespace_uri) |n| if (n.len == 0) null else n else null;
+// =============================================================================
+// The attribute list - DOM §4.9
+//
+// Every change to an element's attributes goes through the four algorithms
+// "change", "append", "remove" and "replace" below, and each of them ends in
+// "handle attribute changes": the mutation record, the custom element
+// reaction and the attribute change steps. The id, class and slot caches are
+// kept in step by those change steps, and by nothing else.
+//
+// Subclasses (HTMLElement's reflection, the script element's attributes) use
+// the public "get / set an attribute value" and "remove an attribute"
+// entry points; nothing outside this file touches the list directly.
+// =============================================================================
 
-    // Use InternalState's findAttributeMut method
-    return internal.findAttributeMut(ns, local_name);
+/// "element is in the HTML namespace and its node document is an HTML
+/// document": when getAttribute, setAttribute, hasAttribute, removeAttribute
+/// and toggleAttribute lowercase the name they are given.
+fn isHtmlElementInHtmlDocument(instance: *runtime.Instance, internal: *const InternalState) bool {
+    const ns = internal.namespace_uri orelse return false;
+    if (!std.mem.eql(u8, ns.asSlice(), infra.namespaces.HTML_NAMESPACE)) return false;
+    const document = NodeImpl.getOwnerDocument(instance) orelse return false;
+    return dom.document_internals.getDocumentType(document) == .html;
 }
 
-/// Internal helper to remove an attribute by namespace and local name
-fn removeAttributeByNS(
-    internal: *InternalState,
-    namespace_uri: ?[]const u8,
+/// A name as an attribute lookup should see it: `qualifiedName in ASCII
+/// lowercase` when the element is an HTML element in an HTML document.
+/// Short names are lowercased into the caller's buffer.
+const LookupName = struct {
+    slice: []const u8,
+    owned: ?[]u8 = null,
+
+    fn deinit(self: LookupName, allocator: std.mem.Allocator) void {
+        if (self.owned) |owned| allocator.free(owned);
+    }
+};
+
+fn lookupName(instance: *runtime.Instance, internal: *const InternalState, name: []const u8, buffer: []u8) !LookupName {
+    // A name with no ASCII upper alpha is its own lowercase - the case for
+    // every name the HTML parser produces - so skip the document check.
+    const has_upper = for (name) |c| {
+        if (std.ascii.isUpper(c)) break true;
+    } else false;
+    if (!has_upper or !isHtmlElementInHtmlDocument(instance, internal)) return .{ .slice = name };
+
+    if (name.len <= buffer.len) return .{ .slice = std.ascii.lowerString(buffer[0..name.len], name) };
+    const owned = try std.ascii.allocLowerString(internal.allocator, name);
+    return .{ .slice = owned, .owned = owned };
+}
+
+/// DOM "handle attribute changes" for an attribute - identified by its
+/// namespace and local name - with this element, oldValue and newValue.
+///
+/// Spec: https://dom.spec.whatwg.org/#handle-attribute-changes
+fn handleAttributeChanges(
+    instance: *runtime.Instance,
+    namespace: ?[]const u8,
     local_name: []const u8,
+    old_value: ?[]const u8,
+    new_value: ?[]const u8,
 ) void {
-    // Step 1: Empty string namespace becomes null per spec
-    const ns = if (namespace_uri) |n| if (n.len == 0) null else n else null;
+    // Step 1: "Queue a mutation record of "attributes" for element with
+    // attribute's local name, attribute's namespace, oldValue, « », « »,
+    // null, and null." (Mutation observers for attributes: next commit.)
 
-    // Use InternalState's removeAttribute method
-    _ = internal.removeAttribute(ns, local_name);
+    // Step 2: "If element is custom, then enqueue a custom element callback
+    // reaction with element, callback name "attributeChangedCallback", and
+    // « attribute's local name, oldValue, newValue, attribute's namespace »."
+    // TODO(custom-elements): nothing moves an element's custom element state
+    // past "undefined" yet, so no element is custom and there is no
+    // definition to consult. Enqueue here once upgrades set the state.
+
+    // Step 3: "Run the attribute change steps with element, attribute's local
+    // name, oldValue, newValue, and attribute's namespace."
+    attributeChangeSteps(instance, local_name, old_value, new_value, namespace);
 }
 
-/// Internal helper to set an attribute
-fn setAttributeInternal(
+/// The attribute change steps this engine defines, in one place.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change-ext
+///
+/// The image step can run script - it fetches and fires load or error
+/// synchronously - so it goes last, after every step that reads the name and
+/// value it was handed.
+fn attributeChangeSteps(
+    instance: *runtime.Instance,
+    local_name: []const u8,
+    old_value: ?[]const u8,
+    value: ?[]const u8,
+    namespace: ?[]const u8,
+) void {
+    _ = old_value;
+    // Every step below concerns attributes in no namespace.
+    if (namespace != null) return;
+    const internal = getInternal(instance) orelse return;
+
+    // DOM §4.9: "If localName is id, namespace is null, and value is null or
+    // the empty string, then unset element's ID. Otherwise, if localName is
+    // id, namespace is null, then set element's ID to value." The class and
+    // slot caches follow their attributes the same way.
+    if (std.mem.eql(u8, local_name, "id")) {
+        replaceCachedValue(internal, &internal.id, value);
+    } else if (std.mem.eql(u8, local_name, "class")) {
+        replaceCachedValue(internal, &internal.class_name, value);
+    } else if (std.mem.eql(u8, local_name, "slot")) {
+        replaceCachedValue(internal, &internal.slot, value);
+    }
+
+    // HTML §8.1.8.1: event handler content attributes.
+    eventHandlerAttributeChangeSteps(instance, local_name, value);
+
+    // HTML "update the image data", for an img whose src is set.
+    if (value) |v| {
+        if (std.mem.eql(u8, local_name, "src") and std.mem.eql(u8, internal.local_name.asSlice(), "img")) {
+            triggerImageSrcChange(instance, v);
+        }
+    }
+}
+
+fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value: ?[]const u8) void {
+    cache.deinit(internal.allocator);
+    cache.* = runtime.DOMString.initEmpty();
+    if (value) |v| {
+        // A failed copy leaves the cache empty; the attribute itself is set.
+        cache.* = runtime.DOMString.initDupe(internal.allocator, v) catch runtime.DOMString.initEmpty();
+    }
+}
+
+/// DOM "change an attribute" - the one at `index` - to `value`.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change
+fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index: usize, value: []const u8) !void {
+    const entry = internal.attributeAt(index) orelse return error.InvalidStateError;
+    const new_value = try internal.allocator.dupe(u8, value);
+
+    // Step 1: "Let oldValue be attribute's value."
+    const old_value = entry.value;
+    defer internal.allocator.free(old_value);
+
+    // Step 2: "Set attribute's value to value."
+    entry.value = new_value;
+
+    // Step 3: "Handle attribute changes for attribute with attribute's
+    // element, oldValue, and value."
+    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, old_value, new_value);
+}
+
+/// DOM "append an attribute" to this element.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-append
+fn appendAttribute(
+    instance: *runtime.Instance,
     internal: *InternalState,
-    namespace_uri: ?[]const u8,
-    prefix_param: ?[]const u8,
+    namespace: ?[]const u8,
+    prefix: ?[]const u8,
     local_name: []const u8,
     value: []const u8,
 ) !void {
-    // Look for existing attribute using findAttributeMut
-    if (internal.findAttributeMut(namespace_uri, local_name)) |entry| {
-        // Update existing attribute
-        internal.allocator.free(entry.value);
-        entry.value = try internal.allocator.dupe(u8, value);
-        return;
-    }
+    const allocator = internal.allocator;
+    const namespace_copy: ?[]const u8 = if (namespace) |ns| try allocator.dupe(u8, ns) else null;
+    errdefer if (namespace_copy) |ns| allocator.free(ns);
+    const prefix_copy: ?[]const u8 = if (prefix) |p| try allocator.dupe(u8, p) else null;
+    errdefer if (prefix_copy) |p| allocator.free(p);
+    const local_name_copy = try allocator.dupe(u8, local_name);
+    errdefer allocator.free(local_name_copy);
+    const value_copy = try allocator.dupe(u8, value);
+    errdefer allocator.free(value_copy);
 
-    // Create new attribute entry
     const entry = AttributeEntry{
-        .namespace_uri = if (namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
-        .prefix = if (prefix_param) |p| try internal.allocator.dupe(u8, p) else null,
-        .local_name = try internal.allocator.dupe(u8, local_name),
-        .value = try internal.allocator.dupe(u8, value),
+        .namespace_uri = namespace_copy,
+        .prefix = prefix_copy,
+        .local_name = local_name_copy,
+        .value = value_copy,
     };
+
+    // Step 1: "Append attribute to element's attribute list."
     try internal.addAttribute(entry);
+
+    // Steps 2 and 3 set the attribute's element and node document: this list
+    // stores the attribute's data, and an Attr node made for it takes both
+    // from the element when it is created.
+
+    // Step 4: "Handle attribute changes for attribute with element, null, and
+    // attribute's value."
+    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, null, entry.value);
+}
+
+/// DOM "remove an attribute" - the one at `index`.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
+fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize) void {
+    // Steps 1 and 2: "Let element be attribute's element. Remove attribute
+    // from element's attribute list." The entry is ours until the changes
+    // below have read its name and value.
+    const entry = internal.takeAttributeAt(index);
+    defer InternalState.freeAttributeEntry(internal.allocator, entry);
+
+    // Step 3 sets the attribute's element to null; see appendAttribute.
+
+    // Step 4: "Handle attribute changes for attribute with element,
+    // attribute's value, and null."
+    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, entry.value, null);
+}
+
+/// DOM "get an attribute value": the value of the attribute with this
+/// namespace and local name, or the empty string. Borrowed - valid until the
+/// attribute next changes.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-value
+pub fn getAttributeValue(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8) []const u8 {
+    const internal = getInternal(instance) orelse return "";
+    const entry = internal.findAttribute(namespace, local_name) orelse return "";
+    return entry.value;
+}
+
+/// DOM "set an attribute value": the setter steps of every reflected string
+/// attribute, and of the internal callers that set a content attribute.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
+pub fn setAttributeValue(
+    instance: *runtime.Instance,
+    local_name: []const u8,
+    value: []const u8,
+    prefix: ?[]const u8,
+    namespace: ?[]const u8,
+) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: "Let attribute be the result of getting an attribute given
+    // namespace, localName, and element."
+    const index = internal.indexOfAttribute(namespace, local_name) orelse {
+        // Step 2: "If attribute is null, create an attribute whose namespace
+        // is namespace, namespace prefix is prefix, local name is localName,
+        // value is value, and node document is element's node document, then
+        // append this attribute to element, and then return."
+        return appendAttribute(instance, internal, namespace, prefix, local_name, value);
+    };
+
+    // Step 3: "Change attribute to value."
+    return changeAttribute(instance, internal, index, value);
+}
+
+/// DOM "remove an attribute by namespace and local name".
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
+pub fn removeAttributeByNamespaceAndLocalName(instance: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void {
+    const internal = getInternal(instance) orelse return;
+    // Step 1: "Let attr be the result of getting an attribute given
+    // namespace, localName, and element." (Getting one maps "" to null.)
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
+    // Step 2: "If attr is non-null, then remove attr."
+    const index = internal.indexOfAttribute(ns, local_name) orelse return;
+    removeAttributeAt(instance, internal, index);
+}
+
+/// DOM "remove an attribute by name": the first attribute whose qualified
+/// name is `qualified_name`, after lowercasing for an HTML element in an HTML
+/// document.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-name
+pub fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualified_name, &buffer);
+    defer name.deinit(internal.allocator);
+    // Step 1: "Let attr be the result of getting an attribute given
+    // qualifiedName and element."
+    // Step 2: "If attr is non-null, then remove attr."
+    const index = internal.indexOfQualifiedName(name.slice) orelse return;
+    removeAttributeAt(instance, internal, index);
+}
+
+/// `dom.element_attributes.at`: the list read in place.
+fn attributeAtHook(element: *runtime.Instance, index: usize) ?dom.element_attributes.Attribute {
+    const internal = getInternal(element) orelse return null;
+    const entry = internal.attributeAt(index) orelse return null;
+    return .{
+        .namespace = entry.namespace_uri,
+        .prefix = entry.prefix,
+        .local_name = entry.local_name,
+        .value = entry.value,
+    };
+}
+
+/// `dom.element_attributes.append`: "append an attribute" with exactly the
+/// fields given.
+fn appendAttributeHook(element: *runtime.Instance, attribute: dom.element_attributes.Attribute) dom.element_attributes.Error!void {
+    const internal = getInternal(element) orelse return error.InvalidStateError;
+    return appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
 }
 
 // Note: matches(), closest(), and webkitMatchesSelector() delegate to ParentNode mixin
@@ -1712,28 +1949,25 @@ fn insertAdjacent(
 // ARIA Attribute Helpers
 // =============================================================================
 
-/// Get an ARIA attribute value (reflects aria-* attributes)
-fn getAriaAttribute(instance: *runtime.Instance, aria_name: []const u8) runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-
-    // Look for aria-* attribute using findAttribute
-    if (internal.findAttribute(null, aria_name)) |entry| {
-        return runtime.DOMString.initInterned(entry.value);
-    }
-
-    return runtime.DOMString.initEmpty();
+/// Get an ARIA attribute value. The ARIA attributes reflect as nullable
+/// DOMStrings: "If attr is null, then return null."
+/// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes
+fn getAriaAttribute(instance: *runtime.Instance, aria_name: []const u8) ?runtime.DOMString {
+    const internal = getInternal(instance) orelse return null;
+    const entry = internal.findAttribute(null, aria_name) orelse return null;
+    return runtime.DOMString.initInterned(entry.value);
 }
 
-/// Set an ARIA attribute value
+/// Set an ARIA attribute value: a null value removes the attribute, anything
+/// else sets it - the setter steps of a reflected nullable DOMString.
 fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?runtime.DOMString) ImplError!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Per WebIDL spec: null/undefined converts to null for nullable DOMString
-    // which should remove the attribute
     if (value) |v| {
-        try setAttributeInternal(internal, null, null, aria_name, v.asSlice());
+        setAttributeValue(instance, aria_name, v.asSlice(), null, null) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.InvalidStateError,
+        };
     } else {
-        // Setting to null removes the attribute
-        _ = internal.removeAttribute(null, aria_name);
+        removeAttributeByNamespaceAndLocalName(instance, null, aria_name);
     }
 }
 
@@ -1756,7 +1990,7 @@ fn getElementByIdFromDocument(instance: *runtime.Instance, id: []const u8) ?*run
 /// These attributes contain an ID reference that needs to be resolved to an element
 fn getAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8) ?*runtime.Instance {
     // Get the attribute value (contains an ID)
-    const attr_value = getAriaAttribute(instance, aria_attr);
+    const attr_value = getAriaAttribute(instance, aria_attr) orelse return null;
     const id = attr_value.asSlice();
     if (id.len == 0) return null;
 
@@ -1777,14 +2011,7 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
         }
     }
     // Element is null or has no ID - remove the attribute
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    removeAttributeByName(internal, aria_attr);
-}
-
-/// Remove an attribute by name (helper for ARIA element ref setters)
-fn removeAttributeByName(internal: *InternalState, name: []const u8) void {
-    // Use InternalState's removeAttribute method (null namespace)
-    _ = internal.removeAttribute(null, name);
+    removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
 }
 
 // =============================================================================
@@ -1938,10 +2165,7 @@ pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventH
 ///
 /// Sets the element's timing identifier for performance monitoring
 pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Set the elementtiming attribute using setAttributeInternal
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const value_slice = value.asSlice();
-    try setAttributeInternal(internal, null, null, "elementtiming", value_slice);
+    try setAttributeValue(instance, "elementtiming", value.asSlice(), null, null);
 }
 
 /// Setter for innerHTML
@@ -2457,44 +2681,42 @@ pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString)
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
 pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const name_slice = localName.asSlice();
-
-    // Get attribute by namespace and local name
-    if (getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice)) |entry| {
-        return runtime.DOMString.initInterned(entry.value);
-    }
-
-    // Return empty for not found (WebIDL nullable maps to empty)
-    return runtime.DOMString.initEmpty();
+    // Step 1: "Let attr be the result of getting an attribute given
+    // namespace, localName, and this." Getting one maps "" to null.
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len() == 0) null else n.asSlice()) else null;
+    // Step 2: "If attr is null, return null."
+    const entry = internal.findAttribute(ns, localName.asSlice()) orelse return null;
+    // Step 3: "Return attr's value."
+    return runtime.DOMString.initInterned(entry.value);
 }
 
 /// Operation: getAttribute
-/// DOM §4.8 - Returns the value of the named attribute, or null if not found
+/// Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
 pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name = qualifiedName.asSlice();
-
-    // TODO: Lowercase name for HTML elements in HTML documents
-
-    // Search attributes by local name (no namespace) using findAttribute
-    if (internal.findAttribute(null, name)) |entry| {
-        return runtime.DOMString.initInterned(entry.value);
-    }
-
-    // Return empty for not found (WebIDL nullable maps to empty)
-    return runtime.DOMString.initEmpty();
+    // Step 1: "Let attr be the result of getting an attribute given
+    // qualifiedName and this": the first attribute whose qualified name is
+    // qualifiedName, lowercased for an HTML element in an HTML document.
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
+    defer name.deinit(internal.allocator);
+    // Step 2: "If attr is null, return null."
+    const index = internal.indexOfQualifiedName(name.slice) orelse return null;
+    // Step 3: "Return attr's value."
+    return runtime.DOMString.initInterned(internal.attributeAt(index).?.value);
 }
 
 /// Operation: hasAttribute
-/// DOM §4.8 - Returns true if the element has an attribute with the given name
+/// Spec: https://dom.spec.whatwg.org/#dom-element-hasattribute
 pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name = qualifiedName.asSlice();
-
-    // TODO: Lowercase name for HTML elements in HTML documents
-
-    return internal.findAttribute(null, name) != null;
+    // Step 1: lowercase for an HTML element in an HTML document.
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
+    defer name.deinit(internal.allocator);
+    // Step 2: "Return true if this has an attribute whose qualified name is
+    // qualifiedName; otherwise false."
+    return internal.indexOfQualifiedName(name.slice) != null;
 }
 
 /// Operation: matches
@@ -2646,54 +2868,58 @@ pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Insta
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenodens
 pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const name_slice = localName.asSlice();
+    // "Getting an attribute given namespace, localName, and this": "" is null.
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len() == 0) null else n.asSlice()) else null;
+    const entry = internal.findAttribute(ns, localName.asSlice()) orelse return null;
+    return makeAttrNode(instance, entry, .attached);
+}
 
-    // Get attribute by namespace and local name
-    if (getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice)) |entry| {
-        // Create Attr node for this attribute
-        const attr = AttrImpl.createAttr(
-            internal.allocator,
-            instance.ctx,
-            entry.namespace_uri,
-            entry.prefix,
-            entry.local_name,
-            entry.value,
-        ) catch return error.OutOfMemory;
+/// Whether an Attr node made for an attribute still has this element as its
+/// element, or has just been removed from it.
+const AttrNodeLink = enum { attached, detached };
 
-        // Set owner element
-        AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+/// An Attr node for the attribute `entry`, made on demand: this list stores
+/// attribute data, not nodes. Its node document is this element's either way.
+fn makeAttrNode(instance: *runtime.Instance, entry: *const AttributeEntry, link: AttrNodeLink) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const attr = try AttrImpl.createAttr(
+        internal.allocator,
+        instance.ctx,
+        entry.namespace_uri,
+        entry.prefix,
+        entry.local_name,
+        entry.value,
+    );
+    try setAttrElement(attr, instance);
+    if (link == .detached) try setAttrElement(attr, null);
+    return attr;
+}
 
-        return attr;
-    }
-
-    // Return null (not found)
-    return null;
+/// Set an Attr node's element - and, for an element, its node document.
+fn setAttrElement(attr: *runtime.Instance, element: ?*runtime.Instance) !void {
+    AttrImpl.setOwnerElement(attr, element) catch return error.InvalidStateError;
 }
 
 /// Operation: setAttributeNS
 /// DOM §4.8 - Sets the attribute with the given namespace and qualified name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
 pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const qname_slice = qualifiedName.asSlice();
+    // Step 1: "Let (namespace, prefix, localName) be the result of validating
+    // and extracting namespace and qualifiedName given "attribute"."
+    const extracted = try dom.names.validateAndExtract(
+        if (namespace) |ns| ns.asSlice() else null,
+        qualifiedName.asSlice(),
+        .attribute,
+    );
 
-    // Get value as slice
-    const val = value.asSlice();
+    // Step 2: "Let verifiedValue be the result of calling get trusted type
+    // compliant attribute value with localName, namespace, this, and value."
+    // Deviation: Trusted Types enforcement is not wired into attribute
+    // setting; the value is used as given.
 
-    // Parse qualified name for prefix and local name
-    var prefix: ?[]const u8 = null;
-    var local_name: []const u8 = qname_slice;
-
-    if (std.mem.indexOfScalar(u8, qname_slice, ':')) |colon_pos| {
-        prefix = qname_slice[0..colon_pos];
-        local_name = qname_slice[colon_pos + 1 ..];
-    }
-
-    // Set attribute value with namespace and prefix
-    const ns = if (ns_slice.len > 0) ns_slice else null;
-    try setAttributeInternal(internal, ns, prefix, local_name, val);
+    // Step 3: "Set an attribute value for this using localName,
+    // verifiedValue, prefix, and namespace."
+    try setAttributeValue(instance, extracted.local_name, value.asSlice(), extracted.prefix, extracted.namespace);
 }
 
 /// Operation: setAttributeNode
@@ -2705,37 +2931,83 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
 pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Get attribute properties from the Attr node
-    const namespace_uri_opt = interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError;
-    const prefix_opt = interfaces.Attr.get_prefix(attr) catch return error.InvalidStateError;
-    const local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
-    const value = interfaces.Attr.get_value(attr) catch return error.InvalidStateError;
+    // Step 1: "Let verifiedValue be the result of calling get trusted type
+    // compliant attribute value with attr's local name, attr's namespace,
+    // element, and attr's value." Deviation: see setAttributeNS.
 
-    const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
-    const prefix_slice = if (prefix_opt) |p| p.asSlice() else "";
-    const name_slice = local_name.asSlice();
-    const value_slice = value.asSlice();
-
-    // Check if an attribute with same namespace and local name already exists
-    const ns = if (ns_slice.len > 0) ns_slice else null;
-    const pfx = if (prefix_slice.len > 0) prefix_slice else null;
-
-    var old_attr: ?*runtime.Instance = null;
-
-    if (getAttributeByNS(internal, ns, name_slice)) |_| {
-        // Get old attribute node before replacing
-        const namespace_uri_param = namespace_uri_opt orelse runtime.DOMString.initEmpty();
-        old_attr = call_getAttributeNodeNS(instance, namespace_uri_param, local_name) catch null;
+    // Step 2: "If attr's element is neither null nor element, throw an
+    // "InUseAttributeError" DOMException."
+    const attr_element = interfaces.Attr.get_ownerElement(attr) catch null;
+    if (attr_element) |element| {
+        if (element != instance) return error.InUseAttributeError;
     }
 
-    // Set the attribute value (this will add or update)
-    setAttributeInternal(internal, ns, pfx, name_slice, value_slice) catch return error.OutOfMemory;
+    // The getters clone into the Attr's context allocator; this frame owns
+    // the copies. An Attr with no namespace or prefix reports "".
+    const attr_allocator = attr.ctx.allocator;
+    var namespace_string = (interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError) orelse runtime.DOMString.initEmpty();
+    defer namespace_string.deinit(attr_allocator);
+    var prefix_string = (interfaces.Attr.get_prefix(attr) catch return error.InvalidStateError) orelse runtime.DOMString.initEmpty();
+    defer prefix_string.deinit(attr_allocator);
+    var local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
+    defer local_name.deinit(attr_allocator);
+    var value = interfaces.Attr.get_value(attr) catch return error.InvalidStateError;
+    defer value.deinit(attr_allocator);
+    const namespace: ?[]const u8 = if (namespace_string.len() == 0) null else namespace_string.asSlice();
+    const prefix: ?[]const u8 = if (prefix_string.len() == 0) null else prefix_string.asSlice();
 
-    // Set owner element on the new attr
-    AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+    // Step 3: "Let oldAttr be the result of getting an attribute given attr's
+    // namespace, attr's local name, and element."
+    const old_index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse {
+        // Step 7: "Otherwise, append attr to element."
+        try appendAttribute(instance, internal, namespace, prefix, local_name.asSlice(), value.asSlice());
+        try setAttrElement(attr, instance);
+        // Step 8: "Return oldAttr." - null.
+        return null;
+    };
 
-    // Return old attribute if it existed, otherwise null
+    // Step 4: "If oldAttr is attr, return attr." Attr nodes are made on
+    // demand for this list's attributes, so an attr whose element is this
+    // element and whose name is oldAttr's IS oldAttr.
+    if (attr_element == instance) return attr;
+
+    // Step 5: "Set attr's value to verifiedValue." It is unchanged.
+
+    // Step 6: "If oldAttr is non-null, then replace oldAttr with attr." The
+    // node handed back for oldAttr is detached, holding its last value.
+    const old_attr = try makeAttrNode(instance, internal.attributeAt(old_index).?, .detached);
+    try replaceAttributeAt(instance, internal, old_index, prefix, value.asSlice());
+    try setAttrElement(attr, instance);
+
+    // Step 8: "Return oldAttr."
     return old_attr;
+}
+
+/// DOM "replace an attribute": the one at `index` by an attribute with the
+/// same namespace and local name, and the given prefix and value.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-replace
+fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize, prefix: ?[]const u8, value: []const u8) !void {
+    const allocator = internal.allocator;
+    const entry = internal.attributeAt(index) orelse return error.InvalidStateError;
+    const new_prefix: ?[]const u8 = if (prefix) |p| try allocator.dupe(u8, p) else null;
+    errdefer if (new_prefix) |p| allocator.free(p);
+    const new_value = try allocator.dupe(u8, value);
+
+    // Step 2: "Replace oldAttribute by newAttribute in element's attribute
+    // list." Steps 3 to 5 move the element from one Attr node to the other.
+    const old_prefix = entry.prefix;
+    const old_value = entry.value;
+    defer {
+        if (old_prefix) |p| allocator.free(p);
+        allocator.free(old_value);
+    }
+    entry.prefix = new_prefix;
+    entry.value = new_value;
+
+    // Step 6: "Handle attribute changes for oldAttribute with element,
+    // oldAttribute's value, and newAttribute's value."
+    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, old_value, new_value);
 }
 
 /// Operation: scrollTo
@@ -2993,28 +3265,9 @@ pub fn call_remove(instance: *runtime.Instance) anyerror!void {
 /// Operation: removeAttribute
 /// DOM §4.8 - Removes the named attribute
 pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name = qualifiedName.asSlice();
-
-    // TODO: Lowercase name for HTML elements in HTML documents
-
-    // Remove the attribute using InternalState method
-    if (internal.removeAttribute(null, name)) {
-        // Clear cached values if applicable
-        if (std.mem.eql(u8, name, "id")) {
-            internal.id.deinit(internal.allocator);
-            internal.id = runtime.DOMString.initEmpty();
-        } else if (std.mem.eql(u8, name, "class")) {
-            internal.class_name.deinit(internal.allocator);
-            internal.class_name = runtime.DOMString.initEmpty();
-        } else if (std.mem.eql(u8, name, "slot")) {
-            internal.slot.deinit(internal.allocator);
-            internal.slot = runtime.DOMString.initEmpty();
-        }
-
-        // Attribute change steps with value null: deactivate the handler.
-        eventHandlerAttributeChangeSteps(instance, name, null);
-    }
+    // "Remove an attribute given qualifiedName and this, and then return
+    // undefined."
+    try removeAttributeByName(instance, qualifiedName.asSlice());
 }
 
 /// Operation: convertRectFromNode
@@ -3042,40 +3295,26 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Get attribute properties from the Attr node
-    const namespace_uri_opt = interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError;
-    const local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
+    // Step 1: "If this's attribute list does not contain attr, then throw a
+    // "NotFoundError" DOMException." Attr nodes are made on demand, so the
+    // list contains attr exactly when attr's element is this element and an
+    // attribute with attr's namespace and local name is still in it.
+    const attr_element = interfaces.Attr.get_ownerElement(attr) catch null;
+    if (attr_element != instance) return error.NotFoundError;
 
-    const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
-    const name_slice = local_name.asSlice();
-    const ns = if (ns_slice.len > 0) ns_slice else null;
+    const attr_allocator = attr.ctx.allocator;
+    var namespace_string = (interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError) orelse runtime.DOMString.initEmpty();
+    defer namespace_string.deinit(attr_allocator);
+    var local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
+    defer local_name.deinit(attr_allocator);
+    const namespace: ?[]const u8 = if (namespace_string.len() == 0) null else namespace_string.asSlice();
+    const index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse return error.NotFoundError;
 
-    // Step 1: Check if attribute exists
-    if (getAttributeByNS(internal, ns, name_slice) == null) {
-        return error.NotFoundError;
-    }
+    // Step 2: "Remove attr." - which sets attr's element to null.
+    removeAttributeAt(instance, internal, index);
+    try setAttrElement(attr, null);
 
-    // Step 2: Remove the attribute
-    removeAttributeByNS(internal, ns, name_slice);
-
-    // Clear owner element on the removed attr
-    AttrImpl.setOwnerElement(attr, null) catch {};
-
-    // Update cached values if needed
-    if (ns == null) {
-        if (std.mem.eql(u8, name_slice, "id")) {
-            internal.id.deinit(internal.allocator);
-            internal.id = runtime.DOMString.initEmpty();
-        } else if (std.mem.eql(u8, name_slice, "class")) {
-            internal.class_name.deinit(internal.allocator);
-            internal.class_name = runtime.DOMString.initEmpty();
-        } else if (std.mem.eql(u8, name_slice, "slot")) {
-            internal.slot.deinit(internal.allocator);
-            internal.slot = runtime.DOMString.initEmpty();
-        }
-    }
-
-    // Step 3: Return attr
+    // Step 3: "Return attr."
     return attr;
 }
 
@@ -3083,12 +3322,9 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
 /// DOM §4.8 - Removes the attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
 pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const name_slice = localName.asSlice();
-
-    // Remove by namespace and local name
-    removeAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice);
+    // "Remove an attribute given namespace, localName, and this, and then
+    // return undefined."
+    removeAttributeByNamespaceAndLocalName(instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
 }
 
 /// Operation: insertAdjacentText
@@ -3208,30 +3444,13 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
 /// getting an attribute given qualifiedName and this.
 pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name = qualifiedName.asSlice();
-
-    // TODO: Lowercase name for HTML elements in HTML documents
-
-    // Search for attribute by qualified name (no namespace) using findAttribute
-    if (internal.findAttribute(null, name)) |entry| {
-        // Create Attr node for this attribute
-        const attr = AttrImpl.createAttr(
-            internal.allocator,
-            instance.ctx,
-            entry.namespace_uri,
-            entry.prefix,
-            entry.local_name,
-            entry.value,
-        ) catch return error.OutOfMemory;
-
-        // Set owner element
-        AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
-
-        return attr;
-    }
-
-    // Return null (not found)
-    return null;
+    // "Return the result of getting an attribute given qualifiedName and
+    // this."
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
+    defer name.deinit(internal.allocator);
+    const index = internal.indexOfQualifiedName(name.slice) orelse return null;
+    return makeAttrNode(instance, internal.attributeAt(index).?, .attached);
 }
 
 /// Operation: startViewTransition
@@ -3303,53 +3522,41 @@ pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) anyer
 /// 5. Return whether attribute now exists
 pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name = qualifiedName.asSlice();
 
-    // Step 1: Validate qualified name (simplified - just check non-empty)
-    if (name.len == 0) {
-        return error.InvalidCharacterError;
-    }
+    // Step 1: "If qualifiedName is not a valid attribute local name, then
+    // throw an "InvalidCharacterError" DOMException."
+    if (!dom.names.isValidAttributeLocalName(qualifiedName.asSlice())) return error.InvalidCharacterError;
 
-    // TODO: Step 2: Lowercase name for HTML elements in HTML documents
+    // Step 2: lowercase for an HTML element in an HTML document.
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
+    defer name.deinit(internal.allocator);
 
-    // Step 3: Check if attribute exists using findAttribute
-    const attr_exists = internal.findAttribute(null, name) != null;
-
-    // Handle force parameter
-    const force_value: ?bool = if (force.was_passed) force.value else null;
-
-    if (attr_exists) {
-        // Attribute exists
-        if (force_value == null or force_value == false) {
-            // Remove it (when force not passed or force is false)
-            _ = internal.removeAttribute(null, name);
-
-            // Clear cached values if applicable
-            if (std.mem.eql(u8, name, "id")) {
-                internal.id.deinit(internal.allocator);
-                internal.id = runtime.DOMString.initEmpty();
-            } else if (std.mem.eql(u8, name, "class")) {
-                internal.class_name.deinit(internal.allocator);
-                internal.class_name = runtime.DOMString.initEmpty();
-            } else if (std.mem.eql(u8, name, "slot")) {
-                internal.slot.deinit(internal.allocator);
-                internal.slot = runtime.DOMString.initEmpty();
-            }
-
-            return false;
-        }
-        // force is true, attribute exists - return true
-        return true;
-    } else {
-        // Attribute doesn't exist
-        if (force_value == null or force_value == true) {
-            // Add it with empty value (when force not passed or force is true)
-            try setAttributeInternal(internal, null, null, name, "");
+    // Step 3: "Let attribute be the first attribute in this's attribute list
+    // whose qualified name is qualifiedName, and null otherwise."
+    const index = internal.indexOfQualifiedName(name.slice) orelse {
+        // Step 4.1: "If force is not given or is true, create an attribute
+        // whose local name is qualifiedName, value is the empty string, and
+        // node document is this's node document, then append this attribute
+        // to this, and then return true."
+        if (!force.was_passed or force.value) {
+            try appendAttribute(instance, internal, null, null, name.slice, "");
             return true;
         }
-        // force is false, attribute doesn't exist - return false
+        // Step 4.2: "Return false."
+        return false;
+    };
+
+    // Step 5: "Otherwise, if force is not given or is false, remove an
+    // attribute given qualifiedName and this, and then return false." The
+    // attribute that removes is the one step 3 found.
+    if (!force.was_passed or !force.value) {
+        removeAttributeAt(instance, internal, index);
         return false;
     }
+
+    // Step 6: "Return true."
+    return true;
 }
 
 /// Operation: pseudo
@@ -3417,48 +3624,37 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.
 }
 
 /// Operation: setAttribute
-/// DOM §4.8 - Sets the value of the named attribute
-/// TODO: value is typed as anyopaque due to codegen - should be DOMString
+/// Spec: https://dom.spec.whatwg.org/#dom-element-setattribute
 pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse {
-        return error.InvalidStateError;
-    };
-    const name = qualifiedName.asSlice();
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // TODO: Validate qualifiedName per https://dom.spec.whatwg.org/#validate
+    // Step 1: "If qualifiedName is not a valid attribute local name, then
+    // throw an "InvalidCharacterError" DOMException." It is only used as a
+    // qualified name to find an attribute that already has it; a new one
+    // takes it as its local name.
+    if (!dom.names.isValidAttributeLocalName(qualifiedName.asSlice())) return error.InvalidCharacterError;
 
-    // Get value as slice
-    const val = value.asSlice();
+    // Step 2: lowercase for an HTML element in an HTML document.
+    var buffer: [64]u8 = undefined;
+    const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
+    defer name.deinit(internal.allocator);
 
-    // TODO: Lowercase name for HTML elements in HTML documents
+    // Step 3: "Let verifiedValue be the result of calling get trusted type
+    // compliant attribute value with qualifiedName, null, this, and value."
+    // Deviation: see setAttributeNS.
 
-    // Update special cached attributes
-    if (std.mem.eql(u8, name, "id")) {
-        internal.id.deinit(internal.allocator);
-        internal.id = try runtime.DOMString.initDupe(internal.allocator, val);
-    } else if (std.mem.eql(u8, name, "class")) {
-        internal.class_name.deinit(internal.allocator);
-        internal.class_name = try runtime.DOMString.initDupe(internal.allocator, val);
-    } else if (std.mem.eql(u8, name, "slot")) {
-        internal.slot.deinit(internal.allocator);
-        internal.slot = try runtime.DOMString.initDupe(internal.allocator, val);
+    // Step 4: "Let attribute be the first attribute in this's attribute list
+    // whose qualified name is qualifiedName, and null otherwise."
+    // Step 5: "If attribute is non-null, then change attribute to
+    // verifiedValue and return."
+    if (internal.indexOfQualifiedName(name.slice)) |index| {
+        return changeAttribute(instance, internal, index, value.asSlice());
     }
 
-    // Set in attribute list
-    try setAttributeInternal(internal, null, null, name, val);
-
-    // Attribute change steps: event handler content attributes.
-    eventHandlerAttributeChangeSteps(instance, name, val);
-
-    // HTML spec hooks: Trigger element-specific attribute change reactions
-    // For HTMLImageElement: setting "src" triggers image data update
-    // Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
-    if (std.mem.eql(u8, name, "src")) {
-        // Check if this element is an HTMLImageElement by checking its local name
-        if (std.mem.eql(u8, internal.local_name.asSlice(), "img")) {
-            triggerImageSrcChange(instance, val);
-        }
-    }
+    // Steps 6 and 7: "Set attribute to a new attribute whose local name is
+    // qualifiedName, value is verifiedValue, and node document is this's node
+    // document. Append attribute to this."
+    try appendAttribute(instance, internal, null, null, name.slice, value.asSlice());
 }
 
 // =============================================================================
@@ -3715,30 +3911,37 @@ pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(dic
 pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Create a NodeList to hold the attribute names as a sequence
-    // TODO: This should ideally return a JS Array, but for now we use NodeList as placeholder
-    const node_list = interfaces.NodeList.init(
-        internal.allocator,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    // "Return the qualified names of the attributes in this's attribute list,
+    // in order; otherwise a new list." A sequence<DOMString> is a real array:
+    // an impl's return value is the JavaScript value, as in
+    // URLSearchParams.getAll.
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
+    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return error.OutOfMemory;
+    defer v8.ffi.v8_HandleScope_Dispose(scope);
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
+    defer v8.ffi.v8_Context_Dispose(context);
 
-    // For each attribute, add its qualified name to the list
-    // Note: getAttributeNames returns qualified names (prefix:localName if prefix exists)
+    // A Global<Array> the caller owns; the JSValue carries it to the binding.
+    const array = v8.ffi.v8_Array_New(isolate, @intCast(internal.getAttributeCount()));
+    errdefer v8.ffi.v8_Value_Dispose(@ptrCast(array));
+
     var iter = internal.attributeIterator();
-    while (iter.next()) |entry| {
-        // Build qualified name
-        if (entry.prefix) |prefix| {
-            // Has prefix - need to build "prefix:localName"
-            // For now, just use local_name (TODO: implement proper concatenation)
-            _ = prefix;
-        }
-        // The qualified name is just the local_name for null-prefix attributes
-        // Store as opaque - in practice this would be added to an array
+    var index: u32 = 0;
+    while (iter.next()) |entry| : (index += 1) {
+        // The qualified name: "prefix:localName", or the local name alone.
+        const qualified_name = if (entry.prefix) |prefix|
+            try std.fmt.allocPrint(internal.allocator, "{s}:{s}", .{ prefix, entry.local_name })
+        else
+            entry.local_name;
+        defer if (entry.prefix != null) internal.allocator.free(qualified_name);
+
+        // A Global the caller owns; `Set` takes its own reference.
+        const name = v8.ffi.v8_String_NewFromUtf8(isolate, qualified_name.ptr, @intCast(qualified_name.len)) orelse return error.OutOfMemory;
+        defer v8.ffi.v8_Value_Dispose(@ptrCast(name));
+        _ = v8.ffi.v8_Array_Set(array, context, index, @ptrCast(name));
     }
 
-    // Return the list wrapped as JSValue
-    // Note: This is a simplified implementation - full impl would return JS Array
-    return runtime.JSValue.fromInstance(node_list);
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
 }
 
 /// Operation: attachShadow
@@ -3851,10 +4054,11 @@ pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(
 /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
 pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const name_slice = localName.asSlice();
-
-    return getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice) != null;
+    // Step 1: "If namespace is the empty string, then set it to null."
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len() == 0) null else n.asSlice()) else null;
+    // Step 2: "Return true if this has an attribute whose namespace is
+    // namespace and local name is localName; otherwise false."
+    return internal.findAttribute(ns, localName.asSlice()) != null;
 }
 
 /// Parse a CSS length value string and return pixels.

@@ -1341,21 +1341,15 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             );
             errdefer runtime.Instance.deinit(copy);
 
-            // Step 3: for each attribute of node's attribute list, append a copy.
-            const attrs = try interfaces.Element.get_attributes(node);
-            const attr_count = try interfaces.NamedNodeMap.get_length(attrs);
-            var i: u32 = 0;
-            while (i < attr_count) : (i += 1) {
-                const attr = try interfaces.NamedNodeMap.call_item(attrs, i) orelse continue;
-                // Same ownership rule as above: these three clone.
-                var attr_ns = try interfaces.Attr.get_namespaceURI(attr);
-                defer if (attr_ns) |*n| n.deinit(instance_allocator);
-                var attr_name = try interfaces.Attr.get_name(attr);
-                defer attr_name.deinit(instance_allocator);
-                var attr_value = try interfaces.Attr.get_value(attr);
-                defer attr_value.deinit(instance_allocator);
-
-                try interfaces.Element.call_setAttributeNS(copy, attr_ns, attr_name, attr_value);
+            // Step 3: "For each attribute of node's attribute list: let
+            // copyAttribute be the result of cloning a single node given
+            // attribute, document, and null; append copyAttribute to copy."
+            // Copied field for field through the list's own hook: going
+            // through setAttributeNS would validate and reject names the list
+            // legitimately holds, and `attributes` makes an Attr node each.
+            var index: usize = 0;
+            while (dom_module.element_attributes.at(node, index)) |attribute| : (index += 1) {
+                try dom_module.element_attributes.append(copy, attribute);
             }
 
             try setOwnerDocument(copy, owner);
