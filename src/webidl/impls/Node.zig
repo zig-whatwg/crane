@@ -491,25 +491,94 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for baseURI
-/// https://dom.spec.whatwg.org/#dom-node-baseuri
-/// Returns the node's document's document base URL, serialized
+/// Spec: https://dom.spec.whatwg.org/#dom-node-baseuri - "this's node
+/// document's document base URL, serialized".
+///
+/// HTML "document base URL": the frozen base URL of the first `base` element
+/// with an `href` attribute in tree order, and otherwise the document's
+/// fallback base URL, which is its URL. Deviation: the fallback's "about base
+/// URL" (what an about:srcdoc or about:blank document inherits from its
+/// creator) is not tracked, so those documents answer with their own URL.
+///
+/// This was a stub returning "" for every node, so nothing could resolve a
+/// relative URL against a document - an iframe's relative `src` above all.
+/// The binding frees the returned string.
 pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const document = if (internal.node_type == NodeType.DOCUMENT_NODE)
+        instance
+    else
+        internal.owner_document orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Get the owner document and its base URL
-    if (internal.owner_document) |_| {
-        // TODO: Get document.baseURI from owner document
-        // For now, return empty string
-        return "";
+    // The fallback base URL. The getter clones into the document's allocator.
+    const fallback = try interfaces.Document.get_URL(document);
+    defer document.ctx.allocator.free(fallback);
+
+    if (firstBaseHref(document)) |href| {
+        var owned_href = href;
+        defer owned_href.deinit(document.ctx.allocator);
+        if (frozenBaseUrl(document, owned_href.asSlice(), fallback)) |frozen| return frozen;
     }
+    return allocator.dupe(u8, fallback);
+}
 
-    // If this is a Document node, get its own base URL
-    if (internal.node_type == NodeType.DOCUMENT_NODE) {
-        // TODO: Return document's base URL
-        return "";
+/// HTML "set the frozen base URL", steps 2-4: `href` parsed against the
+/// fallback base URL; failure, or a data: or javascript: URL, falls back.
+/// Owned by the document's context allocator, or null for "use the fallback".
+fn frozenBaseUrl(document: *runtime.Instance, href: []const u8, fallback: []const u8) ?[]const u8 {
+    const base_arg = if (fallback.len > 0)
+        webidl.Opt(runtime.USVString).passed(fallback)
+    else
+        webidl.Opt(runtime.USVString).notPassed();
+    const url = (interfaces.URL.call_static_parse(document, href, base_arg) catch return null) orelse return null;
+    defer runtime.Instance.deinit(url);
+    const serialized = interfaces.URL.get_href(url) catch return null;
+    if (std.ascii.startsWithIgnoreCase(serialized, "data:") or std.ascii.startsWithIgnoreCase(serialized, "javascript:")) {
+        url.ctx.allocator.free(serialized);
+        return null;
     }
+    return serialized;
+}
 
-    return "";
+/// The `href` of the first `base` element with one, in tree order. Owned by
+/// the document's context allocator.
+fn firstBaseHref(document: *runtime.Instance) ?runtime.DOMString {
+    var node = getFirstChild(document);
+    while (node) |current| {
+        if (getNodeType(current) == NodeType.ELEMENT_NODE) {
+            if (baseHref(current)) |href| return href;
+        }
+        // Pre-order: first child, else the next sibling of the nearest
+        // ancestor that has one, stopping at the document.
+        if (getFirstChild(current)) |child| {
+            node = child;
+            continue;
+        }
+        var cursor = current;
+        node = while (true) {
+            if (getNextSibling(cursor)) |sibling| break sibling;
+            const parent = getParent(cursor) orelse break null;
+            if (parent == document) break null;
+            cursor = parent;
+        };
+    }
+    return null;
+}
+
+/// An HTML `base` element's `href`, or null for any other element or a base
+/// without one.
+fn baseHref(element: *runtime.Instance) ?runtime.DOMString {
+    var local_name = interfaces.Element.get_localName(element) catch return null;
+    defer local_name.deinit(element.ctx.allocator);
+    if (!std.mem.eql(u8, local_name.asSlice(), "base")) return null;
+    const namespace = interfaces.Element.get_namespaceURI(element) catch return null;
+    if (namespace) |ns| {
+        var owned_ns = ns;
+        defer owned_ns.deinit(element.ctx.allocator);
+        if (!std.mem.eql(u8, owned_ns.asSlice(), "http://www.w3.org/1999/xhtml")) return null;
+    } else return null;
+    return interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("href")) catch null;
 }
 
 /// Getter for isConnected

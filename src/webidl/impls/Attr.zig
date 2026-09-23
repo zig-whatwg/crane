@@ -256,7 +256,17 @@ pub fn createAttr(
 }
 
 /// Set the owner element
+///
+/// An attribute's node document is its element's (DOM "attribute" concept):
+/// taken here, because every path that hands an element's attribute to script
+/// creates the Attr and then sets its element. Without it `attr.baseURI`
+/// threw InvalidStateError, having no document to ask.
 pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.owner_element = element;
+    if (element) |el| {
+        if (interfaces.Node.get_ownerDocument(el) catch null) |document| {
+            try NodeImpl.setOwnerDocument(instance, document);
+        }
+    }
 }

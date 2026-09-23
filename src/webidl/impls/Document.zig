@@ -747,6 +747,10 @@ pub fn get_URL(instance: *runtime.Instance) anyerror!runtime.USVString {
             return try instance.ctx.allocator.dupe(u8, url);
         }
     }
+    // DOM: a document's URL is "about:blank" unless stated otherwise - the
+    // URL of every document createHTMLDocument, createDocument and
+    // `new Document()` make. It read "" before, and so did their baseURI.
+    if (internal.url.len == 0) return try instance.ctx.allocator.dupe(u8, "about:blank");
     // Clone to transfer ownership to caller (interface layer will free)
     return try instance.ctx.allocator.dupe(u8, internal.url);
 }
@@ -3841,6 +3845,8 @@ pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMS
 
     // Set node type to ATTRIBUTE_NODE
     try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
+    // "... whose node document is this."
+    try NodeImpl.setOwnerDocument(attr, instance);
 
     // Set the local name on the Attr
     const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
@@ -4518,6 +4524,8 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 
     // Set node type to ATTRIBUTE_NODE
     try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
+    // "... whose node document is this."
+    try NodeImpl.setOwnerDocument(attr, instance);
 
     // Set namespace, prefix, and local name on the Attr
     const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
