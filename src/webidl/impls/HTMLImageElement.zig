@@ -375,6 +375,12 @@ pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 /// 3. The microtask fetches the image and queues a task to fire events
 ///    - Events fire asynchronously via task queue (macrotask), not synchronously
 /// 4. Generation counter enables cancellation if src changes before load completes
+///
+/// TODO: "update the image data" is owed on every relevant mutation - the
+/// src, srcset, sizes, crossorigin or referrerpolicy attribute being set,
+/// changed or removed, however that happens - not only on this setter, so
+/// `img.setAttribute("src", url)` starts no load yet. It belongs in the
+/// element's attribute change steps.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const allocator = instance.ctx.allocator;
 
@@ -726,21 +732,4 @@ pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyer
 pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Operation: setAttribute override
-/// Intercepts src attribute changes to trigger image loading per HTML spec.
-/// For all other attributes, delegates to Element.call_setAttribute.
-/// Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
-pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    // Check if this is the "src" attribute
-    const attr_name = qualifiedName.asSlice();
-    if (std.mem.eql(u8, attr_name, "src")) {
-        // Delegate to set_src which handles the full async loading flow
-        // set_src will call Element.call_setAttribute internally
-        try set_src(instance, value.asSlice());
-    } else {
-        // For all other attributes, just delegate to Element
-        try Element.call_setAttribute(instance, qualifiedName, value);
-    }
 }

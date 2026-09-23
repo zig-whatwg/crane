@@ -1039,15 +1039,3 @@ pub fn getResponseData(instance: *runtime.Instance) ResponseData {
         .body = if (internal.response.body) |body| body.getBytes() else null,
     };
 }
-
-pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = url;
-    _ = status;
-    return error.NotImplemented;
-}

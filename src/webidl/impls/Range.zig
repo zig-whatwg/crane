@@ -251,41 +251,6 @@ pub fn get_commonAncestorContainer(instance: *runtime.Instance) anyerror!*runtim
 }
 
 // =============================================================================
-// AbstractRange Getters (inherited)
-// =============================================================================
-
-/// Getter for startContainer
-pub fn get_startContainer(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_container orelse return error.InvalidStateError;
-}
-
-/// Getter for startOffset
-pub fn get_startOffset(instance: *runtime.Instance) ImplError!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_offset;
-}
-
-/// Getter for endContainer
-pub fn get_endContainer(instance: *runtime.Instance) ImplError!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.end_container orelse return error.InvalidStateError;
-}
-
-/// Getter for endOffset
-pub fn get_endOffset(instance: *runtime.Instance) ImplError!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.end_offset;
-}
-
-/// Getter for collapsed
-pub fn get_collapsed(instance: *runtime.Instance) ImplError!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_container == internal.end_container and
-        internal.start_offset == internal.end_offset;
-}
-
-// =============================================================================
 // Range Mutation Methods
 // =============================================================================
 

@@ -79,9 +79,3 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
     _ = @"type";
     return error.NotImplemented;
 }
-
-pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = @"type";
-    return error.NotImplemented;
-}

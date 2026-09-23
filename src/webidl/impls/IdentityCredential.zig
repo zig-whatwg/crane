@@ -63,9 +63,3 @@ pub fn call_static_disconnect(instance: *runtime.Instance, options: dictionaries
     _ = options;
     return error.NotImplemented;
 }
-
-pub fn call_disconnect(instance: *runtime.Instance, options: dictionaries.IdentityCredentialDisconnectOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}

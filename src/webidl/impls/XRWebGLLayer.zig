@@ -111,9 +111,3 @@ pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) an
     _ = view;
     return null;
 }
-
-pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    _ = session;
-    return error.NotImplemented;
-}

@@ -152,9 +152,3 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
 
     return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
 }
-
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
-}

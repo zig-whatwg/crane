@@ -87,15 +87,3 @@ pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dicti
     _ = options;
     return error.NotImplemented;
 }
-
-pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateCoreOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}

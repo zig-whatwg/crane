@@ -373,24 +373,6 @@ pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y:
     return error.NotImplemented;
 }
 
-pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
-}
-
-pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = array32;
-    return error.NotImplemented;
-}
-
-pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = array64;
-    return error.NotImplemented;
-}
-
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;

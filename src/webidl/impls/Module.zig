@@ -54,28 +54,6 @@ pub fn call_constructor(ctx: runtime.Context, bytes: typedefs.BufferSource, opti
     return instance;
 }
 
-/// Operation: exports
-pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = moduleObject;
-    return error.NotImplemented;
-}
-
-/// Operation: imports
-pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = moduleObject;
-    return error.NotImplemented;
-}
-
-/// Operation: customSections
-pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = moduleObject;
-    _ = sectionName;
-    return error.NotImplemented;
-}
-
 /// Static operation: exports
 /// Returns an array of ModuleExportDescriptor objects describing the exports of the given module.
 pub fn call_static_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {

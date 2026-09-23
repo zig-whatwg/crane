@@ -101,9 +101,3 @@ pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(dic
     _ = readOptions;
     return error.NotImplemented;
 }
-
-pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = readOptions;
-    return error.NotImplemented;
-}

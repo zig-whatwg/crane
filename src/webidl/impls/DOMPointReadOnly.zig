@@ -104,9 +104,3 @@ pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dict
     _ = other;
     return error.NotImplemented;
 }
-
-pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
-}

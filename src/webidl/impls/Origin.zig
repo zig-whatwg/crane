@@ -68,13 +68,6 @@ pub fn call_isSameOrigin(instance: *runtime.Instance, other: *runtime.Instance) 
     return error.NotImplemented;
 }
 
-/// Operation: from
-pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: isSameSite
 pub fn call_isSameSite(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
     _ = instance;

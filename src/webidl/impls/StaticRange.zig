@@ -182,42 +182,6 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRang
 }
 
 // =============================================================================
-// AbstractRange Getters (inherited - we provide the implementation)
-// =============================================================================
-
-/// Getter for startContainer
-pub fn get_startContainer(instance: *runtime.Instance) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_container orelse return error.InvalidStateError;
-}
-
-/// Getter for startOffset
-pub fn get_startOffset(instance: *runtime.Instance) !u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_offset;
-}
-
-/// Getter for endContainer
-pub fn get_endContainer(instance: *runtime.Instance) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.end_container orelse return error.InvalidStateError;
-}
-
-/// Getter for endOffset
-pub fn get_endOffset(instance: *runtime.Instance) !u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.end_offset;
-}
-
-/// Getter for collapsed
-/// Returns true if start and end are at the same position
-pub fn get_collapsed(instance: *runtime.Instance) !bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.start_container == internal.end_container and
-        internal.start_offset == internal.end_offset;
-}
-
-// =============================================================================
 // Setters for boundary points (used by Selection and other code)
 // =============================================================================
 

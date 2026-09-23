@@ -57,47 +57,8 @@ pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?runtim
     return null;
 }
 
-/// Operation: isUserVerifyingPlatformAuthenticatorAvailable
-pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: isConditionalMediationAvailable
-pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: signalUnknownCredential
-pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: dictionaries.UnknownCredentialOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: signalCurrentUserDetails
-pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: dictionaries.CurrentUserDetailsOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: parseRequestOptionsFromJSON
-pub fn call_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialRequestOptionsJSON) anyerror!dictionaries.PublicKeyCredentialRequestOptions {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!typedefs.PublicKeyCredentialJSON {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: getClientCapabilities
-pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,19 +66,5 @@ pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.
 /// Operation: getClientExtensionResults
 pub fn call_getClientExtensionResults(instance: *runtime.Instance) anyerror!dictionaries.AuthenticationExtensionsClientOutputs {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: signalAllAcceptedCredentials
-pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: dictionaries.AllAcceptedCredentialsOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: parseCreationOptionsFromJSON
-pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialCreationOptionsJSON) anyerror!dictionaries.PublicKeyCredentialCreationOptions {
-    _ = instance;
-    _ = options;
     return error.NotImplemented;
 }

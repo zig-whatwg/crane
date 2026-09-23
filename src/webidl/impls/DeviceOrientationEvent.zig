@@ -84,9 +84,3 @@ pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webi
     _ = absolute;
     return error.NotImplemented;
 }
-
-pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = absolute;
-    return error.NotImplemented;
-}

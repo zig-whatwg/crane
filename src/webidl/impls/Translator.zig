@@ -101,15 +101,3 @@ pub fn call_static_create(instance: *runtime.Instance, options: dictionaries.Tra
     _ = options;
     return error.NotImplemented;
 }
-
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}

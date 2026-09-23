@@ -170,7 +170,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMRectReadO
         .left = state.own.left,
     };
 }
-
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
-    return call_static_fromRect(instance, other);
-}

@@ -5901,12 +5901,6 @@ pub fn setStylesheetBlockingResolvedCallback(
     internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
 }
 
-pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = html;
-    return error.NotImplemented;
-}
-
 // =============================================================================
 // Named Property Access (HTML Standard § 7.3.3)
 // =============================================================================

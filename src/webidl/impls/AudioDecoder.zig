@@ -116,9 +116,3 @@ pub fn call_flush(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
-
-pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.AudioDecoderConfig) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = config;
-    return error.NotImplemented;
-}

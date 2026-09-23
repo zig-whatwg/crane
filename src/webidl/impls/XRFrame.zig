@@ -75,12 +75,6 @@ pub fn get_detectedMeshes(instance: *runtime.Instance) anyerror!*runtime.Instanc
     return error.NotImplemented;
 }
 
-/// Getter for metaData
-pub fn get_metaData(instance: *runtime.Instance) anyerror!dictionaries.XRMetadata {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: createAnchor
 pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;

@@ -199,9 +199,3 @@ pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(typedefs
     _ = options;
     return error.NotImplemented;
 }
-
-pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

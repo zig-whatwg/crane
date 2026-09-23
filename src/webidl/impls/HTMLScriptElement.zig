@@ -882,12 +882,6 @@ pub const ScriptExecutionError = error{
     OutOfMemory,
 };
 
-pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = @"type";
-    return error.NotImplemented;
-}
-
 /// Clean up ALL remaining internal states.
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();

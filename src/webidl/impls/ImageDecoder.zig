@@ -102,9 +102,3 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = @"type";
-    return error.NotImplemented;
-}

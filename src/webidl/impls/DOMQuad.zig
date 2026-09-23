@@ -251,12 +251,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMQuad.DOMQ
         .p4 = state.own.p4,
     };
 }
-
-/// Duplicate static methods for non-static calls (legacy API pattern)
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
-    return call_static_fromRect(instance, other);
-}
-
-pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMQuadInit)) anyerror!*runtime.Instance {
-    return call_static_fromQuad(instance, other);
-}

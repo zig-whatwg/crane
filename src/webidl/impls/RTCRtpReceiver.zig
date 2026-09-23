@@ -107,9 +107,3 @@ pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!runt
     _ = instance;
     return error.NotImplemented;
 }
-
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
-    _ = instance;
-    _ = kind;
-    return null;
-}

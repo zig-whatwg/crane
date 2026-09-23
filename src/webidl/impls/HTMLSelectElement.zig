@@ -77,9 +77,29 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Operation: setter
+/// Indexed setter - sets option at index
+/// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-setter
 pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
-    return set_item(instance, index, option);
+    const existing = try call_item(instance, index);
+
+    if (option) |new_option| {
+        if (existing) |old_option| {
+            const parent = NodeImpl.getParent(old_option) orelse instance;
+            _ = try interfaces.Node.call_replaceChild(parent, new_option, old_option);
+        } else {
+            // Beyond the end: the spec pads with blank options first, then puts
+            // the new one at `index`.
+            try set_length(instance, index);
+            _ = try interfaces.Node.call_appendChild(instance, new_option);
+        }
+        return;
+    }
+
+    // Setting null removes the option at that index.
+    if (existing) |old_option| {
+        const parent = NodeImpl.getParent(old_option) orelse return;
+        _ = try interfaces.Node.call_removeChild(parent, old_option);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -440,37 +460,6 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     defer options.deinit(instance.ctx.allocator);
     if (index >= options.items.len) return null;
     return options.items[index];
-}
-
-/// Indexed getter - returns option at index
-/// This is the WebIDL indexed property getter
-pub fn get_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    return call_item(instance, index);
-}
-
-/// Indexed setter - sets option at index
-/// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-setter
-pub fn set_item(instance: *runtime.Instance, index: u32, value: ?*runtime.Instance) anyerror!void {
-    const existing = try call_item(instance, index);
-
-    if (value) |new_option| {
-        if (existing) |old_option| {
-            const parent = NodeImpl.getParent(old_option) orelse instance;
-            _ = try interfaces.Node.call_replaceChild(parent, new_option, old_option);
-        } else {
-            // Beyond the end: the spec pads with blank options first, then puts
-            // the new one at `index`.
-            try set_length(instance, index);
-            _ = try interfaces.Node.call_appendChild(instance, new_option);
-        }
-        return;
-    }
-
-    // Setting null removes the option at that index.
-    if (existing) |old_option| {
-        const parent = NodeImpl.getParent(old_option) orelse return;
-        _ = try interfaces.Node.call_removeChild(parent, old_option);
-    }
 }
 
 /// Operation: namedItem

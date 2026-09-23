@@ -205,9 +205,3 @@ pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = @"type";
-    return error.NotImplemented;
-}
