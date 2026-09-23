@@ -465,13 +465,8 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
             break :blk interfaces.Element.get_tagName(instance) catch
                 runtime.DOMString.initEmpty();
         },
-        NodeType.ATTRIBUTE_NODE => blk: {
-            // For Attr: its qualified name
-            if (internal.local_name) |name| {
-                break :blk name;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        // Attr: its qualified name - the Attr impl's, cloned for the caller.
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_name(instance) catch runtime.DOMString.initEmpty(),
         NodeType.TEXT_NODE => runtime.DOMString.initInterned("#text"),
         NodeType.CDATA_SECTION_NODE => runtime.DOMString.initInterned("#cdata-section"),
         NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
@@ -778,13 +773,9 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
             };
             break :blk runtime.DOMString.initInterned(data_slice);
         },
-        NodeType.ATTRIBUTE_NODE => blk: {
-            // For Attr nodes, use Node's node_value
-            if (internal.node_value) |val| {
-                break :blk val;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        // Attr: this's value - the Attr impl's, which reads its element's
+        // list while it has one. Cloned for the caller, who frees it.
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_value(instance) catch runtime.DOMString.initEmpty(),
         // For Element, Document, DocumentType, DocumentFragment: null
         else => runtime.DOMString.initEmpty(),
     };
@@ -840,13 +831,8 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
             };
             break :blk runtime.DOMString.initInterned(data_slice);
         },
-        NodeType.ATTRIBUTE_NODE => blk: {
-            // Attr keeps its value in node_value.
-            if (internal.node_value) |val| {
-                break :blk val;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        // Attr: this's value, as for nodeValue.
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_value(instance) catch runtime.DOMString.initEmpty(),
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
             // The V8 callback will free returned strings using instance.ctx.allocator
@@ -895,13 +881,11 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
             try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
         // For Attr, set an existing attribute value; Attr keeps its value in node_value.
+        // Attr: "set an existing attribute value" with this and the given
+        // value (null becomes the empty string) - through the Attr impl, which
+        // changes the attribute in its element's list when it has one.
         NodeType.ATTRIBUTE_NODE => {
-            // Free old value if it exists
-            if (internal.node_value) |*old| {
-                old.deinit(internal.allocator);
-            }
-            // Clone and store new value (null becomes the empty string per spec)
-            internal.node_value = try (value orelse runtime.DOMString.initEmpty()).clone(internal.allocator);
+            try interfaces.Attr.set_value(instance, value orelse runtime.DOMString.initEmpty());
         },
         // For Element, Document, etc: do nothing
         else => {},
@@ -926,12 +910,9 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
             // length, and data the given value" (null acts as "").
             try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
+        // Attr: "set an existing attribute value", as for nodeValue.
         NodeType.ATTRIBUTE_NODE => {
-            // Attr keeps its value in node_value.
-            if (internal.node_value) |*old| {
-                old.deinit(internal.allocator);
-            }
-            internal.node_value = try (value orelse runtime.DOMString.initEmpty()).clone(internal.allocator);
+            try interfaces.Attr.set_value(instance, value orelse runtime.DOMString.initEmpty());
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // DOM "string replace all" with the given value within this.
@@ -1394,8 +1375,9 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
         },
         NodeType.ATTRIBUTE_NODE => {
             // "Attr: set copy's namespace, namespace prefix, local name, and
-            // value to those of node." createAttributeNS takes the qualified
-            // name, so the prefix travels as "prefix:local".
+            // value to those of node." Field for field through the Attr hook:
+            // createAttributeNS would validate, and reject a name an attribute
+            // made by setAttribute legitimately holds ("a:b" as a local name).
             const owner = document orelse node_internal.owner_document orelse
                 return error.InvalidStateError;
             const instance_allocator = node.ctx.allocator;
@@ -1407,20 +1389,16 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             defer local_name.deinit(instance_allocator);
             var value = try interfaces.Attr.get_value(node);
             defer value.deinit(instance_allocator);
-            var qualified_buf: ?[]u8 = null;
-            defer if (qualified_buf) |b| instance_allocator.free(b);
-            const qualified_name = if (if (prefix) |pfx| (if (pfx.asSlice().len > 0) pfx else null) else null) |pfx| blk: {
-                const joined = try std.fmt.allocPrint(
-                    instance_allocator,
-                    "{s}:{s}",
-                    .{ pfx.asSlice(), local_name.asSlice() },
-                );
-                qualified_buf = joined;
-                break :blk runtime.DOMString.initInterned(joined);
-            } else local_name;
-            const copy = try interfaces.Document.call_createAttributeNS(owner, namespace, qualified_name);
-            try interfaces.Attr.set_value(copy, value);
+            const copy = try interfaces.Attr.init(node_internal.allocator, owner.ctx);
+            errdefer interfaces.Attr.deinit(copy);
             try setOwnerDocument(copy, owner);
+            try dom_module.attr_nodes.name(
+                copy,
+                if (namespace) |n| n.asSlice() else null,
+                if (prefix) |pfx| pfx.asSlice() else null,
+                local_name.asSlice(),
+            );
+            try interfaces.Attr.set_value(copy, value);
             return copy;
         },
         NodeType.DOCUMENT_FRAGMENT_NODE => {

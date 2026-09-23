@@ -224,14 +224,11 @@ src/webidl/impls/Document.zig Selection.call_collapseToEnd 1
 src/webidl/impls/Document.zig Selection.call_getRangeAt 3
 src/webidl/impls/Document.zig Selection.createSelection 1
 src/webidl/impls/Document.zig Selection.get_isCollapsed 3
-src/webidl/impls/Element.zig Attr.createAttr 1
-src/webidl/impls/Element.zig Attr.setOwnerElement 1
 src/webidl/impls/Element.zig CharacterData.getData 2
 src/webidl/impls/Element.zig DOMTokenList.setElement 2
 src/webidl/impls/Element.zig HTMLCollection.addElement 9
 src/webidl/impls/Element.zig HTMLElement.getInternalState 1
 src/webidl/impls/Element.zig HTMLParser.parseFragment 4
-src/webidl/impls/Element.zig NamedNodeMap.addAttr 1
 src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
 src/webidl/impls/Element.zig ParentNode.call_append 1
 src/webidl/impls/Element.zig ParentNode.closest 1
@@ -306,8 +303,6 @@ src/webidl/impls/HTMLTextAreaElement.zig CharacterData.getData 1
 src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
 src/webidl/impls/MessageChannel.zig MessagePort.initWithInternal 2
 src/webidl/impls/MessagePort.zig MessageEvent.call_constructor 4
-src/webidl/impls/NamedNodeMap.zig Attr.setOwnerElement 2
-src/webidl/impls/NamedNodeMap.zig Element.getInternal 2
 src/webidl/impls/Node.zig CharacterData.getData 9
 src/webidl/impls/Node.zig CharacterData.set_data 2
 src/webidl/impls/Node.zig HTMLIFrameElement.fireIframeLoadEventIfNeeded 1

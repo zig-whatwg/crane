@@ -47,6 +47,8 @@ const csp = @import("csp");
 // HTML module for stylesheet blocking and editing
 const html_core = @import("html_core");
 const range_boundaries = @import("dom").range_boundaries;
+const attr_names = @import("dom").names;
+const attr_nodes = @import("dom").attr_nodes;
 const traversal = @import("dom").traversal;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
@@ -3824,34 +3826,26 @@ pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) 
 /// 3. Return a new Attr with localName as local name
 pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const local_name_slice = localName.asSlice();
 
-    // TODO: Step 1: Validate localName against Name production
+    // Step 1: "If localName is not a valid attribute local name, then throw
+    // an "InvalidCharacterError" DOMException."
+    if (!attr_names.isValidAttributeLocalName(localName.asSlice())) return error.InvalidCharacterError;
 
-    // Step 2: For HTML documents, convert to lowercase
-    var name_buf: [256]u8 = undefined;
-    var actual_name = local_name_slice;
-    if (internal.doc_type == .html and local_name_slice.len <= name_buf.len) {
-        for (local_name_slice, 0..) |c, i| {
-            name_buf[i] = std.ascii.toLower(c);
-        }
-        actual_name = name_buf[0..local_name_slice.len];
-    }
+    // Step 2: "If this is an HTML document, then set localName to localName
+    // in ASCII lowercase."
+    const lowered: ?[]u8 = if (internal.doc_type == .html)
+        try std.ascii.allocLowerString(internal.allocator, localName.asSlice())
+    else
+        null;
+    defer if (lowered) |l| internal.allocator.free(l);
+    const local_name = lowered orelse localName.asSlice();
 
-    // Step 3: Create a new Attr
-    // Use interface instead of impl (per Golden Rule #13)
+    // Step 3: "Return a new attribute whose local name is localName and node
+    // document is this."
     const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
-
-    // Set node type to ATTRIBUTE_NODE
-    try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
-    // "... whose node document is this."
     try NodeImpl.setOwnerDocument(attr, instance);
-
-    // Set the local name on the Attr
-    const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
-    attr_internal.local_name = try internal.allocator.dupe(u8, actual_name);
-
+    try attr_nodes.name(attr, null, null, local_name);
     return attr;
 }
 
@@ -4494,38 +4488,22 @@ fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Ins
 /// 2. Return a new Attr with namespace, prefix, localName, and empty value
 pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const qname_slice = qualifiedName.asSlice();
 
-    // Parse qualified name for prefix and local name
-    var prefix: ?[]const u8 = null;
-    var local_name: []const u8 = qname_slice;
+    // Step 1: "Let (namespace, prefix, localName) be the result of
+    // validating and extracting namespace and qualifiedName given
+    // "attribute"."
+    const extracted = try attr_names.validateAndExtract(
+        if (namespace) |ns| ns.asSlice() else null,
+        qualifiedName.asSlice(),
+        .attribute,
+    );
 
-    if (std.mem.indexOfScalar(u8, qname_slice, ':')) |colon_pos| {
-        prefix = qname_slice[0..colon_pos];
-        local_name = qname_slice[colon_pos + 1 ..];
-    }
-
-    // Create a new Attr
-    // Use interface instead of impl (per Golden Rule #13)
+    // Step 2: "Return a new attribute whose namespace is namespace, namespace
+    // prefix is prefix, local name is localName, and node document is this."
     const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
-
-    // Set node type to ATTRIBUTE_NODE
-    try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
-    // "... whose node document is this."
     try NodeImpl.setOwnerDocument(attr, instance);
-
-    // Set namespace, prefix, and local name on the Attr
-    const attr_internal = attr.getState(interfaces.Attr.State).own._internal orelse return error.InvalidStateError;
-    if (ns_slice.len > 0) {
-        attr_internal.namespace_uri = try internal.allocator.dupe(u8, ns_slice);
-    }
-    if (prefix) |p| {
-        attr_internal.prefix = try internal.allocator.dupe(u8, p);
-    }
-    attr_internal.local_name = try internal.allocator.dupe(u8, local_name);
-
+    try attr_nodes.name(attr, extracted.namespace, extracted.prefix, extracted.local_name);
     return attr;
 }
 

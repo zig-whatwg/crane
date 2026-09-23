@@ -20,6 +20,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
 const dom = @import("dom");
+const same_object = @import("same_object.zig");
 const Element = interfaces.Element;
 
 // Import related impls
@@ -84,6 +85,13 @@ pub const AttributeEntry = struct {
     prefix: ?[]const u8,
     local_name: []const u8,
     value: []const u8,
+
+    /// The Attr node made for this attribute, once script asked for one
+    /// (ensureAttrNode), and the hold on its wrapper that keeps it the same
+    /// node - identity, expandos and all - while the attribute is on this
+    /// element. Blink traces the same edge (Element's AttrNodeList).
+    attr_node: ?same_object.Link = null,
+    attr_pin: same_object.Pin = .{},
 };
 
 /// Internal state for Element implementation
@@ -228,17 +236,19 @@ pub const InternalState = struct {
             self.named_node_map = null;
         }
 
-        // Free inline attribute entries
-        for (self.inline_attrs[0..self.inline_attr_count]) |maybe_entry| {
-            if (maybe_entry) |entry| {
-                freeAttributeEntry(self.allocator, entry);
+        // Free inline attribute entries, letting their Attr nodes go first
+        for (self.inline_attrs[0..self.inline_attr_count]) |*maybe_entry| {
+            if (maybe_entry.*) |*entry| {
+                detachAttrNode(entry);
+                freeAttributeEntry(self.allocator, entry.*);
             }
         }
 
         // Free heap attribute entries if any
         if (self.heap_attrs) |*heap| {
-            for (heap.items) |entry| {
-                freeAttributeEntry(self.allocator, entry);
+            for (heap.items) |*entry| {
+                detachAttrNode(entry);
+                freeAttributeEntry(self.allocator, entry.*);
             }
             heap.deinit(self.allocator);
         }
@@ -527,7 +537,13 @@ pub fn init(
 
     // The attribute list's hook, for its ancestors' use (cloning). Installed
     // before any element can be cloned: this runs for every element.
-    dom.element_attributes.install(.{ .at = &attributeAtHook, .append = &appendAttributeHook });
+    dom.element_attributes.install(.{
+        .at = &attributeAtHook,
+        .count = &attributeCountHook,
+        .append = &appendAttributeHook,
+        .change = &changeAttributeHook,
+        .node_at = &attrNodeAtHook,
+    });
 
     // Initialize Element's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -780,12 +796,8 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Set the owner element
     NamedNodeMapImpl.setOwnerElement(named_node_map, instance);
 
-    // Add all attributes to the NamedNodeMap
-    var iter = internal.attributeIterator();
-    while (iter.next()) |entry| {
-        const attr = try makeAttrNode(instance, entry, .attached);
-        NamedNodeMapImpl.addAttr(named_node_map, attr) catch return error.OutOfMemory;
-    }
+    // The map reads this element's list whenever it is asked - it is live -
+    // so there is nothing to copy into it.
 
     // Cache the NamedNodeMap for future accesses, with the generation that
     // proves it is still this map at deinit.
@@ -1773,10 +1785,12 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
     // Steps 1 and 2: "Let element be attribute's element. Remove attribute
     // from element's attribute list." The entry is ours until the changes
     // below have read its name and value.
-    const entry = internal.takeAttributeAt(index);
+    var entry = internal.takeAttributeAt(index);
     defer InternalState.freeAttributeEntry(internal.allocator, entry);
 
-    // Step 3 sets the attribute's element to null; see appendAttribute.
+    // Step 3: "Set attribute's element to null." - its Attr node, if script
+    // has one, keeps the value it had here.
+    detachAttrNode(&entry);
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
@@ -1863,11 +1877,38 @@ fn attributeAtHook(element: *runtime.Instance, index: usize) ?dom.element_attrib
     };
 }
 
+/// `dom.element_attributes.count`.
+fn attributeCountHook(element: *runtime.Instance) usize {
+    const internal = getInternal(element) orelse return 0;
+    return internal.getAttributeCount();
+}
+
 /// `dom.element_attributes.append`: "append an attribute" with exactly the
 /// fields given.
 fn appendAttributeHook(element: *runtime.Instance, attribute: dom.element_attributes.Attribute) dom.element_attributes.Error!void {
     const internal = getInternal(element) orelse return error.InvalidStateError;
     return appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
+}
+
+/// `dom.element_attributes.change`: an Attr node's "set an existing attribute
+/// value" for an attribute that has an element.
+fn changeAttributeHook(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) dom.element_attributes.Error!void {
+    const internal = getInternal(element) orelse return error.InvalidStateError;
+    const index = internal.indexOfAttribute(namespace, local_name) orelse return error.InvalidStateError;
+    changeAttribute(element, internal, index, value) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidStateError,
+    };
+}
+
+/// `dom.element_attributes.nodeAt`: NamedNodeMap's item(index).
+fn attrNodeAtHook(element: *runtime.Instance, index: usize) dom.element_attributes.Error!?*runtime.Instance {
+    const internal = getInternal(element) orelse return null;
+    if (index >= internal.getAttributeCount()) return null;
+    return ensureAttrNode(element, internal, index) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidStateError,
+    };
 }
 
 // Note: matches(), closest(), and webkitMatchesSelector() delegate to ParentNode mixin
@@ -2868,34 +2909,50 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // "Getting an attribute given namespace, localName, and this": "" is null.
     const ns: ?[]const u8 = if (namespace) |n| (if (n.len() == 0) null else n.asSlice()) else null;
-    const entry = internal.findAttribute(ns, localName.asSlice()) orelse return null;
-    return makeAttrNode(instance, entry, .attached);
+    const index = internal.indexOfAttribute(ns, localName.asSlice()) orelse return null;
+    return try ensureAttrNode(instance, internal, index);
 }
 
-/// Whether an Attr node made for an attribute still has this element as its
-/// element, or has just been removed from it.
-const AttrNodeLink = enum { attached, detached };
+/// The Attr node for the attribute at `index`: the one made before, or a new
+/// one made now. This list stores attribute data; a node is made only when
+/// script asks for one, and the same node is handed out after that - the
+/// design of Blink's Element::EnsureAttr and WebKit's Element::ensureAttr.
+fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize) !*runtime.Instance {
+    const entry = internal.attributeAt(index) orelse return error.InvalidStateError;
+    if (entry.attr_node) |link| {
+        if (link.isLive()) return link.instance;
+    }
 
-/// An Attr node for the attribute `entry`, made on demand: this list stores
-/// attribute data, not nodes. Its node document is this element's either way.
-fn makeAttrNode(instance: *runtime.Instance, entry: *const AttributeEntry, link: AttrNodeLink) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const attr = try AttrImpl.createAttr(
-        internal.allocator,
-        instance.ctx,
-        entry.namespace_uri,
-        entry.prefix,
-        entry.local_name,
-        entry.value,
-    );
-    try setAttrElement(attr, instance);
-    if (link == .detached) try setAttrElement(attr, null);
+    const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Attr.deinit(attr);
+    try dom.attr_nodes.name(attr, entry.namespace_uri, entry.prefix, entry.local_name);
+    try dom.attr_nodes.attach(attr, instance);
+    // `attach` can run nothing, so `entry` is still this attribute's.
+    entry.attr_node = same_object.Link.to(attr);
+    entry.attr_pin.release();
+    entry.attr_pin.hold(attr);
     return attr;
 }
 
-/// Set an Attr node's element - and, for an element, its node document.
-fn setAttrElement(attr: *runtime.Instance, element: ?*runtime.Instance) !void {
-    AttrImpl.setOwnerElement(attr, element) catch return error.InvalidStateError;
+/// The attribute `entry` stands for is leaving this element: its Attr node, if
+/// one was made, keeps the value and loses its element, and this element stops
+/// holding it.
+fn detachAttrNode(entry: *AttributeEntry) void {
+    const link = entry.attr_node orelse return;
+    entry.attr_node = null;
+    defer entry.attr_pin.release();
+    // A teardown sweep may have freed the node first.
+    if (!link.isLive()) return;
+    dom.attr_nodes.detach(link.instance, entry.value) catch {};
+}
+
+/// `attr` is now the Attr node for the attribute at `index`.
+fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize, attr: *runtime.Instance) !void {
+    const entry = internal.attributeAt(index) orelse return error.InvalidStateError;
+    try dom.attr_nodes.attach(attr, instance);
+    entry.attr_node = same_object.Link.to(attr);
+    entry.attr_pin.release();
+    entry.attr_pin.hold(attr);
 }
 
 /// Operation: setAttributeNS
@@ -2957,25 +3014,33 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // Step 3: "Let oldAttr be the result of getting an attribute given attr's
     // namespace, attr's local name, and element."
     const old_index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse {
-        // Step 7: "Otherwise, append attr to element."
+        // Step 7: "Otherwise, append attr to element." attr becomes the node
+        // for the new attribute before the attribute change steps run.
         try appendAttribute(instance, internal, namespace, prefix, local_name.asSlice(), value.asSlice());
-        try setAttrElement(attr, instance);
+        // Found again by name: the change steps can run script.
+        const new_index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse return null;
+        try adoptAttrNode(instance, internal, new_index, attr);
         // Step 8: "Return oldAttr." - null.
         return null;
     };
 
-    // Step 4: "If oldAttr is attr, return attr." Attr nodes are made on
-    // demand for this list's attributes, so an attr whose element is this
-    // element and whose name is oldAttr's IS oldAttr.
-    if (attr_element == instance) return attr;
+    // Step 4: "If oldAttr is attr, return attr."
+    if (internal.attributeAt(old_index).?.attr_node) |link| {
+        if (link.isLive() and link.instance == attr) return attr;
+    }
 
     // Step 5: "Set attr's value to verifiedValue." It is unchanged.
 
-    // Step 6: "If oldAttr is non-null, then replace oldAttr with attr." The
-    // node handed back for oldAttr is detached, holding its last value.
-    const old_attr = try makeAttrNode(instance, internal.attributeAt(old_index).?, .detached);
+    // Step 6: "If oldAttr is non-null, then replace oldAttr with attr."
+    // "Set oldAttribute's element to null": oldAttr - the node script may
+    // already hold, or one made now to hand back - keeps its last value.
+    const old_attr = try ensureAttrNode(instance, internal, old_index);
+    detachAttrNode(internal.attributeAt(old_index).?);
     try replaceAttributeAt(instance, internal, old_index, prefix, value.asSlice());
-    try setAttrElement(attr, instance);
+    // Found again by name: the change steps can run script.
+    if (internal.indexOfAttribute(namespace, local_name.asSlice())) |index| {
+        try adoptAttrNode(instance, internal, index, attr);
+    }
 
     // Step 8: "Return oldAttr."
     return old_attr;
@@ -3294,23 +3359,18 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: "If this's attribute list does not contain attr, then throw a
-    // "NotFoundError" DOMException." Attr nodes are made on demand, so the
-    // list contains attr exactly when attr's element is this element and an
-    // attribute with attr's namespace and local name is still in it.
-    const attr_element = interfaces.Attr.get_ownerElement(attr) catch null;
-    if (attr_element != instance) return error.NotFoundError;
-
-    const attr_allocator = attr.ctx.allocator;
-    var namespace_string = (interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError) orelse runtime.DOMString.initEmpty();
-    defer namespace_string.deinit(attr_allocator);
-    var local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
-    defer local_name.deinit(attr_allocator);
-    const namespace: ?[]const u8 = if (namespace_string.len() == 0) null else namespace_string.asSlice();
-    const index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse return error.NotFoundError;
+    // "NotFoundError" DOMException." The list contains attr when attr is the
+    // node made for one of its attributes.
+    var iter = internal.attributeIterator();
+    var index: usize = 0;
+    const found = while (iter.next()) |entry| : (index += 1) {
+        const link = entry.attr_node orelse continue;
+        if (link.isLive() and link.instance == attr) break true;
+    } else false;
+    if (!found) return error.NotFoundError;
 
     // Step 2: "Remove attr." - which sets attr's element to null.
     removeAttributeAt(instance, internal, index);
-    try setAttrElement(attr, null);
 
     // Step 3: "Return attr."
     return attr;
@@ -3448,7 +3508,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
     defer name.deinit(internal.allocator);
     const index = internal.indexOfQualifiedName(name.slice) orelse return null;
-    return makeAttrNode(instance, internal.attributeAt(index).?, .attached);
+    return try ensureAttrNode(instance, internal, index);
 }
 
 /// Operation: startViewTransition

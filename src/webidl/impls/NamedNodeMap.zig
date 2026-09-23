@@ -15,8 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const NamedNodeMap = interfaces.NamedNodeMap;
-const AttrImpl = @import("Attr.zig");
-const ElementImpl = @import("Element.zig");
+const dom = @import("dom");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = NamedNodeMap.State;
@@ -33,21 +32,15 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// The list of Attr nodes
-    attrs: infra.List(*runtime.Instance),
-
-    /// Owner element (for attribute modification tracking)
+    /// The element whose attribute list this map is.
     owner_element: ?*runtime.Instance = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .attrs = infra.List(*runtime.Instance).init(allocator),
-        };
+        return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *InternalState) void {
-        self.attrs.deinit();
+        _ = self;
     }
 };
 
@@ -98,190 +91,86 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Getter for length
-/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-length
-/// NOTE: NamedNodeMap is a LIVE COLLECTION - it queries the owner element for
-/// the current attribute count, ensuring changes to attributes are reflected.
-pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    const internal = getInternal(instance) orelse return 0;
-
-    // Query owner element for live attribute count (live collection behavior)
-    const owner = internal.owner_element orelse return @intCast(internal.attrs.size());
-    const element_internal = ElementImpl.getInternal(owner) orelse return @intCast(internal.attrs.size());
-
-    return @intCast(element_internal.getAttributeCount());
+/// The element this map is the attribute list of - live while it is.
+fn ownerOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.owner_element;
 }
 
-/// Operation: item(index)
+/// Getter for length: "the attribute list's size".
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-length
+///
+/// A NamedNodeMap is its element's attribute list, not a copy of it: every
+/// member below reads the element when it is called.
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
+    const owner = ownerOf(instance) orelse return 0;
+    return @intCast(dom.element_attributes.count(owner));
+}
+
+/// Operation: item(index) - "If index is equal to or greater than this's
+/// attribute list's size, then return null. Otherwise, return this's
+/// attribute list[index]."
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-item
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    // Return null for out of bounds per spec
-    return internal.attrs.get(index);
+    const owner = ownerOf(instance) orelse return null;
+    return dom.element_attributes.nodeAt(owner, index);
 }
 
-/// Operation: getNamedItem(qualifiedName)
+/// Operation: getNamedItem(qualifiedName) - "getting an attribute given
+/// qualifiedName and element".
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
 pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const name = qualifiedName.asSlice();
-
-    // Find attribute by qualified name
-    // Use interface per Golden Rule #13
-    const attrs = internal.attrs.toSlice();
-    for (attrs) |attr| {
-        // Get attr's name (qualified name)
-        const attr_name = interfaces.Attr.get_name(attr) catch continue;
-        if (std.mem.eql(u8, attr_name.asSlice(), name)) {
-            return attr;
-        }
-    }
-
-    return null; // Not found
+    const owner = ownerOf(instance) orelse return null;
+    return interfaces.Element.call_getAttributeNode(owner, qualifiedName);
 }
 
 /// Operation: getNamedItemNS(namespace, localName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
 pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const ns = if (namespace) |n| n.asSlice() else "";
-    const name = localName.asSlice();
-
-    // Normalize empty namespace to null per spec
-    const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
-
-    // Find attribute by namespace and local name (use interface per Golden Rule #13)
-    const attrs = internal.attrs.toSlice();
-    for (attrs) |attr| {
-        // Get attr's namespace and local name
-        const attr_ns_opt = interfaces.Attr.get_namespaceURI(attr) catch continue;
-        const attr_local = interfaces.Attr.get_localName(attr) catch continue;
-
-        const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
-        const attr_local_slice = attr_local.asSlice();
-
-        // Check namespace match
-        const ns_match = if (ns_to_match == null)
-            attr_ns_slice.len == 0
-        else
-            std.mem.eql(u8, attr_ns_slice, ns_to_match.?);
-
-        // Check local name match
-        if (ns_match and std.mem.eql(u8, attr_local_slice, name)) {
-            return attr;
-        }
-    }
-
-    return error.NotImplemented; // null
+    const owner = ownerOf(instance) orelse return null;
+    return interfaces.Element.call_getAttributeNodeNS(owner, namespace, localName);
 }
 
-/// Operation: setNamedItem(attr)
+/// Operation: setNamedItem(attr) - "setting an attribute given attr and
+/// element".
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditem
 pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
-    return setAttr(instance, attr);
+    const owner = ownerOf(instance) orelse return error.InvalidState;
+    return interfaces.Element.call_setAttributeNode(owner, attr);
 }
 
 /// Operation: setNamedItemNS(attr)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditemns
 pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
-    return setAttr(instance, attr);
+    const owner = ownerOf(instance) orelse return error.InvalidState;
+    return interfaces.Element.call_setAttributeNodeNS(owner, attr);
 }
 
 /// Operation: removeNamedItem(qualifiedName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditem
+///
+/// "1. Let attr be the result of removing an attribute given qualifiedName
+/// and element. 2. If attr is null, then throw a "NotFoundError"
+/// DOMException. 3. Return attr." The node removing hands back is the one
+/// getAttributeNode names, so the element's own members do both steps.
 pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const name = qualifiedName.asSlice();
-
-    // Find and remove attribute by qualified name (use interface per Golden Rule #13)
-    for (internal.attrs.toSlice(), 0..) |attr, i| {
-        const attr_name = interfaces.Attr.get_name(attr) catch continue;
-        if (std.mem.eql(u8, attr_name.asSlice(), name)) {
-            // Remove from list
-            const removed = internal.attrs.remove(i) catch return error.NotFoundError;
-
-            // Update length
-            const state = instance.getState(State);
-            state.own.length = @intCast(internal.attrs.size());
-
-            // Clear owner element
-            AttrImpl.setOwnerElement(removed, null) catch {};
-
-            return removed;
-        }
-    }
-
-    return error.NotFoundError;
+    const owner = ownerOf(instance) orelse return error.NotFoundError;
+    const attr = (try interfaces.Element.call_getAttributeNode(owner, qualifiedName)) orelse return error.NotFoundError;
+    return interfaces.Element.call_removeAttributeNode(owner, attr);
 }
 
-/// Operation: removeNamedItemNS(namespace, localName)
+/// Operation: removeNamedItemNS(namespace, localName) - the same, by
+/// namespace and local name.
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
 pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const ns = if (namespace) |n| n.asSlice() else "";
-    const name = localName.asSlice();
-
-    // Normalize empty namespace to null per spec
-    const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
-
-    // Find and remove attribute by namespace and local name (use interface per Golden Rule #13)
-    for (internal.attrs.toSlice(), 0..) |attr, i| {
-        const attr_ns_opt = interfaces.Attr.get_namespaceURI(attr) catch continue;
-        const attr_local = interfaces.Attr.get_localName(attr) catch continue;
-
-        const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
-        const attr_local_slice = attr_local.asSlice();
-
-        // Check namespace match
-        const ns_match = if (ns_to_match == null)
-            attr_ns_slice.len == 0
-        else
-            std.mem.eql(u8, attr_ns_slice, ns_to_match.?);
-
-        // Check local name match
-        if (ns_match and std.mem.eql(u8, attr_local_slice, name)) {
-            // Remove from list
-            const removed = internal.attrs.remove(i) catch return error.NotFoundError;
-
-            // Update length
-            const state = instance.getState(State);
-            state.own.length = @intCast(internal.attrs.size());
-
-            // Clear owner element
-            AttrImpl.setOwnerElement(removed, null) catch {};
-
-            return removed;
-        }
-    }
-
-    return error.NotFoundError;
+    const owner = ownerOf(instance) orelse return error.NotFoundError;
+    const attr = (try interfaces.Element.call_getAttributeNodeNS(owner, namespace, localName)) orelse return error.NotFoundError;
+    return interfaces.Element.call_removeAttributeNode(owner, attr);
 }
 
 // ============================================================================
 // Internal helper functions
 // ============================================================================
-
-/// Set an attribute in the map
-fn setAttr(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.attrs.append(attr);
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.attrs.size());
-
-    return attr;
-}
-
-/// Add an attribute to the map (internal API)
-pub fn addAttr(instance: *runtime.Instance, attr: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.attrs.append(attr);
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.attrs.size());
-}
 
 /// Set the owner element
 pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) void {
@@ -289,54 +178,54 @@ pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance)
     internal.owner_element = element;
 }
 
-/// Get the attrs as a slice
-pub fn getAttrs(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
-    return internal.attrs.toSlice();
-}
-
-/// Get the list of supported property names for legacy platform object enumeration.
-/// Returns attribute qualified names in list order.
-/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
-/// "The supported property names are the return value of running these steps:
-///  1. Let names be the qualified names of the attributes in the attribute list, in order."
+/// The supported property names.
+/// Spec: https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names
 ///
-/// NOTE: NamedNodeMap is a LIVE COLLECTION - it queries the owner element for
-/// the current attribute names, ensuring changes to attributes are reflected.
+/// "1. Let names be the qualified names of the attributes in this NamedNodeMap
+/// object's attribute list, with duplicates omitted, in order.
+/// 2. If this NamedNodeMap object's element is in the HTML namespace and its
+/// node document is an HTML document, then for each name of names: if name,
+/// in ASCII lowercase, is not name, remove name from names."
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
-
-    // Query owner element for live attribute names (live collection behavior)
-    const owner = internal.owner_element orelse {
-        // Fall back to cached attrs if no owner
-        const attrs = internal.attrs.toSlice();
-        if (attrs.len == 0) return &[_]runtime.DOMString{};
-
-        var names: std.ArrayList(runtime.DOMString) = .empty;
-        for (attrs) |attr| {
-            const name = interfaces.Attr.get_name(attr) catch continue;
-            try names.append(allocator, name);
-        }
-        return names.toOwnedSlice(allocator);
-    };
-
-    const element_internal = ElementImpl.getInternal(owner) orelse return &[_]runtime.DOMString{};
-
-    const attr_count = element_internal.getAttributeCount();
-    if (attr_count == 0) return &[_]runtime.DOMString{};
+    const owner = ownerOf(instance) orelse return &[_]runtime.DOMString{};
+    const lowercase_only = isHtmlElementInHtmlDocument(owner);
 
     var names: std.ArrayList(runtime.DOMString) = .empty;
+    errdefer {
+        for (names.items) |*name| name.deinit(allocator);
+        names.deinit(allocator);
+    }
 
-    // Iterate element's attributes to get qualified names
-    var iter = element_internal.attributeIterator();
-    while (iter.next()) |entry| {
-        // Build qualified name (prefix:local_name or just local_name)
-        const qualified_name = if (entry.prefix) |p| blk: {
-            const full_name = std.fmt.allocPrint(allocator, "{s}:{s}", .{ p, entry.local_name }) catch continue;
-            break :blk runtime.DOMString.initOwned(full_name);
-        } else runtime.DOMString.initInterned(entry.local_name);
-        try names.append(allocator, qualified_name);
+    var index: usize = 0;
+    while (dom.element_attributes.at(owner, index)) |attribute| : (index += 1) {
+        const qualified = if (attribute.prefix) |prefix|
+            try std.fmt.allocPrint(allocator, "{s}:{s}", .{ prefix, attribute.local_name })
+        else
+            try allocator.dupe(u8, attribute.local_name);
+        var name = runtime.DOMString.initOwned(qualified);
+
+        const has_upper = for (qualified) |c| {
+            if (std.ascii.isUpper(c)) break true;
+        } else false;
+        const duplicate = for (names.items) |existing| {
+            if (std.mem.eql(u8, existing.asSlice(), qualified)) break true;
+        } else false;
+        if (duplicate or (lowercase_only and has_upper)) {
+            name.deinit(allocator);
+            continue;
+        }
+        try names.append(allocator, name);
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+/// "element is in the HTML namespace and its node document is an HTML
+/// document", asked through Element's own members.
+fn isHtmlElementInHtmlDocument(element: *runtime.Instance) bool {
+    var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
+    defer namespace.deinit(element.ctx.allocator);
+    if (!std.mem.eql(u8, namespace.asSlice(), infra.namespaces.HTML_NAMESPACE)) return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch return false) orelse return false;
+    return dom.document_internals.getDocumentType(document) == .html;
 }

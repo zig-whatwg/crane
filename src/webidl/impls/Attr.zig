@@ -48,8 +48,12 @@ pub const InternalState = struct {
     /// The attribute's value (a string)
     value: []u8,
 
-    /// The element this attribute belongs to (null or an element)
+    /// The element this attribute belongs to (null or an element). While it
+    /// is set, the attribute's value lives in that element's attribute list
+    /// and `value` above is unused; the slab generation tells a live element
+    /// from a freed slot in a teardown sweep.
     owner_element: ?*runtime.Instance,
+    owner_generation: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -96,7 +100,55 @@ pub fn init(
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
+    // An attribute node's node type, whichever path made it.
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ATTRIBUTE_NODE);
+
+    // The hook elements and Document's factories fill a new node through.
+    dom.attr_nodes.install(.{ .name = &nameHook, .attach = &attachHook, .detach = &detachHook });
+
     return instance;
+}
+
+/// This attribute's element, if it has one that is still alive.
+fn liveElement(internal: *const InternalState) ?*runtime.Instance {
+    const element = internal.owner_element orelse return null;
+    if (runtime.SlabAllocator.generationOf(element) != internal.owner_generation) return null;
+    return element;
+}
+
+/// `dom.attr_nodes.name`.
+fn nameHook(instance: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) dom.attr_nodes.Error!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = internal.allocator;
+    const namespace_copy: ?[]const u8 = if (namespace) |ns| try allocator.dupe(u8, ns) else null;
+    errdefer if (namespace_copy) |ns| allocator.free(ns);
+    const prefix_copy: ?[]const u8 = if (prefix) |p| try allocator.dupe(u8, p) else null;
+    errdefer if (prefix_copy) |p| allocator.free(p);
+    const local_copy = try allocator.dupe(u8, local_name);
+
+    if (internal.namespace_uri) |old| allocator.free(old);
+    if (internal.prefix) |old| allocator.free(old);
+    if (internal.local_name.len > 0) allocator.free(internal.local_name);
+    internal.namespace_uri = namespace_copy;
+    internal.prefix = prefix_copy;
+    internal.local_name = local_copy;
+}
+
+/// `dom.attr_nodes.attach`: "set attribute's element to element" and "set
+/// attribute's node document to element's node document".
+fn attachHook(instance: *runtime.Instance, element: *runtime.Instance) dom.attr_nodes.Error!void {
+    setOwnerElement(instance, element) catch return error.InvalidStateError;
+}
+
+/// `dom.attr_nodes.detach`: "set attribute's element to null", keeping the
+/// value the element's list held for it.
+fn detachHook(instance: *runtime.Instance, value: []const u8) dom.attr_nodes.Error!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const copy = try internal.allocator.dupe(u8, value);
+    if (internal.value.len > 0) internal.allocator.free(internal.value);
+    internal.value = copy;
+    internal.owner_element = null;
+    internal.owner_generation = 0;
 }
 
 /// Deinitialize instance
@@ -125,22 +177,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §4.9 - Returns this's namespace.
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.namespace_uri) |ns| {
-        // Clone to transfer ownership to caller (interface layer will free)
-        return try runtime.DOMString.initDupe(instance.ctx.allocator, ns);
-    }
-    return runtime.DOMString.initEmpty();
+    // `DOMString?`: no namespace is null, not "".
+    const ns = internal.namespace_uri orelse return null;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, ns);
 }
 
 /// Getter for prefix
 /// DOM §4.9 - Returns this's namespace prefix.
 pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.prefix) |p| {
-        // Clone to transfer ownership to caller (interface layer will free)
-        return try runtime.DOMString.initDupe(instance.ctx.allocator, p);
-    }
-    return runtime.DOMString.initEmpty();
+    // `DOMString?`: no prefix is null, not "".
+    const p = internal.prefix orelse return null;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, p);
 }
 
 /// Getter for localName
@@ -176,6 +226,13 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// DOM §4.9 - Returns this's value.
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // An attribute with an element has its value in that element's list: read
+    // it there, so a change made through setAttribute shows here.
+    if (liveElement(internal)) |element| {
+        const namespace: ?runtime.DOMString = if (internal.namespace_uri) |ns| runtime.DOMString.initInterned(ns) else null;
+        const found = interfaces.Element.call_getAttributeNS(element, namespace, runtime.DOMString.initInterned(internal.local_name)) catch null;
+        if (found) |value| return try runtime.DOMString.initDupe(instance.ctx.allocator, value.asSlice());
+    }
     // Clone to transfer ownership to caller (interface layer will free)
     return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.value);
 }
@@ -184,10 +241,7 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// DOM §4.9 - Returns this's element.
 pub fn get_ownerElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.owner_element) |elem| {
-        return elem;
-    }
-    return error.NotImplemented; // null
+    return liveElement(internal);
 }
 
 /// Getter for specified
@@ -208,21 +262,19 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const new_value = value.asSlice();
 
-    // Step 1: If attribute's element is null, set attribute's value directly
-    if (internal.owner_element == null) {
-        if (internal.value.len > 0) {
-            internal.allocator.free(internal.value);
-        }
-        internal.value = try internal.allocator.dupe(u8, new_value);
+    // "Set an existing attribute value":
+    // Step 1: "If attribute's element is null, then set attribute's value to
+    // value."
+    const element = liveElement(internal) orelse {
+        const copy = try internal.allocator.dupe(u8, new_value);
+        if (internal.value.len > 0) internal.allocator.free(internal.value);
+        internal.value = copy;
         return;
-    }
+    };
 
-    // Step 2: Otherwise, change attribute to value (with mutation observer notification)
-    // TODO: Call dom.mutation_observer_algorithms.queueMutationRecord for "attributes"
-    if (internal.value.len > 0) {
-        internal.allocator.free(internal.value);
-    }
-    internal.value = try internal.allocator.dupe(u8, new_value);
+    // Step 2: "Otherwise, change attribute to value" - in its element's list,
+    // which queues the record and runs the attribute change steps.
+    try dom.element_attributes.change(element, internal.namespace_uri, internal.local_name, new_value);
 }
 
 // =============================================================================
@@ -264,6 +316,7 @@ pub fn createAttr(
 pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.owner_element = element;
+    internal.owner_generation = if (element) |el| runtime.SlabAllocator.generationOf(el) else 0;
     if (element) |el| {
         if (interfaces.Node.get_ownerDocument(el) catch null) |document| {
             try NodeImpl.setOwnerDocument(instance, document);

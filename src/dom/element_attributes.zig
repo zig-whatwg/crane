@@ -7,9 +7,10 @@
 //! that `setAttribute` and `setAttributeNS` apply to script's input, which
 //! would reject or alter names the list legitimately holds (`setAttribute`
 //! stores "a:b" as a local name; `setAttributeNS(null, "FOO", v)` keeps its
-//! case). Node may not call into the Element impl, so the Element impl
-//! installs the implementation here in its `init`, which runs before any
-//! element exists.
+//! case). An Attr node reads and changes its attribute here, and a
+//! NamedNodeMap walks the list by index. None of them may call into the
+//! Element impl, so the Element impl installs the implementation here in its
+//! `init`, which runs before any element exists.
 //!
 //! lint-impls: hook for Element
 
@@ -28,7 +29,10 @@ pub const Attribute = struct {
 /// What the Element impl supplies.
 pub const Implementation = struct {
     at: *const fn (element: *runtime.Instance, index: usize) ?Attribute,
+    count: *const fn (element: *runtime.Instance) usize,
     append: *const fn (element: *runtime.Instance, attribute: Attribute) Error!void,
+    change: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) Error!void,
+    node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
 };
 
 /// Per thread, like the elements it serves.
@@ -46,11 +50,31 @@ pub fn at(element: *runtime.Instance, index: usize) ?Attribute {
     return impl.at(element, index);
 }
 
+/// The number of attributes in `element`'s list; 0 for a non-element.
+pub fn count(element: *runtime.Instance) usize {
+    const impl = implementation orelse return 0;
+    return impl.count(element);
+}
+
 /// DOM "append an attribute": a new attribute with exactly these fields,
 /// appended to `element` - "handle attribute changes" and all.
 pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
     const impl = implementation orelse return error.InvalidStateError;
     return impl.append(element, attribute);
+}
+
+/// DOM "change an attribute": the one with this namespace and local name,
+/// to `value` - "handle attribute changes" and all.
+pub fn change(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) Error!void {
+    const impl = implementation orelse return error.InvalidStateError;
+    return impl.change(element, namespace, local_name, value);
+}
+
+/// The Attr node for the attribute at `index` - the same node every time -
+/// or null past the end.
+pub fn nodeAt(element: *runtime.Instance, index: usize) Error!?*runtime.Instance {
+    const impl = implementation orelse return null;
+    return impl.node_at(element, index);
 }
 
 test "without an installed implementation there is nothing to read or append to" {
