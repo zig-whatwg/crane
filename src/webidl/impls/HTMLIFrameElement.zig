@@ -165,8 +165,10 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
             internal.integration.setSandbox(sandbox_str) catch {};
         }
 
-        // Navigate to src URL
-        internal.integration.setSrc(src) catch {};
+        // Navigate to src URL, parsed relative to the node document.
+        const src_url = resolveSrc(instance, src);
+        defer instance.ctx.allocator.free(src_url);
+        internal.integration.setSrc(src_url) catch {};
 
         // Fire the load event. `data:` and `javascript:` fire synchronously,
         // as they always have - the parser has not run any script that could
@@ -659,6 +661,32 @@ fn executeIframeScript(engine_ctx: ?*anyopaque, source: []const u8) void {
 
     // Run microtasks (for Promise resolution, etc.)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+}
+
+/// HTML "shared attribute processing steps for iframe and frame elements",
+/// steps 2-3: the `src` value encoding-parsed relative to the element's node
+/// document; the empty string, or a value that does not parse, is
+/// about:blank. Owned by the element's context allocator.
+///
+/// The raw attribute value used to go straight to the fetch, which cannot
+/// fetch a relative URL, and the navigation failed silently - so an iframe
+/// with `src="resources/x.html"` simply never loaded. That is most of WPT:
+/// the 52 moving-between-documents files all waited on such a frame.
+fn resolveSrc(instance: *runtime.Instance, src: []const u8) []const u8 {
+    const allocator = instance.ctx.allocator;
+    const blank = "about:blank";
+    if (src.len == 0) return allocator.dupe(u8, blank) catch unreachable;
+    const base = interfaces.Node.get_baseURI(instance) catch
+        return allocator.dupe(u8, src) catch unreachable;
+    defer allocator.free(base);
+    const base_arg = if (base.len > 0)
+        webidl.Opt(runtime.USVString).passed(base)
+    else
+        webidl.Opt(runtime.USVString).notPassed();
+    const url = (interfaces.URL.call_static_parse(instance, src, base_arg) catch null) orelse
+        return allocator.dupe(u8, blank) catch unreachable;
+    defer runtime.Instance.deinit(url);
+    return interfaces.URL.get_href(url) catch allocator.dupe(u8, blank) catch unreachable;
 }
 
 /// Location URL update callback for iframes
@@ -1239,9 +1267,11 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
         }
     }
 
-    // Trigger navigation via integration
-    // Navigation errors are typically silent for iframe src
-    internal.integration.setSrc(value) catch {};
+    // Trigger navigation via integration, with the URL parsed relative to the
+    // node document. Navigation errors are typically silent for iframe src.
+    const src_url = resolveSrc(instance, value);
+    defer instance.ctx.allocator.free(src_url);
+    internal.integration.setSrc(src_url) catch {};
 
     // Fire load event after navigation completes.
     // Per HTML spec §4.8.5, the load event fires after the document is loaded.

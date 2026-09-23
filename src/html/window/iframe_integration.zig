@@ -234,6 +234,13 @@ pub const IFrameIntegration = struct {
     /// Cached src URL (null if no src attribute)
     src_url: ?[]const u8,
 
+    /// The host bytes of the document origin the last navigation recorded on
+    /// the WindowProxy. `Origin` BORROWS its host, and navigateToSrc used to
+    /// hand it a slice of the URL it was called with - a buffer every caller
+    /// frees once the call returns - so the frame's origin read freed memory
+    /// and `iframe.contentDocument` came back null. Owned here instead.
+    document_origin_host: ?[]u8 = null,
+
     /// Cached srcdoc content (null if no srcdoc attribute)
     srcdoc_content: ?[]const u8,
 
@@ -376,6 +383,9 @@ pub const IFrameIntegration = struct {
         // Free allocated strings
         if (self.src_url) |url| {
             self.allocator.free(url);
+        }
+        if (self.document_origin_host) |host| {
+            self.allocator.free(host);
         }
         if (self.srcdoc_content) |content| {
             self.allocator.free(content);
@@ -746,7 +756,13 @@ pub const IFrameIntegration = struct {
 
         // The document origin follows the URL being navigated to, and must be
         // set before the document exists so same-origin checks on it are right.
-        const new_origin = self.parseOriginFromURL(url);
+        var new_origin = self.parseOriginFromURL(url);
+        if (!new_origin.is_opaque and new_origin.host.len > 0) {
+            const owned_host = self.allocator.dupe(u8, new_origin.host) catch return IFrameError.OutOfMemory;
+            if (self.document_origin_host) |old| self.allocator.free(old);
+            self.document_origin_host = owned_host;
+            new_origin.host = owned_host;
+        }
         if (self.window_proxy) |*proxy| {
             proxy.setDocumentOrigin(new_origin);
         }
@@ -1121,27 +1137,36 @@ pub const IFrameIntegration = struct {
             return self.container_origin;
         }
 
-        // For http(s) URLs, extract origin components
-        if (std.mem.startsWith(u8, url, "https://")) {
-            const rest = url[8..];
-            if (std.mem.indexOf(u8, rest, "/")) |slash_idx| {
-                const host = rest[0..slash_idx];
-                return Origin.init("https", host, 443);
-            }
-            return Origin.init("https", rest, 443);
-        }
-
-        if (std.mem.startsWith(u8, url, "http://")) {
-            const rest = url[7..];
-            if (std.mem.indexOf(u8, rest, "/")) |slash_idx| {
-                const host = rest[0..slash_idx];
-                return Origin.init("http", host, 80);
-            }
-            return Origin.init("http", rest, 80);
-        }
+        // For http(s) URLs, the origin is (scheme, host, port) from the
+        // authority. This used to keep ":8000" inside the host and hard-code
+        // the port as 80 or 443, so no http(s) frame on a non-default port was
+        // ever same origin with its container, and `iframe.contentDocument`
+        // answered null for every one of them.
+        if (std.mem.startsWith(u8, url, "https://")) return authorityOrigin("https", url[8..], 443);
+        if (std.mem.startsWith(u8, url, "http://")) return authorityOrigin("http", url[7..], 80);
 
         // Unknown scheme - opaque origin
         return Origin.createOpaque();
+    }
+
+    /// The tuple origin of an http(s) URL whose scheme and "//" are already
+    /// stripped: the authority ends at the first '/', '?' or '#', userinfo
+    /// (up to the last '@') is dropped, and an explicit port - after the last
+    /// ':' that is not inside an IPv6 literal's brackets - overrides the
+    /// scheme's default.
+    fn authorityOrigin(scheme: []const u8, rest: []const u8, default_port: u16) Origin {
+        const end = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
+        var authority = rest[0..end];
+        if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
+        const bracket_end = std.mem.lastIndexOfScalar(u8, authority, ']') orelse 0;
+        if (std.mem.lastIndexOfScalar(u8, authority, ':')) |colon| {
+            if (colon > bracket_end) {
+                const port_text = authority[colon + 1 ..];
+                const port = if (port_text.len == 0) default_port else std.fmt.parseInt(u16, port_text, 10) catch default_port;
+                return Origin.init(scheme, authority[0..colon], port);
+            }
+        }
+        return Origin.init(scheme, authority, default_port);
     }
 
     /// Set the src attribute value
@@ -1823,4 +1848,23 @@ test "percentDecode - multiple escapes" {
     const result = try percentDecode(allocator, "%3C%3E");
     defer allocator.free(result);
     try std.testing.expectEqualStrings("<>", result);
+}
+
+test "IFrameIntegration - an http(s) URL's origin keeps its port and drops the rest" {
+    var integration = IFrameIntegration.init(std.testing.allocator);
+    defer integration.deinit();
+
+    const cases = [_]struct { url: []const u8, scheme: []const u8, host: []const u8, port: u16 }{
+        .{ .url = "http://web-platform.test:8000/a/b.py?x=1#f", .scheme = "http", .host = "web-platform.test", .port = 8000 },
+        .{ .url = "http://web-platform.test/a", .scheme = "http", .host = "web-platform.test", .port = 80 },
+        .{ .url = "https://www.web-platform.test:8443", .scheme = "https", .host = "www.web-platform.test", .port = 8443 },
+        .{ .url = "https://user:pw@example.com:9/p", .scheme = "https", .host = "example.com", .port = 9 },
+        .{ .url = "http://[::1]:8000/", .scheme = "http", .host = "[::1]", .port = 8000 },
+        .{ .url = "http://[::1]/", .scheme = "http", .host = "[::1]", .port = 80 },
+        .{ .url = "http://example.com?q", .scheme = "http", .host = "example.com", .port = 80 },
+    };
+    for (cases) |c| {
+        const origin = integration.parseOriginFromURL(c.url);
+        try std.testing.expect(origin.isSameOrigin(Origin.init(c.scheme, c.host, c.port)));
+    }
 }
