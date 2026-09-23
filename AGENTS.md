@@ -111,18 +111,20 @@ missed two use-after-frees that shipped.
 ### Keep the progress report current
 
 `wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
-from journals, and only from journals under `wpt-results/` (and its
-subdirectories): it keeps the latest record per file, ordered by the journal
-file's mtime, and accumulates them in `tmp/wpt-progress-state.json`. A run
-whose journal lands anywhere else - a scratchpad, `tmp/sweepNN/` - never
-reaches the page.
+from journals, and only from `wpt-results/*.jsonl` and
+`wpt-results/<label>/*.jsonl` - ONE directory deep: it keeps the latest record
+per file, ordered by the journal file's mtime, and accumulates them in
+`tmp/wpt-progress-state.json`. A run whose journal lands anywhere else - a
+scratchpad, `tmp/sweepNN/`, `wpt-results/<label>/<area>/` - never reaches the
+page, and nothing says so: the headline simply does not move.
 
 After every feature commit:
 
 1. **Put its WPT runs where the report reads them.** Point `--output` at
    `wpt-results/<label>/` (e.g. `wpt-results/ab-<short-sha>/`), or copy a run's
    `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the mtime, and
-   the mtime decides which result is latest.
+   the mtime decides which result is latest. Several runs under one label go
+   side by side as `journal.<area>.jsonl`, never in subdirectories.
 2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir /tmp/crane-z16-cache`.
 3. **Report the headline** - blocking files and passing subtests from the page -
    in your summary.
