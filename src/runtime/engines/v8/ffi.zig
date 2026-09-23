@@ -1243,6 +1243,14 @@ pub extern fn v8_Function_CallCatching(
 /// A second, independently owned Global for the same value. Null for null/empty.
 pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 
+/// Run `body(data)` with V8's automatic microtask execution suppressed
+/// (Isolate::SuppressMicrotaskExecutionScope, held on the C++ stack).
+pub extern fn v8_RunWithMicrotasksSuppressed(
+    isolate: *Isolate,
+    body: *const fn (?*anyopaque) callconv(.c) void,
+    data: ?*anyopaque,
+) void;
+
 /// promise.[[PromiseIsHandled]] = true (WebIDL "mark as handled"). No-op for a non-promise.
 pub extern fn v8_Promise_MarkAsHandled(promise: ?*Value) void;
 
@@ -1555,6 +1563,8 @@ pub const DynamicImportCallback = *const fn (
     specifier: [*]const u8,
     specifier_len: c_int,
     promise_resolver: *anyopaque,
+    /// The import's "type" attribute, or null - valid during the call only.
+    type_attribute: ?[*:0]const u8,
 ) callconv(.c) void;
 
 /// Set the dynamic import callback for an isolate
@@ -1582,6 +1592,14 @@ pub extern fn v8_DynamicImport_Resolve(
     context: *anyopaque,
     resolver: *anyopaque,
     module_namespace: *Object,
+) void;
+
+/// Reject a dynamic import promise with `value` (a Global<Value>* the caller
+/// keeps), consuming `context` and `resolver` like Resolve and Reject.
+pub extern fn v8_DynamicImport_RejectWithValue(
+    context: *anyopaque,
+    resolver: *anyopaque,
+    value: ?*Value,
 ) void;
 
 /// Reject a dynamic import promise with an error
@@ -2203,6 +2221,23 @@ pub const PromiseRejectEventCallback = *const fn (
 ///   isolate: The V8 isolate to configure
 ///   user_data: Opaque pointer passed to callback
 ///   callback: Function to call on promise rejection events
+/// promise.[[PromiseIsHandled]]. False for a non-promise. Takes a Global.
+pub extern fn v8_Promise_HasHandler(promise: ?*Value) bool;
+
+/// Call `callback(isolate, data)` after every microtask checkpoint on the
+/// isolate's default queue, automatic and explicit alike.
+pub extern fn v8_Isolate_AddMicrotasksCompletedCallback(
+    isolate: *Isolate,
+    callback: *const fn (*Isolate, ?*anyopaque) callconv(.c) void,
+    data: ?*anyopaque,
+) void;
+
+pub extern fn v8_Isolate_RemoveMicrotasksCompletedCallback(
+    isolate: *Isolate,
+    callback: *const fn (*Isolate, ?*anyopaque) callconv(.c) void,
+    data: ?*anyopaque,
+) void;
+
 pub extern fn v8_Isolate_SetPromiseRejectCallback(
     isolate: *Isolate,
     user_data: ?*anyopaque,

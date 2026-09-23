@@ -196,6 +196,62 @@ pub const CallbackWrapper = struct {
         return self.callN(context, &.{arg0});
     }
 
+    /// The completion of invoking a callback: what it returned, or what it threw.
+    pub const Completion = union(enum) {
+        /// Owned Global<Value>* of the return value, or null when there is none.
+        normal: ?*v8.Value,
+        /// Owned Global<Value>* of the thrown value, or null when there is
+        /// nothing to report (the call could not be made, or the isolate is
+        /// terminating).
+        thrown: ?*v8.Value,
+    };
+
+    /// Invoke the callback like `callN`, but keep what it throws.
+    ///
+    /// DOM's inner invoke has to REPORT a listener's exception (step 2.11), and
+    /// `callN` - through `v8_Function_Call_Safe` - reduces it to "null". This
+    /// returns the thrown value itself, via `v8_Function_CallCatching`, which
+    /// also enters the callback's creation context on its own, so none of
+    /// callN's context bookkeeping is needed.
+    ///
+    /// `args` are Local slots, as `callN` takes them. `this_arg` is WebIDL's
+    /// thisArg (a Global<Value>*, or null for undefined): "call a user object's
+    /// operation" calls a CALLABLE callback with it - for an event listener,
+    /// the event's currentTarget - and only an object callback's method with
+    /// the object itself.
+    ///
+    /// Only function callbacks report their exceptions here. An object
+    /// callback ("handleEvent") still goes through `callN`: its method lookup
+    /// uses `v8_Object_Get`, which has no TryCatch, so a throwing getter could
+    /// not be caught anyway - giving that path a catching Get is its own change.
+    pub fn callNCatching(self: *CallbackWrapper, context: *v8.Context, this_arg: ?*v8.Value, args: []const *v8.Value) Completion {
+        if (!self.is_function) return .{ .normal = self.callN(context, args) };
+
+        const function = self.callback_function_global orelse return .{ .thrown = null };
+        const effective_context = self.callback_context orelse context;
+        const isolate = v8.v8_Isolate_GetCurrent() orelse self.isolate;
+
+        var global_args: [16]*v8.Value = undefined;
+        const arg_count = @min(args.len, global_args.len);
+        var made: usize = 0;
+        defer for (global_args[0..made]) |arg| v8.v8_Global_Dispose(arg);
+        for (0..arg_count) |i| {
+            global_args[i] = v8.v8_Value_ToGlobal(isolate, @ptrCast(args[i])) orelse return .{ .thrown = null };
+            made += 1;
+        }
+
+        var threw = false;
+        const value = v8.v8_Function_CallCatching(
+            effective_context,
+            @ptrCast(function.ptr),
+            this_arg,
+            @intCast(arg_count),
+            &global_args,
+            &threw,
+        );
+        return if (threw) .{ .thrown = value } else .{ .normal = value };
+    }
+
     /// Invoke the callback with multiple arguments
     ///
     /// NOTE: The v8_Function_Call FFI expects Global<T>* handles, not Local<T> values.

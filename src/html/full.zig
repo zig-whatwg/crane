@@ -160,6 +160,14 @@ pub const runtime = @import("runtime");
 /// Script execution algorithms (prepare/execute script element)
 pub const script_execution = @import("script_execution.zig");
 
+/// "Report an exception": runtime script errors reach the global's error
+/// event and `onerror` through here.
+pub const report_exception = @import("report_exception.zig");
+
+/// Unhandled promise rejections: HostPromiseRejectionTracker and the
+/// unhandledrejection / rejectionhandled events.
+pub const rejected_promises = @import("rejected_promises.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 

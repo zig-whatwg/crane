@@ -27,6 +27,9 @@ const webidl = @import("webidl");
 // Module script loading: the module map, graph fetching, linking, running.
 const module_script = @import("module_script.zig");
 
+// "Report an exception": where a script's uncaught exception goes.
+const report_exception = @import("report_exception.zig");
+
 // WebIDL interfaces - used for all WebIDL type interactions (Golden Rule #12)
 const interfaces = @import("interfaces");
 
@@ -842,6 +845,12 @@ pub fn executeScriptElement(
 
 /// Run a classic script
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
+///
+/// Compiles and runs through the V8 FFI directly rather than the engine
+/// interface's compileScript/runScript: those log a failure and return null,
+/// and "report an exception" needs the thrown VALUE (ErrorEvent.error) and the
+/// position V8 recorded for it. Their run result was also an owned Global the
+/// caller dropped - one leaked handle per script.
 fn runClassicScript(script_element: *runtime.Instance) !void {
     const result = HTMLScriptElementImpl.getResult(script_element);
 
@@ -851,127 +860,88 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     // properly duplicated copy stored in the HTMLScriptElement's internal state.
     const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
 
-    // Get source URL for error messages
+    // The script's base URL doubles as the resource name errors report as
+    // their filename: the document URL for an inline script, the script URL
+    // for an external one.
     const source_url: ?[]const u8 = switch (result) {
         .script => |s| if (s.base_url.len > 0) s.base_url else null,
         else => null,
     };
 
-    // Get engine interface from the script element's context
     const ctx = script_element.ctx;
-    const engine = ctx.getEngine() orelse {
-        // No engine available (testing mode) - silently skip execution
-        return;
-    };
-
-    // Get engine context (V8 Context, JSC VM, etc.)
-    const engine_ctx = ctx.getEngineContext() orelse {
-        return;
-    };
-
-    // Get the Window for accessor tracking.
-    // This is used for cross-origin security checks during property access.
-    // When the script accesses properties on other windows (e.g., parent.document),
-    // we need to know which Window is the accessor for security checks.
+    const engine_ctx = ctx.getEngineContext() orelse return; // no engine (unit tests)
     const v8 = @import("v8");
-    const accessor_window: ?*runtime.Instance = blk: {
-        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-        break :blk v8.context_manager.getWindowForContext(v8_ctx);
-    };
+    const ffi = v8.ffi;
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
 
-    // Push accessor Window onto stack for cross-origin security checks
-    if (accessor_window) |win| {
-        v8.context_manager.pushAccessorWindow(win);
+    // The Window whose realm this script runs in: the accessor for
+    // cross-origin checks while it runs, and the global it reports to.
+    const global = v8.context_manager.getWindowForContext(context);
+    if (global) |win| v8.context_manager.pushAccessorWindow(win);
+    defer if (global != null) v8.context_manager.popAccessorWindow();
+
+    const scope = ffi.v8_HandleScope_New(isolate) orelse return;
+    defer ffi.v8_HandleScope_Dispose(scope);
+
+    const source_str = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
+    defer ffi.v8_String_Dispose(source_str);
+
+    // "Create a classic script": a script that does not parse has a parse
+    // error, which step 6 turns into the evaluation status.
+    const compiled = if (source_url) |url| blk: {
+        const name = ffi.v8_String_NewFromUtf8(isolate, url.ptr, @intCast(url.len)) orelse return;
+        defer ffi.v8_String_Dispose(name);
+        break :blk ffi.v8_Script_CompileWithOrigin_Safe(context, source_str, name);
+    } else ffi.v8_Script_Compile_Safe(context, source_str);
+    defer ffi.v8_FreeScriptCompileResult(compiled);
+
+    // Step 8.3.1: report an exception - the parse error (step 6), or what
+    // evaluating threw - while the result that owns its error information is
+    // still alive.
+    const window = global orelse return;
+    const muted = isMutedErrors(result);
+    if (compiled.script) |script| {
+        defer ffi.v8_Script_Dispose(script);
+        // Step 7: ScriptEvaluation.
+        const run = ffi.v8_Script_Run_Safe(context, script);
+        defer ffi.v8_FreeScriptRunResult(run);
+        if (run.value) |value| ffi.v8_Global_Dispose(value);
+        if (run.error_info) |info| reportScriptException(window, info, muted);
+    } else if (compiled.error_info) |info| {
+        reportScriptException(window, info, muted);
     }
-    defer {
-        if (accessor_window != null) {
-            v8.context_manager.popAccessorWindow();
-        }
-    }
+}
 
-    // Compile the script using the engine interface
-    const compileScript = engine.compileScript orelse {
-        return;
+/// A classic script's muted errors flag (see `ClassicScript.muted_errors`).
+fn isMutedErrors(result: HTMLScriptElementImpl.ScriptResult) bool {
+    return switch (result) {
+        .script => |s| s.muted_errors,
+        else => false,
     };
+}
 
-    const script = compileScript(engine_ctx, source, source_url) catch {
-        return;
-    } orelse {
-        // Compilation failed - fire error event at script element
-        // Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
-        // When compilation fails, fire error event with syntax error details
-        const node_document = getNodeDocument(script_element);
-        if (node_document) |doc| {
-            if (doc_state.getInternal(doc)) |internal| {
-                _ = event_utils.fireErrorEvent(
-                    internal.allocator,
-                    null,
-                    script_element,
-                    .{
-                        .message = "Script compilation failed: syntax error",
-                        .filename = source_url orelse "",
-                        .lineno = 1, // Line number from engine if available
-                        .colno = 0,
-                        .@"error" = runtime.JSValue.jsNull,
-                    },
-                ) catch false;
-            }
-        }
-        return;
-    };
+const ScriptExceptionReport = struct {
+    global: *runtime.Instance,
+    info: *const @import("v8").ffi.V8ErrorInfo,
+    muted: bool,
+};
 
-    // Dispose script when done
-    defer {
-        if (engine.disposeScript) |dispose| {
-            dispose(script);
-        }
-    }
+/// Run a classic script step 8.3.1: report an exception given by the
+/// evaluation status's value for the script's global - with V8's automatic
+/// microtask checkpoints held off until the report is done, since the spec
+/// reports before "clean up after running script" performs the checkpoint.
+fn reportScriptException(global: *runtime.Instance, info: *const @import("v8").ffi.V8ErrorInfo, muted: bool) void {
+    var report = ScriptExceptionReport{ .global = global, .info = info, .muted = muted };
+    report_exception.withMicrotasksSuppressed(&runScriptExceptionReport, &report);
+}
 
-    // Run the script using the engine interface
-    const runScript = engine.runScript orelse {
-        return;
-    };
-
-    const script_result = runScript(engine_ctx, script) catch {
-        return;
-    };
-
-    if (script_result == null) {
-        // Script threw an uncaught exception
-        // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
-        //
-        // Per spec, we should:
-        // 1. Get the global object (Window)
-        // 2. Fire an error event at the global
-        // 3. Log to console if error wasn't handled
-        //
-        // For cross-origin scripts without CORS, error details should be muted per spec
-        // ("Script error." message, no line/col info)
-        const is_external = HTMLScriptElementImpl.isFromExternalFile(script_element);
-        const has_crossorigin = hasAttribute(script_element, "crossorigin");
-        const is_muted = is_external and !has_crossorigin;
-
-        // Fire error event at the script element itself (for load-time errors)
-        // Runtime errors would go to window.onerror, but that requires Window integration
-        const node_document = getNodeDocument(script_element);
-        if (node_document) |doc| {
-            if (doc_state.getInternal(doc)) |internal| {
-                _ = event_utils.fireErrorEvent(
-                    internal.allocator,
-                    null,
-                    script_element,
-                    .{
-                        .message = if (is_muted) "Script error." else "Uncaught exception",
-                        .filename = if (is_muted) "" else source_url orelse "",
-                        .lineno = 0, // Would be from engine exception info
-                        .colno = 0,
-                        .@"error" = runtime.JSValue.jsNull,
-                    },
-                ) catch false;
-            }
-        }
-        return;
-    }
+fn runScriptExceptionReport(data: ?*anyopaque) callconv(.c) void {
+    const report: *ScriptExceptionReport = @ptrCast(@alignCast(data orelse return));
+    _ = report_exception.reportException(report.global, report.info.exception, .{
+        .muted = report.muted,
+        .info = report.info,
+    });
 }
 
 // =============================================================================
@@ -1026,6 +996,208 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
     };
+}
+
+// =============================================================================
+// import() - HostLoadImportedModule for a dynamic import, ContinueDynamicImport
+// =============================================================================
+
+/// The isolate the import() hook serves. Worker isolates run their own
+/// threads and their own handler (context_manager's), so the hook declines
+/// anything else.
+var dynamic_import_isolate: ?*@import("v8").ffi.Isolate = null;
+
+/// Route import() in `isolate`'s Window realms through the module loader, so a
+/// dynamically imported module shares the document's module map with its
+/// static imports and scripts, and is evaluated from a task.
+pub fn installDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    const v8_engine = @import("v8");
+    dynamic_import_isolate = isolate;
+    v8_engine.engine.embedder_dynamic_import = &onDynamicImport;
+}
+
+pub fn uninstallDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    if (dynamic_import_isolate != isolate) return;
+    @import("v8").engine.embedder_dynamic_import = null;
+    dynamic_import_isolate = null;
+}
+
+/// The module loading environment for a Window's document.
+fn moduleEnvironmentForWindow(window: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
+    const internal = doc_state.getInternal(document) orelse return null;
+    const engine_ctx = window.ctx.getEngineContext() orelse return null;
+    return .{
+        .allocator = internal.allocator,
+        .context_instance = window,
+        .v8_context = @ptrCast(@alignCast(engine_ctx)),
+        .map = documentModuleMap(document),
+        .resolveImportFn = &documentResolveImport,
+    };
+}
+
+/// Settle `resolver` by rejecting it with a new TypeError.
+fn rejectImportWithTypeError(resolver: @import("v8").engine.DynamicImportResolver, message: []const u8) void {
+    const ffi = @import("v8").ffi;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return resolver.reject(message);
+    const msg = ffi.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse return resolver.reject(message);
+    defer ffi.v8_String_Dispose(msg);
+    const err = ffi.v8_Exception_TypeErrorInContext(@ptrCast(@alignCast(resolver.context)), msg) orelse return resolver.reject(message);
+    defer ffi.v8_Global_Dispose(err);
+    resolver.rejectWithValue(err);
+}
+
+/// The import() hook (V8's HostImportModuleDynamically).
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+/// with loadState undefined, and ECMA-262 ContinueDynamicImport. The
+/// referrer's base URL is V8's resource name for the calling script - the
+/// script URL for an external classic script or a module, the document URL for
+/// an inline one - and the document base URL when there is none (an event
+/// handler, whose [[ScriptOrModule]] is null).
+fn onDynamicImport(
+    context_ptr: *anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    type_attribute: ?[]const u8,
+    resolver: @import("v8").engine.DynamicImportResolver,
+) bool {
+    const v8_engine = @import("v8");
+    const ffi = v8_engine.ffi;
+    if (ffi.v8_Isolate_GetCurrent() != dynamic_import_isolate) return false;
+
+    const context: *ffi.Context = @ptrCast(@alignCast(context_ptr));
+    const window = v8_engine.context_manager.getWindowForContext(context) orelse return false;
+    const document = interfaces.Window.get_document(window) catch return false;
+    const env = moduleEnvironmentForWindow(window, document) orelse return false;
+
+    // HostLoadImportedModule steps 7.1.4-7.1.5 (for the one request an
+    // import() makes): an unsupported type is a TypeError.
+    const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse {
+        rejectImportWithTypeError(resolver, "Unsupported module type");
+        return true;
+    };
+
+    // Steps 8-9: resolve a module specifier, or reject with its TypeError.
+    const base_url = if (referrer.len > 0) referrer else documentBaseUrl(document, window);
+    const url = module_script.resolve(&env, specifier, base_url) orelse {
+        rejectImportWithTypeError(resolver, "Failed to resolve module specifier");
+        return true;
+    };
+    defer window.ctx.allocator.free(url);
+
+    // Step 14: fetch - as a task, so the imported module is fetched and
+    // evaluated after the script that called import() and its microtasks,
+    // the way a real network fetch completes.
+    const loop = window.ctx.getOptionalEventLoop() orelse {
+        rejectImportWithTypeError(resolver, "No event loop to load the module on");
+        return true;
+    };
+    const task = std.heap.c_allocator.create(DynamicImportTask) catch {
+        rejectImportWithTypeError(resolver, "Out of memory");
+        return true;
+    };
+    task.* = .{
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .url = std.heap.c_allocator.dupe(u8, url) catch {
+            std.heap.c_allocator.destroy(task);
+            rejectImportWithTypeError(resolver, "Out of memory");
+            return true;
+        },
+        .module_type = module_type,
+        .resolver = resolver,
+    };
+    loop.queueTask(.{ .callback = &runDynamicImport, .context = task });
+    return true;
+}
+
+const DynamicImportTask = struct {
+    /// The importing Window, as (address, slab generation).
+    window: *runtime.Instance,
+    generation: u64,
+    /// Owned (c_allocator).
+    url: []const u8,
+    module_type: module_script.ModuleType,
+    /// Owns the promise's context and resolver handles until it settles.
+    resolver: @import("v8").engine.DynamicImportResolver,
+};
+
+fn runDynamicImport(data: ?*anyopaque) void {
+    const v8_engine = @import("v8");
+    const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
+    defer {
+        std.heap.c_allocator.free(task.url);
+        std.heap.c_allocator.destroy(task);
+    }
+
+    // The importing Window is gone: settle the promise anyway, to release the
+    // handles it holds; nobody is left to observe how.
+    if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return task.resolver.rejectWithValue(null);
+
+    // A task runs from the event loop, with no HandleScope and no entered
+    // context of its own.
+    const scope = v8_engine.JsScope.init(task.window.ctx) orelse return task.resolver.rejectWithValue(null);
+    defer scope.deinit();
+
+    const document = interfaces.Window.get_document(task.window) catch return task.resolver.rejectWithValue(null);
+    const env = moduleEnvironmentForWindow(task.window, document) orelse return task.resolver.rejectWithValue(null);
+
+    // A null graph is a failed fetch: TypeError.
+    const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
+        return rejectImportWithTypeError(task.resolver, "Failed to fetch dynamically imported module");
+
+    // ContinueDynamicImport: link (done above), evaluate, and settle with the
+    // namespace or the reason.
+    switch (module_script.evaluateForImport(&env, graph)) {
+        .fulfilled => resolveImportWithNamespace(task.resolver, graph),
+        .rejected => |reason| {
+            defer v8_engine.ffi.v8_Global_Dispose(reason);
+            task.resolver.rejectWithValue(reason);
+        },
+        .pending => |promise| {
+            defer v8_engine.ffi.v8_Global_Dispose(promise);
+            const pending = std.heap.c_allocator.create(PendingImport) catch return task.resolver.rejectWithValue(null);
+            pending.* = .{
+                .window = task.window,
+                .generation = task.generation,
+                .graph = graph,
+                .resolver = task.resolver,
+            };
+            if (!v8_engine.ffi.v8_Promise_React(env.v8_context, promise, &onImportEvaluationSettled, pending)) {
+                std.heap.c_allocator.destroy(pending);
+                task.resolver.rejectWithValue(null);
+            }
+        },
+    }
+}
+
+fn resolveImportWithNamespace(resolver: @import("v8").engine.DynamicImportResolver, graph: *module_script.ModuleScript) void {
+    const ffi = @import("v8").ffi;
+    const record = graph.record orelse return resolver.rejectWithValue(null);
+    const namespace = ffi.v8_Module_GetModuleNamespace(record) orelse return resolver.rejectWithValue(null);
+    defer ffi.v8_Global_Dispose(@ptrCast(namespace));
+    resolver.resolve(namespace);
+}
+
+/// An import() whose module awaits top-level await.
+const PendingImport = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    /// Owned by the document's module map, which outlives this reaction for
+    /// as long as the Window does - checked by generation before use.
+    graph: *module_script.ModuleScript,
+    resolver: @import("v8").engine.DynamicImportResolver,
+};
+
+fn onImportEvaluationSettled(data: ?*anyopaque, value: ?*@import("v8").ffi.Value, rejected: bool) callconv(.c) void {
+    const ffi = @import("v8").ffi;
+    const pending: *PendingImport = @ptrCast(@alignCast(data orelse return));
+    defer std.heap.c_allocator.destroy(pending);
+    defer if (value) |v| ffi.v8_Global_Dispose(v);
+
+    if (runtime.SlabAllocator.generationOf(pending.window) != pending.generation) return pending.resolver.rejectWithValue(null);
+    if (rejected) return pending.resolver.rejectWithValue(value);
+    resolveImportWithNamespace(pending.resolver, pending.graph);
 }
 
 /// Prepare step 33.11 "module": fetch an external module script graph, and
@@ -1101,19 +1273,65 @@ fn runModuleScript(script_element: *runtime.Instance, document: *runtime.Instanc
     const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
     defer scope.deinit();
 
+    // The script's settings object's global: the Window of its realm.
+    const global = v8_engine.context_manager.getWindowForContext(env.v8_context);
+
     switch (module_script.run(&env, script)) {
         .ok => {},
-        .report => |exception| reportModuleException(exception),
+        // Step 8: report an exception for the script's global - before "clean
+        // up after running script", like a classic script's.
+        .report => |exception| {
+            defer v8_engine.ffi.v8_Global_Dispose(exception);
+            const window = global orelse return;
+            var report = ModuleExceptionReport{ .global = window, .exception = exception };
+            report_exception.withMicrotasksSuppressed(&runModuleExceptionReport, &report);
+        },
+        // Step 8 "upon rejection" of a promise still waiting on top-level
+        // await: react to it, and report the reason if it rejects.
+        .pending => |promise| {
+            defer v8_engine.ffi.v8_Global_Dispose(promise);
+            const window = global orelse return;
+            reportModuleRejectionLater(env.v8_context, promise, window);
+        },
     }
 }
 
-/// Step 8 of "run a module script": report an exception.
-/// TODO: dispatch the ErrorEvent at the global once "report an exception" is
-/// real; until then the exception is logged and released.
-fn reportModuleException(exception: *@import("v8").ffi.Value) void {
-    const v8_engine = @import("v8");
-    log.debug("uncaught exception in module script", .{});
-    v8_engine.ffi.v8_Global_Dispose(exception);
+const ModuleExceptionReport = struct {
+    global: *runtime.Instance,
+    exception: *@import("v8").ffi.Value,
+};
+
+fn runModuleExceptionReport(data: ?*anyopaque) callconv(.c) void {
+    const report: *ModuleExceptionReport = @ptrCast(@alignCast(data orelse return));
+    _ = report_exception.reportException(report.global, report.exception, .{});
+}
+
+/// A settled top-level-await evaluation promise's reaction data. The Window is
+/// held as (address, slab generation): the reaction runs whenever the promise
+/// settles, and the slab reuses a freed Window's slot.
+const PendingModuleEvaluation = struct {
+    global: *runtime.Instance,
+    generation: u64,
+};
+
+fn reportModuleRejectionLater(context: *@import("v8").ffi.Context, promise: *@import("v8").ffi.Value, global: *runtime.Instance) void {
+    const ffi = @import("v8").ffi;
+    const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
+    pending.* = .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    if (!ffi.v8_Promise_React(context, promise, &onModuleEvaluationSettled, pending)) {
+        std.heap.c_allocator.destroy(pending);
+    }
+}
+
+fn onModuleEvaluationSettled(data: ?*anyopaque, value: ?*@import("v8").ffi.Value, rejected: bool) callconv(.c) void {
+    const ffi = @import("v8").ffi;
+    const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
+    defer std.heap.c_allocator.destroy(pending);
+    defer if (value) |v| ffi.v8_Global_Dispose(v);
+
+    if (!rejected) return;
+    if (runtime.SlabAllocator.generationOf(pending.global) != pending.generation) return;
+    _ = report_exception.reportException(pending.global, value, .{});
 }
 
 /// Check if a specifier looks like a URL (starts with /, ./, ../, or has a scheme)

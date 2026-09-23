@@ -71,6 +71,14 @@ pub const ModuleScript = struct {
     /// evaluating when the script runs.
     error_to_rethrow: ?*ffi.Value = null,
 
+    /// The error to rethrow came from LOADING the graph - a parse error, an
+    /// unresolvable specifier or an unsupported type - not from linking it.
+    /// HTML treats a load failure like a parse error, so it is kept: every
+    /// later import of this script rethrows the same object. A link error is
+    /// computed afresh by each attempt (dynamic-imports-script-error.html pins
+    /// both halves).
+    load_error: bool = false,
+
     /// v8::Module::GetIdentityHash() of `record` - how the resolve callback,
     /// which only hears about the importer, finds it again.
     identity_hash: c_int = 0,
@@ -433,6 +441,76 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     return fetchDescendantsAndLink(env, result);
 }
 
+/// The module type an import's "type" attribute asks for, or null for a type
+/// the host does not support ("module type allowed" is false: TypeError).
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-from-module-request
+pub fn moduleTypeFromAttribute(type_attribute: ?[]const u8) ?ModuleType {
+    const t = type_attribute orelse return .javascript;
+    if (std.mem.eql(u8, t, "json")) return .json;
+    if (std.mem.eql(u8, t, "css")) return .css;
+    return null;
+}
+
+/// Resolve a module specifier against `base_url`. Returns an owned URL
+/// (env.context_instance.ctx.allocator), or null where the spec throws.
+pub fn resolve(env: *const Environment, specifier: []const u8, base_url: []const u8) ?[]const u8 {
+    return resolveModuleSpecifier(env, specifier, base_url);
+}
+
+/// The graph an import() loads: fetch a single imported module script of
+/// `module_type` at `url` (through the module map), then fetch the
+/// descendants of and link it. Null means "null" - a failed fetch.
+pub fn fetchImportedModuleScriptGraph(env: *const Environment, url: []const u8, module_type: ModuleType) ?*ModuleScript {
+    const script = fetchSingleModuleScript(env, url, module_type) orelse return null;
+    return fetchDescendantsAndLink(env, script);
+}
+
+/// What evaluating an import()ed graph produced, for ContinueDynamicImport.
+pub const ImportEvaluation = union(enum) {
+    /// Evaluation completed: fulfil the import with the namespace.
+    fulfilled,
+    /// Reject the import with this reason (owned Global).
+    rejected: *ffi.Value,
+    /// Evaluation awaits top-level await: the owned evaluation promise.
+    pending: *ffi.Value,
+};
+
+/// Evaluate `script` for an import(): its error to rethrow, or the outcome of
+/// record.Evaluate(). The evaluation promise is marked handled - the import's
+/// own promise is what reports the outcome.
+pub fn evaluateForImport(env: *const Environment, script: *ModuleScript) ImportEvaluation {
+    if (script.error_to_rethrow) |value| {
+        return if (copyGlobal(value)) |copy| .{ .rejected = copy } else .fulfilled;
+    }
+    const record = script.record orelse return .fulfilled;
+
+    const result = ffi.v8_Module_Evaluate_Safe(env.v8_context, record);
+    defer ffi.v8_FreeModuleEvaluateResult(result);
+    if (result.error_info) |_| {
+        if (takeException(result.error_info)) |value| return .{ .rejected = value };
+        return .fulfilled;
+    }
+    const promise_value = result.value orelse return .fulfilled;
+    if (!ffi.v8_Value_IsPromise(promise_value)) {
+        ffi.v8_Global_Dispose(promise_value);
+        return .fulfilled;
+    }
+    ffi.v8_Promise_MarkAsHandled(promise_value);
+    const promise: *ffi.Promise = @ptrCast(promise_value);
+    switch (ffi.v8_Promise_State(promise)) {
+        promise_rejected => {
+            defer ffi.v8_Global_Dispose(promise_value);
+            if (ffi.v8_Promise_Result(promise)) |reason| return .{ .rejected = reason };
+            return .fulfilled;
+        },
+        promise_pending => return .{ .pending = promise_value },
+        else => {
+            ffi.v8_Global_Dispose(promise_value);
+            return .fulfilled;
+        },
+    }
+}
+
 /// What a failed load leaves behind, mirroring LoadRequestedModules' state:
 /// either an error to rethrow (a "syntactic" failure somewhere in the graph)
 /// or none (a fetch failure, which makes the whole graph null).
@@ -456,6 +534,10 @@ pub fn fetchDescendantsAndLink(env: *const Environment, script: *ModuleScript) ?
         return script;
     }
 
+    // A graph that already failed to load fails the same way, with the same
+    // error (see `load_error`); a link failure is retried below.
+    if (script.error_to_rethrow != null and script.load_error) return script;
+
     // Step 5: LoadRequestedModules.
     if (loadRequestedModules(env, script)) |failure| {
         switch (failure) {
@@ -464,13 +546,20 @@ pub fn fetchDescendantsAndLink(env: *const Environment, script: *ModuleScript) ?
             // Step 7.1.
             .rethrow => |value| {
                 script.setErrorToRethrow(value);
+                script.load_error = true;
                 return script;
             },
         }
     }
 
-    // Step 6.1: Link. A failure becomes the error to rethrow.
-    if (link(env, script)) |value| script.setErrorToRethrow(value);
+    // Step 6.1: Link. A failure becomes the error to rethrow; a success
+    // clears one left by an earlier failed attempt.
+    if (link(env, script)) |value| {
+        script.setErrorToRethrow(value);
+    } else if (script.error_to_rethrow) |old| {
+        ffi.v8_Global_Dispose(old);
+        script.error_to_rethrow = null;
+    }
     return script;
 }
 
@@ -667,10 +756,14 @@ const promise_rejected: c_int = 2;
 
 /// What running a module script produced, for the caller to report.
 pub const RunResult = union(enum) {
-    /// Evaluation completed, or is waiting on top-level await.
+    /// Evaluation completed.
     ok,
     /// An exception to report (owned Global).
     report: *ffi.Value,
+    /// Evaluation is waiting on top-level await. The owned Global of the
+    /// evaluation promise: "upon rejection" of it, the caller reports the
+    /// reason.
+    pending: *ffi.Value,
 };
 
 /// Run a module script.
@@ -694,26 +787,34 @@ pub fn run(env: *const Environment, script: *ModuleScript) RunResult {
         return if (takeException(result.error_info)) |value| .{ .report = value } else .ok;
     }
     const promise_value = result.value orelse return .ok;
-    defer ffi.v8_Global_Dispose(promise_value);
 
     // With top-level await shipped, Evaluate always returns a promise; anything
     // else means evaluation completed with nothing to report.
-    if (!ffi.v8_Value_IsPromise(promise_value)) return .ok;
-    const promise: *ffi.Promise = @ptrCast(promise_value);
-    const state = ffi.v8_Promise_State(promise);
-
-    // Step 8: upon rejection, report. A graph with no top-level await settles
-    // synchronously, so the reason is already there.
-    if (state == promise_rejected) {
-        if (ffi.v8_Promise_Result(promise)) |reason| return .{ .report = reason };
+    if (!ffi.v8_Value_IsPromise(promise_value)) {
+        ffi.v8_Global_Dispose(promise_value);
         return .ok;
     }
 
-    // A graph still waiting on top-level await reports when it settles.
-    // TODO: chain a rejection reaction (engine.chainPromiseHandlers) so a
-    // top-level await that rejects later is reported too.
-    if (state == promise_pending) log.debug("module evaluation awaits top-level await", .{});
-    return .ok;
+    // The evaluation promise is the host's: step 8's "upon rejection" handles
+    // it. Without this a rejected module would ALSO be reported as an
+    // unhandled promise rejection.
+    ffi.v8_Promise_MarkAsHandled(promise_value);
+
+    const promise: *ffi.Promise = @ptrCast(promise_value);
+    switch (ffi.v8_Promise_State(promise)) {
+        // Step 8: upon rejection, report. A graph with no top-level await
+        // settles synchronously, so the reason is already there.
+        promise_rejected => {
+            defer ffi.v8_Global_Dispose(promise_value);
+            return if (ffi.v8_Promise_Result(promise)) |reason| .{ .report = reason } else .ok;
+        },
+        // A graph still waiting on top-level await reports when it settles.
+        promise_pending => return .{ .pending = promise_value },
+        else => {
+            ffi.v8_Global_Dispose(promise_value);
+            return .ok;
+        },
+    }
 }
 
 // =============================================================================

@@ -214,6 +214,13 @@ pub const Browser = struct {
             log.warn("Failed to initialize ShadowRealm support: {}", .{err});
         };
 
+        // HostPromiseRejectionTracker and "notify about rejected promises":
+        // the unhandledrejection / rejectionhandled events (HTML 8.1.4.7).
+        @import("html").rejected_promises.install(isolate);
+
+        // import() in a Window realm loads through the document's module map.
+        @import("html").script_execution.installDynamicImport(isolate);
+
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
         errdefer storage.deinit();
@@ -318,6 +325,11 @@ pub const Browser = struct {
             // DOM node internal states may use the isolate's allocator, which gets
             // freed by cleanupAll(). We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
+
+            // Release the rejection tracker's promise handles while the
+            // isolate that owns them still exists.
+            @import("html").rejected_promises.uninstall(isolate);
+            @import("html").script_execution.uninstallDynamicImport(isolate);
 
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.
