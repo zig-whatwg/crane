@@ -150,27 +150,15 @@ pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(dictionar
     return .{ .readable_stream_byobreader = try srd.acquireByobReader(realm, instance) };
 }
 
-/// The `readable` or `writable` member of a ReadableWritablePair arrives as
-/// the V8 object; recover the instance it wraps.
-fn unwrapPairMember(ptr: *const anyopaque) ?*runtime.Instance {
-    const v8 = @import("v8");
-    const untagged = v8.pointer_tag.untagPointer(ptr);
-    if (untagged.tag == .runtime_instance) return @ptrCast(@alignCast(untagged.ptr));
-    const value: *v8.ffi.Value = @ptrCast(untagged.ptr);
-    if (!v8.ffi.v8_Value_IsObject(value)) return null;
-    const obj: *v8.ffi.Object = @ptrCast(value);
-    if (v8.ffi.v8_Object_InternalFieldCount(obj) == 0) return null;
-    const instance_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(obj, 0) orelse return null;
-    return @ptrCast(@alignCast(instance_ptr));
-}
-
 /// `pipeThrough(transform, options)` - § 4.2.4.
 pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.ReadableWritablePair, options: webidl.Opt(dictionaries.StreamPipeOptions)) anyerror!*runtime.Instance {
     const stream = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
-    // The pair's members must be a WritableStream and a ReadableStream.
-    const writable = unwrapPairMember(@ptrCast(transform.writable)) orelse return error.TypeError;
-    const readable = unwrapPairMember(@ptrCast(transform.readable)) orelse return error.TypeError;
+    // The pair's members must be a WritableStream and a ReadableStream. The
+    // dictionary conversion has already unwrapped each to the instance it
+    // wraps; `streamOf` checks the instance's type.
+    const writable = transform.writable;
+    const readable = transform.readable;
     const dest = sw.streamOf(writable) orelse return error.TypeError;
     _ = srd.streamOf(readable) orelse return error.TypeError;
     // Steps 1-2: neither end may be locked.
