@@ -1387,6 +1387,18 @@ pub fn replace(
         }
     }
 
+    // Deviation, stated: the spec text now leaves node's adoption to step
+    // 13's insert, which would remove node from its old parent only after
+    // child is gone. Browsers - and WPT's MutationObserver-childList.html -
+    // still take node out of its old parent HERE, before child is removed,
+    // as the spec's step 10 used to read ("Adopt node into parent's node
+    // document"), so that removal is its own record and its previous sibling
+    // is still in place. Blink's ContainerNode::ReplaceChild does the same "to
+    // make a separated MutationRecord".
+    if (!isDocumentFragment(node) and node.parent_node != null) {
+        try remove(node, false);
+    }
+
     // Step 10-11: Remove child if its parent is non-null
     var removedNodes: [1]*NodeBase = undefined;
     var removed_count: usize = 0;
@@ -1397,19 +1409,14 @@ pub fn replace(
         try remove(child, true); // suppress observers
     }
 
-    // Step 12: Let nodes be node's children if DocumentFragment, otherwise « node »
-    var added_nodes: []*NodeBase = undefined;
-    var added_nodes_buf: [256]*NodeBase = undefined;
-    var added_count: usize = 0;
-
-    if (isDocumentFragment(node)) {
-        added_nodes = node.child_nodes.toSliceMut();
-        added_count = added_nodes.len;
-    } else {
-        added_nodes_buf[0] = node;
-        added_nodes = added_nodes_buf[0..1];
-        added_count = 1;
-    }
+    // Step 12: Let nodes be node's children if DocumentFragment, otherwise
+    // « node ». Copied: step 13 moves a fragment's children out of its list.
+    var added_nodes_buf: [64]*NodeBase = undefined;
+    const single = [1]*NodeBase{@ptrCast(node)};
+    const added_source: []const *NodeBase = if (isDocumentFragment(node)) node.child_nodes.items() else &single;
+    const added_nodes = copyNodes(parent.allocator, added_source, &added_nodes_buf) catch return error.OutOfMemory;
+    defer if (added_nodes.len > added_nodes_buf.len) parent.allocator.free(added_nodes);
+    const added_count = added_nodes.len;
 
     // Step 13: Insert node into parent before referenceChild with suppress observers
     try insert(node, parent, referenceChild, true);
@@ -1439,60 +1446,52 @@ pub fn replaceAll(
 ) DOMException!void {
     const allocator = parent.allocator;
 
-    // Step 1: Let removedNodes be parent's children
-    const removed_count = parent.child_nodes.size();
-    var removed_nodes_buf: [256]*NodeBase = undefined;
-    var removed_nodes: []const *NodeBase = &[_]*NodeBase{};
+    // Step 1: "Let removedNodes be parent's children." Copied: step 5 empties
+    // the list this would otherwise be a view of.
+    var removed_buf: [64]*NodeBase = undefined;
+    const removed_nodes = copyNodes(allocator, parent.child_nodes.items(), &removed_buf) catch return error.OutOfMemory;
+    defer if (removed_nodes.len > removed_buf.len) allocator.free(removed_nodes);
 
-    if (removed_count > 0) {
-        if (removed_count <= removed_nodes_buf.len) {
-            for (parent.child_nodes.items(), 0..) |child, i| {
-                removed_nodes_buf[i] = child;
-            }
-            removed_nodes = removed_nodes_buf[0..removed_count];
-        }
-    }
+    // Steps 2-4: "Let addedNodes be the empty set. If node is a
+    // DocumentFragment node, then set addedNodes to node's children.
+    // Otherwise, if node is non-null, set addedNodes to « node »." Copied
+    // too: step 6 moves a fragment's children out of it.
+    var added_buf: [64]*NodeBase = undefined;
+    var single: [1]*NodeBase = undefined;
+    const added_source: []const *NodeBase = if (node) |n| blk: {
+        if (isDocumentFragment(n)) break :blk n.child_nodes.items();
+        single[0] = @ptrCast(n);
+        break :blk &single;
+    } else &.{};
+    const added_nodes = copyNodes(allocator, added_source, &added_buf) catch return error.OutOfMemory;
+    defer if (added_nodes.len > added_buf.len) allocator.free(added_nodes);
 
-    // Step 2-4: Determine addedNodes
-    var added_nodes: []const *NodeBase = &[_]*NodeBase{};
-    var added_nodes_buf: [256]*NodeBase = undefined;
-    var added_count: usize = 0;
-
-    if (node) |n| {
-        if (isDocumentFragment(n)) {
-            added_nodes = n.child_nodes.items();
-            added_count = added_nodes.len;
-        } else {
-            const node_ptr: *NodeBase = @ptrCast(n);
-            added_nodes_buf[0] = node_ptr;
-            added_nodes = added_nodes_buf[0..1];
-            added_count = 1;
-        }
-    }
-
-    // Step 5: Remove all parent's children in tree order with suppress observers
+    // Step 5: "Remove all parent's children, in tree order, with the
+    // suppress observers flag set."
     while (parent.child_nodes.size() > 0) {
         const child_to_remove = parent.child_nodes.items()[0];
         try remove(child_to_remove, true);
     }
 
-    // Step 6: If node is non-null, insert node into parent before null with suppress observers
+    // Step 6: "If node is non-null, then insert node into parent before null
+    // with the suppress observers flag set."
     if (node) |n| {
         try insert(n, parent, null, true);
     }
 
-    // Step 7: Queue a tree mutation record if addedNodes or removedNodes is not empty
-    if (added_count > 0 or removed_count > 0) {
-        // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-        queueTreeMutationRecord(
-            allocator,
-            parent,
-            added_nodes[0..added_count],
-            removed_nodes[0..removed_count],
-            null,
-            null,
-        );
+    // Step 7: "If either addedNodes or removedNodes is not empty, then queue
+    // a tree mutation record for parent with addedNodes, removedNodes, null,
+    // and null."
+    if (added_nodes.len > 0 or removed_nodes.len > 0) {
+        queueTreeMutationRecord(allocator, parent, added_nodes, removed_nodes, null, null);
     }
+}
+
+/// `nodes` copied into `buffer` when it fits, or into a new allocation.
+fn copyNodes(allocator: std.mem.Allocator, nodes: []const *NodeBase, buffer: []*NodeBase) ![]*NodeBase {
+    const copy = if (nodes.len <= buffer.len) buffer[0..nodes.len] else try allocator.alloc(*NodeBase, nodes.len);
+    @memcpy(copy, nodes);
+    return copy;
 }
 
 /// DOM §4.2.5 - Pre-remove

@@ -2195,23 +2195,16 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
 
     // Import HTMLParser for fragment parsing
     const HTMLParser = @import("HTMLParser.zig");
+    const element_base = dom.instance_bridge.getNodeBase(@ptrCast(instance)) orelse return error.InvalidStateError;
 
-    // Step 1: Remove all existing children
-    // Walk through children and remove them
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        // Remove child from parent
-        _ = interfaces.Node.call_removeChild(instance, c) catch break;
-        child = next;
-    }
-
-    // Step 2: If value is empty string, we're done
+    // The empty string parses to an empty fragment: replace all with nothing.
     if (html_string.len == 0) {
+        try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), element_base);
         return;
     }
 
-    // Step 3: Parse the HTML fragment using this element as context
+    // Step 1: "Let fragment be the result of invoking the fragment parsing
+    // algorithm steps with context and compliantString."
     const fragment = HTMLParser.parseFragment(
         internal.allocator,
         instance.ctx,
@@ -2222,19 +2215,19 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
         else => return error.NotSupportedError,
     };
 
-    // Step 4: Move all children from fragment to this element
-    var fragment_child = NodeImpl.getFirstChild(fragment);
-    while (fragment_child) |fc| {
-        const next = NodeImpl.getNextSibling(fc);
-        // Remove from fragment
-        _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
-        // Append to this element (use interface per Golden Rule #13)
-        _ = interfaces.Node.call_appendChild(instance, fc) catch break;
-        fragment_child = next;
-    }
+    // The fragment is empty once its children have moved.
+    defer interfaces.DocumentFragment.deinit(fragment);
+    const fragment_base = dom.instance_bridge.getNodeBase(@ptrCast(fragment)) orelse return error.InvalidStateError;
 
-    // Clean up the fragment (children have been moved)
-    interfaces.DocumentFragment.deinit(fragment);
+    // Step 2: "If context is a template element, then set context to the
+    // template element's template contents."
+    // TODO(template): the template contents fragment has no seam from here
+    // yet; the children land on the template element itself, as before.
+
+    // Step 3: "Replace all with fragment within context." One tree mutation
+    // record for the whole change; removing each child and moving each
+    // parsed node one at a time queued a record apiece.
+    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), element_base);
 }
 
 /// Setter for outerHTML

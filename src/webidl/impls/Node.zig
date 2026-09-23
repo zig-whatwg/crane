@@ -934,36 +934,31 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
             internal.node_value = try (value orelse runtime.DOMString.initEmpty()).clone(internal.allocator);
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            // Remove all children using NodeBase
-            if (internal.node_base) |node_base| {
-                while (node_base.first_child) |child_base| {
-                    const child_opaque = instance_bridge.getInstance(child_base) orelse {
-                        // If we can't get the instance, we have a corrupted tree - break
-                        break;
-                    };
-                    const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-                    _ = try call_removeChild(instance, child_instance);
-                }
-            }
+            // DOM "string replace all" with the given value within this.
+            const node_base = internal.node_base orelse return error.InvalidStateError;
 
-            // If value is not empty, create and append a Text node
+            // Step 1: "Let node be null."
+            // Step 2: "If string is not the empty string, then set node to a
+            // new Text node whose data is string and node document is
+            // parent's node document."
             const slice = if (value) |v| v.asSlice() else "";
+            var text_base: ?*NodeBase = null;
             if (slice.len > 0) {
-                // Create Text node with the value (use interface per Golden Rule #13)
                 const text_node = try interfaces.Text.call_constructor(
                     instance.ctx,
                     webidl.Opt(runtime.DOMString).passed(value.?),
                 );
                 errdefer interfaces.Text.deinit(text_node);
-
-                // Set owner document for the text node
                 if (internal.owner_document) |owner_doc| {
                     try setOwnerDocument(text_node, owner_doc);
                 }
-
-                // Append the text node
-                _ = try call_appendChild(instance, text_node);
+                text_base = instance_bridge.getNodeBase(@ptrCast(text_node)) orelse return error.InvalidStateError;
             }
+
+            // Step 3: "Replace all with node within parent." One tree
+            // mutation record for the whole change: removing the children one
+            // by one queued a record per child and another for the text.
+            try dom_module.mutation.replaceAll(text_base, node_base);
         },
         else => {},
     }
