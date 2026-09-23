@@ -3,7 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
 // Type aliases
 const Element = dom.ElementWithBase;
 

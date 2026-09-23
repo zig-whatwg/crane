@@ -10,17 +10,16 @@ const infra = @import("infra");
 
 fn expectEssence(mime_type: MimeType, expected_type: []const u8, expected_subtype: []const u8) !void {
     const allocator = std.testing.allocator;
-    
+
     // Convert UTF-16 to UTF-8 for comparison
     const type_utf8 = try infra.bytes.isomorphicEncode(allocator, mime_type.type);
     defer allocator.free(type_utf8);
     const subtype_utf8 = try infra.bytes.isomorphicEncode(allocator, mime_type.subtype);
     defer allocator.free(subtype_utf8);
-    
+
     try std.testing.expectEqualStrings(expected_type, type_utf8);
     try std.testing.expectEqualStrings(expected_subtype, subtype_utf8);
 }
-
 
 test "matchImageTypePattern - PNG" {
     const png_signature = [_]u8{ 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };

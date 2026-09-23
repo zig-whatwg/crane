@@ -65,10 +65,7 @@ test "ReadableStream.transferReceivingSteps - deserialize and setup" {
 
     // This should set up the stream to receive from the port
     // Note: Full implementation would connect to the entangled port
-    try testing.expectError(
-        error.NotImplemented,
-        stream.transferReceivingSteps(serialized)
-    );
+    try testing.expectError(error.NotImplemented, stream.transferReceivingSteps(serialized));
 }
 
 // ============================================================================
@@ -124,10 +121,7 @@ test "WritableStream.transferReceivingSteps - deserialize and setup" {
 
     // This should set up the stream to send to the port
     // Note: Full implementation would connect to the entangled port
-    try testing.expectError(
-        error.NotImplemented,
-        stream.transferReceivingSteps(serialized)
-    );
+    try testing.expectError(error.NotImplemented, stream.transferReceivingSteps(serialized));
 }
 
 // ============================================================================

@@ -7,4 +7,3 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const DOMImplementation = dom.DOMImplementation;
-
