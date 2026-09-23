@@ -119,12 +119,6 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
-/// Helper to get NodeImpl internal state from a node instance
-fn getNodeInternal(node: *runtime.Instance) ?*NodeImpl.InternalState {
-    const state = node.getState(interfaces.Node.State);
-    return state.own._internal;
-}
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -228,14 +222,18 @@ pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapp
 /// Returns the next node in the iteration, or null if none
 /// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-nextnode
 pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return try traverse(instance, .next) orelse return error.NotImplemented; // null
+    // Returns the result of traversing: a node, or null when the iterator
+    // has run off the end of its root.
+    return try traverse(instance, .next);
 }
 
 /// DOM §6.2 - NodeIterator.previousNode()
 /// Returns the previous node in the iteration, or null if none
 /// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-previousnode
 pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return try traverse(instance, .previous) orelse return error.NotImplemented; // null
+    // Returns the result of traversing: a node, or null when the iterator
+    // has run off the end of its root.
+    return try traverse(instance, .previous);
 }
 
 /// DOM §6.2 - NodeIterator.detach()
@@ -320,9 +318,11 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
         return error.InvalidStateError;
     }
 
-    // Step 2: Let n be node's nodeType attribute value − 1
-    const node_internal = getNodeInternal(node) orelse return NodeFilter.FILTER_ACCEPT;
-    const node_type = node_internal.node_type;
+    // Step 2: Let n be node's nodeType attribute value − 1. Read through the
+    // Node impl: the Node state of a subclass does not sit at offset 0, so a
+    // raw getState read answered null for some node types, and those were
+    // accepted without consulting whatToShow at all.
+    const node_type = NodeImpl.getNodeType(node) orelse return NodeFilter.FILTER_SKIP;
     const n: u8 = @intCast(node_type - 1);
 
     // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
@@ -405,14 +405,9 @@ fn getPreviousNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*ru
         return getLastInclusiveDescendant(sibling);
     }
 
-    // Otherwise return parent (if not root)
-    const parent = NodeImpl.getParent(node) orelse return null;
-
-    if (root) |r| {
-        if (parent == r) return null;
-    }
-
-    return parent;
+    // Otherwise the parent - which may be the root itself: the iterator
+    // collection is the root's INCLUSIVE descendants.
+    return NodeImpl.getParent(node);
 }
 
 /// Get the last inclusive descendant of a node

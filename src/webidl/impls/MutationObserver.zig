@@ -373,14 +373,33 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 2: Empty this's record queue.
     // (Already emptied by toOwnedSlice)
 
-    // Step 3: Return records as JSValue
-    // TODO: Return proper V8 Array of MutationRecord - need V8 array creation utility
-    // For now, ownership transfers to caller via JSValue. If not used, we'd need
-    // to free the records. Since we return jsUndefined, we must free them here.
-    for (records) |record| {
-        runtime.Instance.deinit(record);
+    // Step 3: Return records - as a sequence<MutationRecord>, a JS array.
+    // Wrapping hands each record to V8, exactly as `invokeCallback` does for
+    // the callback's first argument; the wrapper cache owns them from here.
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        for (records) |record| runtime.Instance.deinit(record);
+        return error.InvalidStateError;
+    };
+    const scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        for (records) |record| runtime.Instance.deinit(record);
+        return error.OutOfMemory;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(scope);
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        for (records) |record| runtime.Instance.deinit(record);
+        return error.InvalidStateError;
+    };
+    defer v8_engine.ffi.v8_Context_Dispose(context);
+
+    // A Global<Array> the caller owns; the JSValue carries that ownership
+    // back to the binding, as URLSearchParams.getAll does.
+    const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(records.len));
+    const conv = v8_engine.conversions;
+    for (records, 0..) |record, idx| {
+        // The wrapper cache's own Global - borrowed; Set takes its reference.
+        _ = v8_engine.ffi.v8_Array_Set(array, context, @intCast(idx), conv.instanceToV8(isolate, record));
     }
-    return runtime.JSValue.jsUndefined;
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
 }
 
 // ============================================================================

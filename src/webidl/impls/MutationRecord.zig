@@ -202,7 +202,7 @@ pub fn get_removedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance 
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
 pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.previous_sibling orelse return error.NotImplemented;
+    return internal.previous_sibling;
 }
 
 /// DOM §7.2 - MutationRecord.nextSibling
@@ -210,7 +210,7 @@ pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Insta
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
 pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.next_sibling orelse return error.NotImplemented;
+    return internal.next_sibling;
 }
 
 /// DOM §7.2 - MutationRecord.attributeName

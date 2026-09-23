@@ -3573,9 +3573,11 @@ pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
 }
 
 /// Operation: getSelection
+/// Selection API: "The method must invoke and return the result of
+/// getSelection() on this's associated Document."
 pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const document = try interfaces.Window.get_document(instance);
+    return interfaces.Document.call_getSelection(document);
 }
 
 /// Operation: stop
