@@ -36,6 +36,16 @@ pub const InternalState = struct {
     /// Root node for live collection updates
     root: ?*runtime.Instance = null,
 
+    /// The root's slab generation when the collection was made live. A
+    /// collection script keeps can outlive its root; a mismatch means the
+    /// root is gone and the collection is empty, never a read of freed memory.
+    root_generation: u64 = 0,
+
+    /// How a LIVE collection rebuilds its elements from `root`: set by the
+    /// producer (`makeLive`) and run before every read. Null for a static
+    /// list filled by `addElement`.
+    refill: ?Refill = null,
+
     /// Filter function for matching elements (for getElementsByClassName, etc.)
     filter_tag: ?runtime.DOMString = null,
     filter_class: ?runtime.DOMString = null,
@@ -57,6 +67,33 @@ pub const InternalState = struct {
         }
     }
 };
+
+/// Rebuild a live collection from its root: add each element, in tree order,
+/// with `addElement`. The collection has been cleared before it is called.
+pub const Refill = *const fn (collection: *runtime.Instance, root: *runtime.Instance) void;
+
+/// Make `collection` LIVE over `root`: DOM's "a collection ... is live, it
+/// reflects changes to its root". `refill` runs now and before every read.
+///
+/// Collections were snapshots, and `children` is [SameObject] - the interface
+/// caches the first one - so `el.children` answered with whatever the element
+/// held the first time it was read, for the element's whole life.
+pub fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refill) void {
+    const internal = getInternal(collection) orelse return;
+    internal.root = root;
+    internal.root_generation = runtime.SlabAllocator.generationOf(root);
+    internal.refill = refill;
+    refresh(collection, internal);
+}
+
+/// Bring a live collection up to date with its root.
+fn refresh(instance: *runtime.Instance, internal: *InternalState) void {
+    const refill = internal.refill orelse return;
+    const root = internal.root orelse return;
+    clear(instance);
+    if (runtime.SlabAllocator.generationOf(root) != internal.root_generation) return;
+    refill(instance, root);
+}
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -111,6 +148,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Returns the number of elements in the collection.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
+    refresh(instance, internal);
     return @intCast(internal.elements.size());
 }
 
@@ -119,6 +157,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Returns the element at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
+    refresh(instance, internal);
     // Return null for out of bounds per spec
     return internal.elements.get(index);
 }
@@ -134,6 +173,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// or null if there is no such element.
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
+    refresh(instance, internal);
     const name_slice = name.asSlice();
 
     // Empty name returns null
@@ -198,6 +238,7 @@ pub fn setRoot(instance: *runtime.Instance, root: *runtime.Instance) void {
 /// Get the elements as a slice (for iteration)
 pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
     const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
+    refresh(instance, internal);
     return internal.elements.toSlice();
 }
 
@@ -210,6 +251,7 @@ pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
 /// with earlier values taking precedence (no duplicates)
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+    refresh(instance, internal);
 
     const elements = internal.elements.toSlice();
     if (elements.len == 0) return &[_]runtime.DOMString{};

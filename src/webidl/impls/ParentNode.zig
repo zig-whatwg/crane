@@ -124,17 +124,22 @@ pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     ) catch return error.OutOfMemory;
     errdefer interfaces.HTMLCollection.deinit(collection);
 
-    // Iterate direct children and add elements
-    var child = NodeImpl.getFirstChild(instance);
+    // DOM: "an HTMLCollection collection rooted at this matching only element
+    // children" - live, so it answers for the tree as it is when read.
+    HTMLCollectionImpl.makeLive(collection, instance, &refillElementChildren);
+    return collection;
+}
+
+/// `children`'s filter: the element children of `root`, in tree order.
+fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
+    var child = NodeImpl.getFirstChild(root);
     while (child) |c| {
         const node_type = NodeImpl.getNodeType(c) orelse 0;
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
+            HTMLCollectionImpl.addElement(collection, c) catch return;
         }
         child = NodeImpl.getNextSibling(c);
     }
-
-    return collection;
 }
 
 // =============================================================================
