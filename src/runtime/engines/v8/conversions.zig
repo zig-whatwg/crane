@@ -1123,40 +1123,33 @@ pub fn fromV8Value(
         return convertToInt(T, v8.v8_Value_NumberValue(value, context));
     }
 
-    // Handle enums (convert from string or integer)
+    // Handle enums: WebIDL §3.2.23 - S = ? ToString(V), then a TypeError
+    // unless S is one of the enumeration's values. Every value is converted,
+    // not only a string: `history.scrollRestoration = 5` is "5", which matches
+    // nothing (and used to reach @enumFromInt(5) and panic).
     if (type_info == .@"enum") {
-        if (v8.v8_Value_IsString(value)) {
-            // Try to parse enum from string name
-            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
-            var dom_string = try fromV8String(allocator, isolate, context, string);
-            defer dom_string.deinit(allocator);
+        // ToString throws for a Symbol, or when a toString() throws; the
+        // exception is pending then, for the binding to rethrow.
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
+        defer v8.v8_String_Dispose(string);
+        var dom_string = try fromV8String(allocator, isolate, context, string);
+        defer dom_string.deinit(allocator);
 
-            // Try to match enum name
-            const enum_name = switch (dom_string) {
-                .empty => "",
-                .interned => |s| s,
-                .owned => |s| s,
-            };
+        const enum_name = switch (dom_string) {
+            .empty => "",
+            .interned => |s| s,
+            .owned => |s| s,
+        };
 
-            // Use @typeInfo to iterate enum fields and match by name
-            // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig:
-            // - Hyphens become underscores
-            // - Leading/trailing underscores wrap reserved words
-            inline for (std.meta.fields(T)) |field| {
-                // Try matching with WebIDL normalization (handles hyphens, underscores, etc.)
-                if (enumNameMatches(field.name, enum_name)) {
-                    return @enumFromInt(field.value);
-                }
+        // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig:
+        // - Hyphens become underscores
+        // - Leading/trailing underscores wrap reserved words
+        inline for (std.meta.fields(T)) |field| {
+            if (enumNameMatches(field.name, enum_name)) {
+                return @enumFromInt(field.value);
             }
-            return ConversionError.TypeError;
-        } else if (v8.v8_Value_IsNumber(value)) {
-            // Convert from integer value
-            const num_value = v8.v8_Value_NumberValue(value, context);
-            const int_value: i32 = @intFromFloat(num_value);
-            return @enumFromInt(int_value);
-        } else {
-            return ConversionError.TypeError;
         }
+        return ConversionError.TypeError;
     }
 
     // Handle *runtime.Instance (interface instance pointers)
