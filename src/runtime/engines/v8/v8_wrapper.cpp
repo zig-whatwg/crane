@@ -2963,6 +2963,21 @@ int32_t v8_Value_Int32Value(Global<Value>* value, Global<Context>* context) {
     return maybe_int.FromMaybe(0);
 }
 
+// ToInt32 for a WebIDL `long` argument (no [EnforceRange] or [Clamp]): ToNumber,
+// then modulo 2^32 into the signed range - so 2**32 is 0. ToNumber runs user code
+// (valueOf, Symbol.toPrimitive) and can throw, which v8_Value_Int32Value's
+// FromMaybe(0) cannot tell from a real 0. False means it threw; the exception is
+// left PENDING, so a FunctionCallback that returns at once rethrows it to script.
+bool v8_Value_ToInt32(Global<Value>* value, Global<Context>* context, int32_t* out) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Maybe<int32_t> result = value->Get(isolate)->Int32Value(ctx);
+    if (result.IsNothing()) return false;
+    *out = result.FromJust();
+    return true;
+}
+
 uint32_t v8_Value_Uint32Value(Global<Value>* value, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

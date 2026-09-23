@@ -935,6 +935,9 @@ pub extern fn v8_Value_IsBoundFunction(value: *Value) bool;
 pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
 pub extern fn v8_Value_NumberValue(value: *Value, context: *Context) f64;
 pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
+/// ToInt32 (WebIDL `long`). False when ToNumber threw; the exception is left
+/// pending, so a native callback returning at once rethrows it to script.
+pub extern fn v8_Value_ToInt32(value: *Value, context: *Context, out: *i32) bool;
 pub extern fn v8_Value_Uint32Value(value: *Value, context: *Context) u32;
 pub extern fn v8_Value_IntegerValue(value: *Value, context: *Context) i64;
 pub extern fn v8_Value_ToString(value: *Value, context: *Context) ?*String;
