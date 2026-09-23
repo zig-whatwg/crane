@@ -3023,6 +3023,23 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     loop.queueTask(.{ .callback = &runPostedMessage, .context = posted, .drop = &dropPostedMessage });
 }
 
+/// Operation: postMessage(message, options)
+/// Spec: HTML "The postMessage(message, options) method steps are to run the
+/// window post message steps providing this, message, and options" -
+/// WindowPostMessageOptions' targetOrigin defaults to "/".
+///
+/// This overload was never bound until codegen kept overloads, so
+/// `postMessage(m, {targetOrigin: "*"})` converted the dictionary to the
+/// string "[object Object]" and threw SyntaxError.
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.WindowPostMessageOptions)) anyerror!void {
+    const target_origin: []const u8 = if (options.was_passed)
+        options.value.targetOrigin orelse "/"
+    else
+        "/";
+    // TODO: step 6 - options.transfer, as in the three-argument form.
+    return call_postMessage(instance, message, target_origin, webidl.Opt(runtime.JSValue).notPassed());
+}
+
 /// What `targetOrigin` names: steps 3-5 of the window post message steps.
 const TargetOrigin = union(enum) {
     /// "*": any origin.
