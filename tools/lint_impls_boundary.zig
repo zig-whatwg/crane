@@ -26,10 +26,15 @@
 //! The baseline only goes down. After paying debt down:
 //!     zig build lint-impls -- --update
 //! which refuses to record an increase.
+//!
+//! It also checks that impl names are the binding map (see "Names are the
+//! binding map" below): strictly for interfaces, namespaces and helpers, and as
+//! a ratchet over tools/impls_naming_baseline.txt for mixin impls.
 
 const std = @import("std");
 
 const baseline_path = "tools/impls_boundary_baseline.txt";
+const naming_baseline_path = "tools/impls_naming_baseline.txt";
 const impls_dir = "src/webidl/impls/";
 
 /// Generated or unbuilt code: the layers that are MEANT to call impls.
@@ -493,8 +498,29 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
     return counts;
 }
 
+const boundary_header =
+    \\# References into impls from code that does not own them: path Impl.member count.
+    \\# A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
+    \\# count rises or a new pair appears. After paying debt down, lower it with
+    \\# `zig build lint-impls -- --update`. Never raise it by hand.
+    \\
+;
+
+const naming_header =
+    \\# API-named functions in mixin impls that nothing calls: path function 1.
+    \\# Every includer's generated interface binds the INCLUDER's impl, so these
+    \\# never run. A ratchet - `zig build lint-impls`, part of `zig build test`,
+    \\# fails on a new one. After deleting or routing some, lower it with
+    \\# `zig build lint-impls -- --update`. Never raise it by hand.
+    \\
+;
+
 /// Format counts as a baseline file, keys sorted.
 pub fn formatBaseline(gpa: std.mem.Allocator, counts: *const Counts) ![]u8 {
+    return formatBaselineWithHeader(gpa, boundary_header, counts);
+}
+
+fn formatBaselineWithHeader(gpa: std.mem.Allocator, header: []const u8, counts: *const Counts) ![]u8 {
     var keys: std.ArrayList([]const u8) = .empty;
     defer keys.deinit(gpa);
     var it = counts.keyIterator();
@@ -503,19 +529,157 @@ pub fn formatBaseline(gpa: std.mem.Allocator, counts: *const Counts) ![]u8 {
 
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(gpa);
-    try out.appendSlice(gpa,
-        \\# References into impls from code that does not own them: path Impl.member count.
-        \\# A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
-        \\# count rises or a new pair appears. After paying debt down, lower it with
-        \\# `zig build lint-impls -- --update`. Never raise it by hand.
-        \\
-    );
+    try out.appendSlice(gpa, header);
     for (keys.items) |key| {
         const line = try std.fmt.allocPrint(gpa, "{s} {d}\n", .{ key, counts.get(key).? });
         defer gpa.free(line);
         try out.appendSlice(gpa, line);
     }
     return out.toOwnedSlice(gpa);
+}
+
+// ---------------------------------------------------------------------------
+// Names are the binding map
+// ---------------------------------------------------------------------------
+//
+// The binding finds an impl's function by the name its generated file gives
+// it - `get_<attr>` / `set_<attr>`, `call_<op>` (an overload `call_<op>__<k>`),
+// and for a static member `get_static_` / `set_static_` / `call_static_` - so
+// no separate table maps impl functions to script. That only works while the
+// prefixes mean "exposed to script" and nothing else: a private helper named
+// `get_x`, or a public `call_x` the generated file never calls, is a name that
+// says the function is bound when it is not.
+
+/// A top-level function whose name carries an API prefix.
+pub const ApiFn = struct { line: u32, name: []const u8, public: bool };
+
+pub fn isApiName(name: []const u8) bool {
+    return std.mem.startsWith(u8, name, "get_") or
+        std.mem.startsWith(u8, name, "set_") or
+        std.mem.startsWith(u8, name, "call_");
+}
+
+/// Every top-level `[pub] [inline] fn name(` whose name carries an API
+/// prefix. The binding reads only an impl's top level, so a nested
+/// declaration is not one of its functions.
+pub fn apiFunctions(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(ApiFn) {
+    var out: std.ArrayList(ApiFn) = .empty;
+    errdefer out.deinit(gpa);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var number: u32 = 0;
+    while (lines.next()) |raw| {
+        number += 1;
+        var s = raw;
+        const public = std.mem.startsWith(u8, s, "pub ");
+        if (public) s = s["pub ".len..];
+        if (std.mem.startsWith(u8, s, "inline ")) s = s["inline ".len..];
+        if (!std.mem.startsWith(u8, s, "fn ")) continue;
+        const name = identAt(s, "fn ".len);
+        if (!isApiName(name)) continue;
+        try out.append(gpa, .{ .line = number, .name = name, .public = public });
+    }
+    return out;
+}
+
+/// The names a generated file reaches in `impl` through its alias for it
+/// (`const XImpl = @import("impls").X;`): `XImpl.name` and
+/// `@hasDecl(XImpl, "name")`, outside comments.
+pub fn boundNames(gpa: std.mem.Allocator, impl: []const u8, generated: []const u8) !std.ArrayList([]const u8) {
+    var aliases: std.ArrayList([]const u8) = .empty;
+    defer aliases.deinit(gpa);
+    var lines = std.mem.splitScalar(u8, generated, '\n');
+    while (lines.next()) |raw| {
+        const decl = constDecl(codeOf(raw)) orelse continue;
+        const target = implsMember(decl.rhs) orelse continue;
+        if (std.mem.eql(u8, target, impl)) try aliases.append(gpa, decl.name);
+    }
+
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(gpa);
+    lines = std.mem.splitScalar(u8, generated, '\n');
+    while (lines.next()) |raw| {
+        const code = codeOf(raw);
+        for (aliases.items) |alias| {
+            var pos: usize = 0;
+            while (std.mem.indexOfPos(u8, code, pos, alias)) |at| {
+                pos = at + alias.len;
+                if (at > 0 and (isIdentChar(code[at - 1]) or code[at - 1] == '.')) continue;
+                if (pos < code.len and code[pos] == '.') {
+                    try appendName(gpa, &out, identAt(code, pos + 1));
+                } else if (pos + 3 <= code.len and std.mem.eql(u8, code[pos .. pos + 3], ", \"") and
+                    at >= "@hasDecl(".len and std.mem.eql(u8, code[at - "@hasDecl(".len .. at], "@hasDecl("))
+                {
+                    try appendName(gpa, &out, identAt(code, pos + 3));
+                }
+            }
+        }
+    }
+    return out;
+}
+
+fn appendName(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8), name: []const u8) !void {
+    if (name.len > 0 and !contains(out.items, name)) try out.append(gpa, name);
+}
+
+/// What an impl file implements, which decides who must bind its names.
+pub const ImplKind = enum {
+    /// An interface or namespace: its generated file binds its functions.
+    bound_type,
+    /// An interface mixin: every includer's generated interface binds the
+    /// INCLUDER's impl, so a mixin impl's function runs only when something
+    /// calls it. Ratcheted rather than strict - see `unroutedFunctions`.
+    mixin,
+    /// No generated file at all: nothing binds a helper module.
+    helper,
+};
+
+pub const NameViolation = struct {
+    line: u32,
+    name: []const u8,
+    reason: Reason,
+
+    pub const Reason = enum {
+        /// A private function with an API prefix.
+        private,
+        /// A public API name the type's generated file never reaches.
+        unbound,
+    };
+};
+
+/// The strict naming rules for one impl file: no private function carries
+/// an API prefix, and in an interface, namespace or helper every public one
+/// is bound (`bound`: the names its generated file reaches; empty for a
+/// helper). A mixin's public names are left to the ratchet.
+pub fn nameViolations(gpa: std.mem.Allocator, kind: ImplKind, text: []const u8, bound: []const []const u8) !std.ArrayList(NameViolation) {
+    var out: std.ArrayList(NameViolation) = .empty;
+    errdefer out.deinit(gpa);
+    var fns = try apiFunctions(gpa, text);
+    defer fns.deinit(gpa);
+    for (fns.items) |f| {
+        if (!f.public) {
+            try out.append(gpa, .{ .line = f.line, .name = f.name, .reason = .private });
+        } else if (kind != .mixin and !contains(bound, f.name)) {
+            try out.append(gpa, .{ .line = f.line, .name = f.name, .reason = .unbound });
+        }
+    }
+    return out;
+}
+
+/// A mixin impl's public API functions that no code outside the generated
+/// layers calls. `routed` holds `Impl.member` for every reference into an
+/// impl the scan saw.
+pub fn unroutedFunctions(gpa: std.mem.Allocator, mixin: []const u8, text: []const u8, routed: *const std.StringHashMapUnmanaged(void)) !std.ArrayList([]const u8) {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(gpa);
+    var fns = try apiFunctions(gpa, text);
+    defer fns.deinit(gpa);
+    for (fns.items) |f| {
+        if (!f.public) continue;
+        const key = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ mixin, f.name });
+        defer gpa.free(key);
+        if (!routed.contains(key)) try out.append(gpa, f.name);
+    }
+    return out;
 }
 
 // ============================================================================
@@ -556,8 +720,10 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    // The type hierarchy, from the generated interfaces.
+    // The type hierarchy, from the generated interfaces - which also say
+    // which of them are mixins.
     var hierarchy: Hierarchy = .{};
+    var mixins: std.StringHashMapUnmanaged(void) = .empty;
     {
         var dir = try std.Io.Dir.cwd().openDir(io, "src/webidl/interfaces", .{ .iterate = true });
         defer dir.close(io);
@@ -570,6 +736,20 @@ pub fn main(init: std.process.Init) !void {
             const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(16 << 20));
             const shape = parseInterface(text);
             try hierarchy.addInterface(arena, name, shape.parent, shape.mixins);
+            if (std.mem.indexOf(u8, text, "pub const is_mixin = true;") != null) try mixins.put(arena, name, {});
+        }
+    }
+
+    // Namespaces, which are bound from their own generated directory.
+    var namespaces: std.StringHashMapUnmanaged(void) = .empty;
+    {
+        var dir = try std.Io.Dir.cwd().openDir(io, "src/webidl/namespaces", .{ .iterate = true });
+        defer dir.close(io);
+        var it = dir.iterate();
+        while (try it.next(io)) |entry| {
+            if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".zig")) continue;
+            if (std.mem.eql(u8, entry.name, "root.zig")) continue;
+            try namespaces.put(arena, try arena.dupe(u8, entry.name[0 .. entry.name.len - 4]), {});
         }
     }
 
@@ -591,6 +771,8 @@ pub fn main(init: std.process.Init) !void {
 
     // Scan src/.
     var current: Counts = .empty;
+    // `Impl.member` of every reference the scan sees: what some code calls.
+    var routed: std.StringHashMapUnmanaged(void) = .empty;
     var sites = std.StringHashMapUnmanaged(std.ArrayList(Reference)).empty;
     var hook_misuse: std.ArrayList(struct { path: []const u8, ref: Reference }) = .empty;
     var src = try std.Io.Dir.cwd().openDir(io, "src", .{ .iterate = true });
@@ -612,6 +794,7 @@ pub fn main(init: std.process.Init) !void {
         else
             continue;
         for (refs.items) |ref| {
+            try routed.put(arena, try std.fmt.allocPrint(arena, "{s}.{s}", .{ ref.impl, ref.member }), {});
             const key = try std.fmt.allocPrint(arena, "{s} {s}.{s}", .{ path, ref.impl, ref.member });
             const gop = try current.getOrPut(arena, key);
             if (!gop.found_existing) gop.value_ptr.* = 0;
@@ -622,9 +805,40 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    var total: usize = 0;
-    var values = current.valueIterator();
-    while (values.next()) |value| total += value.*;
+    // Names are the binding map: strict for what a generated file binds, and
+    // for helpers; a ratchet for mixin impls.
+    var name_misuse: std.ArrayList(struct { path: []const u8, violation: NameViolation }) = .empty;
+    var unrouted: Counts = .empty;
+    {
+        var dir = try std.Io.Dir.cwd().openDir(io, "src/webidl/impls", .{ .iterate = true });
+        defer dir.close(io);
+        var it = dir.iterate();
+        while (try it.next(io)) |entry| {
+            if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".zig")) continue;
+            if (std.mem.eql(u8, entry.name, "root.zig")) continue;
+            const name = try arena.dupe(u8, entry.name[0 .. entry.name.len - 4]);
+            const path = try std.fmt.allocPrint(arena, "{s}{s}", .{ impls_dir, entry.name });
+            const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
+            const generated_path: ?[]const u8 = if (hierarchy.parents.contains(name))
+                try std.fmt.allocPrint(arena, "src/webidl/interfaces/{s}.zig", .{name})
+            else if (namespaces.contains(name))
+                try std.fmt.allocPrint(arena, "src/webidl/namespaces/{s}.zig", .{name})
+            else
+                null;
+            const kind: ImplKind = if (mixins.contains(name)) .mixin else if (generated_path != null) .bound_type else .helper;
+            var bound: std.ArrayList([]const u8) = .empty;
+            if (kind == .bound_type) {
+                const generated = try std.Io.Dir.cwd().readFileAlloc(io, generated_path.?, arena, .limited(16 << 20));
+                bound = try boundNames(arena, name, generated);
+            }
+            const found = try nameViolations(arena, kind, text, bound.items);
+            for (found.items) |v| try name_misuse.append(arena, .{ .path = path, .violation = v });
+            if (kind == .mixin) {
+                const list = try unroutedFunctions(arena, name, text, &routed);
+                for (list.items) |fn_name| try unrouted.put(arena, try std.fmt.allocPrint(arena, "{s} {s}", .{ path, fn_name }), 1);
+            }
+        }
+    }
 
     var buffer: [8192]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &buffer);
@@ -646,42 +860,111 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    const baseline_text: ?[]u8 = std.Io.Dir.cwd().readFileAlloc(io, baseline_path, arena, .limited(64 << 20)) catch |err| switch (err) {
-        error.FileNotFound => null,
-        else => return err,
-    };
-    if (baseline_text == null and update) {
-        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current) });
-        try out.print("impls boundary: first baseline recorded - {d} references, {d} keys.\n", .{ total, current.count() });
-        try out.flush();
-        return;
-    }
-    if (baseline_text == null) {
-        try out.print("impls boundary: no {s}; record one with `zig build lint-impls -- --update`.\n", .{baseline_path});
-        try out.flush();
-        std.process.exit(1);
-    }
-    const baseline = try parseBaseline(arena, baseline_text.?);
-
-    const found = try violations(arena, &current, &baseline);
-    if (found.items.len > 0) {
-        try out.print("impls boundary: {d} reference(s) into impls above the baseline.\n\n", .{found.items.len});
-        for (found.items) |v| {
-            try out.print("  {s}: allowed {d}, found {d}\n", .{ v.key, v.allowed, v.found });
-            if (sites.get(v.key)) |list| {
-                const path_end = std.mem.indexOfScalar(u8, v.key, ' ') orelse v.key.len;
-                for (list.items) |ref| try out.print("      {s}:{d}: {s}\n", .{ v.key[0..path_end], ref.line, ref.code });
-            }
+    // Strict, not a ratchet: a name that says a function is bound when it is not.
+    if (name_misuse.items.len > 0) {
+        try out.print("impl names: {d} function(s) named for script that nothing binds.\n\n", .{name_misuse.items.len});
+        for (name_misuse.items) |m| {
+            const why = switch (m.violation.reason) {
+                .private => "private",
+                .unbound => "public, and its generated file never calls it",
+            };
+            try out.print("  {s}:{d}: {s} - {s}\n", .{ m.path, m.violation.line, m.violation.name, why });
         }
         try out.print(
             \\
-            \\Impls are private (AGENTS.md, "The impls boundary"). Reach another type
-            \\through its interface - interfaces.X - or, for a spec step with no IDL
-            \\surface, through a hook module in src/dom/ that its impl installs.
+            \\The binding finds an impl's functions by the names its generated file
+            \\gives them, so get_/set_/call_ - and get_static_/set_static_/call_static_
+            \\- mean "exposed to script" and nothing else (AGENTS.md "Names are the
+            \\binding map"). Name a helper in camelCase; delete a function nothing
+            \\binds; if the IDL says it should be bound, fix the codegen.
             \\
         , .{});
         try out.flush();
         std.process.exit(1);
+    }
+
+    const boundary_ok = try ratchet(arena, io, out, update, .{
+        .label = "impls boundary",
+        .path = baseline_path,
+        .header = boundary_header,
+        .noun = "references",
+        .advice =
+        \\Impls are private (AGENTS.md, "The impls boundary"). Reach another type
+        \\through its interface - interfaces.X - or, for a spec step with no IDL
+        \\surface, through a hook module in src/dom/ that its impl installs.
+        \\
+        ,
+    }, &current, &sites);
+    const naming_ok = try ratchet(arena, io, out, update, .{
+        .label = "impl names",
+        .path = naming_baseline_path,
+        .header = naming_header,
+        .noun = "unrouted mixin functions",
+        .advice =
+        \\A mixin impl's function runs only if something calls it: every includer's
+        \\generated interface binds the includer's own impl (AGENTS.md "Names are
+        \\the binding map"). Implement the member in the includer, or route the
+        \\includer's function to the mixin's - do not add another unrouted one.
+        \\
+        ,
+    }, &unrouted, null);
+    try out.flush();
+    if (!boundary_ok or !naming_ok) std.process.exit(1);
+}
+
+const RatchetSpec = struct {
+    label: []const u8,
+    path: []const u8,
+    header: []const u8,
+    /// What the counts count, for the report.
+    noun: []const u8,
+    advice: []const u8,
+};
+
+/// One ratchet: compare `current` with the baseline at `spec.path` and report.
+/// `--update` records a first baseline, or a lowered one - never an increase.
+/// False when a key is above its baseline, or there is no baseline.
+fn ratchet(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    out: *std.Io.Writer,
+    update: bool,
+    spec: RatchetSpec,
+    current: *const Counts,
+    sites: ?*const std.StringHashMapUnmanaged(std.ArrayList(Reference)),
+) !bool {
+    var total: usize = 0;
+    var values = current.valueIterator();
+    while (values.next()) |value| total += value.*;
+
+    const text: ?[]u8 = std.Io.Dir.cwd().readFileAlloc(io, spec.path, arena, .limited(64 << 20)) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    if (text == null) {
+        if (!update) {
+            try out.print("{s}: no {s}; record one with `zig build lint-impls -- --update`.\n", .{ spec.label, spec.path });
+            return false;
+        }
+        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = spec.path, .data = try formatBaselineWithHeader(arena, spec.header, current) });
+        try out.print("{s}: first baseline recorded - {d} {s}, {d} keys.\n", .{ spec.label, total, spec.noun, current.count() });
+        return true;
+    }
+    const baseline = try parseBaseline(arena, text.?);
+
+    const found = try violations(arena, current, &baseline);
+    if (found.items.len > 0) {
+        try out.print("{s}: {d} key(s) above the baseline.\n\n", .{ spec.label, found.items.len });
+        for (found.items) |v| {
+            try out.print("  {s}: allowed {d}, found {d}\n", .{ v.key, v.allowed, v.found });
+            const list = if (sites) |s| s.get(v.key) else null;
+            if (list) |l| {
+                const path_end = std.mem.indexOfScalar(u8, v.key, ' ') orelse v.key.len;
+                for (l.items) |ref| try out.print("      {s}:{d}: {s}\n", .{ v.key[0..path_end], ref.line, ref.code });
+            }
+        }
+        try out.print("\n{s}", .{spec.advice});
+        return false;
     }
 
     var lowered: usize = 0;
@@ -689,16 +972,15 @@ pub fn main(init: std.process.Init) !void {
     while (base_it.next()) |entry| {
         if ((current.get(entry.key_ptr.*) orelse 0) < entry.value_ptr.*) lowered += 1;
     }
-
     if (update) {
-        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current) });
-        try out.print("impls boundary: baseline lowered - {d} references, {d} keys.\n", .{ total, current.count() });
+        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = spec.path, .data = try formatBaselineWithHeader(arena, spec.header, current) });
+        try out.print("{s}: baseline lowered - {d} {s}, {d} keys.\n", .{ spec.label, total, spec.noun, current.count() });
     } else if (lowered > 0) {
-        try out.print("impls boundary: {d} key(s) paid down; record it with `zig build lint-impls -- --update`.\n", .{lowered});
+        try out.print("{s}: {d} key(s) paid down; record it with `zig build lint-impls -- --update`.\n", .{ spec.label, lowered });
     } else {
-        try out.print("impls boundary: {d} references, none above the baseline.\n", .{total});
+        try out.print("{s}: {d} {s}, none above the baseline.\n", .{ spec.label, total, spec.noun });
     }
-    try out.flush();
+    return true;
 }
 
 // ============================================================================
@@ -1038,4 +1320,127 @@ test "an owner naming its hook's types implements the contract - not a use" {
     var v = try hookViolations(testing.allocator, &.{ "Node", "EventTarget" }, &hooks, text);
     defer v.deinit(testing.allocator);
     try expectRefs(v.items, &.{"7:node_document.set"});
+}
+
+// ---------------------------------------------------------------------------
+// Names are the binding map
+// ---------------------------------------------------------------------------
+
+test "API names are get_, set_ and call_, static forms included" {
+    for ([_][]const u8{ "get_x", "set_x", "call_x", "call_x__1", "get_static_x", "set_static_x", "call_static_x" }) |name| {
+        try testing.expect(isApiName(name));
+    }
+    for ([_][]const u8{ "getX", "init", "deinit", "getInternal", "get", "call", "reflect_x" }) |name| {
+        try testing.expect(!isApiName(name));
+    }
+}
+
+test "only top-level functions are the impl's, and whether each is public" {
+    const text =
+        \\pub fn get_x(i: *I) !u32 {
+        \\    return 0;
+        \\}
+        \\fn call_helper(i: *I) void {}
+        \\pub inline fn set_x(i: *I, v: u32) !void {}
+        \\pub fn getInternal(i: *I) ?*S {}
+        \\const Nested = struct {
+        \\    pub fn get_y(self: @This()) u32 {}
+        \\};
+        \\// pub fn get_z(i: *I) u32 {}
+    ;
+    var fns = try apiFunctions(testing.allocator, text);
+    defer fns.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), fns.items.len);
+    try testing.expectEqualStrings("get_x", fns.items[0].name);
+    try testing.expect(fns.items[0].public);
+    try testing.expectEqual(@as(u32, 1), fns.items[0].line);
+    try testing.expectEqualStrings("call_helper", fns.items[1].name);
+    try testing.expect(!fns.items[1].public);
+    try testing.expectEqualStrings("set_x", fns.items[2].name);
+    try testing.expect(fns.items[2].public);
+}
+
+test "a generated file binds what it reaches through its alias for the impl" {
+    const generated =
+        \\const NodeImpl = @import("impls").Node;
+        \\const ElementImpl = @import("impls").Element;
+        \\pub fn get_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        \\    return try NodeImpl.get_parentNode(instance);
+        \\}
+        \\pub fn call_append__1(instance: *runtime.Instance) anyerror!void {
+        \\    if (comptime @hasDecl(NodeImpl, "call_append__1")) {
+        \\        return NodeImpl.call_append__1(instance);
+        \\    }
+        \\}
+        \\pub fn call_prepend(instance: *runtime.Instance) anyerror!void {
+        \\    if (comptime @hasDecl(NodeImpl, "call_prepend__2")) unreachable;
+        \\}
+        \\    // NodeImpl.get_commented is only mentioned
+        \\    _ = ElementImpl.get_tagName(instance);
+        \\    _ = MyNodeImpl.get_other(instance);
+    ;
+    var bound = try boundNames(testing.allocator, "Node", generated);
+    defer bound.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), bound.items.len);
+    try testing.expect(contains(bound.items, "get_parentNode"));
+    try testing.expect(contains(bound.items, "call_append__1"));
+    // Probed and never called: an optional overload the impl may add.
+    try testing.expect(contains(bound.items, "call_prepend__2"));
+
+    // A namespace's generated file aliases its impl in lower case.
+    var console = try boundNames(testing.allocator, "console", "const console_impl = @import(\"impls\").console;\n    return console_impl.call_static_log(i);\n");
+    defer console.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), console.items.len);
+    try testing.expectEqualStrings("call_static_log", console.items[0]);
+}
+
+test "an unbound public API name, and any private one, is a violation" {
+    const text =
+        \\pub fn get_x(i: *I) !u32 {}
+        \\pub fn call_abort(i: *I) !void {}
+        \\fn get_helper(i: *I) u32 {}
+        \\pub fn getInternal(i: *I) ?*S {}
+    ;
+    var found = try nameViolations(testing.allocator, .bound_type, text, &.{"get_x"});
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), found.items.len);
+    try testing.expectEqualStrings("call_abort", found.items[0].name);
+    try testing.expectEqual(NameViolation.Reason.unbound, found.items[0].reason);
+    try testing.expectEqual(@as(u32, 2), found.items[0].line);
+    try testing.expectEqualStrings("get_helper", found.items[1].name);
+    try testing.expectEqual(NameViolation.Reason.private, found.items[1].reason);
+}
+
+test "nothing binds a helper; a mixin's public names are left to the ratchet" {
+    const text =
+        \\pub fn get_x(i: *I) !u32 {}
+        \\fn call_y(i: *I) void {}
+    ;
+    var helper = try nameViolations(testing.allocator, .helper, text, &.{});
+    defer helper.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), helper.items.len);
+
+    var mixin = try nameViolations(testing.allocator, .mixin, text, &.{});
+    defer mixin.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), mixin.items.len);
+    try testing.expectEqualStrings("call_y", mixin.items[0].name);
+    try testing.expectEqual(NameViolation.Reason.private, mixin.items[0].reason);
+}
+
+test "a mixin function is routed only when some code calls it" {
+    const text =
+        \\pub fn call_append(i: *I) !void {}
+        \\pub fn call_prepend(i: *I) !void {}
+        \\fn call_private(i: *I) void {}
+        \\pub fn matches(i: *I) bool {}
+    ;
+    var routed: std.StringHashMapUnmanaged(void) = .empty;
+    defer routed.deinit(testing.allocator);
+    try routed.put(testing.allocator, "ParentNode.call_append", {});
+    try routed.put(testing.allocator, "ChildNode.call_prepend", {});
+
+    var unrouted = try unroutedFunctions(testing.allocator, "ParentNode", text, &routed);
+    defer unrouted.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), unrouted.items.len);
+    try testing.expectEqualStrings("call_prepend", unrouted.items[0]);
 }

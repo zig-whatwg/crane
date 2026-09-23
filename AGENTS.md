@@ -338,6 +338,36 @@ mismatches. Then `zig build` to confirm no interface/impl signature drift.
 When an IDL signature changes, diff `impls_tmp/X.zig` against `impls/X.zig` and
 merge by hand, preserving your implementation.
 
+### Names are the binding map
+
+The binding finds an impl's functions by the names its generated file gives
+them. There is no separate table saying which Zig function backs which member,
+and none may be added - so the prefixes mean "exposed to script" and nothing
+else:
+
+| Member | Impl function |
+|--------|---------------|
+| regular attribute | `get_<name>`, `set_<name>` |
+| operation | `call_<name>`; a further overload `call_<name>__<k>` (optional: until it exists, overload 0 runs) |
+| static attribute | `get_static_<name>`, `set_static_<name>` - accessors of the interface object |
+| static operation | `call_static_<name>` |
+| constant | none - the generated interface answers it (`get_<NAME>()`) |
+
+- **A private function never takes one of those prefixes.** Name helpers in
+  camelCase.
+- **A public one the generated file never calls is a map entry pointing
+  nowhere**: a stale copy, a member that belongs to another type - or a
+  broken map. Find out which before deleting it - see the lesson "An API
+  name nothing binds is a bug report".
+- **Mixin members bind through the includer.** `Element`'s generated
+  interface calls `ElementImpl.call_append`, never `ParentNodeImpl`'s, so a
+  function in a mixin impl runs only if an includer's impl routes to it.
+
+`zig build lint-impls` (part of `zig build test`) checks this: strictly for
+interface, namespace and helper impls, and as a ratchet over
+`tools/impls_naming_baseline.txt` for mixin impls, whose unrouted functions
+predate the rule.
+
 ---
 
 ## The impls boundary
@@ -490,6 +520,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 - Committing a hand-edited generated file
 - Calling impls across the boundary in **new** code - `zig build lint-impls`
   (part of `zig build test`) enforces it
+- A `get_`/`set_`/`call_` name on a function the generated code does not bind -
+  see "Names are the binding map"; `zig build lint-impls` enforces it
 - A new tool written in anything but Zig (the existing WPT tools excepted) -
   see "Tools are Zig"
 - Deviating from a spec algorithm without saying why
@@ -504,6 +536,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 
 - References into impls from code that does not own them - recorded in
   `tools/impls_boundary_baseline.txt`, which may only go down
+- API-named functions in mixin impls that nothing calls - recorded in
+  `tools/impls_naming_baseline.txt`, which may only go down
 - Non-Zig tools outside the WPT exception: `tools/update_impl_signatures.py`
 - Untested and undocumented code exists
 
@@ -3145,3 +3179,60 @@ answers it.**
 **Fix**: `tools/lint_impls_boundary.zig`, built for the host by `build.zig`, its rules pinned by `std.testing` tests that `zig build test` runs; the rule is written up under "Tools are Zig".
 
 **Takeaway**: **Write the tool in the language the repo builds with, tests first. The existing WPT tools are the one sanctioned exception; any other .py file in `tools/` is debt, not precedent.**
+
+---
+
+### Codegen: An API name nothing binds is a bug report, not only dead code
+
+**Date**: 2026-09-23
+**Lesson**: Of 130 public `get_`/`set_`/`call_` functions that no generated
+file called, 124 were stale - and six were the only visible trace of two real
+defects.
+
+**Why**: the name is the map (see "Names are the binding map"). An API-named
+function nothing binds means the map and the implementation disagree, and
+either side can be the wrong one.
+
+**What Happened**: 96 were instance copies of static operations
+(`URL.call_parse`, a weaker copy of the bound `call_static_parse`); the rest of
+the stale ones re-implemented a parent's members (XMLHttpRequestUpload's
+fourteen handlers, Range's and StaticRange's AbstractRange getters). The six
+that were not stale:
+
+* DOMRect's `set_x`, `set_y`, `set_width`, `set_height`: the IDL parser read
+  `inherit attribute` as read only, so no setter was bound and `rect.x = 5`
+  did nothing. WebIDL §2.5.2 uses `inherit` to make a read-only parent
+  attribute WRITABLE.
+* File's `get_size` and `get_type`: `size` and `type` are Blob's, answered
+  from Blob's state, which File never wrote - `File.init` did not chain to
+  Blob. Every File was a Blob with no bytes.
+
+Along the way: codegen had put the seven static attributes in the instance
+tables, so `MediaSource.canConstructInDedicatedWorker` lived on the prototype
+and read `undefined` on the interface object.
+
+**Fix**: the stale copies are deleted; the parser, File and static attributes
+are fixed; the lint fails on any new unbound API name.
+
+**Takeaway**: **Before deleting an unbound function, ask why the map does not
+reach it.** A stale copy and a correct implementation behind a broken map
+look identical in the file.
+
+---
+
+### Testing: Only `tests/codegen/*_test.zig` runs
+
+**Date**: 2026-09-23
+**Lesson**: `addTestFilesFromDir` collects files ending in `_test.zig`. The 28
+test blocks inside `src/webidl/codegen/writer.zig` and all of
+`tests/codegen/codegen_integration.zig` have never run - the latter could not
+even compile, since it imports `codegen/root.zig` by a path that does not
+exist from there.
+
+**Fix**: put codegen tests in `tests/codegen/<topic>_test.zig` and
+`@import("codegen")`. `zig build test -Dspec=codegen` runs them, with the
+lint, in about a minute.
+
+**Takeaway**: **A red test you have never seen go red is not a test.** Run a
+new one against the unfixed code first - that is what shows it is collected.
+
