@@ -1852,12 +1852,37 @@ fn getShadowIncludingRoot(node: anytype) @TypeOf(node) {
 }
 
 /// Helper: Check if node is a host-including inclusive ancestor of other
-/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
+/// Spec: https://dom.spec.whatwg.org/#concept-tree-host-including-inclusive-ancestor
+///
+/// DOM: "An object A is a host-including inclusive ancestor of an object B,
+/// if either A is an inclusive ancestor of B, or if B's root has a non-null
+/// host and A is a host-including inclusive ancestor of B's root's host."
+///
+/// True when `node` is a host-including inclusive ancestor of `other` - the
+/// question pre-insertion validity step 2 asks with (node, parent). This used
+/// to ask it backwards (`tree_helpers.isInclusiveAncestor(node, other)` is
+/// "`other` is an inclusive ancestor of `node`"), so moving a child within its
+/// own parent threw HierarchyRequestError while inserting an ancestor into its
+/// own descendant succeeded and made a cycle that hung every later tree walk.
 fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
-    // For now, just check inclusive ancestor (shadow DOM TODO)
-    const node_ptr: *const NodeBase = @ptrCast(node);
-    const other_ptr: *const NodeBase = @ptrCast(other);
-    return tree_helpers.isInclusiveAncestor(node_ptr, other_ptr);
+    const ancestor: *const NodeBase = @ptrCast(node);
+    var current: *const NodeBase = @ptrCast(other);
+    // A shadow root chain is a handful deep; the bound only stops a corrupt
+    // tree from looping here.
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        if (tree_helpers.isInclusiveAncestor(current, ancestor)) return true;
+        // B's root, and whether it is a shadow root with a host.
+        var root = current;
+        while (root.parent_node) |parent| root = parent;
+        if (root.node_type != DOCUMENT_FRAGMENT_NODE) return false;
+        const root_opaque = instance_bridge.getInstance(@constCast(root)) orelse return false;
+        const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
+        if (root_instance.stateAs(interfaces.ShadowRoot.State) == null) return false;
+        const host = interfaces.ShadowRoot.get_host(root_instance) catch return false;
+        current = instance_bridge.getNodeBase(host) orelse return false;
+    }
+    return false;
 }
 
 // Stub: Queue tree mutation record for NodeBase nodes
