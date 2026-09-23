@@ -3971,6 +3971,12 @@ int v8_Object_InternalFieldCount(Global<Object>* obj) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
+    // A legacy platform object's proxy has no fields; its target does, and
+    // v8_Object_GetAlignedPointerFromInternalField reads them through it.
+    if (local_obj->IsProxy()) {
+        Local<Value> target = local_obj.As<Proxy>()->GetTarget();
+        if (target->IsObject()) local_obj = target.As<Object>();
+    }
     return local_obj->InternalFieldCount();
 }
 
@@ -6819,6 +6825,11 @@ bool v8_Name_IsString(const void* name) {
 int v8_Object_InternalFieldCount_Raw(const void* obj) {
     // Cast to non-const since V8 API requires it
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+    // Look through a legacy platform object's proxy, as the _Raw field read does.
+    if (object_ptr->IsProxy()) {
+        Value* target = *Proxy::Cast(object_ptr)->GetTarget();
+        if (target->IsObject()) object_ptr = Object::Cast(target);
+    }
     return object_ptr->InternalFieldCount();
 }
 
@@ -10519,32 +10530,6 @@ void ForwardToReflect(const FunctionCallbackInfo<Value>& info, const char* metho
     }
 }
 
-void TrapGet(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    HandleScope handle_scope(isolate);
-    Local<Context> context = isolate->GetCurrentContext();
-
-    if (info.Length() < 2) return;
-
-    Local<Value> target = info[0];
-    Local<Value> property = info[1];
-
-    Local<Object> reflect = context->Global()
-        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
-        .ToLocalChecked().As<Object>();
-
-    Local<Function> get_fn = reflect
-        ->Get(context, String::NewFromUtf8Literal(isolate, "get"))
-        .ToLocalChecked().As<Function>();
-
-    Local<Value> args[] = { target, property, target };
-    MaybeLocal<Value> result = get_fn->Call(context, reflect, 3, args);
-
-    if (!result.IsEmpty()) {
-        info.GetReturnValue().Set(result.ToLocalChecked());
-    }
-}
-
 void TrapSet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
@@ -10623,7 +10608,15 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
     };
     
     // Set all traps
-    set_trap("get", TrapGet);
+    // No "get" trap. A proxy with one makes V8 check the trap's result
+    // against the target's own property descriptor on EVERY read
+    // (JSProxy::CheckGetSetTrapResult, ES 10.5.8 step 9) - for a NodeList that
+    // is the indexed descriptor interceptor building a descriptor object per
+    // `list[i]`, two thirds of the cost of the read. Without the trap V8
+    // forwards [[Get]] to the target natively with the proxy as receiver, and
+    // every path that unwraps a receiver's internal fields
+    // (GetAlignedPointerFromInternalField, InternalFieldCount, both variants)
+    // looks through a proxy to its target.
     set_trap("set", TrapSet);
     set_trap("has", TrapHas);
     set_trap("deleteProperty", TrapDeleteProperty);
