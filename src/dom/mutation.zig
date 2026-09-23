@@ -739,13 +739,29 @@ pub fn insert(
     suppress_observers: bool,
 ) DOMException!void {
     // Step 1: Let nodes be node's children if node is DocumentFragment, otherwise « node »
-    var nodes: []*NodeBase = undefined;
+    //
+    // A COPY. This used to be a slice into the fragment's own child list, and
+    // step 4.1 removes those children from that list - so the slice read
+    // storage the list had just shrunk out of. Four children fit the list's
+    // inline storage and survived; a fifth put it on the heap, and
+    // `el.append("A","B","C","D","E")` read freed memory (0xAA...) further
+    // down. The removal loop iterated the same list while removing from it.
     var nodes_buf: [256]*NodeBase = undefined;
+    var nodes_heap: ?[]*NodeBase = null;
+    defer if (nodes_heap) |heap| parent.allocator.free(heap);
+    var nodes: []*NodeBase = undefined;
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        nodes = node.child_nodes.toSliceMut();
-        nodes_count = nodes.len;
+        const children = node.child_nodes.items();
+        nodes_count = children.len;
+        if (nodes_count <= nodes_buf.len) {
+            nodes = nodes_buf[0..nodes_count];
+        } else {
+            nodes_heap = parent.allocator.alloc(*NodeBase, nodes_count) catch return error.OutOfMemory;
+            nodes = nodes_heap.?;
+        }
+        @memcpy(nodes, children);
     } else {
         nodes_buf[0] = node;
         nodes = nodes_buf[0..1];
@@ -761,7 +777,7 @@ pub fn insert(
     // Step 4: If node is a DocumentFragment node:
     if (isDocumentFragment(node)) {
         // Step 4.1: Remove its children with suppress observers flag set
-        for (node.child_nodes.items()) |child_node| {
+        for (nodes[0..nodes_count]) |child_node| {
             try remove(child_node, true);
         }
 
