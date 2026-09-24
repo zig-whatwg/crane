@@ -606,6 +606,13 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     };
     log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{clock.monotonicNanos()});
 
+    // HTML "the end": readiness "interactive" now the parser has stopped,
+    // then DOMContentLoaded, readiness "complete", load at the window and
+    // pageshow as tasks - the last of which queues the iframe's own load
+    // ("completely finish loading"), after everything the page posted.
+    dom_module.document_lifecycle.parsingStopped(document_instance);
+    dom_module.document_lifecycle.finishLoading(document_instance);
+
     // Create the V8 wrapper for the Document in the child context.
     // This is critical for cross-context access: when the parent context accesses
     // iframe.contentDocument, we return this pre-created wrapper instead of creating
@@ -797,6 +804,15 @@ const PendingLoadEvent = struct {
 fn queueIframeLoadEvent(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
 
+    // A document the parser just finished is still "interactive": its own
+    // "the end" is queued (dom.document_lifecycle), and the last step of that,
+    // "completely finish loading", queues this very event after the document's
+    // load and pageshow. Only a document that never went through the parser -
+    // the initial about:blank, an error document - is this function's to load.
+    if (childDocument(instance)) |child| {
+        if ((interfaces.Document.get_readyState(child) catch ._complete_) == ._interactive_) return;
+    }
+
     const token = next_load_token;
     next_load_token += 1;
     internal.pending_load_token = token;
@@ -847,6 +863,15 @@ fn deliverPendingLoadEvent(data: ?*anyopaque) void {
     defer scope.deinit();
 
     fireLoadEventOnIframe(pending.instance);
+}
+
+/// The active document of this iframe's content navigable, if it has one.
+fn childDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    const browsing_context = internal.integration.browsing_context orelse return null;
+    const window_ptr = browsing_context.getActiveWindow() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+    return interfaces.Window.get_document(window) catch null;
 }
 
 /// Fire a load event on the iframe element.

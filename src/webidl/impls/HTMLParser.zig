@@ -386,7 +386,11 @@ pub fn parseHTMLWithScripting(
         }
     }
 
-    // Step 9: Execute deferred scripts
+    // HTML §13.2.7 "the end" step 3: the parser has stopped - readiness
+    // "interactive", before the deferred scripts, which see it.
+    @import("dom").document_lifecycle.parsingStopped(document);
+
+    // Step 5: Execute deferred scripts
     // Per HTML Standard §13.2.7 "The end" - After parsing completes:
     // - Execute scripts that will execute when the document has finished parsing
     // This includes defer scripts and any scripts waiting for parsing to finish
@@ -394,14 +398,9 @@ pub fn parseHTMLWithScripting(
         script_execution.executeScriptsWhenParsingFinished(allocator, document);
     }
 
-    // Step 10: Fire DOMContentLoaded event
-    // Per HTML Standard §13.2.7 "The end" step 4:
-    // Fire an event named "DOMContentLoaded" at the Document object,
-    // with its bubbles attribute initialized to true.
-    fireDOMContentLoadedEvent(allocator, ctx, document) catch |err| {
-        // Log error but don't fail parsing - the document is valid
-        log.err("HTMLParser: Failed to fire DOMContentLoaded: {}", .{err});
-    };
+    // Steps 6 and 9: DOMContentLoaded, then readiness "complete", load at the
+    // window and pageshow - each queued as the task the spec makes it.
+    @import("dom").document_lifecycle.finishLoading(document);
 
     return document;
 }
@@ -898,56 +897,6 @@ fn createDoctypeNode(
 // =============================================================================
 // DOMContentLoaded Event Firing
 // =============================================================================
-
-/// Fire the DOMContentLoaded event on the document
-///
-/// Per HTML Standard §13.2.7 "The end" step 4:
-/// Fire an event named "DOMContentLoaded" at the Document object,
-/// with its bubbles attribute initialized to true.
-///
-/// This is called after:
-/// 1. The HTML parser has finished parsing
-/// 2. All deferred scripts have been executed
-fn fireDOMContentLoadedEvent(
-    allocator: Allocator,
-    ctx: runtime.Context,
-    document: *runtime.Instance,
-) !void {
-    _ = allocator;
-
-    // The parser runs outside V8's call stack, so there is no HandleScope here.
-    // Constructing and dispatching an event both create Local handles, and V8
-    // aborts the process ("Cannot create a handle without a HandleScope") the
-    // moment one is made without a scope. Same reason HTMLImageElement opens a
-    // JsScope before firing load/error from a timer.
-    const v8_engine = @import("v8");
-    const js_scope = v8_engine.JsScope.init(ctx) orelse {
-        // Context is gone (navigated away); nothing to dispatch to.
-        return;
-    };
-    defer js_scope.deinit();
-
-    // Create the DOMContentLoaded event.
-    //
-    // This must go through the CONSTRUCTOR, not `Event.init` + `initEvent`.
-    // `Event.init` allocates the instance but leaves `_internal` null, so
-    // `initEvent` takes its `getInternal(...) orelse return` early exit, the
-    // initialized flag is never set, and `dispatchEvent` then rejects the event
-    // with InvalidStateError per DOM 2.8 step 1. The net effect was that
-    // DOMContentLoaded never fired at all, on every document.
-    //
-    // Per HTML 13.2.7 "The end" step 4: bubbles = true, cancelable = false.
-    const event = try interfaces.Event.call_constructor(
-        ctx,
-        runtime.DOMString.initInterned("DOMContentLoaded"),
-        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = true, .cancelable = false }),
-    );
-    errdefer interfaces.Event.deinit(event);
-
-    // Dispatch the event on the document
-    // Document inherits from EventTarget so it can receive events
-    _ = try interfaces.EventTarget.call_dispatchEvent(document, event);
-}
 
 // =============================================================================
 // Tests

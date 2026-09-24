@@ -589,6 +589,11 @@ pub fn init(
     const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
 
+    @import("dom").document_lifecycle.install(.{
+        .parsing_stopped = &lifecycleParsingStopped,
+        .finish_loading = &lifecycleFinishLoading,
+    });
+
     return instance;
 }
 
@@ -3610,11 +3615,25 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
 /// Deviations, stated: no deferred scripts run (step 5), and load's legacy
 /// target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
-    // Step 3: "Update the current document readiness to "interactive"."
-    updateReadiness(instance, ._interactive_);
-    // Step 6's task fires DOMContentLoaded; step 9's completes the load.
-    queueLifecycleTask(instance, .dom_content_loaded);
-    queueLifecycleTask(instance, .load);
+    lifecycleParsingStopped(instance);
+    lifecycleFinishLoading(instance);
+}
+
+/// dom.document_lifecycle: "the end" step 3, "Update the current document
+/// readiness to "interactive"."
+fn lifecycleParsingStopped(document: *runtime.Instance) void {
+    // A parser that runs outside script - the top-level one, loading a page -
+    // has no scope open, and readystatechange needs one.
+    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
+    defer scope.deinit();
+    updateReadiness(document, ._interactive_);
+}
+
+/// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
+/// completes the load.
+fn lifecycleFinishLoading(document: *runtime.Instance) void {
+    queueLifecycleTask(document, .dom_content_loaded);
+    queueLifecycleTask(document, .load);
 }
 
 const LifecycleStep = enum { dom_content_loaded, load, container_load };
@@ -3663,30 +3682,33 @@ fn runLifecycleTask(context: ?*anyopaque) void {
         // Step 6.2: "Fire an event named DOMContentLoaded at the Document
         // object, with its bubbles attribute initialized to true."
         .dom_content_loaded => fireEvent(task.target, task.target, "DOMContentLoaded", true),
-        .load => {
-            const document = task.target;
-            // Step 9.1: "Update the current document readiness to "complete"."
-            updateReadiness(document, ._complete_);
-            // Steps 9.2-9.3: no browsing context, nothing more.
-            const window = (get_defaultView(document) catch null) orelse return;
-            // Step 9.5: "Fire an event named load at window".
-            fireEvent(document, window, "load", false);
-            // Steps 9.9-9.11: page showing becomes true and pageshow fires,
-            // persisted false - unless the document is showing already.
-            const internal = getInternal(document) orelse return;
-            if (!internal.page_showing) {
-                internal.page_showing = true;
-                firePageShow(document, window);
-            }
-            // Step 9.12: "completely finish loading" - whose step 4 queues the
-            // container's load event (the iframe load event steps).
-            if (@import("dom").navigable_container.of(window)) |container| {
-                queueLifecycleTask(container, .container_load);
-            }
-        },
+        .load => completeLoading(task.target),
         // "Completely finish loading" step 4: the iframe load event steps,
         // step 6: "Fire an event named load at element."
         .container_load => fireEvent(task.target, task.target, "load", false),
+    }
+}
+
+/// "The end" step 9's task: readiness "complete", load at the window,
+/// pageshow, and the container's load.
+fn completeLoading(document: *runtime.Instance) void {
+    // Step 9.1: "Update the current document readiness to "complete"."
+    updateReadiness(document, ._complete_);
+    // Steps 9.2-9.3: no browsing context, nothing more.
+    const window = (get_defaultView(document) catch null) orelse return;
+    // Step 9.5: "Fire an event named load at window".
+    fireEvent(document, window, "load", false);
+    // Steps 9.9-9.11: page showing becomes true and pageshow fires,
+    // persisted false - unless the document is showing already.
+    const internal = getInternal(document) orelse return;
+    if (!internal.page_showing) {
+        internal.page_showing = true;
+        firePageShow(document, window);
+    }
+    // Step 9.12: "completely finish loading" - whose step 4 queues the
+    // container's load event (the iframe load event steps).
+    if (@import("dom").navigable_container.of(window)) |container| {
+        queueLifecycleTask(container, .container_load);
     }
 }
 

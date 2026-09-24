@@ -57,6 +57,7 @@ pub const cloning_steps = @import("cloning_steps.zig");
 pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");
 pub const navigable_container = @import("navigable_container.zig");
+pub const document_lifecycle = @import("document_lifecycle.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
 pub const observer_registrations = @import("observer_registrations.zig");

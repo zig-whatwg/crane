@@ -8,6 +8,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const PopStateEvent = interfaces.PopStateEvent;
 
 pub const State = PopStateEvent.State;
@@ -36,32 +37,58 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    state.own.state.deinit(instance.ctx.allocator);
+    // The Event part: the cloned type and the inherited internal state.
+    interfaces.Event.deinit(instance);
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#popstateevent
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PopStateEventInit)) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(ctx.allocator, State, &PopStateEvent.vtable, ctx);
     errdefer deinit(instance);
+    const state = instance.getState(State);
+    const init_dict = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.PopStateEventInit{ .base = .{} };
+    // What deinit reads, should anything below fail.
+    state.base.own.type = runtime.DOMString.initEmpty();
+    state.own.state = runtime.JSValue.jsNull;
+    state.own.hasUAVisualTransition = false;
 
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
+    // DOM "inner event creation steps": the initialized flag, the type, and
+    // each EventInit member initializing the attribute of its name.
+    state.base.own.type = try @"type".clone(ctx.allocator);
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    state.base.own.isTrusted = false;
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = 0; // NONE
+    state.base.own.bubbles = init_dict.base.bubbles orelse false;
+    state.base.own.cancelable = init_dict.base.cancelable orelse false;
+    state.base.own.composed = init_dict.base.composed orelse false;
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
+
+    // Cloned: the binding frees the dictionary's strings when the
+    // constructor returns (see MessageEvent's `data`).
+    state.own.state = if (init_dict.state) |value| try value.clone(ctx.allocator) else runtime.JSValue.jsNull;
+    state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
+
+    // The inherited Event internal state and its initialized flag: without
+    // them dispatchEvent throws InvalidStateError.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
 
     return instance;
 }
 
 /// Getter for state
 pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.state;
 }
 
 /// Getter for hasUAVisualTransition
 pub fn get_hasUAVisualTransition(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.hasUAVisualTransition;
 }

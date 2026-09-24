@@ -1673,7 +1673,6 @@ pub const Context = struct {
     /// // result === "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
-        const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         log.debug("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
@@ -1750,14 +1749,10 @@ pub const Context = struct {
             log.debug("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
         };
 
-        // DOMContentLoaded (HTML §13.2.7 "the end" step 4) has already fired:
-        // parseHTMLWithScripting dispatches it at the document when parsing
-        // finishes. Firing it again here ran every DOMContentLoaded listener
-        // twice.
-
-        // Fire load event
-        // Per HTML Standard §13.2.7 "The end" step 9
-        navigation.fireLoad(isolate, v8_ctx);
+        // DOMContentLoaded and load (HTML §13.2.7 "the end" steps 6 and 9)
+        // are the parser's: it queued them as tasks when parsing stopped, with
+        // readiness and pageshow around them (dom.document_lifecycle). Firing
+        // load here as well, synchronously, ran every load listener twice.
     }
 
     /// Initialize browsing contexts for all iframes in a document.
