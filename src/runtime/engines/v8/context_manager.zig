@@ -153,6 +153,18 @@ pub const ChildContextGlobalsCallback = *const fn (
 /// Set by browser layer via setChildContextGlobalsCallback()
 threadlocal var child_context_globals_callback: ?ChildContextGlobalsCallback = null;
 
+/// Callback type for a child window whose document is being destroyed - its
+/// iframe removed, or its context torn down. The browser layer owns state
+/// that outlives a document unless something ends it - HTML's "unloading
+/// document cleanup steps" clear the window's map of active timers - and the
+/// runtime layer cannot reach it, so it asks through this. Called while the
+/// context and its global are still intact; running it twice for one context
+/// finds nothing the second time.
+pub const ChildWindowCleanupCallback = *const fn (context: *v8.Context) void;
+
+/// Set by the browser layer via setChildWindowCleanupCallback().
+threadlocal var child_window_cleanup_callback: ?ChildWindowCleanupCallback = null;
+
 // ============================================================================
 // Accessor Context Stack
 // ============================================================================
@@ -212,6 +224,33 @@ pub fn setChildContextGlobalsCallback(callback: ChildContextGlobalsCallback) voi
 /// Clear the child context globals callback
 pub fn clearChildContextGlobalsCallback() void {
     child_context_globals_callback = null;
+}
+
+/// Set the callback run as a child window's document is destroyed.
+pub fn setChildWindowCleanupCallback(callback: ChildWindowCleanupCallback) void {
+    child_window_cleanup_callback = callback;
+}
+
+/// Clear the child window cleanup callback
+pub fn clearChildWindowCleanupCallback() void {
+    child_window_cleanup_callback = null;
+}
+
+/// HTML "destroy a child navigable": the documents of `v8_ctx`'s window and
+/// of every window nested in it are destroyed, so each one's cleanup runs -
+/// even though the contexts themselves outlive the removal, for as long as
+/// script holds the windows.
+pub fn cleanUpChildWindows(v8_ctx: *v8.Context) void {
+    const state = &(manager_state orelse return);
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return;
+    const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return;
+    cleanUpChildWindowTree(entry);
+}
+
+fn cleanUpChildWindowTree(entry: *ContextEntry) void {
+    const callback = child_window_cleanup_callback orelse return;
+    callback(entry.v8_ctx);
+    for (entry.children.items) |child| cleanUpChildWindowTree(child);
 }
 
 /// Manager state (thread-local)
@@ -2767,6 +2806,11 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         destroyChildContext(child, allocator);
     }
     children_copy.deinit(allocator);
+
+    // 1b. What the browser layer keeps for this context - its timers and
+    // animation frame callbacks - ends with it, before anything it reaches is
+    // torn down.
+    if (child_window_cleanup_callback) |callback| callback(entry.v8_ctx);
 
     // 2. Remove from parent's children list
     if (entry.parent_entry) |parent| {

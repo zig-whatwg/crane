@@ -1910,6 +1910,14 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
 
     // Get the iframe's internal state and call onRemovedFromDocument
     const internal = getInternal(instance) orelse return;
+    // "Destroy a child navigable" destroys the documents of the frame and of
+    // every frame in it: their windows' timers and animation frames end here,
+    // though the contexts live on while script holds the windows.
+    if (internal.integration.state != .discarded) {
+        if (internal.integration.engine_context) |engine_ctx| {
+            context_manager.cleanUpChildWindows(@ptrCast(@alignCast(engine_ctx)));
+        }
+    }
     internal.integration.onRemovedFromDocument();
 }
 

@@ -88,22 +88,25 @@ const AnimationFrameEntry = struct {
     /// outlive the registering scope, and it means this entry must dispose it:
     /// once the callback has run, once it has been cancelled, or at teardown.
     callback_fn: *v8.ffi.Function,
+    /// OWNED - `v8_Isolate_GetCurrentContext` allocates a Global per call.
+    /// The realm of the requestAnimationFrame that registered the callback:
+    /// each Window has its own map of animation frame callbacks, so the
+    /// callback runs, and reports what it throws, in the window it came from.
+    context: *v8.ffi.Context,
     cancelled: bool = false,
 
     fn deinit(self: AnimationFrameEntry) void {
         v8.ffi.v8_Global_Dispose(@ptrCast(self.callback_fn));
+        v8.ffi.v8_Global_Dispose(@ptrCast(self.context));
     }
 };
 
 const AnimationFrameState = struct {
     isolate: *v8.ffi.Isolate,
-    v8_context: *v8.ffi.Context,
     /// Registered for the NEXT frame, in registration order.
     pending: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty,
     /// The single timer driving the next frame, if one is scheduled.
     timer_id: ?TimerId = null,
-    /// OWNED - `v8_Isolate_GetCurrentContext` allocates a Global per call.
-    owns_context: bool = true,
     /// The batch currently being run, borrowed from animationFrameHandler's
     /// stack for the duration of the loop. cancelAnimationFrame has to be able
     /// to reach it: per HTML's "run the animation frame callbacks", cancelling
@@ -216,6 +219,12 @@ pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) vo
         timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(allocator);
     }
     animation_frame_origin_ms = clock.monotonicMillis();
+
+    // Every window created under this one - an iframe's, a popup's - gets the
+    // same timer, animation frame and fetch bindings, and gives them up when
+    // it is destroyed. They serve every realm from the state above.
+    context_manager.setChildContextGlobalsCallback(registerChildContextGlobals);
+    context_manager.setChildWindowCleanupCallback(clearChildWindowState);
 }
 
 /// Get the current timer interface (for V8 callbacks)
@@ -253,16 +262,108 @@ pub fn clearTimerInterface() void {
         if (state.timer_id) |id| {
             if (current_timer_interface) |timer| _ = timer.clearTimeout(id);
         }
-        // Every pending entry still owns its callback Global, and the state owns
-        // the context Global it acquired from v8_Isolate_GetCurrentContext.
+        // Every pending entry still owns its callback and context Globals.
         for (state.pending.items) |entry| entry.deinit();
         if (current_allocator) |alloc| state.pending.deinit(alloc);
-        if (state.owns_context) v8.ffi.v8_Global_Dispose(@ptrCast(state.v8_context));
         animation_frames = null;
     }
 
+    context_manager.clearChildContextGlobalsCallback();
+    context_manager.clearChildWindowCleanupCallback();
     current_timer_interface = null;
     current_allocator = null;
+}
+
+/// Whether two context handles name the same V8 context. Each reads the
+/// context's current address; nothing between the two reads can allocate, so
+/// no GC can move it in between.
+fn sameContext(a: *v8.ffi.Context, b: *v8.ffi.Context) bool {
+    return v8.ffi.v8_Context_GetRawAddress(a) == v8.ffi.v8_Context_GetRawAddress(b);
+}
+
+/// context_manager's child-window cleanup hook: a frame's document is being
+/// destroyed, and with it its window's map of active timers (HTML "unloading
+/// document cleanup steps": clear window's map of active timers) and its map
+/// of animation frame callbacks. Without this a removed frame's timers kept
+/// firing, and a destroyed one's fired into a window whose state was freed.
+fn clearChildWindowState(context: *v8.ffi.Context) void {
+    if (timer_contexts) |*map| {
+        var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
+        defer if (current_allocator) |alloc| doomed.deinit(alloc);
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            if (!sameContext(entry.value_ptr.*.getData().v8_context, context)) continue;
+            const alloc = current_allocator orelse break;
+            doomed.append(alloc, entry.key_ptr.*) catch break;
+        }
+        // Not while iterating: unregistering removes from the map.
+        for (doomed.items) |id| unregisterTimerContext(id);
+    }
+
+    if (animation_frames) |*state| {
+        // The batch in progress sees its own entries through `running`; one
+        // of this window's is skipped rather than removed from under the loop.
+        for (state.running) |*entry| {
+            if (sameContext(entry.context, context)) entry.cancelled = true;
+        }
+        var i: usize = 0;
+        while (i < state.pending.items.len) {
+            const entry = state.pending.items[i];
+            if (sameContext(entry.context, context)) {
+                entry.deinit();
+                _ = state.pending.orderedRemove(i);
+            } else i += 1;
+        }
+    }
+}
+
+/// A native function on a window's global, bound in that window's realm.
+const NativeGlobal = struct {
+    name: []const u8,
+    callback: v8.ffi.FunctionCallback,
+    length: i32,
+};
+
+/// What every window gets natively, the top-level one and every frame's: the
+/// WebIDL operations for these are stubs.
+const window_native_globals = [_]NativeGlobal{
+    .{ .name = "setTimeout", .callback = setTimeoutCallback, .length = 1 },
+    .{ .name = "clearTimeout", .callback = clearTimeoutCallback, .length = 0 },
+    .{ .name = "setInterval", .callback = setIntervalCallback, .length = 1 },
+    .{ .name = "clearInterval", .callback = clearTimeoutCallback, .length = 0 },
+    .{ .name = "requestAnimationFrame", .callback = requestAnimationFrameCallback, .length = 1 },
+    .{ .name = "cancelAnimationFrame", .callback = cancelAnimationFrameCallback, .length = 1 },
+    .{ .name = "fetch", .callback = fetchCallback, .length = 1 },
+};
+
+/// Define each of `natives` on `global_obj`, as functions of `v8_ctx`'s realm.
+fn installNativeGlobals(
+    isolate: *v8.ffi.Isolate,
+    v8_ctx: *v8.ffi.Context,
+    global_obj: *v8.ffi.Object,
+    natives: []const NativeGlobal,
+) !void {
+    for (natives) |native| {
+        // Every one of these returns a Global the caller owns; the function
+        // keeps its template, and the property keeps the function.
+        const template = v8.ffi.v8_FunctionTemplate_New(isolate, native.callback, null) orelse return error.FunctionTemplateCreateFailed;
+        defer v8.ffi.v8_FunctionTemplate_Dispose(template);
+        v8.ffi.v8_FunctionTemplate_SetLength(template, native.length);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+        defer v8.ffi.v8_Function_Dispose(func);
+        const key = v8.ffi.v8_String_NewFromUtf8(isolate, native.name.ptr, @intCast(native.name.len)) orelse return error.StringCreateFailed;
+        defer v8.ffi.v8_String_Dispose(key);
+        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+    }
+}
+
+/// context_manager's child-context-globals hook: an iframe's or a popup's
+/// window gets the natives the top-level window has. Without it every frame
+/// ran the stubs - setTimeout threw NotSupportedError in every iframe.
+fn registerChildContextGlobals(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, global_obj: *v8.ffi.Object) void {
+    installNativeGlobals(isolate, v8_ctx, global_obj, &window_native_globals) catch |err| {
+        log.warn("child window globals not installed: {}", .{err});
+    };
 }
 
 /// Clear ALL pending timer contexts but keep the timer interface
@@ -1259,59 +1360,9 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
-        // setTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // clearTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // setInterval
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // clearInterval
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // requestAnimationFrame
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, requestAnimationFrameCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "requestAnimationFrame", 21) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // cancelAnimationFrame
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, cancelAnimationFrameCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "cancelAnimationFrame", 20) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
+        // setTimeout, setInterval, their clears, animation frames and fetch -
+        // the same natives every frame's window gets.
+        try installNativeGlobals(isolate, v8_ctx, global_obj, &window_native_globals);
 
         // addEventListener
         {
@@ -1397,14 +1448,6 @@ pub const Context = struct {
         // with named property handlers for CSS property access (e.g., style.borderStyle).
         // Do NOT register a stub here - it would shadow the proper implementation.
 
-        // Register fetch() as a global function
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch", 5) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
     }
 
     /// Set up global aliases via JavaScript
@@ -1992,17 +2035,13 @@ fn animationFrameHandler(_: ?*anyopaque) void {
     };
 
     const isolate = state.isolate;
-    const context = state.v8_context;
 
     v8.isolate_ownership.assertOwned(isolate, "Context.animationFrameHandler");
 
-    // Frame callbacks fire from the event loop, with no context active.
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    // v8_Context_Global allocates a Global<Object> the caller owns.
-    const global = v8.ffi.v8_Context_Global(context) orelse return;
-    defer v8.ffi.v8_Global_Dispose(@ptrCast(global));
+    // Frame callbacks fire from the event loop: V8 has opened no HandleScope
+    // and entered no context for them.
+    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
+    defer v8.ffi.v8_HandleScope_Dispose(scope);
 
     // ONE timestamp for the whole frame.
     const elapsed = clock.monotonicMillis() - animation_frame_origin_ms;
@@ -2021,13 +2060,25 @@ fn animationFrameHandler(_: ?*anyopaque) void {
         // Global is disposed whether it ran or was cancelled.
         defer entry.deinit();
         if (entry.cancelled) continue;
-        invokeReporting(context, entry.callback_fn, global, &.{@ptrCast(ts_global)});
+        runAnimationFrameCallback(entry, @ptrCast(ts_global));
     }
 
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
     // A callback may have asked for another frame.
     scheduleAnimationFrame();
+}
+
+/// Invoke one animation frame callback in the realm that registered it.
+fn runAnimationFrameCallback(entry: *const AnimationFrameEntry, timestamp: *v8.ffi.Value) void {
+    v8.ffi.v8_Context_Enter(entry.context);
+    defer v8.ffi.v8_Context_Exit(entry.context);
+
+    // v8_Context_Global allocates a Global<Object> the caller owns.
+    const global = v8.ffi.v8_Context_Global(entry.context) orelse return;
+    defer v8.ffi.v8_Global_Dispose(@ptrCast(global));
+
+    invokeReporting(entry.context, entry.callback_fn, global, &.{timestamp});
 }
 
 /// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards.
@@ -2057,22 +2108,24 @@ fn requestAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callc
         return;
     };
 
-    if (animation_frames == null) {
-        const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-            v8.ffi.v8_Global_Dispose(callback_value);
-            setIntegerReturn(info, isolate, 0);
-            return;
-        };
-        animation_frames = .{ .isolate = isolate, .v8_context = v8_context };
-    }
+    // The function's realm: this window's map of animation frame callbacks.
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        v8.ffi.v8_Global_Dispose(callback_value);
+        setIntegerReturn(info, isolate, 0);
+        return;
+    };
+
+    if (animation_frames == null) animation_frames = .{ .isolate = isolate };
     const state = &animation_frames.?;
 
     const handle = state.next_handle;
     state.pending.append(allocator, .{
         .handle = handle,
         .callback_fn = @ptrCast(callback_value),
+        .context = context,
     }) catch {
         v8.ffi.v8_Global_Dispose(callback_value);
+        v8.ffi.v8_Global_Dispose(@ptrCast(context));
         setIntegerReturn(info, isolate, 0);
         return;
     };
@@ -2113,14 +2166,17 @@ fn cancelAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callco
     // from under the loop in animationFrameHandler would shift its indices.
     // The frame in progress first: a callback cancelling a sibling registered
     // for the same frame is the case `pending` alone cannot answer.
+    //
+    // A handle names a callback in THIS window's map only, so another
+    // window's callback with that handle is not cancelled.
     for (state.running) |*entry| {
-        if (entry.handle == handle) {
+        if (entry.handle == handle and sameContext(entry.context, context)) {
             entry.cancelled = true;
             return;
         }
     }
     for (state.pending.items) |*entry| {
-        if (entry.handle == handle) {
+        if (entry.handle == handle and sameContext(entry.context, context)) {
             entry.cancelled = true;
             return;
         }
@@ -2150,7 +2206,12 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
     if (!v8.ffi.v8_Value_ToInt32(id_value, context, &id)) return;
     if (id <= 0) return;
 
-    // The map, and nothing but the map, decides what an id names.
+    // The map, and nothing but the map, decides what an id names - and it is
+    // THIS window's map: an id another window's timer holds names nothing
+    // here. The function's realm is the window whose method this is.
+    const map = if (timer_contexts) |*m| m else return;
+    const wrapper = map.get(@intCast(id)) orelse return;
+    if (!sameContext(wrapper.getData().v8_context, context)) return;
     unregisterTimerContext(@intCast(id));
 }
 
