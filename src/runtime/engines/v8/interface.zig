@@ -1655,6 +1655,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // WebIDL §3.7.9 "define the iteration methods", step 1: an
+            // interface with an indexed property getter - HTMLCollection,
+            // NamedNodeMap, HTMLFormControlsCollection - takes
+            // %Array.prototype.values% as its %Symbol.iterator%, so
+            // `[...el.children]` and `for (const x of form.elements)` work. An
+            // iterable declaration installs its own in setUpPrototype.
+            if (has_indexed_item and !@hasDecl(Meta, "iterable")) {
+                v8.v8_ObjectTemplate_SetIteratorToArrayValues(proto_tmpl);
+            }
+
             // Register named property handler if interface has named getter operations
             // This enables named property access: obj.name, obj["name"]
             // WebIDL interfaces with "getter" operations on DOMString support named property access

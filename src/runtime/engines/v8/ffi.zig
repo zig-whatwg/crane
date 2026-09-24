@@ -397,6 +397,10 @@ pub extern fn v8_ObjectTemplate_Set(
     value: *Value,
 ) void;
 
+/// %Symbol.iterator% as %Array.prototype.values% (non-enumerable), resolved
+/// from the context each object is instantiated in.
+pub extern fn v8_ObjectTemplate_SetIteratorToArrayValues(self: *ObjectTemplate) void;
+
 pub extern fn v8_ObjectTemplate_SetWithAttributes(
     self: *ObjectTemplate,
     name: *String,

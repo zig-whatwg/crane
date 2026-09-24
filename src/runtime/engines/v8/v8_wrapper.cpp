@@ -6427,6 +6427,18 @@ void v8_ObjectTemplate_Set(Global<ObjectTemplate>* tpl, Global<String>* name, Gl
     local_tpl->Set(key, val);
 }
 
+// ObjectTemplate - %Symbol.iterator% as %Array.prototype.values%, non-
+// enumerable: WebIDL's "define the iteration methods" step 1 for an interface
+// with an indexed property getter. An intrinsic, so each instantiation reads
+// the function from its own context; and part of the template, so it
+// survives the snapshot.
+void v8_ObjectTemplate_SetIteratorToArrayValues(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->SetIntrinsicDataProperty(Symbol::GetIterator(isolate), kArrayProto_values, DontEnum);
+}
+
 // ObjectTemplate - set property with attributes
 void v8_ObjectTemplate_SetWithAttributes(
     Global<ObjectTemplate>* tpl,
