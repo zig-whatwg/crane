@@ -126,6 +126,12 @@ pub const ContextEntry = struct {
     /// Whether we own the document_url memory
     owns_document_url: bool = false,
 
+    /// Set as destroyChildContext starts on this entry. Its teardown runs
+    /// arbitrary deinit code - a Window, a DOM tree, iframe elements - and any
+    /// of it can reach this entry again; the entry is retired, never freed,
+    /// so the flag stays readable for the manager's lifetime.
+    destroying: bool = false,
+
     // NOTE: Module caching field was removed because V8's HostImportModuleDynamically
     // callback doesn't provide the target realm context for ShadowRealm imports.
     // See detailed comment in handleDynamicImport.
@@ -2738,6 +2744,11 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         return;
     }
 
+    // 0a. Once per entry: a destruction already under way - further up this
+    // stack, or finished and retired - owns it.
+    if (entry.destroying) return;
+    entry.destroying = true;
+
     // 0b. Check if already removed (guard against double-cleanup)
     const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
     if (raw_addr == null) return;
@@ -2849,6 +2860,14 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
 
                 // Skip if already being cleaned up
                 if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
+
+                // Only this context's own elements. The cache holds every
+                // object WRAPPED here, and a frame's script wraps its
+                // container with `frameElement`: that iframe is the parent's,
+                // alive in the parent's document, and deinit-ing it here tore
+                // down its integration, which destroyed this context again
+                // from the inside.
+                if (instance.ctx != ctx_data) continue;
 
                 // Check if this is an HTMLIFrameElement by checking local_name
                 if (NodeImpl.getInternalState(instance)) |node_internal| {
