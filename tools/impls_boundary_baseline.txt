@@ -372,8 +372,6 @@ src/webidl/impls/Window.zig Node.getNextSibling 3
 src/webidl/impls/Window.zig Node.getNodeType 3
 src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
-src/webidl/impls/Window.zig WindowOrWorkerGlobalScope.call_queueMicrotask 1
-src/webidl/impls/Window.zig WindowOrWorkerGlobalScope.call_structuredClone 1
 src/webidl/impls/Worker.zig MessagePort.InternalState 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerNavigator.InternalState 1

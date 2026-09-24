@@ -34,7 +34,6 @@ const Window = interfaces.Window;
 const EventTargetImpl = @import("EventTarget.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
-const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
 
 // HTML Window infrastructure modules (html_core - interface-free)
 const html_core = @import("html_core");
@@ -381,6 +380,16 @@ pub fn init(
 ) !*runtime.Instance {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
+    // The WindowOrWorkerGlobalScope mixin reads a window's settings here.
+    @import("dom").global_settings.install(.{
+        .owns = &isWindow,
+        .origin = &settingsOrigin,
+        .is_secure_context = &settingsIsSecureContext,
+        .cross_origin_isolated = &settingsCrossOriginIsolated,
+        .indexed_db = &settingsIndexedDB,
+        .caches = &settingsCaches,
+        .performance = &settingsPerformance,
+    });
 
     // Chain to parent class (EventTarget) to initialize EventTarget internal state
     // This ensures window.addEventListener() works correctly
@@ -396,6 +405,102 @@ pub fn init(
     state.own._internal = internal;
 
     return instance;
+}
+
+// ============================================================================
+// This window's environment settings, for the WindowOrWorkerGlobalScope mixin
+// (dom.global_settings).
+// ============================================================================
+
+fn isWindow(global: *runtime.Instance) bool {
+    return global.stateAs(State) != null;
+}
+
+/// The settings object's origin, serialized; the caller owns it.
+fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+fn settingsIsSecureContext(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.is_secure_context;
+}
+
+fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.browsing_context.isCrossOriginIsolated();
+}
+
+/// This window's IDBFactory, made on first use.
+fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.indexeddb_factory) |factory_instance| {
+        return factory_instance;
+    }
+
+    // Create the backend IDBFactory
+    const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
+    errdefer internal.allocator.destroy(backend);
+
+    backend.* = IDBFactoryBackend.init(internal.allocator);
+    backend.setStorageKey(internal.origin);
+
+    // Create the WebIDL IDBFactory instance
+    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch {
+        backend.deinit();
+        internal.allocator.destroy(backend);
+        return error.OutOfMemory;
+    };
+
+    // Set the backend in the factory's internal state
+    const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
+    if (factory_state.own._internal) |factory_internal| {
+        // The IDBFactory impl creates its own backend, so we need to replace it
+        factory_internal.factory.deinit();
+        internal.allocator.destroy(factory_internal.factory);
+        factory_internal.factory = backend;
+    }
+
+    // Cache both
+    internal.indexeddb_backend = backend;
+    internal.indexeddb_factory = factory_instance;
+
+    return factory_instance;
+}
+
+/// This window's CacheStorage, made on first use.
+fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.cache_storage) |cache_storage_instance| {
+        return cache_storage_instance;
+    }
+
+    // Create the CacheStorage WebIDL instance
+    const CacheStorageImpl = @import("CacheStorage.zig");
+    const CacheStorage = interfaces.CacheStorage;
+
+    const cache_storage_instance = CacheStorageImpl.init(
+        internal.allocator,
+        CacheStorage.State,
+        &CacheStorage.vtable,
+        instance.ctx,
+    ) catch {
+        return error.OutOfMemory;
+    };
+
+    // Cache and return the instance
+    internal.cache_storage = cache_storage_instance;
+    return cache_storage_instance;
+}
+
+fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.performance orelse error.NotImplemented;
 }
 
 /// Deinitialize Window instance
@@ -1321,25 +1426,6 @@ fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typed
     try @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler);
 }
 
-/// Getter for origin
-/// WindowOrWorkerGlobalScope `origin`: the serialization of the relevant
-/// settings object's origin - this window's document's.
-/// The binding frees the returned string.
-pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
-}
-
-/// Getter for isSecureContext
-/// Per HTML spec §7.1.1: Returns true if this window's global object is in a secure context.
-/// A secure context is one where the top-level document was loaded over HTTPS,
-/// from localhost, or from a file:// URL.
-/// Spec: https://w3c.github.io/webappsec-secure-contexts/#is-settings-object-contextually-secure
-pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.is_secure_context;
-}
-
 /// Set the secure context flag
 /// Called by browser context when URL changes to update security state.
 /// Per Secure Contexts spec, a context is secure if:
@@ -1364,115 +1450,6 @@ pub fn isSecureLocalhost(host: []const u8) bool {
     return std.mem.eql(u8, host, "localhost") or
         std.mem.eql(u8, host, "127.0.0.1") or
         std.mem.eql(u8, host, "::1");
-}
-
-/// Getter for crossOriginIsolated
-/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-crossoriginisolated
-///
-/// Returns true if this window's browsing context is cross-origin isolated.
-/// A browsing context is cross-origin isolated when:
-/// 1. COOP (Cross-Origin-Opener-Policy) is "same-origin"
-/// 2. COEP (Cross-Origin-Embedder-Policy) is "require-corp" or "credentialless"
-///
-/// This enables access to powerful APIs like SharedArrayBuffer.
-pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.browsing_context.isCrossOriginIsolated();
-}
-
-/// Getter for indexedDB
-/// IndexedDB spec: Returns the IDBFactory object for this origin.
-/// https://w3c.github.io/IndexedDB/#dom-windoworworkerglobalscope-indexeddb
-pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return cached instance if available
-    if (internal.indexeddb_factory) |factory_instance| {
-        return factory_instance;
-    }
-
-    // Create the backend IDBFactory
-    const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
-    errdefer internal.allocator.destroy(backend);
-
-    backend.* = IDBFactoryBackend.init(internal.allocator);
-    backend.setStorageKey(internal.origin);
-
-    // Create the WebIDL IDBFactory instance
-    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch {
-        backend.deinit();
-        internal.allocator.destroy(backend);
-        return error.OutOfMemory;
-    };
-
-    // Set the backend in the factory's internal state
-    const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
-    if (factory_state.own._internal) |factory_internal| {
-        // The IDBFactory impl creates its own backend, so we need to replace it
-        factory_internal.factory.deinit();
-        internal.allocator.destroy(factory_internal.factory);
-        factory_internal.factory = backend;
-    }
-
-    // Cache both
-    internal.indexeddb_backend = backend;
-    internal.indexeddb_factory = factory_instance;
-
-    return factory_instance;
-}
-
-/// Getter for trustedTypes
-pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for performance
-/// Per spec: Returns the Performance object for this window.
-pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.performance orelse error.NotImplemented;
-}
-
-/// Getter for caches
-/// Service Worker spec: Returns the CacheStorage object for this origin.
-/// https://w3c.github.io/ServiceWorker/#self-caches
-pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return cached instance if available
-    if (internal.cache_storage) |cache_storage_instance| {
-        return cache_storage_instance;
-    }
-
-    // Create the CacheStorage WebIDL instance
-    const CacheStorageImpl = @import("CacheStorage.zig");
-    const CacheStorage = interfaces.CacheStorage;
-
-    const cache_storage_instance = CacheStorageImpl.init(
-        internal.allocator,
-        CacheStorage.State,
-        &CacheStorage.vtable,
-        instance.ctx,
-    ) catch {
-        return error.OutOfMemory;
-    };
-
-    // Cache and return the instance
-    internal.cache_storage = cache_storage_instance;
-    return cache_storage_instance;
-}
-
-/// Getter for scheduler
-pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for crypto
-pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
 }
 
 /// Getter for sessionStorage
@@ -2076,30 +2053,6 @@ pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(
     return error.NotImplemented;
 }
 
-/// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
-}
-
-/// Operation: clearInterval
-pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
-}
-
-/// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = input;
-    _ = init_data;
-    return error.NotImplemented;
-}
-
 /// Operation: blur
 /// Per spec: Removes focus from the window.
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
@@ -2153,11 +2106,6 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
     // No-op per spec
 }
 
-/// Operation: atob
-pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
-}
-
 /// Operation: alert
 /// Per spec §8.8.1: Shows an alert dialog.
 /// Note: The IDL has an overload with message parameter; this is the no-argument version.
@@ -2171,11 +2119,6 @@ pub fn call_alert(instance: *runtime.Instance) anyerror!void {
 
     // Show alert with empty message
     internal.ui_backend.showAlert("");
-}
-
-/// Operation: btoa
-pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
 /// Operation: focus
@@ -2246,20 +2189,6 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
     );
 
     return handle;
-}
-
-/// Operation: queueMicrotask
-/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
-pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    // Delegate to WindowOrWorkerGlobalScope mixin implementation
-    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
-}
-
-/// Operation: structuredClone
-/// Spec: https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
-pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    // Delegate to WindowOrWorkerGlobalScope mixin implementation
-    return WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
 }
 
 /// Operation: close
@@ -2703,20 +2632,6 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
     return null;
 }
 
-/// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = e;
-    return error.NotImplemented;
-}
-
-/// Operation: clearTimeout
-pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
-}
-
 /// Operation: getComputedStyle
 /// Per CSSOM spec: Returns the computed style of an element.
 /// https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle
@@ -2747,15 +2662,6 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 
     log.debug("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
     return css_instance;
-}
-
-/// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
 }
 
 /// Operation: cancelAnimationFrame
@@ -2815,14 +2721,6 @@ pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbac
     // TODO: Proper callback wrapping - for now return placeholder
     _ = callback;
     return 0; // Placeholder
-}
-
-/// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = image;
-    _ = options;
-    return error.NotImplemented;
 }
 
 /// Operation: cancelIdleCallback

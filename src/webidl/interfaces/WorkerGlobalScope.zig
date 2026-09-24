@@ -319,25 +319,12 @@ pub const WorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try WorkerGlobalScopeImpl.get_origin(instance);
-    }
+    pub const get_origin = mixins.WindowOrWorkerGlobalScope.get_origin;
+    pub const set_origin = mixins.WindowOrWorkerGlobalScope.set_origin;
 
-    /// Extended attributes: [Replaceable]
-    pub fn set_origin(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
-        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
-        //                                     [[Enumerable]]: true, [[Configurable]]: true}
-        try runtime.defineOwnProperty(instance, "origin", value);
-    }
+    pub const get_isSecureContext = mixins.WindowOrWorkerGlobalScope.get_isSecureContext;
 
-    pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
-        return try WorkerGlobalScopeImpl.get_isSecureContext(instance);
-    }
-
-    pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
-        return try WorkerGlobalScopeImpl.get_crossOriginIsolated(instance);
-    }
+    pub const get_crossOriginIsolated = mixins.WindowOrWorkerGlobalScope.get_crossOriginIsolated;
 
     /// Extended attributes: [SameObject]
     pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -346,27 +333,16 @@ pub const WorkerGlobalScope = struct {
         if (state.own.cached_indexedDB) |cached| {
             return cached;
         }
-        const value = try WorkerGlobalScopeImpl.get_indexedDB(instance);
+        const value = try mixins.WindowOrWorkerGlobalScope.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
         return value;
     }
 
-    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerGlobalScopeImpl.get_trustedTypes(instance);
-    }
+    pub const get_trustedTypes = mixins.WindowOrWorkerGlobalScope.get_trustedTypes;
 
     /// Extended attributes: [Replaceable]
-    pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerGlobalScopeImpl.get_performance(instance);
-    }
-
-    /// Extended attributes: [Replaceable]
-    pub fn set_performance(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
-        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
-        //                                     [[Enumerable]]: true, [[Configurable]]: true}
-        try runtime.defineOwnProperty(instance, "performance", value);
-    }
+    pub const get_performance = mixins.WindowOrWorkerGlobalScope.get_performance;
+    pub const set_performance = mixins.WindowOrWorkerGlobalScope.set_performance;
 
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -375,23 +351,14 @@ pub const WorkerGlobalScope = struct {
         if (state.own.cached_caches) |cached| {
             return cached;
         }
-        const value = try WorkerGlobalScopeImpl.get_caches(instance);
+        const value = try mixins.WindowOrWorkerGlobalScope.get_caches(instance);
         state.own.cached_caches = value;
         return value;
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerGlobalScopeImpl.get_scheduler(instance);
-    }
-
-    /// Extended attributes: [Replaceable]
-    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
-        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
-        //                                     [[Enumerable]]: true, [[Configurable]]: true}
-        try runtime.defineOwnProperty(instance, "scheduler", value);
-    }
+    pub const get_scheduler = mixins.WindowOrWorkerGlobalScope.get_scheduler;
+    pub const set_scheduler = mixins.WindowOrWorkerGlobalScope.set_scheduler;
 
     /// Extended attributes: [SameObject]
     pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -400,69 +367,38 @@ pub const WorkerGlobalScope = struct {
         if (state.own.cached_crypto) |cached| {
             return cached;
         }
-        const value = try WorkerGlobalScopeImpl.get_crypto(instance);
+        const value = try mixins.WindowOrWorkerGlobalScope.get_crypto(instance);
         state.own.cached_crypto = value;
         return value;
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        return try WorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
-    }
+    pub const call_setTimeout = mixins.WindowOrWorkerGlobalScope.call_setTimeout;
 
-    pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
-        return try WorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
-    }
+    pub const call_structuredClone = mixins.WindowOrWorkerGlobalScope.call_structuredClone;
 
-    pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        return try WorkerGlobalScopeImpl.call_atob(instance, data);
-    }
+    pub const call_atob = mixins.WindowOrWorkerGlobalScope.call_atob;
 
-    pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        return try WorkerGlobalScopeImpl.call_btoa(instance, data);
-    }
+    pub const call_btoa = mixins.WindowOrWorkerGlobalScope.call_btoa;
 
-    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-        return try WorkerGlobalScopeImpl.call_reportError(instance, e);
-    }
+    pub const call_reportError = mixins.WindowOrWorkerGlobalScope.call_reportError;
 
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        return try WorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
-    }
+    pub const call_setInterval = mixins.WindowOrWorkerGlobalScope.call_setInterval;
 
-    pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        return try WorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
-    }
+    pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
 
-    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
-        return try WorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
-    }
+    pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
 
     pub fn call_importScripts(instance: *runtime.Instance, urls: []const DOMString) anyerror!void {
         return try WorkerGlobalScopeImpl.call_importScripts(instance, urls);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
+    pub const call_fetch = mixins.WindowOrWorkerGlobalScope.call_fetch;
 
-        return try WorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
-    }
+    pub const call_clearInterval = mixins.WindowOrWorkerGlobalScope.call_clearInterval;
 
-    pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        return try WorkerGlobalScopeImpl.call_clearInterval(instance, id);
-    }
+    pub const call_clearTimeout = mixins.WindowOrWorkerGlobalScope.call_clearTimeout;
 
-    pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        return try WorkerGlobalScopeImpl.call_clearTimeout(instance, id);
-    }
-
-    pub fn call_createImageBitmap__1(instance: *runtime.Instance, image: ImageBitmapSource, sx: i32, sy: i32, sw: i32, sh: i32, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
-        if (comptime @hasDecl(WorkerGlobalScopeImpl, "call_createImageBitmap__1")) {
-            return try WorkerGlobalScopeImpl.call_createImageBitmap__1(instance, image, sx, sy, sw, sh, options);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_createImageBitmap__1 = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap__1;
 
     /// WebIDL overload sets: every overload of each overloaded operation,
     /// in IDL order, for the overload resolution algorithm
@@ -471,7 +407,7 @@ pub const WorkerGlobalScope = struct {
     pub const overloads = .{
         .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
-            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(WorkerGlobalScopeImpl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(mixins.WindowOrWorkerGlobalScope.impl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
         } },
     };
 };

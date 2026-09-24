@@ -11,10 +11,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const webidl = @import("webidl");
 const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 const WorkerLocation = interfaces.WorkerLocation;
 const WorkerNavigator = interfaces.WorkerNavigator;
@@ -27,16 +23,13 @@ const InternalWorkerNavigator = workers.WorkerNavigator;
 const WorkerType = workers.WorkerType;
 
 // Import structured clone
-const structured_clone = html_core.structured_clone;
 
 // Import event loop for timer support
 const event_loop_mod = html_core.event_loop;
 const EventLoop = event_loop_mod.EventLoop;
-const Timer = event_loop_mod.Timer;
 
 // Import script fetching for importScripts
 const script_fetch = html_core.workers.script_fetch;
-const FetchedScript = script_fetch.FetchedScript;
 
 pub const State = WorkerGlobalScope.State;
 
@@ -135,8 +128,45 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // The WindowOrWorkerGlobalScope mixin reads a worker's settings here.
+    @import("dom").global_settings.install(.{
+        .owns = &isWorkerGlobalScope,
+        .origin = &settingsOrigin,
+        .is_secure_context = &settingsIsSecureContext,
+        .cross_origin_isolated = &settingsCrossOriginIsolated,
+    });
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     return instance;
+}
+
+// ============================================================================
+// This worker's environment settings, for the WindowOrWorkerGlobalScope mixin
+// (dom.global_settings). A worker has no IDBFactory, CacheStorage or
+// Performance of its own yet.
+// ============================================================================
+
+fn isWorkerGlobalScope(global: *runtime.Instance) bool {
+    return global.stateAs(State) != null;
+}
+
+/// The settings object's origin, serialized; the caller owns it. Handing
+/// out `internal.origin` itself, as the getter did, let the binding free it.
+fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
+    const state = instance.getState(State);
+    const origin = if (state.own._internal) |internal| internal.origin else "null";
+    return instance.ctx.allocator.dupe(u8, if (origin.len == 0) "null" else origin);
+}
+
+fn settingsIsSecureContext(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return false;
+    return internal.is_secure_context;
+}
+
+fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return false;
+    return internal.cross_origin_isolated;
 }
 
 /// Initialize with worker URL and type
@@ -391,81 +421,6 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for origin
-///
-/// Spec: HTML Standard § 10.1.1
-/// "The origin attribute must return this's relevant settings object's origin,
-/// serialized."
-pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.origin;
-    }
-    return "null";
-}
-
-/// Getter for isSecureContext
-///
-/// Spec: HTML Standard § 10.1.1
-/// "The isSecureContext attribute must return true if this's relevant settings
-/// object is a secure context, and false otherwise."
-pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.is_secure_context;
-    }
-    return false;
-}
-
-/// Getter for crossOriginIsolated
-///
-/// Spec: HTML Standard § 10.1.1
-/// "The crossOriginIsolated attribute must return this's relevant settings object's
-/// cross-origin isolated capability."
-pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.cross_origin_isolated;
-    }
-    return false;
-}
-
-/// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for trustedTypes
-pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for performance
-pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for scheduler
-pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for crypto
-pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
     _ = instance;
@@ -506,157 +461,6 @@ pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.Eve
     _ = instance;
     _ = value;
     return error.NotImplemented;
-}
-
-/// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = e;
-    return error.NotImplemented;
-}
-
-/// Operation: atob - the WindowOrWorkerGlobalScope mixin's.
-pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
-}
-
-/// Operation: btoa - the WindowOrWorkerGlobalScope mixin's.
-pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
-}
-
-/// Operation: setInterval
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/#dom-setinterval
-///
-/// Sets a repeating timer that fires at the specified interval.
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            // Get delay (default to 0 if not provided)
-            const delay_ms: i64 = if (timeout.wasPassed())
-                @intCast(timeout.getValue())
-            else
-                0;
-
-            // TODO: Proper callback conversion
-            // The handler needs to be wrapped to call the JavaScript function.
-            // For now, we create a no-op callback - real implementation needs V8 integration.
-            _ = handler;
-            _ = arguments;
-
-            const timer_id = event_loop.setInterval(
-                &noopTimerCallback,
-                delay_ms,
-                null,
-            ) catch return error.OutOfMemory;
-
-            return @intCast(timer_id);
-        }
-    }
-    return error.NotImplemented;
-}
-
-/// No-op timer callback used as placeholder until proper V8 callback integration
-fn noopTimerCallback(_: ?*anyopaque) void {
-    // TODO: This should invoke the actual JavaScript callback
-    // Real implementation needs:
-    // 1. Store timer_id -> handler mapping
-    // 2. When callback fires, look up handler
-    // 3. Call JavaScript function via V8
-}
-
-/// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = image;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: clearInterval
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/#dom-clearinterval
-///
-/// Cancels a repeating timer.
-pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    if (!id.wasPassed()) {
-        return; // No-op if no ID provided
-    }
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            event_loop.clearInterval(@intCast(id.getValue()));
-            return;
-        }
-    }
-    return error.NotImplemented;
-}
-
-/// Operation: queueMicrotask
-pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}
-
-/// Operation: structuredClone
-///
-/// Spec: HTML Standard § 2.7.9 structuredClone(value, options)
-/// https://html.spec.whatwg.org/#dom-structuredclone
-///
-/// "The structuredClone(value, options) method, when invoked, must run these steps:
-/// 1. Let serialized be ? StructuredSerializeWithTransfer(value, options["transfer"]).
-/// 2. Let deserializeRecord be ? StructuredDeserializeWithTransfer(serialized, this's relevant Realm).
-/// 3. Return deserializeRecord.[[Deserialized]]."
-pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    // Get allocator from instance
-    const state = instance.getState(State);
-    if (state.own._internal == null) {
-        return error.NotImplemented;
-    }
-    const internal = state.own._internal.?;
-
-    // Parse options for transfer list
-    const transfer_list: ?[]structured_clone.Transferable = if (options.wasPassed()) blk: {
-        // Transfer list parsing would be done here
-        _ = options.getValue();
-        break :blk null;
-    } else null;
-
-    // The value parameter represents the JavaScript value to clone
-    // Convert from runtime.JSValue to structured_clone.JSValue
-    const js_value: structured_clone.JSValue = switch (value) {
-        .undefined => structured_clone.JSValue.undefined,
-        .null => structured_clone.JSValue.null,
-        .boolean => |b| .{ .boolean = b },
-        .number => |n| .{ .number = n },
-        .string => |s| .{ .string = s.data },
-        else => structured_clone.JSValue{ .object = .{ .properties = &[_]structured_clone.JSValue.ObjectValue.ObjectProperty{} } },
-    };
-
-    // Perform structured clone
-    const cloned = structured_clone.structuredClone(
-        internal.allocator,
-        &js_value,
-        transfer_list,
-    ) catch {
-        return error.OutOfMemory;
-    };
-
-    // Convert structured clone result back to runtime.JSValue
-    return switch (cloned.*) {
-        .undefined => runtime.JSValue.jsUndefined,
-        .null => runtime.JSValue.jsNull,
-        .boolean => |b| runtime.JSValue.fromBoolean(b),
-        .number => |n| runtime.JSValue.fromNumber(n),
-        .string => |s| runtime.JSValue.fromStringRef(s),
-        else => runtime.JSValue.jsUndefined, // Complex objects not fully supported yet
-    };
 }
 
 /// Operation: importScripts
@@ -728,225 +532,4 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         // The script source is available in fetched.source for execution.
         _ = fetched.source;
     }
-}
-
-/// Operation: clearTimeout
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/#dom-cleartimeout
-///
-/// Cancels a one-shot timer.
-pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    if (!id.wasPassed()) {
-        return; // No-op if no ID provided
-    }
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            event_loop.clearTimeout(@intCast(id.getValue()));
-            return;
-        }
-    }
-    return error.NotImplemented;
-}
-
-/// Operation: setTimeout
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/#dom-settimeout
-///
-/// Sets a one-shot timer that fires after the specified delay.
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            // Get delay (default to 0 if not provided)
-            const delay_ms: i64 = if (timeout.wasPassed())
-                @intCast(timeout.getValue())
-            else
-                0;
-
-            // TODO: Proper callback conversion
-            // The handler needs to be wrapped to call the JavaScript function.
-            // For now, we create a no-op callback - real implementation needs V8 integration.
-            _ = handler;
-            _ = arguments;
-
-            const timer_id = event_loop.setTimeout(
-                &noopTimerCallback,
-                delay_ms,
-                null,
-            ) catch return error.OutOfMemory;
-
-            return @intCast(timer_id);
-        }
-    }
-    return error.NotImplemented;
-}
-
-/// Operation: fetch
-///
-/// Spec: Fetch Standard § 5.4 Fetch method
-/// https://fetch.spec.whatwg.org/#fetch-method
-///
-/// "The fetch(input, init) method, when invoked, must run these steps:
-/// 1. Let p be a new promise.
-/// 2. Let requestObject be the result of invoking the initial value of
-///    Request as constructor with input and init as arguments.
-/// 3. Let request be requestObject's request.
-/// 4. Fetch request with processResponseConsumeBody set to...
-/// 5. Return p."
-///
-/// Implementation:
-/// - Creates a V8 Promise to return to JavaScript
-/// - Parses RequestInfo into an InternalRequest
-/// - Executes the fetch algorithm
-/// - Resolves/rejects the Promise with the Response
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.NotImplemented;
-    const allocator = internal.allocator;
-
-    // Step 1: Get the URL from RequestInfo
-    // RequestInfo is either a URL string or a Request object
-    const url_str: []const u8 = switch (input) {
-        .usvstring => |url| url, // USVString (URL)
-        .request => {
-            // Request object - extract URL
-            // For now, we don't have access to Request's URL directly
-            // This requires the Request interface to expose its URL
-            return error.NotImplemented; // TODO: Extract URL from Request object
-        },
-    };
-
-    // Step 2: Create InternalRequest
-    // Import fetch module
-    const fetch_mod = @import("fetch");
-    const InternalRequest = fetch_mod.internal.request.InternalRequest;
-    const Response = fetch_mod.Response;
-
-    var request = InternalRequest.init(allocator, url_str) catch {
-        return error.OutOfMemory;
-    };
-    errdefer request.deinit();
-
-    // Step 3: Apply init options if provided
-    if (init_data.wasPassed()) {
-        const req_init = init_data.getValue();
-
-        // Apply method
-        if (req_init.method) |method_str| {
-            request.setMethod(method_str) catch {};
-        }
-
-        // Apply mode
-        if (req_init.mode) |mode| {
-            request.mode = switch (mode) {
-                ._cors_ => .cors,
-                ._no_cors_ => .no_cors,
-                ._same_origin_ => .same_origin,
-                ._navigate_ => .navigate,
-            };
-        }
-
-        // Apply credentials
-        if (req_init.credentials) |creds| {
-            request.credentials_mode = switch (creds) {
-                ._omit_ => .omit,
-                ._same_origin_ => .same_origin,
-                ._include_ => .include,
-            };
-        }
-
-        // Apply cache mode
-        if (req_init.cache) |cache_mode| {
-            request.cache_mode = switch (cache_mode) {
-                ._default_ => .default,
-                ._no_store_ => .no_store,
-                ._reload_ => .reload,
-                ._no_cache_ => .no_cache,
-                ._force_cache_ => .force_cache,
-                ._only_if_cached_ => .only_if_cached,
-            };
-        }
-
-        // Apply redirect mode
-        if (req_init.redirect) |redirect_mode| {
-            request.redirect_mode = switch (redirect_mode) {
-                ._follow_ => .follow,
-                ._error_ => .@"error",
-                ._manual_ => .manual,
-            };
-        }
-
-        // Apply referrer policy
-        if (req_init.referrerPolicy) |ref_policy| {
-            request.referrer_policy = switch (ref_policy) {
-                .__ => .empty,
-                ._no_referrer_ => .no_referrer,
-                ._no_referrer_when_downgrade_ => .no_referrer_when_downgrade,
-                ._same_origin_ => .same_origin,
-                ._origin_ => .origin,
-                ._strict_origin_ => .strict_origin,
-                ._origin_when_cross_origin_ => .origin_when_cross_origin,
-                ._strict_origin_when_cross_origin_ => .strict_origin_when_cross_origin,
-                ._unsafe_url_ => .unsafe_url,
-            };
-        }
-
-        // Apply keepalive
-        if (req_init.keepalive) |keepalive| {
-            request.keepalive = keepalive;
-        }
-
-        // Apply integrity
-        if (req_init.integrity) |integrity| {
-            request.integrity_metadata = integrity.asSlice();
-        }
-    }
-
-    // Set origin from worker's settings object
-    if (internal.origin.len > 0) {
-        request.origin = .{ .origin = internal.origin };
-    }
-
-    // Step 4: Execute fetch algorithm
-    // For now, we execute synchronously. Full async requires V8 Promise integration.
-    // The V8 Promise API is available in src/runtime/engines/v8/promise.zig
-    // but requires V8 Isolate and Context which aren't directly accessible here.
-    var fetch_result = fetch_mod.fetch(allocator, request, .{
-        .cross_origin_isolated_capability = internal.cross_origin_isolated,
-    }) catch |err| {
-        request.deinit();
-        return switch (err) {
-            fetch_mod.FetchError.OutOfMemory => error.OutOfMemory,
-            fetch_mod.FetchError.NetworkError => error.NetworkError,
-            fetch_mod.FetchError.AbortError => error.NetworkError,
-        };
-    };
-    defer fetch_result.timing_info.deinit();
-
-    // Request is now consumed
-    request.deinit();
-
-    // Step 5: Create Response WebIDL object from InternalResponse
-    const response = Response.fromInternal(allocator, fetch_result.response) catch {
-        fetch_result.response.deinit();
-        return error.OutOfMemory;
-    };
-    // Note: ownership of fetch_result.response is transferred to Response
-
-    // Return the Response object as opaque pointer
-    // In a full Promise-based implementation, we would:
-    // 1. Create a V8 Promise (Promise(void).init(isolate, context))
-    // 2. Schedule async fetch task on event loop
-    // 3. Return promise.getPromise() cast to *const anyopaque
-    // 4. When fetch completes, resolve promise with Response
-    //
-    // TODO: Return proper WebIDL Response interface instance
-    // response is a Zig Response struct that needs to be wrapped as a WebIDL interface
-    // For now return undefined as placeholder
-    _ = response;
-    return runtime.JSValue.jsUndefined;
 }

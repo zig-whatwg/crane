@@ -71,6 +71,7 @@ pub const names = [_][]const u8{
     "SVGURIReference",
     "ServiceEventHandlers",
     "WindowEventHandlers",
+    "WindowOrWorkerGlobalScope",
     "XRViewGeometry",
 };
 

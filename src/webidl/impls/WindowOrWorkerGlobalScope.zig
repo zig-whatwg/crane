@@ -3,6 +3,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const html_core = @import("html_core");
+const global_settings = @import("dom").global_settings;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -43,26 +44,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for origin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    // "return this's relevant settings object's origin, serialized."
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    return settings.origin(instance);
 }
 
 /// Getter for isSecureContext
 pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // "return true if this's relevant settings object is a secure context"
+    const settings = global_settings.of(instance) orelse return false;
+    return settings.is_secure_context(instance);
 }
 
 /// Getter for crossOriginIsolated
 pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // "return this's relevant settings object's cross-origin isolated
+    // capability."
+    const settings = global_settings.of(instance) orelse return false;
+    return settings.cross_origin_isolated(instance);
 }
 
 /// Getter for indexedDB
 pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    const indexed_db = settings.indexed_db orelse return error.NotImplemented;
+    return indexed_db(instance);
 }
 
 /// Getter for trustedTypes
@@ -73,14 +79,16 @@ pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance 
 
 /// Getter for performance
 pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    const performance = settings.performance orelse return error.NotImplemented;
+    return performance(instance);
 }
 
 /// Getter for caches
 pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    const caches = settings.caches orelse return error.NotImplemented;
+    return caches(instance);
 }
 
 /// Getter for scheduler
