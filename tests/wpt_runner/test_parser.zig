@@ -612,29 +612,66 @@ fn parseHtmlScriptTags(_: std.mem.Allocator, content: []const u8, metadata: *Tes
 
 /// Extract an attribute value from an HTML tag
 /// Handles both single and double quotes
+/// The value of attribute `attr_name` in one start tag: double-quoted,
+/// single-quoted, or unquoted - HTML allows `<meta name=timeout
+/// content=long>`, and an unquoted value ends at whitespace or the tag's end.
+/// The name must be a whole attribute name: whitespace (or the start of the
+/// text) before it and `=` right after, so the `content` in `http-equiv=content-type` and the `name`
+/// in `data-name` are not matches.
 fn extractAttribute(tag: []const u8, attr_name: []const u8) ?[]const u8 {
-    // Try with double quotes: attr="value"
-    var buf: [128]u8 = undefined;
-    const pattern_dq = std.fmt.bufPrint(&buf, "{s}=\"", .{attr_name}) catch return null;
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, tag, pos, attr_name)) |at| {
+        pos = at + 1;
+        if (at != 0 and !std.ascii.isWhitespace(tag[at - 1])) continue;
+        const equals = at + attr_name.len;
+        if (equals >= tag.len or tag[equals] != '=') continue;
 
-    if (std.mem.indexOf(u8, tag, pattern_dq)) |start| {
-        const value_start = start + pattern_dq.len;
-        if (std.mem.indexOfPos(u8, tag, value_start, "\"")) |value_end| {
-            return tag[value_start..value_end];
+        const value_start = equals + 1;
+        if (value_start >= tag.len) return null;
+        const quote = tag[value_start];
+        if (quote == '"' or quote == '\'') {
+            const end = std.mem.indexOfScalarPos(u8, tag, value_start + 1, quote) orelse return null;
+            return tag[value_start + 1 .. end];
         }
+        var end = value_start;
+        while (end < tag.len and !std.ascii.isWhitespace(tag[end]) and tag[end] != '>') : (end += 1) {}
+        return tag[value_start..end];
     }
-
-    // Try with single quotes: attr='value'
-    const pattern_sq = std.fmt.bufPrint(&buf, "{s}='", .{attr_name}) catch return null;
-
-    if (std.mem.indexOf(u8, tag, pattern_sq)) |start| {
-        const value_start = start + pattern_sq.len;
-        if (std.mem.indexOfPos(u8, tag, value_start, "'")) |value_end| {
-            return tag[value_start..value_end];
-        }
-    }
-
     return null;
+}
+
+test "an unquoted meta attribute is read like a quoted one" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // HTML allows unquoted attribute values, and 120 worklist files declare
+    // their budget as `<meta name=timeout content=long>`: read only in its
+    // quoted form, every one of them ran on the 10s budget.
+    const content =
+        \\<!DOCTYPE html>
+        \\<meta charset=utf-8>
+        \\<meta name=timeout content=long>
+        \\<meta name=variant content=?a=1>
+        \\<meta http-equiv=content-type content=text/html>
+        \\<script src=/resources/testharness.js></script>
+    ;
+
+    var parsed = try parseHtml(allocator, "html/unquoted.html", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(config.Timeout.long, parsed.metadata.timeout);
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.variants.items.len);
+    try testing.expectEqualStrings("?a=1", parsed.metadata.variants.items[0]);
+}
+
+test "an attribute name matches only a whole attribute" {
+    const testing = std.testing;
+    // `content=` inside `http-equiv=content-type` is not the content
+    // attribute, and `name=` inside `data-name=` is not the name attribute.
+    try testing.expectEqualStrings("text/html", extractAttribute("<meta http-equiv=content-type content=text/html>", "content").?);
+    try testing.expect(extractAttribute("<meta data-name=x>", "name") == null);
+    try testing.expectEqualStrings("long", extractAttribute("<meta name='timeout' content='long'>", "content").?);
+    try testing.expectEqualStrings("long", extractAttribute("<meta name=\"timeout\" content=\"long\">", "content").?);
 }
 
 /// Parse a test file based on its extension
