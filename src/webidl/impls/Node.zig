@@ -9,6 +9,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -1530,6 +1531,48 @@ pub fn removeNodeFromParent(node: *runtime.Instance, parent: *runtime.Instance) 
             else => error.InvalidStateError,
         };
     };
+}
+
+/// DOM "converting nodes into a node" (§4.2.6), for the ParentNode and
+/// ChildNode mixins, whose includers are all Nodes.
+/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
+pub fn convertNodesIntoNode(nodes: []const mixins.ParentNode.NodeOrString, document: *runtime.Instance) !*runtime.Instance {
+    // Steps 1-2: "Replace each string of nodes with a new Text node whose data
+    // is the string and node document is document. If nodes contains one node,
+    // then return nodes[0]."
+    if (nodes.len == 1) return nodeOrText(nodes[0], document);
+
+    // Step 3: "Let fragment be a new DocumentFragment node whose node document
+    // is document."
+    const fragment = try interfaces.Document.call_createDocumentFragment(document);
+
+    // Step 4: "For each node of nodes: append node to fragment."
+    for (nodes) |item| _ = try call_appendChild(fragment, try nodeOrText(item, document));
+
+    // Step 5: "Return fragment."
+    return fragment;
+}
+
+/// A node of a "converting nodes into a node" list: the node itself, or a new
+/// Text node holding the string, whose node document is `document`.
+fn nodeOrText(item: mixins.ParentNode.NodeOrString, document: *runtime.Instance) !*runtime.Instance {
+    return switch (item) {
+        .node => |node| node,
+        // createTextNode copies the data; the binding owns the slice.
+        .string => |data| try interfaces.Document.call_createTextNode(document, runtime.DOMString.initInterned(data)),
+    };
+}
+
+/// The replaceChildren() method's steps 2-3 (DOM §4.2.6): "Ensure
+/// pre-insertion validity of node into this before null", then "replace all
+/// with node within this" - in that order, so an invalid node leaves the
+/// children in place.
+/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+pub fn replaceAllChildren(parent: *runtime.Instance, node: *runtime.Instance) !void {
+    const parent_base = (getInternal(parent) orelse return error.InvalidStateError).node_base orelse return error.InvalidStateError;
+    const node_base = (getInternal(node) orelse return error.InvalidStateError).node_base orelse return error.InvalidStateError;
+    try dom_module.mutation.ensurePreInsertValidity(node_base, parent_base, @as(?*NodeBase, null));
+    try dom_module.mutation.replaceAll(@as(?*NodeBase, node_base), parent_base);
 }
 
 /// Operation: appendChild

@@ -27,8 +27,6 @@ const dom = @import("dom");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
-const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
-const ChildNode = mixins.ChildNode;
 
 pub const State = CharacterData.State;
 
@@ -260,18 +258,6 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return internal.getLength();
 }
 
-/// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
-/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.get_previousElementSibling(instance);
-}
-
-/// Getter for nextElementSibling (from NonDocumentTypeChildNode mixin)
-/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.get_nextElementSibling(instance);
-}
-
 // =============================================================================
 // Setters - DOM §4.11
 // =============================================================================
@@ -358,45 +344,6 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 // =============================================================================
 // ChildNode Mixin Operations
 // =============================================================================
-
-/// Operation: remove (from ChildNode mixin)
-/// https://dom.spec.whatwg.org/#dom-childnode-remove
-pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-    // Delegate to ChildNode mixin
-    ChildNode.call_remove(instance) catch |err| {
-        return switch (err) {
-            error.HierarchyRequestError => error.HierarchyRequestError,
-            else => error.NotImplemented,
-        };
-    };
-}
-
-/// Operation: before (from ChildNode mixin)
-/// https://dom.spec.whatwg.org/#dom-childnode-before
-pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // TODO: Insert nodes before this node
-    return error.NotImplemented;
-}
-
-/// Operation: after (from ChildNode mixin)
-/// https://dom.spec.whatwg.org/#dom-childnode-after
-pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // TODO: Insert nodes after this node
-    return error.NotImplemented;
-}
-
-/// Operation: replaceWith (from ChildNode mixin)
-/// https://dom.spec.whatwg.org/#dom-childnode-replacewith
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // TODO: Replace this node with nodes
-    return error.NotImplemented;
-}
 
 // =============================================================================
 // Internal Implementation - DOM §4.11 Replace Data Algorithm

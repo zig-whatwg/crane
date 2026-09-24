@@ -191,7 +191,6 @@ src/webidl/impls/Cache.zig Response.getResponseData 3
 src/webidl/impls/Cache.zig Response.init 6
 src/webidl/impls/CacheStorage.zig Cache.call_match 2
 src/webidl/impls/CacheStorage.zig Cache.initWithName 1
-src/webidl/impls/ChildNode.zig ParentNode.NodeOrString 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
 src/webidl/impls/DOMQuad.zig DOMRect.initWithDimensions 1
@@ -202,13 +201,13 @@ src/webidl/impls/DOMStringMap.zig Element.getInternalState 4
 src/webidl/impls/Document.zig CharacterData.getData 16
 src/webidl/impls/Document.zig CharacterData.setData 4
 src/webidl/impls/Document.zig DOMImplementation.setDocument 1
-src/webidl/impls/Document.zig Element.AttributeEntry 11
-src/webidl/impls/Document.zig Element.getInternal 121
-src/webidl/impls/Document.zig Element.setLocalName 11
-src/webidl/impls/Document.zig Element.setNamespaceURI 11
-src/webidl/impls/Document.zig Element.setPrefix 11
+src/webidl/impls/Document.zig Element.AttributeEntry 10
+src/webidl/impls/Document.zig Element.getInternal 100
+src/webidl/impls/Document.zig Element.setLocalName 10
+src/webidl/impls/Document.zig Element.setNamespaceURI 10
+src/webidl/impls/Document.zig Element.setPrefix 10
 src/webidl/impls/Document.zig Event.setInitializedFlag 1
-src/webidl/impls/Document.zig HTMLCollection.addElement 25
+src/webidl/impls/Document.zig HTMLCollection.addElement 16
 src/webidl/impls/Document.zig HTMLParser.parseFragment 4
 src/webidl/impls/Document.zig ProcessingInstruction.createProcessingInstruction 2
 src/webidl/impls/Document.zig ProcessingInstruction.getTarget 1
@@ -225,7 +224,6 @@ src/webidl/impls/Element.zig HTMLCollection.addElement 9
 src/webidl/impls/Element.zig HTMLElement.getInternalState 1
 src/webidl/impls/Element.zig HTMLParser.parseFragment 4
 src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
-src/webidl/impls/Element.zig ParentNode.call_append 1
 src/webidl/impls/Element.zig ParentNode.closest 1
 src/webidl/impls/Element.zig ParentNode.matches 1
 src/webidl/impls/Element.zig ShadowRoot.create 1
@@ -309,7 +307,6 @@ src/webidl/impls/NodeList.zig Node.getChildCount 2
 src/webidl/impls/NodeList.zig Node.getFirstChild 2
 src/webidl/impls/NodeList.zig Node.getNextSibling 2
 src/webidl/impls/NonElementParentNode.zig Element.getInternal 1
-src/webidl/impls/ParentNode.zig CharacterData.setData 1
 src/webidl/impls/ParentNode.zig Element.getInternal 13
 src/webidl/impls/ParentNode.zig NodeList.addNode 5
 src/webidl/impls/Range.zig CharacterData.deleteDataRange 16

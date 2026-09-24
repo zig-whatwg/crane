@@ -1726,30 +1726,20 @@ pub const Element = struct {
         if (state.own.cached_children) |cached| {
             return cached;
         }
-        const value = try ElementImpl.get_children(instance);
+        const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_firstElementChild(instance);
-    }
+    pub const get_firstElementChild = mixins.ParentNode.get_firstElementChild;
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_lastElementChild(instance);
-    }
+    pub const get_lastElementChild = mixins.ParentNode.get_lastElementChild;
 
-    pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-        return try ElementImpl.get_childElementCount(instance);
-    }
+    pub const get_childElementCount = mixins.ParentNode.get_childElementCount;
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_previousElementSibling(instance);
-    }
+    pub const get_previousElementSibling = mixins.NonDocumentTypeChildNode.get_previousElementSibling;
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_nextElementSibling(instance);
-    }
+    pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
 
     pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ElementImpl.get_assignedSlot(instance);
@@ -1767,14 +1757,7 @@ pub const Element = struct {
         return try ElementImpl.call_insertAdjacentText(instance, where, data);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_moveBefore(instance, node, child);
-    }
+    pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     /// Extended attributes: [CEReactions]
     pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -1785,14 +1768,7 @@ pub const Element = struct {
         return try ElementImpl.call_insertAdjacentElement(instance, where, element);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_append(instance, nodes);
-    }
+    pub const call_append = mixins.ParentNode.call_append;
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_getBoxQuads(instance, options);
@@ -1814,14 +1790,7 @@ pub const Element = struct {
         return try ElementImpl.call_focusableAreas(instance, option);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_before(instance, nodes);
-    }
+    pub const call_before = mixins.ChildNode.call_before;
 
     /// Extended attributes: [CEReactions]
     pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: DOMString) anyerror!void {
@@ -1842,14 +1811,7 @@ pub const Element = struct {
         return try ElementImpl.call_getBoundingClientRect(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_after(instance, nodes);
-    }
+    pub const call_after = mixins.ChildNode.call_after;
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByClassName(instance, classNames);
@@ -1864,14 +1826,7 @@ pub const Element = struct {
         return try ElementImpl.call_setAttributeNode(instance, attr);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_remove(instance);
-    }
+    pub const call_remove = mixins.ChildNode.call_remove;
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
@@ -1931,9 +1886,7 @@ pub const Element = struct {
         return try ElementImpl.call_setAttribute(instance, qualifiedName, value);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        return try ElementImpl.call_querySelector(instance, selectors);
-    }
+    pub const call_querySelector = mixins.ParentNode.call_querySelector;
 
     /// Extended attributes: [CEReactions]
     pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: DOMString, force: webidl.Opt(bool)) anyerror!bool {
@@ -1944,12 +1897,7 @@ pub const Element = struct {
         return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-
-        return try ElementImpl.call_querySelectorAll(instance, selectors);
-    }
+    pub const call_querySelectorAll = mixins.ParentNode.call_querySelectorAll;
 
     /// Extended attributes: [SameObject]
     pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1985,14 +1933,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNames(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_replaceWith(instance, nodes);
-    }
+    pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
@@ -2014,14 +1955,7 @@ pub const Element = struct {
         return try ElementImpl.call_scrollTo(instance, options);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_replaceChildren(instance, nodes);
-    }
+    pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
     pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_requestFullscreen(instance, options);
@@ -2040,14 +1974,7 @@ pub const Element = struct {
         return try ElementImpl.call_getRegionFlowRanges(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try ElementImpl.call_prepend(instance, nodes);
-    }
+    pub const call_prepend = mixins.ParentNode.call_prepend;
 
     /// Extended attributes: [CEReactions]
     pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {

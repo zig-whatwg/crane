@@ -168,39 +168,11 @@ pub const DocumentType = struct {
         return try DocumentTypeImpl.get_systemId(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub const call_before = mixins.ChildNode.call_before;
 
-        return try DocumentTypeImpl.call_before(instance, nodes);
-    }
+    pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub const call_remove = mixins.ChildNode.call_remove;
 
-        return try DocumentTypeImpl.call_replaceWith(instance, nodes);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentTypeImpl.call_remove(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentTypeImpl.call_after(instance, nodes);
-    }
+    pub const call_after = mixins.ChildNode.call_after;
 };

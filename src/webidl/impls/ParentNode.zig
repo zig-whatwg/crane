@@ -37,7 +37,6 @@ const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
 const HTMLCollectionImpl = @import("HTMLCollection.zig");
 const NodeListImpl = @import("NodeList.zig");
-const CharacterDataImpl = @import("CharacterData.zig");
 const live_collections = @import("dom").live_collections;
 
 pub const ImplError = error{
@@ -1030,66 +1029,48 @@ pub fn closest(
 // ParentNode Mutation Methods
 // =============================================================================
 
-/// prepend - Inserts nodes before the first child
+/// prepend(...nodes)
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
 pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    const allocator = instance.ctx.getAllocator();
+    // Step 1: "Let node be the result of converting nodes into a node given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
 
-    // Get this node's document
-    const document = NodeImpl.getOwnerDocument(instance) orelse instance;
-
-    // Step 1: Convert nodes into a node
-    const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
-
-    // Step 2: Pre-insert node into this before this's first child (use interface per Golden Rule #13)
-    const first_child = NodeImpl.getFirstChild(instance);
-    if (first_child) |child| {
-        _ = interfaces.Node.call_insertBefore(instance, node, child) catch return error.HierarchyRequestError;
-    } else {
-        _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
-    }
+    // Step 2: "Pre-insert node into this before this's first child."
+    _ = try NodeImpl.call_insertBefore(instance, node, NodeImpl.getFirstChild(instance));
 }
 
-/// append - Inserts nodes after the last child
+/// append(...nodes)
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    const allocator = instance.ctx.getAllocator();
+    // Step 1: "Let node be the result of converting nodes into a node given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
 
-    // Get this node's document
-    const document = NodeImpl.getOwnerDocument(instance) orelse instance;
-
-    // Step 1: Convert nodes into a node
-    const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
-
-    // Step 2: Append node to this (use interface per Golden Rule #13)
-    _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+    // Step 2: "Append node to this."
+    _ = try NodeImpl.call_appendChild(instance, node);
 }
 
-/// replaceChildren - Replaces all children with nodes
+/// replaceChildren(...nodes)
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    const allocator = instance.ctx.getAllocator();
+    // Step 1: "Let node be the result of converting nodes into a node given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
 
-    // Get this node's document
-    const document = NodeImpl.getOwnerDocument(instance) orelse instance;
-
-    // Step 1: Convert nodes into a node
-    const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
-
-    // Steps 2-3: Remove all children, then append new node (use interface per Golden Rule #13)
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        _ = interfaces.Node.call_removeChild(instance, c) catch {};
-        child = next;
-    }
-
-    // Then append the new node
-    _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+    // Steps 2-3: "Ensure pre-insertion validity of node into this before
+    // null. Replace all with node within this."
+    try NodeImpl.replaceAllChildren(instance, node);
 }
 
 /// moveBefore - Moves a node into this parent before child, preserving state
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+///
+/// Deviation: step 3 is DOM "move", which keeps node's state; this removes
+/// node and inserts it again, running the removing and insertion steps.
+/// `mutation.move` in src/dom/ is a draft that has never compiled - it is
+/// written against `interfaces.Node` and sibling pointers, not `NodeBase` -
+/// so it cannot be called yet.
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
     // Step 1: Let referenceChild be child
     var reference_child = child;
@@ -1139,89 +1120,9 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
     }
 }
 
-// =============================================================================
-// Node Conversion Helpers
-// =============================================================================
-
-/// Convert nodes into a node
-/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
-fn convertNodesIntoNode(
-    allocator: std.mem.Allocator,
-    nodes: []const NodeOrString,
-    document: *runtime.Instance,
-    ctx: runtime.Context,
-) ImplError!*runtime.Instance {
-    if (nodes.len == 0) {
-        // Return an empty DocumentFragment
-        return createDocumentFragment(allocator, document, ctx);
-    }
-
-    if (nodes.len == 1) {
-        // Step 3: If nodes contains one node, return it (or create Text for string)
-        return switch (nodes[0]) {
-            .node => |n| n,
-            .string => |s| createTextNode(allocator, s, document, ctx),
-        };
-    }
-
-    // Step 4: Create DocumentFragment and append all nodes
-    const fragment = try createDocumentFragment(allocator, document, ctx);
-    errdefer runtime.Instance.deinit(fragment);
-
-    for (nodes) |item| {
-        const child_node = switch (item) {
-            .node => |n| n,
-            .string => |s| try createTextNode(allocator, s, document, ctx),
-        };
-        _ = interfaces.Node.call_appendChild(fragment, child_node) catch return error.HierarchyRequestError;
-    }
-
-    return fragment;
-}
-
-/// Create a new Text node
-fn createTextNode(
-    allocator: std.mem.Allocator,
-    data: []const u8,
-    document: *runtime.Instance,
-    ctx: runtime.Context,
-) ImplError!*runtime.Instance {
-    const text = interfaces.Text.init(
-        allocator,
-        ctx,
-    ) catch return error.OutOfMemory;
-    errdefer interfaces.Text.deinit(text);
-
-    // Set node type to TEXT_NODE (3)
-    NodeImpl.setNodeType(text, NodeImpl.NodeType.TEXT_NODE) catch return error.OutOfMemory;
-
-    // Set the text data via CharacterData
-    CharacterDataImpl.setData(text, data) catch return error.OutOfMemory;
-
-    // Set owner document
-    NodeImpl.setOwnerDocument(text, document) catch {};
-
-    return text;
-}
-
-/// Create a new DocumentFragment node
-fn createDocumentFragment(
-    allocator: std.mem.Allocator,
-    document: *runtime.Instance,
-    ctx: runtime.Context,
-) ImplError!*runtime.Instance {
-    const fragment = interfaces.DocumentFragment.init(
-        allocator,
-        ctx,
-    ) catch return error.OutOfMemory;
-
-    // Set node type to DOCUMENT_FRAGMENT_NODE (11)
-    NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) catch return error.OutOfMemory;
-
-    // Set owner document
-    NodeImpl.setOwnerDocument(fragment, document) catch {};
-
-    return fragment;
+/// This's node document: a document is its own.
+fn nodeDocument(instance: *runtime.Instance) *runtime.Instance {
+    return NodeImpl.getOwnerDocument(instance) orelse instance;
 }
 
 pub fn deinit(instance: *runtime.Instance) void {

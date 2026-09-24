@@ -193,48 +193,23 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.get_length(instance);
     }
 
-    pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try CharacterDataImpl.get_previousElementSibling(instance);
-    }
+    pub const get_previousElementSibling = mixins.NonDocumentTypeChildNode.get_previousElementSibling;
 
-    pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try CharacterDataImpl.get_nextElementSibling(instance);
-    }
+    pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
 
     pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: DOMString) anyerror!void {
         return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try CharacterDataImpl.call_before(instance, nodes);
-    }
+    pub const call_before = mixins.ChildNode.call_before;
 
     pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
         return try CharacterDataImpl.call_deleteData(instance, offset, count);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub const call_remove = mixins.ChildNode.call_remove;
 
-        return try CharacterDataImpl.call_remove(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try CharacterDataImpl.call_after(instance, nodes);
-    }
+    pub const call_after = mixins.ChildNode.call_after;
 
     pub fn call_appendData(instance: *runtime.Instance, data: DOMString) anyerror!void {
         return try CharacterDataImpl.call_appendData(instance, data);
@@ -248,14 +223,7 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_insertData(instance, offset, data);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try CharacterDataImpl.call_replaceWith(instance, nodes);
-    }
+    pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
     /// (bit i = argument i; an attribute setter's value is bit 0).

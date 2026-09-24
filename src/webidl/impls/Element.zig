@@ -35,9 +35,6 @@ const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
-const ParentNode = mixins.ParentNode;
-const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
-const ChildNode = mixins.ChildNode;
 
 // Import pointer_tag for V8 pointer untagging (via v8 module)
 const pointer_tag = @import("v8").pointer_tag;
@@ -1501,48 +1498,6 @@ pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
     return .{ .empty = {} };
 }
 
-/// Getter for children
-/// ParentNode mixin - Returns an HTMLCollection of child elements
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
-pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return ParentNode.get_children(instance);
-}
-
-/// Getter for firstElementChild
-/// ParentNode mixin - Returns the first child that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
-pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.get_firstElementChild(instance);
-}
-
-/// Getter for lastElementChild
-/// ParentNode mixin - Returns the last child that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
-pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.get_lastElementChild(instance);
-}
-
-/// Getter for childElementCount
-/// ParentNode mixin - Returns the number of child elements
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
-pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-    return ParentNode.get_childElementCount(instance);
-}
-
-/// Getter for previousElementSibling
-/// NonDocumentTypeChildNode mixin - Returns the previous sibling that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.get_previousElementSibling(instance);
-}
-
-/// Getter for nextElementSibling
-/// NonDocumentTypeChildNode mixin - Returns the next sibling that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.get_nextElementSibling(instance);
-}
-
 /// Getter for assignedSlot
 /// Slottable mixin - Returns the slot this element is assigned to
 /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
@@ -2829,53 +2784,6 @@ pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionari
     return runtime.JSValue.jsUndefined;
 }
 
-/// Operation: prepend
-/// ParentNode mixin - Inserts nodes before the first child of this element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-///
-/// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Get first child
-    const first_child = NodeImpl.getFirstChild(instance);
-
-    if (first_child) |fc| {
-        // Insert before first child
-        _ = interfaces.Node.call_insertBefore(instance, node, fc) catch {
-            return error.InvalidStateError;
-        };
-    } else {
-        // No children - append
-        _ = interfaces.Node.call_appendChild(instance, node) catch {
-            return error.InvalidStateError;
-        };
-    }
-}
-
-/// Operation: replaceWith
-/// ChildNode mixin - Replaces this element with nodes
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
-///
-/// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // Get parent - if null, return (per spec)
-    const parent = NodeImpl.getParent(instance) orelse return;
-
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Replace this with node using Node.replaceChild
-    _ = interfaces.Node.call_replaceChild(parent, node, instance) catch {
-        return error.InvalidStateError;
-    };
-}
-
 /// Operation: convertQuadFromNode
 /// CSSOM View §6 - Converts a quad from another element's coordinate space
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertquadfromnode
@@ -3109,38 +3017,6 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runt
     return collection;
 }
 
-/// Operation: replaceChildren
-/// ParentNode mixin - Replaces all children of this element with nodes
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-///
-/// Steps:
-/// 1. Let node be the result of converting nodes into a node
-/// 2. Ensure pre-insertion validity of node into this before null
-/// 3. Replace all with node within this
-///
-/// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // First, remove all existing children
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        _ = interfaces.Node.call_removeChild(instance, c) catch {};
-        child = next;
-    }
-
-    // Then append the new node(s)
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    // Note: nodes being "empty" variadic is represented as a special marker, not null pointer
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Append the new node
-    _ = interfaces.Node.call_appendChild(instance, node) catch {
-        return error.InvalidStateError;
-    };
-}
-
 /// Operation: getRegionFlowRanges
 /// CSS Regions §10.3 - Returns ranges for content in this region
 /// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-getregionflowranges
@@ -3287,14 +3163,6 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
     return collection;
 }
 
-/// Operation: querySelector
-/// ParentNode mixin - Returns the first element matching the selector
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    // Delegate to ParentNode mixin - pass DOMString directly
-    return ParentNode.call_querySelector(instance, selectors);
-}
-
 /// Operation: closest
 /// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-closest
@@ -3313,18 +3181,6 @@ pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!
     _ = instance;
     // Spatial navigation not implemented - return null
     return error.NotImplemented;
-}
-
-/// Operation: remove
-/// ChildNode mixin - Removes this element from its parent
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
-pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-    ChildNode.call_remove(instance) catch |err| {
-        return switch (err) {
-            error.HierarchyRequestError => error.InvalidStateError,
-            else => error.NotImplemented,
-        };
-    };
 }
 
 /// Operation: removeAttribute
@@ -3435,32 +3291,6 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, op
     _ = options;
     // Animation requires rendering engine - return null
     return error.NotImplemented;
-}
-
-/// Operation: append
-/// ParentNode mixin - Appends nodes after the last child of this element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-///
-/// Delegates to ParentNode mixin implementation.
-pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // Delegate to ParentNode impl (which handles NodeOrString properly)
-    return ParentNodeImpl.call_append(instance, nodes);
-}
-
-/// Operation: moveBefore
-/// DOM §4.10.6 - Moves a node before a child without triggering removal callbacks
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-///
-/// This is a newer DOM method for moving nodes atomically
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-    // Use insertBefore as a fallback (doesn't suppress callbacks but same tree result)
-    _ = interfaces.Node.call_insertBefore(instance, node, child) catch |err| {
-        return switch (err) {
-            error.HierarchyRequestError => error.InvalidStateError,
-            error.NotFoundError => error.NotFoundError,
-            else => error.InvalidStateError,
-        };
-    };
 }
 
 /// Operation: getHTML
@@ -3629,58 +3459,6 @@ pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) a
     _ = @"type";
     // Requires CSSOM and pseudo-element support - return null
     return error.NotImplemented;
-}
-
-/// Operation: before
-/// ChildNode mixin - Inserts nodes just before this element
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-before
-///
-/// Note: This is a simplified implementation that handles the common single-node case.
-/// Full implementation would need to handle variadic Node or DOMString arguments.
-pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // Get parent - if null, return (per spec)
-    const parent = NodeImpl.getParent(instance) orelse return;
-
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    // TODO: Handle variadic (Node or DOMString)... properly
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Insert node before this element
-    _ = interfaces.Node.call_insertBefore(parent, node, instance) catch {
-        return error.InvalidStateError;
-    };
-}
-
-/// Operation: after
-/// ChildNode mixin - Inserts nodes just after this element
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
-///
-/// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // Get parent - if null, return (per spec)
-    const parent = NodeImpl.getParent(instance) orelse return;
-
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Get next sibling
-    const next_sibling = NodeImpl.getNextSibling(instance);
-
-    if (next_sibling) |ns| {
-        // Insert before next sibling
-        _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {
-            return error.InvalidStateError;
-        };
-    } else {
-        // Append to parent (no next sibling)
-        _ = interfaces.Node.call_appendChild(parent, node) catch {
-            return error.InvalidStateError;
-        };
-    }
 }
 
 /// Operation: setAttribute
@@ -4199,14 +3977,6 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
         webidl.Opt(f64).passed(width), // width
         webidl.Opt(f64).passed(height), // height
     ) catch return error.OutOfMemory;
-}
-
-/// Operation: querySelectorAll
-/// ParentNode mixin - Returns all elements matching the selector
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
-    // Delegate to ParentNode mixin - pass DOMString directly
-    return ParentNode.call_querySelectorAll(instance, selectors);
 }
 
 /// Operation: setPointerCapture

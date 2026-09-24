@@ -39,7 +39,6 @@ const SelectionImpl = @import("Selection.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
-const ParentNode = mixins.ParentNode;
 
 // Content Security Policy
 const csp = @import("csp");
@@ -1689,85 +1688,6 @@ pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance
     internal.active_element = element;
 }
 
-/// Getter for children
-/// ParentNode mixin - Returns an HTMLCollection of child elements
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
-pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Create an HTMLCollection to hold direct child elements
-    // Use interface instead of impl (per Golden Rule #13)
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Iterate direct children and add elements
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // addElement is an internal method not exposed via interface
-            HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    return collection;
-}
-
-/// Getter for firstElementChild
-/// ParentNode mixin - Returns the first child that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
-pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            return c;
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-    // No element child found - return null per spec
-    return null;
-}
-
-/// Getter for lastElementChild
-/// ParentNode mixin - Returns the last child that is an element
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
-pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var last_element: ?*runtime.Instance = null;
-
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            last_element = c;
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    // Return null if no element child found per spec
-    return last_element;
-}
-
-/// Getter for childElementCount
-/// ParentNode mixin - Returns the number of child elements
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
-pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-    var count: u32 = 0;
-
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            count += 1;
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    return count;
-}
-
 // =============================================================================
 // Event Handler Helpers
 // =============================================================================
@@ -2228,20 +2148,6 @@ pub fn createHTMLElement(
 pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     // No-op - legacy method
-}
-
-/// Operation: prepend
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-/// Inserts nodes before the first child
-/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.call_prepend()
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // When variadic support is added:
-    // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.call_prepend(allocator, instance, node_slice, ctx);
-    return error.NotImplemented;
 }
 
 /// Operation: convertQuadFromNode
@@ -2813,20 +2719,6 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
     return event;
 }
 
-/// Operation: replaceChildren
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-/// Replaces all children with nodes
-/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.call_replaceChildren()
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // When variadic support is added:
-    // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.call_replaceChildren(allocator, instance, node_slice, ctx);
-    return error.NotImplemented;
-}
-
 /// Operation: getBoxQuads
 /// Returns the CSS box quads for this document.
 /// Without a layout engine, returns an empty sequence.
@@ -3009,14 +2901,6 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
     _ = @"type";
     _ = result;
     return error.NotImplemented;
-}
-
-/// Operation: querySelector
-/// ParentNode mixin - Returns the first element matching the selector
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    // Delegate to ParentNode mixin - pass DOMString directly
-    return ParentNode.call_querySelector(instance, selectors);
 }
 
 /// Operation: hasStorageAccess
@@ -3242,54 +3126,6 @@ pub fn call_createRange(instance: *runtime.Instance) anyerror!*runtime.Instance 
 
     // Step 3: Return range
     return range;
-}
-
-/// Operation: getElementById
-/// DOM §4.3.1 (NonElementParentNode) - Returns the first element with matching ID
-/// Spec: https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid
-///
-/// Steps:
-/// 1. Return the first element, in tree order, within this's descendants,
-///    that has an ID equal to elementId; otherwise null
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
-    const element_id = elementId.asSlice();
-
-    // Empty ID never matches per spec
-    if (element_id.len == 0) {
-        return null;
-    }
-
-    // Traverse tree in tree order (preorder depth-first)
-    return findElementById(instance, element_id);
-}
-
-/// Helper: Recursively search for element by ID
-fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Instance {
-    // First check children
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        // Check if this child is an element with matching ID
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Get element's id
-            const ElementImpl = @import("Element.zig");
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const elem_id = elem_internal.id.asSlice();
-                if (std.mem.eql(u8, elem_id, target_id)) {
-                    return c;
-                }
-            }
-        }
-
-        // Recursively search descendants
-        if (findElementById(c, target_id)) |found| {
-            return found;
-        }
-
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    return null;
 }
 
 /// Operation: createAttributeNS
@@ -3591,33 +3427,6 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
             }
         }
     }
-}
-
-/// Operation: append
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-/// Inserts nodes after the last child
-/// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.call_append()
-pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = instance;
-    _ = nodes;
-    // When variadic support is added:
-    // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.call_append(allocator, instance, node_slice, ctx);
-    return error.NotImplemented;
-}
-
-/// Operation: moveBefore
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-/// Moves node to before child, preserving state
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-    ParentNode.call_moveBefore(instance, node, child) catch |err| {
-        return switch (err) {
-            error.HierarchyRequestError => error.HierarchyRequestError,
-            error.NotFoundError => error.NotFoundError,
-            else => error.NotImplemented,
-        };
-    };
 }
 
 /// Operation: convertRectFromNode
@@ -3938,14 +3747,6 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
 pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Operation: querySelectorAll
-/// ParentNode mixin - Returns all elements matching the selector
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
-    // Delegate to ParentNode mixin - pass DOMString directly
-    return ParentNode.call_querySelectorAll(instance, selectors);
 }
 
 /// Operation: browsingTopics

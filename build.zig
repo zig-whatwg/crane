@@ -1112,6 +1112,7 @@ pub fn build(b: *std.Build) void {
     mixins_mod.addImport("dictionaries", dictionaries_mod);
     mixins_mod.addImport("callbacks", callbacks_mod);
     mixins_mod.addImport("webidl", webidl_mod);
+    mixins_mod.addImport("mixins", mixins_mod); // Self-import for cross-mixin refs
 
     // Add mixins to impls (so impls can use shared mixin code)
     impls_mod.addImport("mixins", mixins_mod);

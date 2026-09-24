@@ -187,71 +187,28 @@ pub const DocumentFragment = struct {
         if (state.own.cached_children) |cached| {
             return cached;
         }
-        const value = try DocumentFragmentImpl.get_children(instance);
+        const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentFragmentImpl.get_firstElementChild(instance);
-    }
+    pub const get_firstElementChild = mixins.ParentNode.get_firstElementChild;
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentFragmentImpl.get_lastElementChild(instance);
-    }
+    pub const get_lastElementChild = mixins.ParentNode.get_lastElementChild;
 
-    pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-        return try DocumentFragmentImpl.get_childElementCount(instance);
-    }
+    pub const get_childElementCount = mixins.ParentNode.get_childElementCount;
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
-        return try DocumentFragmentImpl.call_getElementById(instance, elementId);
-    }
+    pub const call_getElementById = mixins.NonElementParentNode.call_getElementById;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
+    pub const call_querySelectorAll = mixins.ParentNode.call_querySelectorAll;
 
-        return try DocumentFragmentImpl.call_querySelectorAll(instance, selectors);
-    }
+    pub const call_prepend = mixins.ParentNode.call_prepend;
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
-        return try DocumentFragmentImpl.call_prepend(instance, nodes);
-    }
+    pub const call_querySelector = mixins.ParentNode.call_querySelector;
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
-        return try DocumentFragmentImpl.call_replaceChildren(instance, nodes);
-    }
-
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        return try DocumentFragmentImpl.call_querySelector(instance, selectors);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentFragmentImpl.call_moveBefore(instance, node, child);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentFragmentImpl.call_append(instance, nodes);
-    }
+    pub const call_append = mixins.ParentNode.call_append;
 };

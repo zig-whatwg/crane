@@ -2,28 +2,16 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#interface-childnode
 //!
-//! This impl contains the actual logic for ChildNode methods. The mixin file
-//! delegates to these functions.
-//!
-//! The ChildNode mixin defines:
-//! - before(...nodes) - Inserts nodes just before this node
-//! - after(...nodes) - Inserts nodes just after this node
-//! - replaceWith(...nodes) - Replaces this node with nodes
-//! - remove() - Removes this node from its parent
+//! CharacterData, DocumentType and Element include ChildNode and inherit these
+//! members by alias. Every includer is a Node, so Node is this mixin's
+//! ancestor: its tree is reached through the Node impl.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const webidl = @import("webidl");
 const mixins = @import("mixins");
 
-// Import impl modules for accessing internal state
 const NodeImpl = @import("Node.zig");
-const ParentNodeImpl = @import("ParentNode.zig");
 
 pub const State = interfaces.ChildNode.State;
 
@@ -34,9 +22,7 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Use the same NodeOrString type as ParentNode to ensure type compatibility
-/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
-pub const NodeOrString = ParentNodeImpl.NodeOrString;
+const NodeOrString = mixins.ParentNode.NodeOrString;
 
 /// Internal state for implementation-specific data
 pub const InternalState = struct {};
@@ -61,81 +47,109 @@ pub fn deinit(instance: *runtime.Instance) void {
 // ChildNode Methods
 // =============================================================================
 
-/// before - Inserts nodes just before this node
+/// before(...nodes)
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-before
-///
-/// Steps:
-/// 1. Let parent be this's parent
-/// 2. If parent is null, return
-/// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes
-/// 4. Let node be the result of converting nodes into a node
-/// 5. If viablePreviousSibling is null, set it to parent's first child
-/// 6. Otherwise, set it to viablePreviousSibling's next sibling
-/// 7. Pre-insert node into parent before viablePreviousSibling
-pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = nodes;
-
-    // Step 1: Get parent
-    const parent = NodeImpl.getParent(instance) orelse return; // Step 2: If null, return
-
-    // TODO: Implement full algorithm with node conversion and pre-insert
-    // For now, this is a stub that requires mutation algorithm implementation
-    _ = parent;
-    return error.NotImplemented;
-}
-
-/// after - Inserts nodes just after this node
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
-///
-/// Steps:
-/// 1. Let parent be this's parent
-/// 2. If parent is null, return
-/// 3. Let viableNextSibling be this's first following sibling not in nodes
-/// 4. Let node be the result of converting nodes into a node
-/// 5. Pre-insert node into parent before viableNextSibling
-pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = nodes;
-
-    // Step 1: Get parent
-    const parent = NodeImpl.getParent(instance) orelse return; // Step 2: If null, return
-
-    // TODO: Implement full algorithm with node conversion and pre-insert
-    _ = parent;
-    return error.NotImplemented;
-}
-
-/// replaceWith - Replaces this node with nodes
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
-///
-/// Steps:
-/// 1. Let parent be this's parent
-/// 2. If parent is null, return
-/// 3. Let viableNextSibling be this's first following sibling not in nodes
-/// 4. Let node be the result of converting nodes into a node
-/// 5. If this's parent is parent, replace this with node within parent
-/// 6. Otherwise, pre-insert node into parent before viableNextSibling
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    _ = nodes;
-
-    // Step 1: Get parent
-    const parent = NodeImpl.getParent(instance) orelse return; // Step 2: If null, return
-
-    // TODO: Implement full algorithm with node conversion and replace
-    _ = parent;
-    return error.NotImplemented;
-}
-
-/// remove - Removes this node from its parent
-/// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
-///
-/// Steps:
-/// 1. If this's parent is null, return
-/// 2. Remove this
-pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-    // Step 1: Get parent, if null return
+pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+    // Steps 1-2: "Let parent be this's parent. If parent is null, then return."
     const parent = NodeImpl.getParent(instance) orelse return;
 
-    // Step 2: Remove this node from parent
-    // Use the Node's removeNodeFromParent which handles all the tree mutation
-    NodeImpl.removeNodeFromParent(instance, parent) catch return error.HierarchyRequestError;
+    // Step 3: "Let viablePreviousSibling be this's first preceding sibling not
+    // in nodes; otherwise null."
+    var viable_previous_sibling = NodeImpl.getPreviousSibling(instance);
+    while (viable_previous_sibling) |sibling| : (viable_previous_sibling = NodeImpl.getPreviousSibling(sibling)) {
+        if (!inNodes(nodes, sibling)) break;
+    }
+
+    // Step 4: "Let node be the result of converting nodes into a node, given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+
+    // Step 5: "If viablePreviousSibling is null, then set it to parent's first
+    // child; otherwise to viablePreviousSibling's next sibling." Read after
+    // step 4, which may have moved nodes out of this position.
+    const reference = if (viable_previous_sibling) |sibling| NodeImpl.getNextSibling(sibling) else NodeImpl.getFirstChild(parent);
+
+    // Step 6: "Pre-insert node into parent before viablePreviousSibling."
+    _ = try NodeImpl.call_insertBefore(parent, node, reference);
+}
+
+/// after(...nodes)
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
+pub fn call_after(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+    // Steps 1-2: "Let parent be this's parent. If parent is null, then return."
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // Step 3: "Let viableNextSibling be this's first following sibling not in
+    // nodes; otherwise null."
+    const viable_next_sibling = firstFollowingSiblingNotIn(instance, nodes);
+
+    // Step 4: "Let node be the result of converting nodes into a node, given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+
+    // Step 5: "Pre-insert node into parent before viableNextSibling."
+    _ = try NodeImpl.call_insertBefore(parent, node, viable_next_sibling);
+}
+
+/// replaceWith(...nodes)
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+    // Steps 1-2: "Let parent be this's parent. If parent is null, then return."
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // Step 3: "Let viableNextSibling be this's first following sibling not in
+    // nodes; otherwise null."
+    const viable_next_sibling = firstFollowingSiblingNotIn(instance, nodes);
+
+    // Step 4: "Let node be the result of converting nodes into a node, given
+    // nodes and this's node document."
+    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+
+    if (NodeImpl.getParent(instance) == parent) {
+        // Step 5: "If this's parent is parent, replace this with node within
+        // parent." (This could have been inserted into node.)
+        _ = try NodeImpl.call_replaceChild(parent, node, instance);
+    } else {
+        // Step 6: "Otherwise, pre-insert node into parent before
+        // viableNextSibling."
+        _ = try NodeImpl.call_insertBefore(parent, node, viable_next_sibling);
+    }
+}
+
+/// remove()
+/// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
+    // Step 1: "If this's parent is null, then return."
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // Step 2: "Remove this."
+    try NodeImpl.removeNodeFromParent(instance, parent);
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// This's node document: every includer is a non-document node, so it is the
+/// owner document.
+fn nodeDocument(instance: *runtime.Instance) !*runtime.Instance {
+    return NodeImpl.getOwnerDocument(instance) orelse error.InvalidStateError;
+}
+
+/// Whether `candidate` is one of the nodes (not strings) in `nodes`.
+fn inNodes(nodes: []const NodeOrString, candidate: *runtime.Instance) bool {
+    for (nodes) |item| switch (item) {
+        .node => |node| if (node == candidate) return true,
+        .string => {},
+    };
+    return false;
+}
+
+/// This's first following sibling not in `nodes`, or null.
+fn firstFollowingSiblingNotIn(instance: *runtime.Instance, nodes: []const NodeOrString) ?*runtime.Instance {
+    var sibling = NodeImpl.getNextSibling(instance);
+    while (sibling) |s| : (sibling = NodeImpl.getNextSibling(s)) {
+        if (!inNodes(nodes, s)) return s;
+    }
+    return null;
 }

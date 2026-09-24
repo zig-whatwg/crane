@@ -1738,22 +1738,16 @@ pub const Document = struct {
         if (state.own.cached_children) |cached| {
             return cached;
         }
-        const value = try DocumentImpl.get_children(instance);
+        const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
         return value;
     }
 
-    pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_firstElementChild(instance);
-    }
+    pub const get_firstElementChild = mixins.ParentNode.get_firstElementChild;
 
-    pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_lastElementChild(instance);
-    }
+    pub const get_lastElementChild = mixins.ParentNode.get_lastElementChild;
 
-    pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-        return try DocumentImpl.get_childElementCount(instance);
-    }
+    pub const get_childElementCount = mixins.ParentNode.get_childElementCount;
 
     pub const get_onabort = mixins.GlobalEventHandlers.get_onabort;
     pub const set_onabort = mixins.GlobalEventHandlers.set_onabort;
@@ -2077,9 +2071,7 @@ pub const Document = struct {
         return try DocumentImpl.call_clear(instance);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
-        return try DocumentImpl.call_getElementById(instance, elementId);
-    }
+    pub const call_getElementById = mixins.NonElementParentNode.call_getElementById;
 
     /// Extended attributes: [SecureContext]
     pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!runtime.JSValue {
@@ -2120,14 +2112,7 @@ pub const Document = struct {
         return try DocumentImpl.call_hasFocus(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentImpl.call_append(instance, nodes);
-    }
+    pub const call_append = mixins.ParentNode.call_append;
 
     pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
@@ -2212,9 +2197,7 @@ pub const Document = struct {
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        return try DocumentImpl.call_querySelector(instance, selectors);
-    }
+    pub const call_querySelector = mixins.ParentNode.call_querySelector;
 
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
@@ -2245,12 +2228,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createTextNode(instance, data);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-
-        return try DocumentImpl.call_querySelectorAll(instance, selectors);
-    }
+    pub const call_querySelectorAll = mixins.ParentNode.call_querySelectorAll;
 
     pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandState(instance, commandId);
@@ -2374,14 +2352,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentImpl.call_replaceChildren(instance, nodes);
-    }
+    pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
@@ -2410,14 +2381,7 @@ pub const Document = struct {
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentImpl.call_prepend(instance, nodes);
-    }
+    pub const call_prepend = mixins.ParentNode.call_prepend;
 
     pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_getAnimations(instance);
@@ -2436,14 +2400,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createProcessingInstruction(instance, target, data);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        return try DocumentImpl.call_moveBefore(instance, node, child);
-    }
+    pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     /// Extended attributes: [NewObject]
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
