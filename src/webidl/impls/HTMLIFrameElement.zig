@@ -141,7 +141,7 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
             // Now that BC and callbacks are set up, trigger navigation
             internal.integration.setSrcdoc(srcdoc) catch {};
             // Fire load event after srcdoc navigation completes
-            fireLoadEventOnIframe(instance);
+            fireLoadUnlessDocumentWill(instance);
             return;
         }
     }
@@ -151,7 +151,7 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
         // Now that BC and callbacks are set up, trigger navigation
         internal.integration.setSrcdoc(srcdoc) catch {};
         // Fire load event after srcdoc navigation completes
-        fireLoadEventOnIframe(instance);
+        fireLoadUnlessDocumentWill(instance);
         return;
     }
 
@@ -168,6 +168,16 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
         // Navigate to src URL, parsed relative to the node document.
         const src_url = resolveSrc(instance, src);
         defer instance.ctx.allocator.free(src_url);
+
+        // "Process the iframe attributes" step 2.3: on initial insertion a URL
+        // that matches about:blank is not navigated to. The frame stays on its
+        // initial about:blank document - whose window never sees load or
+        // pageshow - and only the iframe load event steps run.
+        if (matchesAboutBlank(src_url)) {
+            fireLoadEventOnIframe(instance);
+            return;
+        }
+
         internal.integration.setSrc(src_url) catch {};
 
         // Fire the load event. `data:` and `javascript:` fire synchronously,
@@ -184,7 +194,7 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
         // is why a failed navigation still fires rather than leaving the page
         // waiting forever.
         if (std.mem.startsWith(u8, src, "data:") or std.mem.startsWith(u8, src, "javascript:")) {
-            fireLoadEventOnIframe(instance);
+            fireLoadUnlessDocumentWill(instance);
         } else {
             queueIframeLoadEvent(instance);
         }
@@ -758,7 +768,7 @@ fn navigateIframe(ctx: ?*anyopaque, url: []const u8) bool {
 /// Used by IFrameIntegration after navigation completes.
 fn fireLoadCallback(iframe_instance_ptr: ?*anyopaque) void {
     const instance: *runtime.Instance = @ptrCast(@alignCast(iframe_instance_ptr orelse return));
-    fireLoadEventOnIframe(instance);
+    fireLoadUnlessDocumentWill(instance);
 }
 
 /// Source of `InternalState.pending_load_token`. Never reused, never zero.
@@ -804,14 +814,9 @@ const PendingLoadEvent = struct {
 fn queueIframeLoadEvent(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
 
-    // A document the parser just finished is still "interactive": its own
-    // "the end" is queued (dom.document_lifecycle), and the last step of that,
-    // "completely finish loading", queues this very event after the document's
-    // load and pageshow. Only a document that never went through the parser -
-    // the initial about:blank, an error document - is this function's to load.
-    if (childDocument(instance)) |child| {
-        if ((interfaces.Document.get_readyState(child) catch ._complete_) == ._interactive_) return;
-    }
+    // Only a document that never went through the parser - the initial
+    // about:blank, an error document - is this function's to load.
+    if (loadFiresFromDocument(instance)) return;
 
     const token = next_load_token;
     next_load_token += 1;
@@ -869,9 +874,38 @@ fn deliverPendingLoadEvent(data: ?*anyopaque) void {
 fn childDocument(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const browsing_context = internal.integration.browsing_context orelse return null;
-    const window_ptr = browsing_context.getActiveWindow() orelse return null;
-    const window: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-    return interfaces.Window.get_document(window) catch null;
+    // The navigable's own record, not `window.document`: that is script's
+    // getter, and it refuses a cross-origin reader - so every data: frame
+    // (opaque origin) looked as if it had no document at all.
+    const document = browsing_context.getActiveDocument() orelse return null;
+    return @ptrCast(@alignCast(document));
+}
+
+/// URL "matches about:blank": scheme "about", path "blank", no credentials
+/// or host - query and fragment aside. `url` is serialized, as resolveSrc
+/// returns it.
+fn matchesAboutBlank(url: []const u8) bool {
+    const blank = "about:blank";
+    if (!std.mem.startsWith(u8, url, blank)) return false;
+    return url.len == blank.len or url[blank.len] == '?' or url[blank.len] == '#';
+}
+
+/// Whether the frame's document fires the frame's load event itself. A
+/// document the parser just finished is still "interactive": its own "the
+/// end" is queued (dom.document_lifecycle), and the last step of that,
+/// "completely finish loading", fires load at the container after the
+/// document's own load and pageshow. Firing here too gave every data:,
+/// srcdoc and location-navigated frame a second load event.
+fn loadFiresFromDocument(instance: *runtime.Instance) bool {
+    const child = childDocument(instance) orelse return false;
+    return (interfaces.Document.get_readyState(child) catch ._complete_) == ._interactive_;
+}
+
+/// The iframe load event steps after a navigation that completed before this
+/// returned - unless the frame's document runs them itself.
+fn fireLoadUnlessDocumentWill(instance: *runtime.Instance) void {
+    if (loadFiresFromDocument(instance)) return;
+    fireLoadEventOnIframe(instance);
 }
 
 /// Fire a load event on the iframe element.
@@ -1320,9 +1354,11 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
     // it. Hence the microtask; see `queueIframeLoadEvent`. Firing on a failed
     // navigation too is deliberate - §4.8.5 fires load for the error document
     // as well, and not firing leaves every waiting page hung.
-    if (std.mem.startsWith(u8, value, "data:") or std.mem.startsWith(u8, value, "javascript:")) {
-        fireLoadEventOnIframe(instance);
-    } else if (has_navigable and value.len > 0) {
+    if (!has_navigable) {
+        // Not connected: nothing navigated, so nothing has loaded.
+    } else if (std.mem.startsWith(u8, value, "data:") or std.mem.startsWith(u8, value, "javascript:")) {
+        fireLoadUnlessDocumentWill(instance);
+    } else if (value.len > 0) {
         queueIframeLoadEvent(instance);
     }
 }

@@ -3678,6 +3678,15 @@ fn runLifecycleTask(context: ?*anyopaque) void {
     const scope = @import("v8").JsScope.init(task.target.ctx) orelse return;
     defer scope.deinit();
 
+    // The event loop runs only a task whose document is fully active: a
+    // navigation that replaced the document before its "the end" ran leaves
+    // those tasks nothing to do. Running them fired a second load at the
+    // frame's container, for a document the frame no longer shows.
+    switch (task.step) {
+        .dom_content_loaded, .load => if (!isShownByItsWindow(task.target)) return,
+        .container_load => {},
+    }
+
     switch (task.step) {
         // Step 6.2: "Fire an event named DOMContentLoaded at the Document
         // object, with its bubbles attribute initialized to true."
@@ -3687,6 +3696,15 @@ fn runLifecycleTask(context: ?*anyopaque) void {
         // step 6: "Fire an event named load at element."
         .container_load => fireEvent(task.target, task.target, "load", false),
     }
+}
+
+/// Whether `document` is still its window's document - false once a
+/// navigation has put another in its place. A document with no window is
+/// not replaced by anything.
+fn isShownByItsWindow(document: *runtime.Instance) bool {
+    const window = (get_defaultView(document) catch null) orelse return true;
+    const shown = interfaces.Window.get_document(window) catch return true;
+    return shown == document;
 }
 
 /// "The end" step 9's task: readiness "complete", load at the window,
