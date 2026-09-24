@@ -1,23 +1,26 @@
 //! Auto-generated mixin: SVGElementInstance
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const SVGElementInstanceImpl = @import("impls").SVGElementInstance;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const SVGElementInstanceImpl = @import("impls").SVGElementInstance;
+const SVGUseElement = @import("interfaces").SVGUseElement;
+const SVGElement = @import("interfaces").SVGElement;
 
-// Re-export types from impl
 pub const impl = @import("impls").SVGElementInstance;
 
-pub fn get_correspondingElement(instance: *runtime.Instance) !?*runtime.Instance {
-    return SVGElementInstanceImpl.get_correspondingElement(instance);
+/// Extended attributes: [SameObject]
+pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    return try SVGElementInstanceImpl.get_correspondingElement(instance);
 }
 
-pub fn get_correspondingUseElement(instance: *runtime.Instance) !?*runtime.Instance {
-    return SVGElementInstanceImpl.get_correspondingUseElement(instance);
+/// Extended attributes: [SameObject]
+pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    return try SVGElementInstanceImpl.get_correspondingUseElement(instance);
 }

@@ -1,19 +1,19 @@
 //! Auto-generated mixin: FontFaceSource
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const FontFaceSourceImpl = @import("impls").FontFaceSource;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const FontFaceSourceImpl = @import("impls").FontFaceSource;
+const FontFaceSet = @import("interfaces").FontFaceSet;
 
-// Re-export types from impl
 pub const impl = @import("impls").FontFaceSource;
 
-pub fn get_fonts(instance: *runtime.Instance) !*runtime.Instance {
-    return FontFaceSourceImpl.get_fonts(instance);
+pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try FontFaceSourceImpl.get_fonts(instance);
 }

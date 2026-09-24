@@ -1,23 +1,29 @@
 //! Auto-generated mixin: HTMLAttributionSrcElementUtils
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const HTMLAttributionSrcElementUtilsImpl = @import("impls").HTMLAttributionSrcElementUtils;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const HTMLAttributionSrcElementUtilsImpl = @import("impls").HTMLAttributionSrcElementUtils;
+const USVString = @import("typedefs").USVString;
 
-// Re-export types from impl
 pub const impl = @import("impls").HTMLAttributionSrcElementUtils;
 
+/// Extended attributes: [CEReactions], [SecureContext]
 pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLAttributionSrcElementUtilsImpl.get_attributionSrc(instance);
+    return try HTMLAttributionSrcElementUtilsImpl.get_attributionSrc(instance);
 }
 
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLAttributionSrcElementUtilsImpl.set_attributionSrc(instance, value);
+/// Extended attributes: [CEReactions], [SecureContext]
+pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLAttributionSrcElementUtilsImpl.set_attributionSrc(instance, value);
 }

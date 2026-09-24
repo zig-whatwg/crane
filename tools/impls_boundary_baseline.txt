@@ -207,11 +207,11 @@ src/webidl/impls/DOMStringMap.zig Element.getInternalState 4
 src/webidl/impls/Document.zig CharacterData.getData 16
 src/webidl/impls/Document.zig CharacterData.setData 4
 src/webidl/impls/Document.zig DOMImplementation.setDocument 1
-src/webidl/impls/Document.zig Element.AttributeEntry 12
-src/webidl/impls/Document.zig Element.getInternal 132
-src/webidl/impls/Document.zig Element.setLocalName 24
-src/webidl/impls/Document.zig Element.setNamespaceURI 24
-src/webidl/impls/Document.zig Element.setPrefix 12
+src/webidl/impls/Document.zig Element.AttributeEntry 11
+src/webidl/impls/Document.zig Element.getInternal 121
+src/webidl/impls/Document.zig Element.setLocalName 11
+src/webidl/impls/Document.zig Element.setNamespaceURI 11
+src/webidl/impls/Document.zig Element.setPrefix 11
 src/webidl/impls/Document.zig Event.setInitializedFlag 1
 src/webidl/impls/Document.zig HTMLCollection.addElement 25
 src/webidl/impls/Document.zig HTMLParser.parseFragment 9

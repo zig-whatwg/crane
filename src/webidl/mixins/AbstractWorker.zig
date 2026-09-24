@@ -1,23 +1,23 @@
 //! Auto-generated mixin: AbstractWorker
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const AbstractWorkerImpl = @import("impls").AbstractWorker;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const AbstractWorkerImpl = @import("impls").AbstractWorker;
+const EventHandler = @import("typedefs").EventHandler;
 
-// Re-export types from impl
 pub const impl = @import("impls").AbstractWorker;
 
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return AbstractWorkerImpl.get_onerror(instance);
+pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
+    return try AbstractWorkerImpl.get_onerror(instance);
 }
 
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
-    return AbstractWorkerImpl.set_onerror(instance, value);
+pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try AbstractWorkerImpl.set_onerror(instance, value);
 }

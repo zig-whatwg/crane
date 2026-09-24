@@ -9,6 +9,7 @@ pub const idl_parser = @import("idl_parser.zig");
 pub const idl_scanner = @import("idl_scanner.zig");
 pub const lexer = @import("lexer.zig");
 pub const writer = @import("writer.zig");
+pub const inherited_mixins = @import("inherited_mixins.zig");
 pub const files = @import("files.zig");
 pub const refs = @import("refs.zig");
 pub const extattr = @import("extattr.zig");

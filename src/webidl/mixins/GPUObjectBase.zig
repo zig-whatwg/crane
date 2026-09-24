@@ -1,23 +1,23 @@
 //! Auto-generated mixin: GPUObjectBase
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const GPUObjectBaseImpl = @import("impls").GPUObjectBase;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const GPUObjectBaseImpl = @import("impls").GPUObjectBase;
+const USVString = @import("typedefs").USVString;
 
-// Re-export types from impl
 pub const impl = @import("impls").GPUObjectBase;
 
 pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return GPUObjectBaseImpl.get_label(instance);
+    return try GPUObjectBaseImpl.get_label(instance);
 }
 
-pub fn set_label(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return GPUObjectBaseImpl.set_label(instance, value);
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    try GPUObjectBaseImpl.set_label(instance, value);
 }

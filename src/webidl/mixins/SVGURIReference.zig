@@ -1,19 +1,20 @@
 //! Auto-generated mixin: SVGURIReference
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const SVGURIReferenceImpl = @import("impls").SVGURIReference;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const SVGURIReferenceImpl = @import("impls").SVGURIReference;
+const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
 
-// Re-export types from impl
 pub const impl = @import("impls").SVGURIReference;
 
-pub fn get_href(instance: *runtime.Instance) !*runtime.Instance {
-    return SVGURIReferenceImpl.get_href(instance);
+/// Extended attributes: [SameObject]
+pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try SVGURIReferenceImpl.get_href(instance);
 }

@@ -1,23 +1,25 @@
 //! Auto-generated mixin: SVGTests
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const SVGTestsImpl = @import("impls").SVGTests;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const SVGTestsImpl = @import("impls").SVGTests;
+const SVGStringList = @import("interfaces").SVGStringList;
 
-// Re-export types from impl
 pub const impl = @import("impls").SVGTests;
 
-pub fn get_requiredExtensions(instance: *runtime.Instance) !*runtime.Instance {
-    return SVGTestsImpl.get_requiredExtensions(instance);
+/// Extended attributes: [SameObject]
+pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try SVGTestsImpl.get_requiredExtensions(instance);
 }
 
-pub fn get_systemLanguage(instance: *runtime.Instance) !*runtime.Instance {
-    return SVGTestsImpl.get_systemLanguage(instance);
+/// Extended attributes: [SameObject]
+pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try SVGTestsImpl.get_systemLanguage(instance);
 }

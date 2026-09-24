@@ -1,23 +1,24 @@
 //! Auto-generated mixin: GenericTransformStream
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const GenericTransformStreamImpl = @import("impls").GenericTransformStream;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const GenericTransformStreamImpl = @import("impls").GenericTransformStream;
+const ReadableStream = @import("interfaces").ReadableStream;
+const WritableStream = @import("interfaces").WritableStream;
 
-// Re-export types from impl
 pub const impl = @import("impls").GenericTransformStream;
 
-pub fn get_readable(instance: *runtime.Instance) !*runtime.Instance {
-    return GenericTransformStreamImpl.get_readable(instance);
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try GenericTransformStreamImpl.get_readable(instance);
 }
 
-pub fn get_writable(instance: *runtime.Instance) !*runtime.Instance {
-    return GenericTransformStreamImpl.get_writable(instance);
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try GenericTransformStreamImpl.get_writable(instance);
 }

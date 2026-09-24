@@ -359,14 +359,25 @@ else:
   nowhere**: a stale copy, a member that belongs to another type - or a
   broken map. Find out which before deleting it - see the lesson "An API
   name nothing binds is a bug report".
-- **Mixin members bind through the includer.** `Element`'s generated
-  interface calls `ElementImpl.call_append`, never `ParentNodeImpl`'s, so a
-  function in a mixin impl runs only if an includer's impl routes to it.
+- **Mixin members are inherited.** WebIDL `includes` makes a mixin's members
+  the includer's own: on its prototype, under its brand check, with its
+  instance as `this`. So the includer's generated interface takes each one
+  from the mixin's generated module by alias -
+  `pub const get_onclick = mixins.GlobalEventHandlers.get_onclick;` - and the
+  member is implemented ONCE, in the mixin's impl. Nothing calls a mixin on its
+  own, and an includer's impl never implements or overrides a member it
+  includes (WebIDL forbids redeclaring one); behaviour the spec keys on the
+  receiver, like a body element's window-reflecting handlers, is written in the
+  mixin impl. The move is under way: a mixin joins
+  `src/webidl/codegen/inherited_mixins.zig` in the commit that moves its
+  implementation out of its includers' impls, and until then its includers'
+  delegates still call their own impls.
 
 `zig build lint-impls` (part of `zig build test`) checks this: strictly for
-interface, namespace and helper impls, and as a ratchet over
-`tools/impls_naming_baseline.txt` for mixin impls, whose unrouted functions
-predate the rule.
+interface, namespace and helper impls and for the impls of inherited mixins
+(bound by their generated module), and as a ratchet over
+`tools/impls_naming_baseline.txt` for the other mixin impls, whose unrouted
+functions predate the rule.
 
 ---
 

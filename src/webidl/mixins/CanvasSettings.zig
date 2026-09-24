@@ -1,19 +1,19 @@
 //! Auto-generated mixin: CanvasSettings
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const CanvasSettingsImpl = @import("impls").CanvasSettings;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CanvasSettingsImpl = @import("impls").CanvasSettings;
+const CanvasRenderingContext2DSettings = @import("dictionaries").CanvasRenderingContext2DSettings;
 
-// Re-export types from impl
 pub const impl = @import("impls").CanvasSettings;
 
-pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionaries.CanvasRenderingContext2DSettings {
-    return CanvasSettingsImpl.call_getContextAttributes(instance);
+pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!CanvasRenderingContext2DSettings {
+    return try CanvasSettingsImpl.call_getContextAttributes(instance);
 }

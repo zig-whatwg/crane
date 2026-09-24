@@ -1,99 +1,159 @@
 //! Auto-generated mixin: HTMLHyperlinkElementUtils
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const HTMLHyperlinkElementUtilsImpl = @import("impls").HTMLHyperlinkElementUtils;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const HTMLHyperlinkElementUtilsImpl = @import("impls").HTMLHyperlinkElementUtils;
+const USVString = @import("typedefs").USVString;
 
-// Re-export types from impl
 pub const impl = @import("impls").HTMLHyperlinkElementUtils;
 
+/// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_href(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_href(instance);
 }
 
-pub fn set_href(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+/// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
+pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
 }
 
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_origin(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_origin(instance);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_protocol(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_protocol(instance);
 }
 
-pub fn set_protocol(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_protocol(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_protocol(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_username(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_username(instance);
 }
 
-pub fn set_username(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_username(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_username(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_password(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_password(instance);
 }
 
-pub fn set_password(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_password(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_password(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_host(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_host(instance);
 }
 
-pub fn set_host(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_host(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_host(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hostname(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_hostname(instance);
 }
 
-pub fn set_hostname(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_hostname(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_hostname(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_port(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_port(instance);
 }
 
-pub fn set_port(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_port(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_port(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_pathname(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_pathname(instance);
 }
 
-pub fn set_pathname(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_pathname(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_pathname(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_search(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_search(instance);
 }
 
-pub fn set_search(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_search(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_search(instance, value);
 }
 
+/// Extended attributes: [CEReactions]
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hash(instance);
+    return try HTMLHyperlinkElementUtilsImpl.get_hash(instance);
 }
 
-pub fn set_hash(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
+/// Extended attributes: [CEReactions]
+pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
 }

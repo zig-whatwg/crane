@@ -202,12 +202,18 @@ pub const IR = struct {
                 continue;
             }
 
-            // Merge mixin members into target interface
-            try target_iface.?.members.appendSlice(self.allocator, mixin_iface.?.members.items);
-
             // Track which mixin was included
             const mixin_name = try self.allocator.dupe(u8, inc.mixin);
             try target_iface.?.mixins.append(self.allocator, mixin_name);
+
+            // The mixin's members become the interface's own (WebIDL
+            // `includes`), each remembering the mixin it was inherited from.
+            for (mixin_iface.?.members.items) |member| {
+                var inherited = member;
+                if (inherited.attribute) |*attr| attr.mixin = mixin_name;
+                if (inherited.operation) |*op| op.mixin = mixin_name;
+                try target_iface.?.members.append(self.allocator, inherited);
+            }
         }
     }
 

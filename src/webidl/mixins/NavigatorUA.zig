@@ -1,19 +1,20 @@
 //! Auto-generated mixin: NavigatorUA
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const NavigatorUAImpl = @import("impls").NavigatorUA;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const NavigatorUAImpl = @import("impls").NavigatorUA;
+const NavigatorUAData = @import("interfaces").NavigatorUAData;
 
-// Re-export types from impl
 pub const impl = @import("impls").NavigatorUA;
 
-pub fn get_userAgentData(instance: *runtime.Instance) !*runtime.Instance {
-    return NavigatorUAImpl.get_userAgentData(instance);
+/// Extended attributes: [SecureContext]
+pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try NavigatorUAImpl.get_userAgentData(instance);
 }

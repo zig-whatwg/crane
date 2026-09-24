@@ -1,23 +1,25 @@
 //! Auto-generated mixin: NavigatorBadge
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const NavigatorBadgeImpl = @import("impls").NavigatorBadge;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const NavigatorBadgeImpl = @import("impls").NavigatorBadge;
 
-// Re-export types from impl
 pub const impl = @import("impls").NavigatorBadge;
 
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!void {
-    return NavigatorBadgeImpl.call_clearAppBadge(instance);
+pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return try NavigatorBadgeImpl.call_clearAppBadge(instance);
 }
 
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: runtime.JSValue) anyerror!void {
-    return NavigatorBadgeImpl.call_setAppBadge(instance, contents);
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
+    // [EnforceRange] on contents
+    if (!runtime.isInRange(u64, contents)) return error.TypeError;
+
+    return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
 }

@@ -1,31 +1,31 @@
 //! Auto-generated mixin: CanvasCompositing
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const CanvasCompositingImpl = @import("impls").CanvasCompositing;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CanvasCompositingImpl = @import("impls").CanvasCompositing;
+const DOMString = @import("typedefs").DOMString;
 
-// Re-export types from impl
 pub const impl = @import("impls").CanvasCompositing;
 
 pub fn get_globalAlpha(instance: *runtime.Instance) anyerror!f64 {
-    return CanvasCompositingImpl.get_globalAlpha(instance);
+    return try CanvasCompositingImpl.get_globalAlpha(instance);
 }
 
-pub fn set_globalAlpha(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return CanvasCompositingImpl.set_globalAlpha(instance, value);
+pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) anyerror!void {
+    try CanvasCompositingImpl.set_globalAlpha(instance, value);
 }
 
-pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!typedefs.DOMString {
-    return CanvasCompositingImpl.get_globalCompositeOperation(instance);
+pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!DOMString {
+    return try CanvasCompositingImpl.get_globalCompositeOperation(instance);
 }
 
-pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: typedefs.DOMString) !void {
-    return CanvasCompositingImpl.set_globalCompositeOperation(instance, value);
+pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    try CanvasCompositingImpl.set_globalCompositeOperation(instance, value);
 }

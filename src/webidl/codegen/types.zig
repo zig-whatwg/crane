@@ -300,6 +300,10 @@ pub const Attribute = struct {
 
     /// Extended attributes
     extAttrs: []ExtendedAttribute = &.{},
+
+    /// The interface mixin an `includes` statement inherited this member
+    /// from (`IR.processIncludes`), or null for the interface's own.
+    mixin: ?[]const u8 = null,
 };
 
 /// WebIDL operation (method) definition
@@ -321,6 +325,10 @@ pub const Operation = struct {
 
     /// Extended attributes
     extAttrs: []ExtendedAttribute = &.{},
+
+    /// The interface mixin this member was inherited from - see
+    /// `Attribute.mixin`.
+    mixin: ?[]const u8 = null,
 };
 
 /// Special operation types

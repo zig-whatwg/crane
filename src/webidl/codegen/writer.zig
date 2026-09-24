@@ -3,6 +3,7 @@
 //! This module provides functions for writing generated Zig code from WebIDL definitions.
 
 const std = @import("std");
+const inherited_mixins = @import("inherited_mixins.zig");
 const types = @import("types.zig");
 const overload = @import("overload.zig");
 const property_classifier = @import("property_classifier.zig");
@@ -2965,6 +2966,7 @@ fn writeOverloadDelegates(
     impl_name: []const u8,
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     overload_ops: []const types.Operation,
+    options: DelegateOptions,
 ) !void {
     const allocator = std.heap.page_allocator;
     const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
@@ -2975,6 +2977,10 @@ fn writeOverloadDelegates(
         if (!isResolvableOverloadSet(set)) continue;
         any = true;
         for (set.operations[1..], 1..) |op, k| {
+            if (inheritedFrom(options, op.mixin)) |mixin| {
+                try writer.print("    pub const call_{s}__{d} = mixins.{s}.call_{s}__{d};\n\n", .{ set.name, k, mixin, set.name, k });
+                continue;
+            }
             var suffix_buf: [16]u8 = undefined;
             const suffix = try std.fmt.bufPrint(&suffix_buf, "__{d}", .{k});
             try writeOperationDelegate(writer, impl_name, op, type_registry, suffix, true);
@@ -2994,7 +3000,13 @@ fn writeOverloadDelegates(
             if (k == 0) {
                 try writer.print("            .{{ .function = \"call_{s}\", .args = &.{{", .{set.name});
             } else {
-                try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl({s}, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, impl_name, set.name, k });
+                // An inherited overload is implemented when the mixin's impl
+                // has it; the mixin module's gated delegate answers either way.
+                if (inheritedFrom(options, op.mixin)) |mixin| {
+                    try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl(mixins.{s}.impl, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, mixin, set.name, k });
+                } else {
+                    try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl({s}, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, impl_name, set.name, k });
+                }
             }
             for (op.arguments, 0..) |arg, i| {
                 if (i > 0) try writer.writeAll(",");
@@ -3413,6 +3425,37 @@ fn capitalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     return result;
 }
 
+/// How `writeDelegateFunctions` writes one file's delegates.
+pub const DelegateOptions = struct {
+    /// Cache a [SameObject] attribute's value in the file's own `State`. False
+    /// for a mixin's module: a mixin has no instances and so no State - each
+    /// includer caches in its own, around the inherited getter.
+    same_object_cache: bool = true,
+    /// The mixins whose members an includer inherits rather than delegates
+    /// (inherited_mixins.zig).
+    inherited_mixins: []const []const u8 = &inherited_mixins.names,
+};
+
+/// Whether a delegate file has a setter for `attr`: the conditions
+/// `writeDelegateFunctions` writes one under - [PutForwards], [Replaceable],
+/// [LegacyLenientSetter], or a writable attribute.
+fn mixinModuleHasSetter(attr: types.Attribute) bool {
+    const extattr_mod = @import("extattr.zig");
+    return extattr_mod.getPutForwards(attr.extAttrs) != null or
+        extattr_mod.isReplaceable(attr.extAttrs) or
+        extattr_mod.isLegacyLenientSetter(attr.extAttrs) or
+        !attr.readonly;
+}
+
+/// `mixin`, when it is one an includer inherits members from.
+fn inheritedFrom(options: DelegateOptions, mixin: ?[]const u8) ?[]const u8 {
+    const name = mixin orelse return null;
+    for (options.inherited_mixins) |inherited| {
+        if (std.mem.eql(u8, inherited, name)) return name;
+    }
+    return null;
+}
+
 pub fn writeDelegateFunctions(
     writer: anytype,
     impl_name: []const u8,
@@ -3422,6 +3465,7 @@ pub fn writeDelegateFunctions(
     /// Every overload of every own operation - `own_operations` has only the
     /// first of each name. See `writeOverloadDelegates`.
     overload_ops: []const types.Operation,
+    options: DelegateOptions,
 ) !void {
     const allocator = std.heap.page_allocator;
 
@@ -3463,6 +3507,24 @@ pub fn writeDelegateFunctions(
         const get_prefix = getterPrefix(attr);
         const set_prefix = setterPrefix(attr);
 
+        // An inherited mixin member is the includer's by inheritance (WebIDL
+        // `includes`): it takes the mixin module's function, the one place the
+        // member reaches the mixin's impl. Only a [SameObject] one is written
+        // out below, to cache in this interface's own State around the
+        // inherited getter.
+        const inherited = inheritedFrom(options, attr.mixin);
+        const caches = has_same_object and !attr.static and options.same_object_cache;
+        if (inherited) |mixin| if (!caches) {
+            try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
+            if (mixinModuleHasSetter(attr)) {
+                try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ set_prefix, sanitized_name, mixin, set_prefix, sanitized_name });
+            }
+            try writer.writeAll("\n");
+            continue;
+        };
+        const member_impl = if (inherited) |mixin| try std.fmt.allocPrint(allocator, "mixins.{s}", .{mixin}) else impl_name;
+        defer if (inherited != null) allocator.free(member_impl);
+
         // For nullable types, return ?T instead of T (allows returning null instead of error)
         if (is_nullable) {
             try writer.print("    pub fn {s}{s}(instance: *runtime.Instance) anyerror!?{s} {{\n", .{ get_prefix, sanitized_name, return_type });
@@ -3472,19 +3534,19 @@ pub fn writeDelegateFunctions(
 
         // Use caching for [SameObject] attributes (all attributes here are own)
         // NOTE: Static attributes cannot use instance caching - they don't have instance state
-        if (has_same_object and !attr.static) {
+        if (caches) {
             // [SameObject] - Cache the result and return same instance every time
             try writer.writeAll("        const state = instance.getState(State);\n");
             try writer.print("        // [SameObject] - Return cached instance\n", .{});
             try writer.print("        if (state.own.cached_{s}) |cached| {{\n", .{sanitized_name});
             try writer.writeAll("            return cached;\n");
             try writer.writeAll("        }\n");
-            try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ impl_name, sanitized_name });
+            try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
             try writer.print("        state.own.cached_{s} = value;\n", .{sanitized_name});
             try writer.writeAll("        return value;\n");
         } else {
             // Static attributes or non-[SameObject] - delegate directly to impl
-            try writer.print("        return try {s}.{s}{s}(instance);\n", .{ impl_name, get_prefix, sanitized_name });
+            try writer.print("        return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name });
         }
 
         try writer.writeAll("    }\n\n");
@@ -3592,13 +3654,13 @@ pub fn writeDelegateFunctions(
                 try writer.writeAll("        \n");
             }
 
-            if (has_same_object) {
+            if (caches) {
                 // If [SameObject], invalidate cache on set (all attributes here are own)
                 try writer.writeAll("        const state = instance.getState(State);\n");
                 try writer.print("        state.own.cached_{s} = null; // Invalidate [SameObject] cache\n", .{sanitized_name});
             }
 
-            try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ impl_name, set_prefix, sanitized_name });
+            try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name });
             try writer.writeAll("    }\n\n");
         }
     }
@@ -3609,6 +3671,11 @@ pub fn writeDelegateFunctions(
 
     // Write operation delegates (with overload support) - ONLY for own operations
     for (overload_sets) |set| {
+        // An inherited mixin operation is the includer's by inheritance.
+        if (inheritedFrom(options, set.operations[0].mixin)) |mixin| {
+            try writer.print("    pub const call_{s} = mixins.{s}.call_{s};\n\n", .{ set.name, mixin, set.name });
+            continue;
+        }
         if (set.isOverloaded()) {
             // Multiple overloads - generate tagged union and dispatch function
             try writeOverloadedOperation(writer, impl_name, set, type_registry);
@@ -3623,7 +3690,7 @@ pub fn writeDelegateFunctions(
 
     // The other overloads of each overloaded operation, and the table the
     // binding resolves among them with.
-    try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops);
+    try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops, options);
 
     // Which string arguments and attribute values null converts to "" for.
     try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
@@ -4465,7 +4532,7 @@ test "writeDelegateFunctions generates attribute getters" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{}, .{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_nodeType(") != null);
@@ -4486,7 +4553,7 @@ test "writeDelegateFunctions generates setters for non-readonly attributes" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{});
+    try writeDelegateFunctions(writer, "NodeImpl", null, &attrs, &.{}, &.{}, .{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_textContent(") != null);
@@ -4514,7 +4581,7 @@ test "writeDelegateFunctions generates operation delegates" {
         },
     };
 
-    try writeDelegateFunctions(writer, "NodeImpl", null, &.{}, &ops, &ops);
+    try writeDelegateFunctions(writer, "NodeImpl", null, &.{}, &ops, &ops, .{});
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_appendChild(") != null);

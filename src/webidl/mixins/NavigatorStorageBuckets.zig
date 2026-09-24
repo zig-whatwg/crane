@@ -1,19 +1,20 @@
 //! Auto-generated mixin: NavigatorStorageBuckets
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const NavigatorStorageBucketsImpl = @import("impls").NavigatorStorageBuckets;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const NavigatorStorageBucketsImpl = @import("impls").NavigatorStorageBuckets;
+const StorageBucketManager = @import("interfaces").StorageBucketManager;
 
-// Re-export types from impl
 pub const impl = @import("impls").NavigatorStorageBuckets;
 
-pub fn get_storageBuckets(instance: *runtime.Instance) !*runtime.Instance {
-    return NavigatorStorageBucketsImpl.get_storageBuckets(instance);
+/// Extended attributes: [SameObject]
+pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try NavigatorStorageBucketsImpl.get_storageBuckets(instance);
 }

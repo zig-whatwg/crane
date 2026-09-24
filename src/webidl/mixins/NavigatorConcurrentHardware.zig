@@ -1,19 +1,18 @@
 //! Auto-generated mixin: NavigatorConcurrentHardware
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const NavigatorConcurrentHardwareImpl = @import("impls").NavigatorConcurrentHardware;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const NavigatorConcurrentHardwareImpl = @import("impls").NavigatorConcurrentHardware;
 
-// Re-export types from impl
 pub const impl = @import("impls").NavigatorConcurrentHardware;
 
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
-    return NavigatorConcurrentHardwareImpl.get_hardwareConcurrency(instance);
+    return try NavigatorConcurrentHardwareImpl.get_hardwareConcurrency(instance);
 }

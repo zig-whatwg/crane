@@ -1,27 +1,29 @@
 //! Auto-generated mixin: SFrameKeyManagement
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const SFrameKeyManagementImpl = @import("impls").SFrameKeyManagement;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const SFrameKeyManagementImpl = @import("impls").SFrameKeyManagement;
+const CryptoKeyID = @import("typedefs").CryptoKeyID;
+const EventHandler = @import("typedefs").EventHandler;
+const CryptoKey = @import("interfaces").CryptoKey;
 
-// Re-export types from impl
 pub const impl = @import("impls").SFrameKeyManagement;
 
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return SFrameKeyManagementImpl.get_onerror(instance);
+pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
+    return try SFrameKeyManagementImpl.get_onerror(instance);
 }
 
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) !void {
-    return SFrameKeyManagementImpl.set_onerror(instance, value);
+pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try SFrameKeyManagementImpl.set_onerror(instance, value);
 }
 
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: typedefs.CryptoKeyID) anyerror!void {
-    return SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
+    return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
 }

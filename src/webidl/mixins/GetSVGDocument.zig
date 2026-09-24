@@ -1,19 +1,19 @@
 //! Auto-generated mixin: GetSVGDocument
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const GetSVGDocumentImpl = @import("impls").GetSVGDocument;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const GetSVGDocumentImpl = @import("impls").GetSVGDocument;
+const Document = @import("interfaces").Document;
 
-// Re-export types from impl
 pub const impl = @import("impls").GetSVGDocument;
 
-pub fn call_getSVGDocument(instance: *runtime.Instance) !*runtime.Instance {
-    return GetSVGDocumentImpl.call_getSVGDocument(instance);
+pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return try GetSVGDocumentImpl.call_getSVGDocument(instance);
 }

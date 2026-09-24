@@ -621,13 +621,32 @@ fn appendName(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8), name: []c
     if (name.len > 0 and !contains(out.items, name)) try out.append(gpa, name);
 }
 
+/// The mixins a generated interface inherits members from: every
+/// `= mixins.<Name>.<member>;` alias in it. Such a mixin's impl is bound by
+/// the mixin's own generated module, which is what those aliases name.
+pub fn inheritedMixins(gpa: std.mem.Allocator, generated: []const u8) !std.ArrayList([]const u8) {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(gpa);
+    const key = "= mixins.";
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, generated, pos, key)) |at| {
+        pos = at + key.len;
+        const name = identAt(generated, pos);
+        if (name.len == 0 or pos + name.len >= generated.len or generated[pos + name.len] != '.') continue;
+        try appendName(gpa, &out, name);
+    }
+    return out;
+}
+
 /// What an impl file implements, which decides who must bind its names.
 pub const ImplKind = enum {
     /// An interface or namespace: its generated file binds its functions.
     bound_type,
-    /// An interface mixin: every includer's generated interface binds the
-    /// INCLUDER's impl, so a mixin impl's function runs only when something
-    /// calls it. Ratcheted rather than strict - see `unroutedFunctions`.
+    /// An interface mixin its includers do not inherit yet: each includer's
+    /// generated interface binds the INCLUDER's impl, so a mixin impl's
+    /// function runs only when something calls it. Ratcheted rather than
+    /// strict - see `unroutedFunctions`. A mixin its includers inherit is a
+    /// `bound_type`, bound by the mixin's generated module.
     mixin,
     /// No generated file at all: nothing binds a helper module.
     helper,
@@ -724,6 +743,8 @@ pub fn main(init: std.process.Init) !void {
     // which of them are mixins.
     var hierarchy: Hierarchy = .{};
     var mixins: std.StringHashMapUnmanaged(void) = .empty;
+    // Mixins some includer inherits members from (`= mixins.<Name>.`).
+    var inherited: std.StringHashMapUnmanaged(void) = .empty;
     {
         var dir = try std.Io.Dir.cwd().openDir(io, "src/webidl/interfaces", .{ .iterate = true });
         defer dir.close(io);
@@ -737,6 +758,8 @@ pub fn main(init: std.process.Init) !void {
             const shape = parseInterface(text);
             try hierarchy.addInterface(arena, name, shape.parent, shape.mixins);
             if (std.mem.indexOf(u8, text, "pub const is_mixin = true;") != null) try mixins.put(arena, name, {});
+            const inherits = try inheritedMixins(arena, text);
+            for (inherits.items) |mixin| try inherited.put(arena, mixin, {});
         }
     }
 
@@ -819,13 +842,15 @@ pub fn main(init: std.process.Init) !void {
             const name = try arena.dupe(u8, entry.name[0 .. entry.name.len - 4]);
             const path = try std.fmt.allocPrint(arena, "{s}{s}", .{ impls_dir, entry.name });
             const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
-            const generated_path: ?[]const u8 = if (hierarchy.parents.contains(name))
+            const generated_path: ?[]const u8 = if (inherited.contains(name))
+                try std.fmt.allocPrint(arena, "src/webidl/mixins/{s}.zig", .{name})
+            else if (hierarchy.parents.contains(name))
                 try std.fmt.allocPrint(arena, "src/webidl/interfaces/{s}.zig", .{name})
             else if (namespaces.contains(name))
                 try std.fmt.allocPrint(arena, "src/webidl/namespaces/{s}.zig", .{name})
             else
                 null;
-            const kind: ImplKind = if (mixins.contains(name)) .mixin else if (generated_path != null) .bound_type else .helper;
+            const kind: ImplKind = if (mixins.contains(name) and !inherited.contains(name)) .mixin else if (generated_path != null) .bound_type else .helper;
             var bound: std.ArrayList([]const u8) = .empty;
             if (kind == .bound_type) {
                 const generated = try std.Io.Dir.cwd().readFileAlloc(io, generated_path.?, arena, .limited(16 << 20));
@@ -1443,4 +1468,41 @@ test "a mixin function is routed only when some code calls it" {
     defer unrouted.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 1), unrouted.items.len);
     try testing.expectEqualStrings("call_prepend", unrouted.items[0]);
+}
+
+test "an interface inherits a mixin through `= mixins.<Name>.` aliases" {
+    const generated =
+        \\const mixins = @import("mixins");
+        \\pub const HTMLElement = struct {
+        \\    pub const get_onclick = mixins.GlobalEventHandlers.get_onclick;
+        \\    pub const set_onclick = mixins.GlobalEventHandlers.set_onclick;
+        \\    pub const call_append = mixins.ParentNode.call_append;
+        \\    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+        \\        return try HTMLElementImpl.get_title(instance);
+        \\    }
+        \\};
+    ;
+    var found = try inheritedMixins(testing.allocator, generated);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), found.items.len);
+    try testing.expect(contains(found.items, "GlobalEventHandlers"));
+    try testing.expect(contains(found.items, "ParentNode"));
+}
+
+test "a mixin module binds its impl's functions like an interface's file" {
+    const module =
+        \\const GlobalEventHandlersImpl = @import("impls").GlobalEventHandlers;
+        \\pub fn get_onclick(instance: *runtime.Instance) anyerror!EventHandler {
+        \\    return try GlobalEventHandlersImpl.get_onclick(instance);
+        \\}
+    ;
+    var bound = try boundNames(testing.allocator, "GlobalEventHandlers", module);
+    defer bound.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), bound.items.len);
+    try testing.expectEqualStrings("get_onclick", bound.items[0]);
+    // So a public API name the module never reaches is unbound, strictly.
+    var found = try nameViolations(testing.allocator, .bound_type, "pub fn get_onclick(i: *I) !H {}\npub fn get_stale(i: *I) !H {}\n", bound.items);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), found.items.len);
+    try testing.expectEqualStrings("get_stale", found.items[0].name);
 }

@@ -58,7 +58,7 @@ test "a static attribute is not an instance property" {
 test "a static attribute's delegates are get_static_ and set_static_" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
-    try writer.writeDelegateFunctions(&buffer.writer, "NotificationImpl", null, &attrs, &.{}, &.{});
+    try writer.writeDelegateFunctions(&buffer.writer, "NotificationImpl", null, &attrs, &.{}, &.{}, .{});
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_static_permission(instance: *runtime.Instance)") != null);
     try testing.expect(std.mem.indexOf(u8, output, "NotificationImpl.get_static_permission(instance)") != null);

@@ -1,23 +1,28 @@
 //! Auto-generated mixin: HTMLSharedStorageWritableElementUtils
-//! Delegates to impl for actual implementation.
+//! Its members' delegates to the mixin's impl, which every interface that
+//! includes it inherits by alias.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const HTMLSharedStorageWritableElementUtilsImpl = @import("impls").HTMLSharedStorageWritableElementUtils;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const HTMLSharedStorageWritableElementUtilsImpl = @import("impls").HTMLSharedStorageWritableElementUtils;
 
-// Re-export types from impl
 pub const impl = @import("impls").HTMLSharedStorageWritableElementUtils;
 
+/// Extended attributes: [CEReactions], [SecureContext]
 pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
-    return HTMLSharedStorageWritableElementUtilsImpl.get_sharedStorageWritable(instance);
+    return try HTMLSharedStorageWritableElementUtilsImpl.get_sharedStorageWritable(instance);
 }
 
-pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: runtime.JSValue) !void {
-    return HTMLSharedStorageWritableElementUtilsImpl.set_sharedStorageWritable(instance, value);
+/// Extended attributes: [CEReactions], [SecureContext]
+pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
+    // [CEReactions] - Trigger Custom Element lifecycle callbacks
+    runtime.CEReactions.begin();
+    defer runtime.CEReactions.end();
+
+    try HTMLSharedStorageWritableElementUtilsImpl.set_sharedStorageWritable(instance, value);
 }
