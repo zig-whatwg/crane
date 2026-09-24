@@ -1097,6 +1097,39 @@ pub fn fromV8Value(
             }
         }
 
+        // WebIDL §3.2.25 "converting to a union", for a value that is not an
+        // object and that no step above took.
+        if (!v8.v8_Value_IsObject(value)) {
+            // Step 4: "If V is null or undefined, then: If types includes a
+            // dictionary type, then return the result of converting V to that
+            // dictionary type."
+            if (v8.v8_Value_IsNullOrUndefined(value)) {
+                if (dict_idx) |idx| {
+                    const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
+                    return @unionInit(T, fields[idx].name, converted);
+                }
+            }
+            // Step 15: "If types includes a string type, then return the
+            // result of converting V to that type" - ToString, so null is
+            // "null" and 5 is "5"; a Symbol throws.
+            if (string_idx) |idx| {
+                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+            // Step 17: "If types includes a numeric type, then return the
+            // result of converting V to that numeric type."
+            if (number_idx) |idx| {
+                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+            // Step 18: "If types includes boolean, then return the result of
+            // converting V to boolean."
+            if (boolean_idx) |idx| {
+                const converted = try fromV8Value(fields[idx].type, allocator, isolate, context, value);
+                return @unionInit(T, fields[idx].name, converted);
+            }
+        }
+
         // Fallback: If no typed variant matched but we have an anyopaque variant,
         // use it to pass through the V8 value. This handles unions like HeadersInit
         // where codegen generates *anyopaque variants for unresolved types.
