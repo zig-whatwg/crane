@@ -129,7 +129,10 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             }
 
             if (comptime inline_capacity > 0) {
-                if (self.len < inline_capacity) {
+                // Only while the items are still inline: a list that moved to
+                // the heap stays there after shrinking, and items() reads the
+                // heap, so an inline write would be lost.
+                if (self.heap_storage == null and self.len < inline_capacity) {
                     var i = self.len;
                     while (i > index) : (i -= 1) {
                         self.inline_storage[i] = self.inline_storage[i - 1];
@@ -551,3 +554,18 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
 // ============================================================================
 // Configurable Inline Capacity Tests
 // ============================================================================
+
+test "insert into a list that moved to the heap and shrank back stays in step" {
+    var list = ListWithCapacity(u32, 4).init(std.testing.allocator);
+    defer list.deinit();
+
+    // A fifth item moves the list onto the heap, where it stays after
+    // shrinking below the inline capacity again.
+    for (0..5) |i| try list.append(@intCast(i));
+    _ = try list.remove(4);
+    _ = try list.remove(3);
+
+    try list.insert(0, 99);
+    try std.testing.expectEqual(@as(usize, 4), list.size());
+    try std.testing.expectEqualSlices(u32, &.{ 99, 0, 1, 2 }, list.items());
+}
