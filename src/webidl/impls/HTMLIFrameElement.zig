@@ -989,6 +989,8 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             }
             return null;
         };
+        // This element is the new navigable's container.
+        existing_bc.container = instance;
 
         // CRITICAL: Determine if this iframe should use an opaque origin BEFORE
         // creating the V8 context. Per HTML spec §4.8.5 and Chromium's implementation:

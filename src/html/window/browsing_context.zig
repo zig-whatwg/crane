@@ -308,6 +308,12 @@ pub const BrowsingContext = struct {
     /// Parent browsing context (for child contexts)
     parent: ?*BrowsingContext,
 
+    /// HTML "container": the element whose content navigable this is - an
+    /// iframe - or null for a top-level context. Set by the element when it
+    /// creates the context, and cleared when the context is discarded, before
+    /// the element can go.
+    container: ?*anyopaque = null,
+
     /// Child browsing contexts (iframes, frames)
     children: std.ArrayListUnmanaged(*BrowsingContext),
 
@@ -430,6 +436,7 @@ pub const BrowsingContext = struct {
     /// Window.get_length), and no Window is told when its context goes, so the
     /// only safe time to free it is when no Window is left (`freeRetired`).
     pub fn discard(self: *BrowsingContext) bool {
+        self.container = null;
         self.removeFromParent();
         self.close();
         self.parent = null;

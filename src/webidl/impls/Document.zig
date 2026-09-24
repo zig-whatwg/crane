@@ -115,6 +115,8 @@ pub const InternalState = struct {
 
     /// Document ready state
     ready_state: enums.DocumentReadyState,
+    /// HTML "page showing": set when pageshow fires at the end of loading.
+    page_showing: bool = false,
 
     /// The document element (root element, usually <html>)
     document_element: ?*runtime.Instance,
@@ -2330,6 +2332,12 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Clear any previously buffered content
     internal.write_buffer.clearRetainingCapacity();
 
+    // Step 18: "Update the current document readiness of document to
+    // "loading"." Not implemented, stated: steps 9-10 (erase the listeners
+    // and handlers of the document and its window) and 14 (mute the iframe
+    // load event).
+    updateReadiness(instance, ._loading_);
+
     // Return the document
     return instance;
 }
@@ -3736,55 +3744,163 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+    // Step 1: "If this is an XML document, then throw an "InvalidStateError"
+    // DOMException."
+    if (internal.doc_type == .xml) return error.InvalidStateError;
+
+    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
     if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
         return error.InvalidStateError;
     }
 
-    // Step 2: If no script-created parser, return
+    // Step 3: "If there is no script-created parser associated with this,
+    // then return."
     if (!internal.is_script_created_parser) {
         return;
     }
 
-    // Step 3: Set insertion point to undefined (parser finished)
+    // Steps 4-6: insert an explicit EOF at the end of the input stream and run
+    // the tokenizer until it reaches it. The script-created parser has
+    // buffered everything document.write() inserted, so this is the parse of
+    // that stream as the document's own - from the initial insertion mode,
+    // into the document open() emptied - by the parser a navigation uses. It
+    // used to be parsed as a fragment, which never made the html, head and
+    // body elements a document has. Deviation, stated: step 5 (a pending
+    // parsing-blocking script) does not arise - scripts in the stream run as
+    // the parser meets them.
+    const input = try internal.allocator.dupe(u8, internal.write_buffer.items);
+    defer internal.allocator.free(input);
+    internal.write_buffer.clearRetainingCapacity();
+    const window: ?*runtime.Instance = get_defaultView(instance) catch null;
+    _ = @import("html").scripted_parser.parseHTMLWithScripting(internal.allocator, instance.ctx, input, .{
+        .scripting_enabled = window != null,
+        .window = window,
+        .document = instance,
+    }) catch |err| log.warn("document.close(): the parser stopped early: {}", .{err});
+    internal.is_script_created_parser = false;
     internal.insertion_point = null;
 
-    // Step 4: Parse any buffered content and append to document
-    const buffer = internal.write_buffer.items;
-    if (buffer.len > 0) {
-        // Parse the accumulated content
-        const HTMLParser = @import("HTMLParser.zig");
+    // The tokenizer reached the explicit EOF, so the parser stops: "the end".
+    theEnd(instance);
+}
 
-        // Try to parse and append to the document
-        // Use document as both context and parent
-        const fragment = HTMLParser.parseFragment(
-            internal.allocator,
-            instance.ctx,
-            buffer,
-            instance, // Use document as context element
-        ) catch {
-            // Reset state even on error
-            internal.is_script_created_parser = false;
-            internal.write_buffer.clearRetainingCapacity();
-            return;
-        };
-        defer interfaces.DocumentFragment.deinit(fragment);
+// =============================================================================
+// "The end" (HTML §13.2.7) for a script-created parser
+// =============================================================================
 
-        // Move children from fragment to document
-        var child = NodeImpl.getFirstChild(fragment);
-        while (child) |c| {
-            const next = NodeImpl.getNextSibling(c);
-            _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-            _ = interfaces.Node.call_appendChild(instance, c) catch break;
-            child = next;
-        }
+/// "Update the current document readiness": if `readiness` is new, set it
+/// and fire readystatechange at the document.
+fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadyState) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.ready_state == readiness) return;
+    internal.ready_state = readiness;
+    fireEvent(instance, instance, "readystatechange", false);
+}
 
-        // Clear the write buffer
-        internal.write_buffer.clearRetainingCapacity();
+/// "The end" from step 3, once document.close()'s parse has stopped.
+/// Deviations, stated: no deferred scripts run (step 5), and load's legacy
+/// target override is not modelled.
+fn theEnd(instance: *runtime.Instance) void {
+    // Step 3: "Update the current document readiness to "interactive"."
+    updateReadiness(instance, ._interactive_);
+    // Step 6's task fires DOMContentLoaded; step 9's completes the load.
+    queueLifecycleTask(instance, .dom_content_loaded);
+    queueLifecycleTask(instance, .load);
+}
+
+const LifecycleStep = enum { dom_content_loaded, load, container_load };
+
+const LifecycleTask = struct {
+    allocator: std.mem.Allocator,
+    target: *runtime.Instance,
+    generation: u64,
+    step: LifecycleStep,
+};
+
+fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
+    const allocator = target.ctx.allocator;
+    const task = allocator.create(LifecycleTask) catch return;
+    task.* = .{
+        .allocator = allocator,
+        .target = target,
+        .generation = runtime.SlabAllocator.generationOf(target),
+        .step = step,
+    };
+    const loop = target.ctx.getOptionalEventLoop() orelse {
+        // No loop to queue on (a context built for tests): the events are
+        // still owed, so fire them now rather than lose them.
+        runLifecycleTask(task);
+        return;
+    };
+    loop.queueTask(.{ .callback = &runLifecycleTask, .context = task, .drop = &dropLifecycleTask });
+}
+
+fn dropLifecycleTask(context: ?*anyopaque) void {
+    const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
+    task.allocator.destroy(task);
+}
+
+fn runLifecycleTask(context: ?*anyopaque) void {
+    const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
+    defer task.allocator.destroy(task);
+    // Collected and its slot reissued: nothing is left to finish loading.
+    if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
+    // A task runs from the event loop, not from V8, so it opens the scope and
+    // enters the context an event needs.
+    const scope = @import("v8").JsScope.init(task.target.ctx) orelse return;
+    defer scope.deinit();
+
+    switch (task.step) {
+        // Step 6.2: "Fire an event named DOMContentLoaded at the Document
+        // object, with its bubbles attribute initialized to true."
+        .dom_content_loaded => fireEvent(task.target, task.target, "DOMContentLoaded", true),
+        .load => {
+            const document = task.target;
+            // Step 9.1: "Update the current document readiness to "complete"."
+            updateReadiness(document, ._complete_);
+            // Steps 9.2-9.3: no browsing context, nothing more.
+            const window = (get_defaultView(document) catch null) orelse return;
+            // Step 9.5: "Fire an event named load at window".
+            fireEvent(document, window, "load", false);
+            // Steps 9.9-9.11: page showing becomes true and pageshow fires,
+            // persisted false - unless the document is showing already.
+            const internal = getInternal(document) orelse return;
+            if (!internal.page_showing) {
+                internal.page_showing = true;
+                firePageShow(document, window);
+            }
+            // Step 9.12: "completely finish loading" - whose step 4 queues the
+            // container's load event (the iframe load event steps).
+            if (@import("dom").navigable_container.of(window)) |container| {
+                queueLifecycleTask(container, .container_load);
+            }
+        },
+        // "Completely finish loading" step 4: the iframe load event steps,
+        // step 6: "Fire an event named load at element."
+        .container_load => fireEvent(task.target, task.target, "load", false),
     }
+}
 
-    // Reset script-created parser flag
-    internal.is_script_created_parser = false;
+/// Fire an event named `event_type` at `target`, created in `realm_of`'s
+/// realm. Script-facing dispatch, so it reads isTrusted false.
+fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type: []const u8, bubbles: bool) void {
+    const event = interfaces.Event.call_constructor(
+        realm_of.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = bubbles }),
+    ) catch return;
+    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+}
+
+/// "Fire a page transition event named pageshow at window with persisted"
+/// false.
+fn firePageShow(document: *runtime.Instance, window: *runtime.Instance) void {
+    const event = interfaces.PageTransitionEvent.call_constructor(
+        document.ctx,
+        runtime.DOMString.initInterned("pageshow"),
+        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = false }),
+    ) catch return;
+    _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
 }
 
 /// Operation: requestStorageAccess

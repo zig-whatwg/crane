@@ -365,6 +365,9 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // Other types reach a window's container through this hook.
+    @import("dom").navigable_container.install(.{ .of = &containerOf });
+
     // Chain to parent class (EventTarget) to initialize EventTarget internal state
     // This ensures window.addEventListener() works correctly
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
@@ -971,19 +974,31 @@ pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
 pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Safety check for invalid browsing_context pointer
+    // Steps 1-4: "Let current be this's node navigable. If current is null,
+    // then return null. Let container be current's container. If container is
+    // null, then return null."
+    const container = containerOf(instance) orelse return null;
+
+    // Step 5: "If container's node document's origin is not same
+    // origin-domain with the current settings object's origin, then return
+    // null." The current settings object is this getter's, the window's own.
+    const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return null;
+    const container_window = (interfaces.Document.get_defaultView(container_document) catch null) orelse return null;
+    const container_internal = getInternal(container_window) orelse return null;
+    if (!std.mem.eql(u8, effectiveOrigin(container_window, container_internal), effectiveOrigin(instance, internal))) return null;
+
+    // Step 6: "Return container."
+    return container;
+}
+
+/// The container of `window`'s navigable (navigable_container's
+/// implementation): the element its browsing context records, or null.
+fn containerOf(window: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(window) orelse return null;
     const bc_ptr = @intFromPtr(internal.browsing_context);
-    if (bc_ptr == 0 or bc_ptr < 0x1000) {
-        return null;
-    }
-
-    // If this is a top-level context, return null
-    if (internal.browsing_context.isTopLevel()) {
-        return null;
-    }
-
-    // TODO: Return the iframe/frame element that contains this window
-    return null;
+    if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
+    const container = internal.browsing_context.container orelse return null;
+    return @ptrCast(@alignCast(container));
 }
 
 /// Getter for navigator
