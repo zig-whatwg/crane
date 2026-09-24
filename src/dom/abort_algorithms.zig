@@ -25,6 +25,7 @@ pub const Algorithm = struct {
 pub const Implementation = struct {
     add: *const fn (signal: *runtime.Instance, algorithm: Algorithm) anyerror!void,
     remove: *const fn (signal: *runtime.Instance, ctx: *anyopaque) void,
+    create_dependent: *const fn (ctx: runtime.Context, signals: []const *runtime.Instance) anyerror!*runtime.Instance,
 };
 
 /// Per thread: a worker's signals are created, and aborted, on its own thread.
@@ -40,6 +41,15 @@ pub fn install(impl: Implementation) void {
 pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
     const impl = implementation orelse return error.NotSupported;
     return impl.add(signal, algorithm);
+}
+
+/// DOM § 3.3 "create a dependent abort signal" from `signals`, using
+/// AbortSignal, in `ctx`'s realm - as Fetch's Request constructor and
+/// clone() do. Every signal in `signals` exists, so AbortSignal has
+/// installed its implementation.
+pub fn createDependent(ctx: runtime.Context, signals: []const *runtime.Instance) !*runtime.Instance {
+    const impl = implementation orelse return error.NotSupported;
+    return impl.create_dependent(ctx, signals);
 }
 
 /// "Remove an algorithm from an AbortSignal": every algorithm whose `ctx`

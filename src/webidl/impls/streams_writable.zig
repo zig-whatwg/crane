@@ -1160,10 +1160,9 @@ fn errorSteps(controller: *Controller) void {
 /// Signal abort on controller.[[abortController]] with reason (DOM § 3.2).
 fn signalAbort(realm: Realm, controller: *Controller, reason: Value) void {
     const ac = controller.abort_controller orelse return;
-    // The signal keeps the reason; hand it its own handle.
-    const owned = js.clone(reason) catch return;
+    // Borrowed: the signal takes its own handle to the reason.
     _ = realm;
-    const arg = webidl.Opt(runtime.JSValue).passed(.{ .handle = .{ .ptr = @ptrCast(owned), .handle_scope = .global } });
+    const arg = webidl.Opt(runtime.JSValue).passed(.{ .handle = .{ .ptr = @ptrCast(reason), .handle_scope = .global } });
     interfaces.AbortController.call_abort(ac, arg) catch {};
 }
 

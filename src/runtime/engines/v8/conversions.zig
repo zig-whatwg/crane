@@ -2737,6 +2737,33 @@ pub fn throwDOMExceptionFromContext(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// A new DOMException named `name` with `message`, made by `context`'s
+/// DOMException constructor - the value an algorithm rejects a promise with,
+/// or stores as an abort reason, where throwDOMExceptionFromContext throws it.
+/// Owned; null only if V8 refused (the constructor is missing, or threw).
+pub fn newDOMExceptionFromContext(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    name: []const u8,
+    message: []const u8,
+) ?*v8.Value {
+    const global = v8.v8_Context_Global(context) orelse return null;
+    defer v8.v8_Object_Dispose(global);
+    const key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse return null;
+    defer v8.v8_String_Dispose(key);
+    const ctor = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return null;
+    defer v8.v8_Value_Dispose(ctor);
+    if (!v8.v8_Value_IsFunction(ctor)) return null;
+
+    const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse return null;
+    defer v8.v8_String_Dispose(v8_message);
+    const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer v8.v8_String_Dispose(v8_name);
+    var args = [_]*v8.Value{ @ptrCast(v8_message), @ptrCast(v8_name) };
+    const exception = v8.v8_Function_NewInstance(@ptrCast(ctor), context, 2, &args) orelse return null;
+    return @ptrCast(exception);
+}
+
 /// List of DOMException names as defined by WebIDL spec
 /// Used to determine if an error name is a DOMException or a simple exception
 pub const dom_exception_names = [_][]const u8{

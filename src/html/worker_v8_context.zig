@@ -329,6 +329,27 @@ fn scheduleMessageDispatch(wctx: *WorkerV8Context) void {
     wctx.message_dispatch = .{ .timer = timer, .id = id };
 }
 
+/// Every worker context not yet deinitialized, for `finishTaskIn`.
+threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerV8Context) = .empty;
+
+/// The end of a task that ran script in `isolate` from outside the worker's
+/// own timers - AbortSignal.timeout()'s, say - if `isolate` is a worker's:
+/// what workerTimerTrampoline does after its callback. The microtask
+/// checkpoint runs, and whatever the worker posted leaves it for the page.
+/// Without this the worker's messages sat in its queue, and a test that
+/// reports its results by message timed out. Call it with `isolate` entered.
+pub fn finishTaskIn(isolate: *v8.ffi.Isolate) void {
+    const wctx = for (live_contexts.items) |live| {
+        if (live.isolate == isolate) break live;
+    } else return;
+    const prev_context = current_worker_context;
+    current_worker_context = wctx;
+    defer current_worker_context = prev_context;
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    DedicatedWorker.flushPendingMessages();
+    scheduleMessageDispatch(wctx);
+}
+
 /// Callback to dispatch worker messages in the main thread context.
 /// This is scheduled after worker timer callbacks flush messages to ensure
 /// messages are processed in a clean V8 HandleScope state.
@@ -695,6 +716,7 @@ pub const WorkerV8Context = struct {
         v8.ffi.v8_Context_Exit(context);
         v8.ffi.v8_Isolate_Exit(isolate);
 
+        live_contexts.append(std.heap.page_allocator, self) catch {};
         return self;
     }
 
@@ -711,6 +733,12 @@ pub const WorkerV8Context = struct {
             return;
         }
         self.is_deinitialized = true;
+        for (live_contexts.items, 0..) |live, i| {
+            if (live == self) {
+                _ = live_contexts.swapRemove(i);
+                break;
+            }
+        }
 
         // Disarm the pending message dispatch before the DedicatedWorker it
         // reaches is freed. The callback clears this record the moment it
