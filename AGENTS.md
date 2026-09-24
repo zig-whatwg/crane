@@ -3384,3 +3384,34 @@ for p in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do lsof -t -nP -iTCP:$p -
 ```
 
 Then start a server that outlives any one runner: `python3 wpt.py serve --config config.json`, from `tests/wpt/`.
+
+---
+
+### Architecture: A task fired into a worker from outside must end the worker's turn
+
+**Date**: 2026-09-24
+**Lesson**: Worker isolates share the page's thread and its timer. A callback that runs worker script from outside the worker's own timer trampoline (AbortSignal.timeout()'s task, for instance) must do what that trampoline does afterwards, or everything the worker posts stays inside the worker.
+
+**What Happened**: `dom/abort/timeout.any.js` passed in the window and timed out in the worker. The timer fired and the `abort` handler ran. But the harness reports a worker's results by message, and those messages leave the worker only in `workerTimerTrampoline`'s epilogue: a microtask checkpoint, `DedicatedWorker.flushPendingMessages()`, and `scheduleMessageDispatch()`. Two traps along the way: the task must enter the signal's isolate (`v8_Isolate_Enter`), or V8 aborts with "Cannot create a handle without a HandleScope" on the page's isolate; and `std.debug.print` from that path never showed up in the runner's output, so a file written with `std.c.write` was what showed the task firing.
+
+**Fix**: `worker_v8_context.finishTaskIn(isolate)` finds the worker by isolate (a threadlocal list of live contexts) and runs the epilogue. Call it at the end of any such task.
+
+**Takeaway**: **In a worker, "the callback ran" is not "the page heard about it."** A worker's turn has an end, and every entry point into worker script has to reach it.
+
+---
+
+### Codegen: WebIDL identifiers drop a leading underscore
+
+**Date**: 2026-09-24
+**Lesson**: `_any` in IDL names a member `any`. The lexer kept the underscore, so script saw `AbortSignal._any`, and dictionaries read `_or` and `_namespace` from script objects, which never have them. Pinned by `tests/codegen/escaped_identifier_test.zig`.
+
+**Takeaway**: **Grep the generated tables for names starting with `_` after any parser change.** Each one is a member script cannot reach under its real name.
+
+---
+
+### Workflow: WindowOrWorkerGlobalScope is inherited; its includer state goes through `dom.global_settings`
+
+**Date**: 2026-09-24
+**Lesson**: When a mixin's members read state each includer owns, and the spec defines that state through the includer ("this's relevant settings object"), the includers install their answers into a `src/dom/` hook keyed by an `owns` predicate, and the mixin impl asks the hook. This is `global_settings.zig` for origin, isSecureContext, crossOriginIsolated, indexedDB, caches and performance.
+
+**Takeaway**: **A mixin with includer state is still implemented once.** The state stays with each includer and reaches the mixin through a hook, never through the includer's impl.
