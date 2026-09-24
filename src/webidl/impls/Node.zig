@@ -1160,43 +1160,60 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     // Shadow roots have DOCUMENT_FRAGMENT_NODE type but also have a host
     // For now, we don't have full shadow DOM so skip this check
 
-    // Step 2: Clone this node
+    // Step 2: "Return the result of cloning a node given this with subtree
+    // set to subtree" - document defaulting to this's node document, which
+    // for a document is itself.
     const deep = if (subtree.was_passed) subtree.value else false;
-    return cloneNodeInternal(instance, internal.owner_document, deep);
+    const document = if (internal.node_type == NodeType.DOCUMENT_NODE) instance else internal.owner_document;
+    return cloneANode(instance, document, deep, null);
 }
 
-/// Internal clone algorithm
+/// DOM "clone a node", given node, document, subtree and parent. The
+/// fallbackRegistry argument is not modelled: custom element registries are
+/// not scoped here.
 /// Spec: https://dom.spec.whatwg.org/#concept-node-clone
-fn cloneNodeInternal(
+pub fn cloneANode(
     node: *runtime.Instance,
     document: ?*runtime.Instance,
     subtree: bool,
+    parent: ?*runtime.Instance,
 ) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    // Create a copy of the node based on its type
+    // Step 2: "Let copy be the result of cloning a single node given node,
+    // document, and fallbackRegistry."
     const copy = try cloneSingleNode(node, document);
-    errdefer runtime.Instance.deinit(copy);
+    // Until step 4 hands the copy to its parent, nothing else holds it.
+    var attached = false;
+    errdefer if (!attached) runtime.Instance.deinit(copy);
 
-    // If subtree is true, clone all children recursively using NodeBase
+    // Step 3: "Run any cloning steps defined for node in other applicable
+    // specifications and pass node, copy, and subtree as parameters." A
+    // script's copy inherits "already started" here, so a clone of a script
+    // that has run does not run again when it is inserted.
+    try dom_module.cloning_steps.run(node, copy, subtree);
+
+    // Step 4: "If parent is non-null, then append copy to parent."
+    if (parent) |p| {
+        _ = try call_appendChild(p, copy);
+        attached = true;
+    }
+
+    // Step 5: "If subtree is true, then for each child of node's children, in
+    // tree order: clone a node given child with document set to document,
+    // subtree set to subtree, parent set to copy".
+    //
+    // A document's children are made in the COPY: "clone a single node" step
+    // 5 sets document to copy when node is a document, and Blink creates each
+    // child in the clone's own document (ContainerNode::CloneChildNodesFrom).
     if (subtree) {
+        const children_document = if (node_internal.node_type == NodeType.DOCUMENT_NODE) copy else document;
         const node_base = node_internal.node_base orelse return copy;
         var child_base = node_base.first_child;
-        while (child_base) |c| {
-            // Get runtime.Instance for child via bridge
-            const child_opaque = instance_bridge.getInstance(c) orelse {
-                child_base = c.next_sibling;
-                continue;
-            };
+        while (child_base) |c| : (child_base = c.next_sibling) {
+            const child_opaque = instance_bridge.getInstance(c) orelse continue;
             const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-
-            const child_copy = try cloneNodeInternal(child_instance, document, true);
-            errdefer runtime.Instance.deinit(child_copy);
-
-            // Append child_copy to copy
-            _ = try call_appendChild(copy, child_copy);
-
-            child_base = c.next_sibling;
+            _ = try cloneANode(child_instance, children_document, subtree, copy);
         }
     }
 

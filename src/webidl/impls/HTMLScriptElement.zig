@@ -242,6 +242,9 @@ pub fn init(
     // element". Registering here rather than at binding-init time keeps the
     // cost on documents that actually contain a script.
     ensureInsertionStepsRegistered();
+    // And a clone of one must not run again: the cloning steps copy "already
+    // started" (HTML § 4.12.1.1).
+    dom_module.cloning_steps.install(&cloningSteps);
 
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -829,6 +832,23 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
         // A script that fails to prepare is not a document that fails to load.
         log.debug("insertion steps: prepare failed: {}", .{err});
     };
+}
+
+/// HTML § 4.12.1.1: "The cloning steps for script elements given node, copy,
+/// and subtree are to set copy's already started to node's already started."
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
+///
+/// Without them a clone of a script that has run is a script that has not, and
+/// inserting it runs the source again: `document.cloneNode(true)` from a page's
+/// own script re-ran that script, which cloned the document again, forever.
+fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
+    _ = subtree;
+    // Every clone runs every installed set; this one is for scripts only.
+    if (node.stateAs(State) == null) return;
+    const source = getInternal(node) orelse return;
+    const target = getInternal(copy) orelse return;
+    target.already_started = source.already_started;
 }
 
 /// Register the script insertion steps with the DOM mutation system. Idempotent.
