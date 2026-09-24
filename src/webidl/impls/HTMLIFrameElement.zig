@@ -324,6 +324,7 @@ pub fn init(
     // These only register once and are no-ops on subsequent calls.
     ensureRemovingStepsRegistered();
     ensureInsertionStepsRegistered();
+    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable });
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -1072,99 +1073,28 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             break :blk false;
         };
 
-        // Create child V8 context with all interface bindings AND Window instance
-        // The Window instance IS the V8 global, enabling cross-realm access
-        //
-        // Pass the iframe's browsing context so the Window uses it instead
-        // of creating a new one. This is crucial for frames[index] to work:
-        // - The browsing context was already added to the parent's children list
-        // - The Window needs to use that same browsing context, not create a duplicate
-        const entry = context_manager.createChildContext(.{
-            .parent_context = parent_v8_ctx,
-            .isolate = isolate,
-            .context_type = .window,
-            .inherit_event_loop = true,
-            .existing_browsing_context = @ptrCast(existing_bc),
-            .use_opaque_origin = use_opaque_origin,
-        }, internal.allocator) catch {
+        // This element is the navigable's container: its load event steps run
+        // once a navigation completes (e.g. contentWindow.location = url).
+        internal.integration.fire_load_callback = &fireLoadCallback;
+        internal.integration.iframe_element = @ptrCast(instance);
+
+        // The navigable's context, Window and initial about:blank document.
+        // Per HTML spec §4.8.5, sandboxed without allow-same-origin its origin
+        // is opaque; otherwise it inherits the container document's.
+        _ = attachNavigableContext(
+            internal.integration,
+            parent_v8_ctx,
+            isolate,
+            existing_bc,
+            if (use_opaque_origin) null else parent_origin_str,
+            internal.allocator,
+        ) orelse {
             // Fall back to WindowProxy if context creation fails
             if (internal.integration.getContentWindow()) |proxy| {
                 return @ptrCast(proxy);
             }
             return null;
         };
-
-        // Set the Window's origin based on sandbox flags (already calculated above).
-        // Per HTML spec §4.8.5:
-        // - If sandboxed without allow-same-origin: opaque origin (unique) - keep default "null"
-        // - Otherwise: inherit from container document
-        //
-        // The Window's origin defaults to "null" (opaque). If sandbox doesn't have
-        // allow-same-origin, we keep it opaque. Otherwise, set to parent's origin.
-        if (entry.window_instance) |window_inst| {
-            const WinImpl = @import("Window.zig");
-            if (!use_opaque_origin) {
-                // Not sandboxed or has allow-same-origin - inherit parent's origin
-                WinImpl.setOrigin(window_inst, parent_origin_str) catch {};
-            }
-            // If use_opaque_origin, leave as "null" (opaque)
-        }
-
-        // Store the realm context in the integration for cleanup on removal
-        internal.integration.setRealmContext(
-            @ptrCast(entry.v8_ctx),
-            @ptrCast(entry.realm),
-            @ptrCast(entry),
-            @ptrCast(&entry.runtime_ctx),
-            createDocumentForIframe,
-            iframeContextCleanup,
-            parseHtmlForIframe,
-        );
-
-        // Set script execution callbacks (for script execution in iframe documents)
-        internal.integration.execute_script_callback = &executeIframeScript;
-        internal.integration.update_location_callback = &updateIframeLocation;
-
-        // Set up load event callback for navigation (e.g., contentWindow.location = url)
-        internal.integration.fire_load_callback = &fireLoadCallback;
-        internal.integration.iframe_element = @ptrCast(instance);
-
-        // Set up Location's navigate callback for programmatic navigation
-        // (e.g., iframe.contentWindow.location = 'url' or location.assign())
-        if (entry.window_instance) |window_instance| {
-            const WinImpl = @import("Window.zig");
-            if (WinImpl.getInternal(window_instance)) |window_internal| {
-                if (window_internal.location) |location| {
-                    const LocationImpl = @import("Location.zig");
-                    // Set up bi-directional link: Location knows its Window
-                    LocationImpl.setWindow(location, window_instance);
-                    // Set up navigation callback with IFrameIntegration as context
-                    LocationImpl.setNavigateCallback(location, &navigateIframe, @ptrCast(internal.integration));
-                }
-            }
-        }
-
-        // CRITICAL: Associate the iframe's browsing context with the Window.
-        // createChildContext ignores existing_browsing_context (disabled for crash investigation),
-        // so the Window was created with its own new browsing context. We need to:
-        // 1. Replace the Window's browsing context with the iframe's browsing context
-        // 2. Set this Window as the active window on the iframe's browsing context
-        // This is required for contentDocument to work - createDocumentForIframe calls
-        // browsing_ctx.getActiveWindow() which must return this Window.
-        if (entry.window_instance) |window_instance| {
-            // Use the already-imported WindowImpl from earlier in this function
-            const WinImpl = @import("Window.zig");
-            WinImpl.replaceBrowsingContext(window_instance, @ptrCast(existing_bc));
-        }
-
-        // Create the initial about:blank Document for the iframe.
-        // Per HTML spec §7.5.1, every browsing context has an active document.
-        // For about:blank, the document is created immediately when the browsing
-        // context is created, not through navigation.
-        // We call the createDocumentForIframe callback directly to create and
-        // associate the Document with the browsing context.
-        _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), existing_bc);
-
         // Fire the load event on the iframe element ONLY if no srcdoc/src navigation is pending.
         // Per HTML spec §4.8.5, the "iframe load event steps" fire a load event
         // at the iframe element after the document is completely loaded.
@@ -1214,6 +1144,136 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         return @ptrCast(proxy);
     }
     return null;
+}
+
+/// A navigable's V8 context, Window and initial about:blank document, wired to
+/// `integration`: an iframe's content navigable, or window.open()'s auxiliary
+/// one. The Window's origin is `origin`; null leaves it opaque. The context is
+/// a child of `parent_v8_ctx`, whose teardown takes it down.
+fn attachNavigableContext(
+    integration: *IFrameIntegration,
+    parent_v8_ctx: *v8.ffi.Context,
+    isolate: *v8.ffi.Isolate,
+    browsing_context: *html_core.BrowsingContext,
+    origin: ?[]const u8,
+    allocator: std.mem.Allocator,
+) ?*context_manager.ContextEntry {
+    // Create child V8 context with all interface bindings AND Window instance
+    // The Window instance IS the V8 global, enabling cross-realm access
+    //
+    // Pass the iframe's browsing context so the Window uses it instead
+    // of creating a new one. This is crucial for frames[index] to work:
+    // - The browsing context was already added to the parent's children list
+    // - The Window needs to use that same browsing context, not create a duplicate
+    const entry = context_manager.createChildContext(.{
+        .parent_context = parent_v8_ctx,
+        .isolate = isolate,
+        .context_type = .window,
+        .inherit_event_loop = true,
+        .existing_browsing_context = @ptrCast(browsing_context),
+        .use_opaque_origin = origin == null,
+    }, allocator) catch return null;
+
+    // The Window's origin defaults to "null" (opaque), and stays so when
+    // `origin` is null.
+    if (entry.window_instance) |window_inst| {
+        const WinImpl = @import("Window.zig");
+        if (origin) |o| WinImpl.setOrigin(window_inst, o) catch {};
+    }
+
+    // Store the realm context in the integration for cleanup on removal
+    integration.setRealmContext(
+        @ptrCast(entry.v8_ctx),
+        @ptrCast(entry.realm),
+        @ptrCast(entry),
+        @ptrCast(&entry.runtime_ctx),
+        createDocumentForIframe,
+        iframeContextCleanup,
+        parseHtmlForIframe,
+    );
+
+    // Set script execution callbacks (for script execution in iframe documents)
+    integration.execute_script_callback = &executeIframeScript;
+    integration.update_location_callback = &updateIframeLocation;
+
+    // Set up Location's navigate callback for programmatic navigation
+    // (e.g., iframe.contentWindow.location = 'url' or location.assign())
+    if (entry.window_instance) |window_instance| {
+        const WinImpl = @import("Window.zig");
+        if (WinImpl.getInternal(window_instance)) |window_internal| {
+            if (window_internal.location) |location| {
+                const LocationImpl = @import("Location.zig");
+                // Set up bi-directional link: Location knows its Window
+                LocationImpl.setWindow(location, window_instance);
+                // Set up navigation callback with IFrameIntegration as context
+                LocationImpl.setNavigateCallback(location, &navigateIframe, @ptrCast(integration));
+            }
+        }
+    }
+
+    // CRITICAL: Associate the iframe's browsing context with the Window.
+    // createChildContext ignores existing_browsing_context (disabled for crash investigation),
+    // so the Window was created with its own new browsing context. We need to:
+    // 1. Replace the Window's browsing context with the iframe's browsing context
+    // 2. Set this Window as the active window on the iframe's browsing context
+    // This is required for contentDocument to work - createDocumentForIframe calls
+    // browsing_ctx.getActiveWindow() which must return this Window.
+    if (entry.window_instance) |window_instance| {
+        // Use the already-imported WindowImpl from earlier in this function
+        const WinImpl = @import("Window.zig");
+        WinImpl.replaceBrowsingContext(window_instance, @ptrCast(browsing_context));
+    }
+
+    // Create the initial about:blank Document for the iframe.
+    // Per HTML spec §7.5.1, every browsing context has an active document.
+    // For about:blank, the document is created immediately when the browsing
+    // context is created, not through navigation.
+    // We call the createDocumentForIframe callback directly to create and
+    // associate the Document with the browsing context.
+    _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), browsing_context);
+
+    return entry;
+}
+
+/// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
+/// browsing context opened by `opener_bc_ptr`, whose context, Window and
+/// initial about:blank document are made exactly as an iframe's are, minus
+/// the container. The integration is the caller's to deinit and destroy.
+fn createAuxiliaryNavigable(
+    allocator: std.mem.Allocator,
+    opener_bc_ptr: *anyopaque,
+    opener_origin: []const u8,
+    is_popup: bool,
+) ?dom_module.auxiliary_navigables.Created {
+    const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
+    // open() runs in the opener's script: its context is the new context's
+    // parent, so the opener's page takes the popup down with it.
+    const opener_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+
+    const integration = allocator.create(IFrameIntegration) catch return null;
+    integration.* = IFrameIntegration.init(allocator);
+    const browsing_context = html_core.BrowsingContext.initAuxiliary(allocator, opener_bc, is_popup) catch {
+        integration.deinit();
+        allocator.destroy(integration);
+        return null;
+    };
+    // From here the integration owns the browsing context: its deinit frees it.
+    integration.browsing_context = browsing_context;
+    integration.container_origin = parseOriginFromString(opener_origin);
+    integration.state = .creating_initial_document;
+
+    const entry = attachNavigableContext(integration, opener_v8_ctx, isolate, browsing_context, opener_origin, allocator) orelse {
+        integration.deinit();
+        allocator.destroy(integration);
+        return null;
+    };
+    const window = entry.window_instance orelse {
+        integration.deinit();
+        allocator.destroy(integration);
+        return null;
+    };
+    return .{ .integration = @ptrCast(integration), .window = window };
 }
 
 /// Getter for contentDocument

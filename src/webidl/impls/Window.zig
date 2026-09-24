@@ -92,6 +92,11 @@ pub const InternalState = struct {
     /// The associated browsing context (§7.1)
     browsing_context: *BrowsingContext,
 
+    /// The navigables this window made with open(). It owns their
+    /// integrations - freeing one takes its navigable down - and frees them
+    /// with itself, as an iframe element frees its own.
+    auxiliary_navigables: std.ArrayListUnmanaged(*html_core.IFrameIntegration) = .empty,
+
     /// Whether we own the browsing context and should free it in deinit.
     /// Set to false when replaceBrowsingContext() assigns an external BC.
     /// This prevents double-free when iframe cleanup also frees the BC.
@@ -218,6 +223,15 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        // The popups first: each integration destroys its navigable's context
+        // (a child of this window's, and already gone if this window's page is
+        // being torn down - destroyChildContext runs once per context).
+        for (self.auxiliary_navigables.items) |integration| {
+            integration.deinit();
+            self.allocator.destroy(integration);
+        }
+        self.auxiliary_navigables.deinit(self.allocator);
+
         // Clean up browsing context ONLY if we own it.
         // When replaceBrowsingContext() was called, we borrowed an external BC
         // (from iframe integration) which will be cleaned up by the iframe.
@@ -2336,90 +2350,317 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 }
 
 /// Operation: open
-/// Per spec §7.4.1: Opens a new window or navigates existing one.
+/// Spec: HTML "window open steps"
+/// https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps
 ///
-/// This is a stub implementation that:
-/// - Returns the current window for _self and _parent targets
-/// - Creates a new auxiliary browsing context for _blank
-/// - Does NOT actually navigate to the URL (TODO)
-///
-/// For WPT tests to pass, we need to return a valid WindowProxy.
+/// Deviation, stated: `_self`, `_parent` and `_top` return this window without
+/// navigating it - navigating the page a test runs in is not supported - so
+/// only a new or named navigable is navigated.
 pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.closed) return null;
+    const allocator = internal.allocator;
 
-    // Check if window is closed
-    if (internal.closed) {
-        return null;
+    // Step 2: "Let sourceDocument be the entry global object's associated
+    // Document" - this window's, whose script called open().
+    const source_document = try get_document(instance);
+
+    // Steps 3-4: "Set urlRecord to the result of encoding-parsing a URL given
+    // url, relative to sourceDocument"; failure throws a "SyntaxError".
+    const url_str: []const u8 = if (url.wasPassed()) url.getValue() else "";
+    const url_record: ?[]const u8 = if (url_str.len == 0) null else try parseUrlRelativeTo(source_document, url_str, allocator);
+    defer if (url_record) |u| allocator.free(u);
+
+    // Step 5: "If target is the empty string, then set target to "_blank"."
+    const given_target: []const u8 = if (target.wasPassed()) target.getValue().asSlice() else "";
+    const target_str: []const u8 = if (given_target.len == 0) "_blank" else given_target;
+
+    // Steps 6-12: tokenize the features; noreferrer implies noopener.
+    const window_features = WindowFeatures.parse(if (features.wasPassed()) features.getValue().asSlice() else "");
+    const noopener = window_features.noopener or window_features.noreferrer;
+
+    // Step 13: the rules for choosing a navigable. The keywords name this
+    // one (see the deviation above).
+    if (std.ascii.eqlIgnoreCase(target_str, "_self") or
+        std.ascii.eqlIgnoreCase(target_str, "_parent") or
+        std.ascii.eqlIgnoreCase(target_str, "_top"))
+    {
+        return if (noopener) null else getWindowProxy(instance);
     }
 
-    // Get parameters (defaults per spec)
-    const url_str = if (url.wasPassed()) url.getValue() else "about:blank";
-    _ = url_str; // TODO: Navigate to URL
-    const target_str: []const u8 = if (target.wasPassed()) target.getValue().asSlice() else "_blank";
-    const features_str: []const u8 = if (features.wasPassed()) features.getValue().asSlice() else "";
-
-    // Handle special target names per spec
-    // "_self" - current browsing context
-    // "_parent" - parent browsing context (or self if no parent)
-    // "_top" - top-level browsing context
-    // "_blank" - new auxiliary browsing context
-    if (std.mem.eql(u8, target_str, "_self")) {
-        return getWindowProxy(instance);
-    }
-    if (std.mem.eql(u8, target_str, "_parent")) {
-        // Return parent's window, or self if no parent
-        if (internal.browsing_context.parent != null) {
-            // TODO: Return parent window's proxy
-            return getWindowProxy(instance);
+    // A name one of this window's open popups carries is that popup.
+    if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+        for (internal.auxiliary_navigables.items) |existing| {
+            const bc = existing.browsing_context orelse continue;
+            if (bc.is_closed or !std.mem.eql(u8, bc.target_name, target_str)) continue;
+            const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+            // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
+            // to urlRecord".
+            if (url_record) |u| queuePopupNavigation(existing, window, u);
+            return if (noopener) null else window;
         }
-        return getWindowProxy(instance);
-    }
-    if (std.mem.eql(u8, target_str, "_top")) {
-        // Return top-level window's proxy
-        // For now, return self (handles case where we ARE the top)
-        return getWindowProxy(instance);
     }
 
-    // Parse the features string to determine if this should be a popup
-    _ = parseWindowFeatures(features_str);
+    // Step 15: a new top-level traversable, auxiliary unless noopener. The
+    // machinery is HTMLIFrameElement's, installed when the first iframe
+    // element is made: make one if no page has yet. Script never sees it, so
+    // it goes as soon as it has done that.
+    const auxiliary_navigables = @import("dom").auxiliary_navigables;
+    if (!auxiliary_navigables.isInstalled()) {
+        const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, window_features.popup) orelse return null;
+    const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
+    internal.auxiliary_navigables.append(allocator, integration) catch {
+        integration.deinit();
+        allocator.destroy(integration);
+        return error.OutOfMemory;
+    };
 
-    // TODO: Implement proper window.open() with new browsing context
-    // For now, we don't create an auxiliary browsing context because:
-    // 1. We would need to create a proper Window instance to own it
-    // 2. We would need to track child windows for proper cleanup
-    // 3. Just returning the opener's proxy is sufficient for basic tests
-    //
-    // When properly implementing window.open():
-    // - Create auxiliary browsing context
-    // - Create Window instance that owns the context
-    // - Track in parent's child list for cleanup
-    // - Return the new window's WindowProxy
+    // A named target names the new navigable.
+    if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+        if (integration.browsing_context) |bc| bc.setTargetName(target_str) catch {};
+    }
 
-    // Return the opener's WindowProxy as a stub
-    // This allows tests that just check "window.open returns something" to pass
-    return getWindowProxy(instance);
+    // Its opener is this window, unless noopener.
+    if (noopener) setOpenerNoopener(created.window) catch {} else setOpener(created.window, instance) catch {};
+
+    // Steps 15.3-15.5: navigate it, unless the URL is about:blank - the
+    // initial document it already has. Queued: open() returns the window
+    // before its page loads, as it must for `w.onload = f` to hear the load.
+    if (url_record) |u| {
+        if (!std.mem.startsWith(u8, u, "about:blank")) queuePopupNavigation(integration, created.window, u);
+    }
+
+    // Steps 17-18: "If noopener is true or windowType is "new with no
+    // opener", then return null. Return targetNavigable's active WindowProxy."
+    return if (noopener) null else created.window;
 }
 
-/// Parse window features string to determine if this should be a popup
-fn parseWindowFeatures(features: []const u8) bool {
-    // Per spec, a window is a popup if:
-    // - The features string is not empty, AND
-    // - Certain features are specified that indicate popup behavior
-    if (features.len == 0) {
+/// `url` parsed against `document`'s base URL, serialized; owned. Failure is
+/// a "SyntaxError".
+fn parseUrlRelativeTo(document: *runtime.Instance, url: []const u8, allocator: Allocator) ![]const u8 {
+    const base = interfaces.Node.get_baseURI(document) catch "";
+    defer if (base.len > 0) document.ctx.allocator.free(base);
+    const base_arg = if (base.len > 0)
+        webidl.Opt(runtime.USVString).passed(base)
+    else
+        webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(document, url, base_arg) catch null) orelse return error.SyntaxError;
+    defer runtime.Instance.deinit(parsed);
+    const href = try interfaces.URL.get_href(parsed);
+    defer document.ctx.allocator.free(href);
+    return allocator.dupe(u8, href);
+}
+
+/// A popup's navigation, queued by open().
+const PopupNavigation = struct {
+    allocator: Allocator,
+    integration: *html_core.IFrameIntegration,
+    window: *runtime.Instance,
+    generation: u64,
+    url: []u8,
+
+    fn destroy(self: *PopupNavigation) void {
+        self.allocator.free(self.url);
+        self.allocator.destroy(self);
+    }
+};
+
+/// Navigate the popup `window` (whose integration is `integration`) to
+/// `url`, as a task: HTML navigates asynchronously, and the caller of open()
+/// must get the window before its page runs.
+fn queuePopupNavigation(integration: *html_core.IFrameIntegration, window: *runtime.Instance, url: []const u8) void {
+    const allocator = window.ctx.allocator;
+    const navigation = allocator.create(PopupNavigation) catch return;
+    const url_copy = allocator.dupe(u8, url) catch {
+        allocator.destroy(navigation);
+        return;
+    };
+    navigation.* = .{
+        .allocator = allocator,
+        .integration = integration,
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .url = url_copy,
+    };
+    const loop = window.ctx.getOptionalEventLoop() orelse {
+        runPopupNavigation(navigation);
+        return;
+    };
+    loop.queueTask(.{ .callback = &runPopupNavigation, .context = navigation, .drop = &dropPopupNavigation });
+}
+
+fn dropPopupNavigation(context: ?*anyopaque) void {
+    const navigation: *PopupNavigation = @ptrCast(@alignCast(context orelse return));
+    navigation.destroy();
+}
+
+fn runPopupNavigation(context: ?*anyopaque) void {
+    const navigation: *PopupNavigation = @ptrCast(@alignCast(context orelse return));
+    defer navigation.destroy();
+    // Closed, or its page torn down since: nothing is left to navigate.
+    if (runtime.SlabAllocator.generationOf(navigation.window) != navigation.generation) return;
+    const window_internal = getInternal(navigation.window) orelse return;
+    if (window_internal.closed) return;
+    // A task runs from the event loop, not from V8: the page's scripts need a
+    // scope and the popup's realm entered.
+    const scope = @import("v8").JsScope.init(navigation.window.ctx) orelse return;
+    defer scope.deinit();
+    navigation.integration.navigateToSrc(navigation.url) catch {};
+}
+
+/// HTML "tokenize the features argument" (window.open()), and the three
+/// features open() reads from the result.
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-window-open-features-tokenize
+const WindowFeatures = struct {
+    noopener: bool = false,
+    noreferrer: bool = false,
+    popup: bool = false,
+
+    const max_features = 32;
+
+    fn parse(features: []const u8) WindowFeatures {
+        var names: [max_features][]const u8 = undefined;
+        var values: [max_features][]const u8 = undefined;
+        var name_bufs: [max_features][32]u8 = undefined;
+        var value_bufs: [max_features][32]u8 = undefined;
+        var count: usize = 0;
+
+        // Steps 2-3.
+        var position: usize = 0;
+        while (position < features.len) {
+            // 3.3: skip leading separators.
+            while (position < features.len and isSeparator(features[position])) position += 1;
+            // 3.4: the name, ASCII lowercase; 3.5: normalized.
+            const name_start = position;
+            while (position < features.len and !isSeparator(features[position])) position += 1;
+            const raw_name = features[name_start..position];
+            // 3.6: up to the `=`, stopping at a `,` or a non-separator.
+            while (position < features.len and features[position] != '=') {
+                if (features[position] == ',' or !isSeparator(features[position])) break;
+                position += 1;
+            }
+            // 3.7: the value.
+            var raw_value: []const u8 = "";
+            if (position < features.len and isSeparator(features[position])) {
+                while (position < features.len and isSeparator(features[position])) {
+                    if (features[position] == ',') break;
+                    position += 1;
+                }
+                const value_start = position;
+                while (position < features.len and !isSeparator(features[position])) position += 1;
+                raw_value = features[value_start..position];
+            }
+            // 3.8: a named feature is recorded, the last value winning.
+            if (raw_name.len == 0) continue;
+            var name_tmp: [32]u8 = undefined;
+            var value_tmp: [32]u8 = undefined;
+            const name = normalizeName(lower(raw_name, &name_tmp));
+            var slot: usize = count;
+            for (names[0..count], 0..) |existing, i| {
+                if (std.mem.eql(u8, existing, name)) slot = i;
+            }
+            if (slot == max_features) continue;
+            names[slot] = store(name, &name_bufs[slot]);
+            values[slot] = store(lower(raw_value, &value_tmp), &value_bufs[slot]);
+            if (slot == count) count += 1;
+        }
+
+        const map = Map{ .names = names[0..count], .values = values[0..count] };
+        return .{
+            .noopener = if (map.get("noopener")) |v| parseBoolean(v) else false,
+            .noreferrer = if (map.get("noreferrer")) |v| parseBoolean(v) else false,
+            .popup = isPopupRequested(map),
+        };
+    }
+
+    const Map = struct {
+        names: []const []const u8,
+        values: []const []const u8,
+
+        fn get(self: Map, name: []const u8) ?[]const u8 {
+            for (self.names, self.values) |n, v| {
+                if (std.mem.eql(u8, n, name)) return v;
+            }
+            return null;
+        }
+
+        /// "Check if a window feature is set".
+        fn isSet(self: Map, name: []const u8, default: bool) bool {
+            return if (self.get(name)) |v| parseBoolean(v) else default;
+        }
+    };
+
+    /// A feature separator: ASCII whitespace, `=` or `,`.
+    fn isSeparator(c: u8) bool {
+        return std.ascii.isWhitespace(c) or c == '=' or c == ',';
+    }
+
+    /// ASCII lowercase into `buf`; a longer token than any feature name is
+    /// kept as it is, and matches nothing.
+    fn lower(token: []const u8, buf: *[32]u8) []const u8 {
+        if (token.len > buf.len) return token;
+        return std.ascii.lowerString(buf[0..token.len], token);
+    }
+
+    /// `token` kept in `buf` when it fits; a longer one is a slice of the
+    /// features string itself, which outlives the parse.
+    fn store(token: []const u8, buf: *[32]u8) []const u8 {
+        if (token.len > buf.len) return token;
+        @memcpy(buf[0..token.len], token);
+        return buf[0..token.len];
+    }
+
+    /// "Normalizing the feature name": the legacy size and position names.
+    fn normalizeName(name: []const u8) []const u8 {
+        if (std.mem.eql(u8, name, "screenx")) return "left";
+        if (std.mem.eql(u8, name, "screeny")) return "top";
+        if (std.mem.eql(u8, name, "innerwidth")) return "width";
+        if (std.mem.eql(u8, name, "innerheight")) return "height";
+        return name;
+    }
+
+    /// "Parse a boolean feature": empty, "yes" or "true" is true; otherwise
+    /// the value as an integer, nonzero being true.
+    fn parseBoolean(value: []const u8) bool {
+        if (value.len == 0 or std.mem.eql(u8, value, "yes") or std.mem.eql(u8, value, "true")) return true;
+        return parseInteger(value) != 0;
+    }
+
+    /// The rules for parsing integers, 0 on an error.
+    fn parseInteger(value: []const u8) i64 {
+        var i: usize = 0;
+        while (i < value.len and std.ascii.isWhitespace(value[i])) i += 1;
+        var sign: i64 = 1;
+        if (i < value.len and (value[i] == '-' or value[i] == '+')) {
+            if (value[i] == '-') sign = -1;
+            i += 1;
+        }
+        var n: i64 = 0;
+        var digits: usize = 0;
+        while (i < value.len and std.ascii.isDigit(value[i])) : (i += 1) {
+            n = n *| 10 +| @as(i64, value[i] - '0');
+            digits += 1;
+        }
+        return if (digits == 0) 0 else sign * n;
+    }
+
+    /// "Check if a popup window is requested".
+    fn isPopupRequested(map: Map) bool {
+        if (map.names.len == 0) return false;
+        if (map.get("popup")) |v| return parseBoolean(v);
+        const location = map.isSet("location", false);
+        const toolbar = map.isSet("toolbar", false);
+        if (!location and !toolbar) return true;
+        if (!map.isSet("menubar", false)) return true;
+        if (!map.isSet("resizable", true)) return true;
+        if (!map.isSet("scrollbars", false)) return true;
+        if (!map.isSet("status", false)) return true;
         return false;
     }
-
-    // Simple heuristic: if width or height is specified, treat as popup
-    // A more complete implementation would parse all feature tokens
-    if (std.mem.indexOf(u8, features, "width") != null or
-        std.mem.indexOf(u8, features, "height") != null or
-        std.mem.indexOf(u8, features, "popup") != null)
-    {
-        return true;
-    }
-
-    return false;
-}
+};
 
 /// Operation: moveTo
 /// Per CSSOM View: Moves the window to the specified position.
