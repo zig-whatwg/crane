@@ -325,7 +325,8 @@ const NativeGlobal = struct {
 };
 
 /// What every window gets natively, the top-level one and every frame's: the
-/// WebIDL operations for these are stubs.
+/// WebIDL operations for these are stubs. (fetch() is the WebIDL operation,
+/// the WindowOrWorkerGlobalScope mixin's.)
 const window_native_globals = [_]NativeGlobal{
     .{ .name = "setTimeout", .callback = setTimeoutCallback, .length = 1 },
     .{ .name = "clearTimeout", .callback = clearTimeoutCallback, .length = 0 },
@@ -333,7 +334,6 @@ const window_native_globals = [_]NativeGlobal{
     .{ .name = "clearInterval", .callback = clearTimeoutCallback, .length = 0 },
     .{ .name = "requestAnimationFrame", .callback = requestAnimationFrameCallback, .length = 1 },
     .{ .name = "cancelAnimationFrame", .callback = cancelAnimationFrameCallback, .length = 1 },
-    .{ .name = "fetch", .callback = fetchCallback, .length = 1 },
 };
 
 /// Define each of `natives` on `global_obj`, as functions of `v8_ctx`'s realm.
@@ -2506,152 +2506,6 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     if (v8.ffi.v8_Boolean_New(isolate, result)) |res| {
         info.setReturnValue(res);
     }
-}
-
-/// fetch callback - implements the global fetch() function
-/// Per Fetch spec: https://fetch.spec.whatwg.org/#fetch-method
-fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        throwTypeError(isolate, info, "No context available");
-        return;
-    };
-
-    // Get allocator from thread-local storage
-    const allocator = current_allocator orelse {
-        throwTypeError(isolate, info, "No allocator available");
-        return;
-    };
-
-    // Create a Promise to return
-    const resolver = v8.ffi.v8_PromiseResolver_New(v8_ctx) orelse {
-        throwTypeError(isolate, info, "Failed to create promise");
-        return;
-    };
-    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
-        throwTypeError(isolate, info, "Failed to get promise");
-        return;
-    };
-
-    // Return the promise early - we'll resolve/reject it after fetch completes
-    info.setReturnValue(@ptrCast(promise));
-
-    // Check for URL argument
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': 1 argument required, but only 0 present.");
-        return;
-    }
-
-    // Get URL from first argument
-    const url_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsString(url_value)) {
-        // TODO: Handle Request object input
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': URL must be a string");
-        return;
-    }
-
-    // Convert V8 string to Zig string
-    const url_str = v8.ffi.v8_Value_ToString(url_value, v8_ctx) orelse {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to convert URL to string");
-        return;
-    };
-    const url_len = v8.ffi.v8_String_Utf8Length(url_str);
-    if (url_len <= 0 or url_len > 65536) {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Invalid URL length");
-        return;
-    }
-
-    const url_buffer = allocator.alloc(u8, @intCast(url_len)) catch {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Out of memory");
-        return;
-    };
-    defer allocator.free(url_buffer);
-
-    const written = v8.ffi.v8_String_WriteUtf8(url_str, url_buffer.ptr, @intCast(url_len));
-    if (written <= 0) {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to read URL string");
-        return;
-    }
-    const url_slice = url_buffer[0..@intCast(written)];
-
-    // Resolve relative URLs against the document URL
-    var resolved_url: []const u8 = url_slice;
-    var resolved_url_owned = false;
-    defer if (resolved_url_owned) allocator.free(resolved_url);
-
-    if (std.mem.indexOf(u8, url_slice, "://") == null) {
-        // Relative URL - resolve against document URL
-        if (context_manager.getDocumentUrl(v8_ctx)) |doc_url| {
-            // Find the last slash to get the base directory
-            if (std.mem.lastIndexOf(u8, doc_url, "/")) |last_slash| {
-                // Special handling for root-relative URLs
-                if (url_slice.len > 0 and url_slice[0] == '/') {
-                    // Extract origin (scheme + host) from document URL
-                    if (std.mem.indexOf(u8, doc_url, "://")) |scheme_end| {
-                        const after_scheme = doc_url[scheme_end + 3 ..];
-                        if (std.mem.indexOf(u8, after_scheme, "/")) |host_end| {
-                            const origin = doc_url[0 .. scheme_end + 3 + host_end];
-                            resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ origin, url_slice }) catch {
-                                rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
-                                return;
-                            };
-                            resolved_url_owned = true;
-                        }
-                    }
-                } else {
-                    // Relative path - append to base directory
-                    const base_dir = doc_url[0 .. last_slash + 1];
-                    resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ base_dir, url_slice }) catch {
-                        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
-                        return;
-                    };
-                    resolved_url_owned = true;
-                }
-            }
-        }
-    }
-
-    // Create internal request
-    const internal_request = fetch.internal.InternalRequest.init(allocator, resolved_url) catch {
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create request");
-        return;
-    };
-    defer internal_request.deinit();
-
-    // Execute fetch algorithm (synchronous for now)
-    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
-        const err_msg = switch (err) {
-            fetch.algorithms.FetchError.NetworkError => "NetworkError: Failed to fetch",
-            fetch.algorithms.FetchError.AbortError => "AbortError: Fetch aborted",
-            fetch.algorithms.FetchError.OutOfMemory => "OutOfMemory",
-        };
-        rejectWithTypeError(isolate, v8_ctx, resolver, err_msg);
-        return;
-    };
-    defer fetch_result.timing_info.deinit();
-
-    // Get the runtime context from context_manager (properly managed, tied to V8 context)
-    // This ensures the context lives as long as the V8 context and has engine support
-    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_ctx, isolate, allocator) catch {
-        fetch_result.response.deinit();
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to get runtime context");
-        return;
-    };
-
-    // Create Response WebIDL wrapper from internal response
-    const ResponseImpl = impls.Response;
-    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, runtime_ctx) catch {
-        fetch_result.response.deinit();
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
-        return;
-    };
-    // Note: response_instance now owns fetch_result.response, don't deinit it separately
-
-    // Wrap the Response instance for V8
-    const response_js = v8.conversions.instanceToV8(isolate, response_instance);
-
-    // Resolve the promise with the Response
-    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_ctx, response_js);
 }
 
 /// Helper to throw TypeError

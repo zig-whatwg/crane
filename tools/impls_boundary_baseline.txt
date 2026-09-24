@@ -11,7 +11,6 @@ src/browser/Context.zig HTMLIFrameElement.setIframeSrcLoadHook 1
 src/browser/Context.zig HTMLParser.ScriptLoader 2
 src/browser/Context.zig HTMLParser.parseHTMLWithScripting 1
 src/browser/Context.zig Location.setWindow 1
-src/browser/Context.zig Response.fromInternalResponse 1
 src/browser/Context.zig Window.getInternal 4
 src/browser/Context.zig Window.setBoundV8Global 3
 src/browser/Context.zig Window.setDocument 1

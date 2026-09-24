@@ -116,6 +116,9 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // fetch() reads a Request object's request through this hook.
+    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf });
+
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
@@ -137,6 +140,13 @@ pub fn init(
     state.own._internal = internal;
 
     return instance;
+}
+
+/// dom.fetch_objects: "requestObject's request". Borrowed.
+fn requestOf(request_object: *runtime.Instance) ?*anyopaque {
+    const state = request_object.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return @ptrCast(internal.request);
 }
 
 /// Deinitialize - clean up owned resources only

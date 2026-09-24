@@ -4,6 +4,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const html_core = @import("html_core");
 const global_settings = @import("dom").global_settings;
+const streams_js = @import("streams_js.zig");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -394,8 +395,91 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 
 /// Operation: fetch
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = input;
-    _ = init_data;
-    return error.NotImplemented;
+    const fetch = @import("fetch");
+    const fetch_objects = @import("dom").fetch_objects;
+    const allocator = instance.ctx.allocator;
+    // Step 8: relevantRealm, this's relevant realm.
+    const realm = try streams_js.Realm.of(instance);
+
+    // Step 1: Let p be a new promise.
+    const p = try streams_js.Deferred.init(realm);
+    // The binding reads the promise and disposes nothing; the resolver is
+    // ours, and the promise handle goes with the call (streams_js.toReturn).
+    defer @import("v8").ffi.v8_PromiseResolver_Dispose(p.resolver);
+
+    // Step 2: Let requestObject be the result of invoking the initial value
+    // of Request as constructor with input and init. If this throws, reject
+    // p with it and return p.
+    //
+    // The binding converted `init` before this call, so a throwing getter in
+    // it has already propagated from fetch(), before p existed. Deviation: it
+    // should reject p.
+    const request_object = interfaces.Request.call_constructor(instance.ctx, input, init_data) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => {
+            rejectWithTypeError(realm, p, "Failed to execute 'fetch': the Request could not be constructed.");
+            return p.returnValue();
+        },
+    };
+    // Nothing script can see holds requestObject, unless its signal's
+    // listeners wrapped it; it goes when the call does.
+    const request_generation = runtime.SlabAllocator.generationOf(request_object);
+    defer request_object.releaseIfUnwrapped(request_generation);
+
+    // Step 3: Let request be requestObject's request.
+    const request: *fetch.internal.InternalRequest = @ptrCast(@alignCast(fetch_objects.requestOf(request_object) orelse return error.InvalidStateError));
+
+    // Step 4: If requestObject's signal is aborted, abort the fetch() call
+    // with p, request, null, and the signal's abort reason, and return p.
+    const signal = try interfaces.Request.get_signal(request_object);
+    if (try interfaces.AbortSignal.get_aborted(signal)) {
+        const reason = try realm.fromRuntime(try interfaces.AbortSignal.get_reason(signal));
+        defer streams_js.dispose(reason);
+        p.reject(realm, reason);
+        return p.returnValue();
+    }
+
+    // Steps 5-6: no ServiceWorkerGlobalScope exists here.
+    // Steps 9-11: Crane's fetch runs to completion before it returns, so no
+    // abort can arrive while it is in flight; there are no abort steps to add.
+
+    // Step 12: fetch request, processResponse being:
+    var result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => {
+            rejectWithTypeError(realm, p, "Failed to fetch");
+            return p.returnValue();
+        },
+    };
+    result.timing_info.deinit();
+    const response = result.response;
+
+    // processResponse step 3: a network error rejects p with a TypeError.
+    if (response.response_type == .@"error") {
+        response.deinit();
+        rejectWithTypeError(realm, p, "Failed to fetch");
+        return p.returnValue();
+    }
+
+    // processResponse step 4: responseObject is the result of creating a
+    // Response object given response, "immutable" and relevantRealm.
+    const response_object = interfaces.Response.call_constructor(instance.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch |err| {
+        response.deinit();
+        return err;
+    };
+    if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
+        response.deinit();
+        return error.InvalidStateError;
+    }
+
+    // processResponse step 5: resolve p with responseObject.
+    p.resolve(realm, try realm.wrap(response_object));
+    // Step 13.
+    return p.returnValue();
+}
+
+fn rejectWithTypeError(realm: streams_js.Realm, p: streams_js.Deferred, message: []const u8) void {
+    const reason = realm.typeError(message) catch return;
+    defer streams_js.dispose(reason);
+    p.reject(realm, reason);
 }

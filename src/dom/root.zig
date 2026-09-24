@@ -60,6 +60,7 @@ pub const navigable_container = @import("navigable_container.zig");
 pub const document_lifecycle = @import("document_lifecycle.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
+pub const fetch_objects = @import("fetch_objects.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
 pub const observer_registrations = @import("observer_registrations.zig");

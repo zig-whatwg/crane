@@ -46,6 +46,9 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     response: *InternalResponse,
+    /// The guard of this object's Headers: "response" for a Response script
+    /// constructs, "immutable" for one fetch() creates.
+    headers_guard: fetch.internal.HeaderGuard = .response,
     /// Keeps `this.body`'s stream alive for as long as this object - see
     /// `same_object.zig`. (`headers` works the other way round: the Headers
     /// object keeps its owner alive, because its list lives in the owner.)
@@ -59,6 +62,9 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // fetch() hands a Response object its response through this hook.
+    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse });
+
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
@@ -101,6 +107,23 @@ pub fn fromInternalResponse(
     state.own._internal = internal;
 
     return instance;
+}
+
+/// dom.fetch_objects, Fetch "create a Response object" steps 2-3 for a
+/// Response object just made: its response becomes `response`, which it now
+/// owns, and its headers' guard `guard`.
+fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, guard: @import("dom").fetch_objects.Guard) void {
+    const state = response_object.stateAs(State) orelse return;
+    const internal = state.own._internal orelse return;
+    internal.response.deinit();
+    internal.response = @ptrCast(@alignCast(response));
+    internal.headers_guard = switch (guard) {
+        .immutable => .immutable,
+        .request => .request,
+        .request_no_cors => .request_no_cors,
+        .response => .response,
+        .none => .none,
+    };
 }
 
 /// Deinitialize - clean up owned resources only
@@ -397,7 +420,7 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.allocator,
         instance.ctx,
         &internal.response.header_list,
-        .response,
+        internal.headers_guard,
         instance,
         &state.own.cached_headers,
     );
