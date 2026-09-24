@@ -3309,3 +3309,78 @@ ceiling - the harness then reports every subtest that ran.
 **Takeaway**: **A knob that scales one clock usually scales others with
 it.** When a test's own timing matters, check what else a harness setting
 touches before using it to fix a timeout.
+
+---
+
+### Architecture: Every frame ran the WebIDL stubs for setTimeout, rAF and fetch
+
+**Date**: 2026-09-24
+**Lesson**: `context_manager` has a hook for exactly this - `setChildContextGlobalsCallback`, "the browser layer sets a callback that registers setTimeout, setInterval, etc." - and nothing had installed it since a sync commit dropped the call on 2026-01-13.
+
+**Why**: The natives live on the top-level global only (`Context.registerCommonGlobals`). A child context gets the WebIDL operations registered as own properties, and `call_setTimeout`, `call_setInterval`, `call_clearTimeout`, `call_fetch`, `call_atob` and `call_btoa` are all `error.NotImplemented`.
+
+**What Happened**: Every iframe and every popup threw NotSupportedError from `setTimeout`. It surfaced through window.open: a popup's `sendCoordinates` calls `setTimeout(..., 300)` before posting to its opener, so the opener waited out the whole test. `crane/iframe-timers.html` is 0/6 at the commit before the fix.
+
+**Fix**: One table, `window_native_globals`, installed on the top-level global and on every child (`registerChildContextGlobals`). Each timer and animation-frame entry carries the realm that made it, so `clearTimeout` and `cancelAnimationFrame` reach only their own window's map. A second hook, `setChildWindowCleanupCallback`, clears a frame's timers and animation frames when its document is destroyed: from `destroyChildContext`, and from the iframe's removing steps, because removal keeps the context alive while script holds the window.
+
+**Takeaway**: **A hook with no installer is a feature with no caller.** Grep the setter's call sites before trusting a `*_callback` that "the browser layer sets".
+
+---
+
+### Architecture: An event the engine fires and nobody hears must still be freed
+
+**Date**: 2026-09-24
+**Lesson**: `Document.fireEvent`, `firePageShow` and `script_execution.fireAtScriptElement` dispatched their event and dropped it. The comment claimed it was "batch-freed with the rest at context teardown". Nothing sweeps a context's Instances.
+
+**What Happened**: `CRANE_LEAK_TRACES=1` on `dom/nodes/Node-appendChild.html`: 3 leaks per page before the lifecycle commit, 6 after it (readystatechange twice, pageshow). Every page in a sweep paid them.
+
+**Fix**: `runtime.Instance.releaseIfUnwrapped(generation)`, with the generation read when the event was made. A wrapper still in the cache owns the event. A slot whose generation moved on was collected during dispatch. Only an event nothing ever wrapped is freed. `defer Event.deinit` is never right for an event a listener can keep. `fireLoadEventOnIframe` did that, and `await new Promise(r => iframe.addEventListener("load", r))` keeps it.
+
+**Not fixed**: `destroyChildContext` tears a child's wrapper cache down with `deinitWithoutCallbacks`. An object a frame's script wrapped (a `URLSearchParams`, an event a listener took) leaks its owned memory when the frame goes: about 5 allocations per popup in `open-features-negative-width-height.html`.
+
+**Takeaway**: **Run one ordinary page under `CRANE_LEAK_TRACES=1` after any change that fires events.** A zero is cheap to keep and expensive to recover.
+
+---
+
+### Architecture: A frame's load event has exactly one owner, and `window.document` is script's getter
+
+**Date**: 2026-09-24
+**Lesson**: Once a parsed frame document ran HTML "the end" (00f7e2d7c), "completely finish loading" fired the container's load. The synchronous fire sites that predated it - srcdoc, data:, `set_src`, and `contentWindow.location` navigations - kept firing too.
+
+**What Happened**: data: and srcdoc frames fired load two or three times. `iframe-allowfullscreen.html` became an infinite postMessage ping-pong, because each load posted a request and the frame answered every message twice. `crane/iframe-load-once.html` pins one load each.
+
+Two things hid it:
+* The existing guard read the frame's document through `interfaces.Window.get_document`. That is the script-facing getter, and it refuses a cross-origin reader, so for a data: frame (opaque origin) "no document" meant "fire".
+* `set_src` fired load for data: URLs on a disconnected iframe, where nothing had navigated.
+
+**Fix**: `childDocument` reads the browsing context's own `active_document`. Every synchronous site goes through `fireLoadUnlessDocumentWill`. On initial insertion, a URL matching about:blank is not navigated ("process the iframe attributes" step 2.3), so the frame keeps its initial document and its window sees no load or pageshow. A "the end" task whose document a navigation has already replaced does not run, because the event loop runs only tasks whose document is fully active.
+
+**Takeaway**: **Engine code asking about a frame must not use the getters script uses.** Those carry the cross-origin checks, and they answer "no" for exactly the frames that most need a correct answer.
+
+---
+
+### Architecture: One event loop turn runs the tasks queued before it, and no more
+
+**Date**: 2026-09-24
+**Lesson**: `V8EventLoop.runOnceBlocking` drained its task queue until it was empty, so a task that queues a task never let the call return. The WPT runner checks the per-file deadline between calls, so its ceiling never fired.
+
+**What Happened**: `beforeunload-canceling.html` ran into it. A frame's load handler sets `location.href = "about:blank"`. Crane keeps the frame's global across the navigation (a spec deviation: a new document gets a new Window), so the handler survives and the next load runs it again. The process hung until the supervisor's stall watchdog killed it at 150 s. The journal records that as TIMEOUT with `wall_ms` 0.
+
+**Fix**: `runQueuedTasks` runs the tasks present when it starts. A task they queue waits for the next turn, which `runEventLoopBlocking` begins immediately (a non-empty queue polls without blocking). Pinned by `tests/v8/event_loop_turn_test.zig`.
+
+**Takeaway**: **A drain loop's bound is the queue length on entry, never "until empty."** The second is a promise that nothing it runs will ever queue more.
+
+---
+
+### Testing: Stop `wpt serve` by killing all of it
+
+**Date**: 2026-09-24
+**Lesson**: `lsof -t -iTCP:8000 | xargs kill` (the advice in the 404 lesson above) kills only the :8000 child. The server's other children keep 8001-8003, 8443-8446 and 9000. The next server then fails to bind those ports, shuts down its own :8000, and the runner reports `error.NetworkError` in 0 ms.
+
+**Fix**: Kill the listener on every one of those ports, and the `wpt.py serve` parent.
+
+```bash
+for p in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do lsof -t -nP -iTCP:$p -sTCP:LISTEN; done | sort -u | xargs -r kill
+```
+
+Then start a server that outlives any one runner: `python3 wpt.py serve --config config.json`, from `tests/wpt/`.
