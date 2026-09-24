@@ -16,6 +16,7 @@ const callbacks = @import("callbacks");
 // Import Fetch internal structures
 const fetch = @import("fetch");
 const InternalRequest = fetch.internal.InternalRequest;
+const abort_algorithms = @import("dom").abort_algorithms;
 
 // Import File API for Blob support
 const file = @import("file");
@@ -161,6 +162,59 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The GC integration layer handles slab freeing after this returns.
 }
 
+/// Fetch "append" a header (name, value) to a Headers object whose guard is
+/// "request", or "request-no-cors" when `no_cors` - the constructor's "fill"
+/// runs it for each pair of init["headers"].
+fn appendHeader(allocator: std.mem.Allocator, list: *fetch.internal.HeaderList, name: []const u8, raw_value: []const u8, no_cors: bool) !void {
+    const validation = fetch.internal.validation;
+    // Step 1: Normalize value (strip leading and trailing HTTP whitespace).
+    const value = std.mem.trim(u8, raw_value, " \t\r\n");
+    // Step 2: "validate" - an invalid name or value throws; a forbidden
+    // request-header is dropped under the "request" guard.
+    if (!validation.isValidHeaderName(name) or !validation.isValidHeaderValue(value)) return error.TypeError;
+    if (validation.isForbiddenRequestHeader(name, value)) return;
+    if (no_cors) {
+        // Step 3: under "request-no-cors", the value it would combine to
+        // must keep the header no-CORS-safelisted, or nothing is appended.
+        const existing = try list.get(allocator, name);
+        defer if (existing) |e| allocator.free(e);
+        const combined = if (existing) |e| try std.fmt.allocPrint(allocator, "{s}, {s}", .{ e, value }) else try allocator.dupe(u8, value);
+        defer allocator.free(combined);
+        if (!validation.isNoCORSSafelistedRequestHeader(name, combined)) return;
+    }
+    // Step 4: Append (name, value) to headers's header list.
+    try list.append(name, value);
+    // Step 5: under "request-no-cors", remove privileged no-CORS request
+    // headers from headers.
+    if (no_cors) {
+        for ([_][]const u8{"range"}) |privileged| list.delete(privileged);
+    }
+}
+
+/// This's relevant settings object's API base URL, owned by
+/// `ctx.allocator`. A window's is its document's base URL - for an
+/// about:srcdoc document, its container's - so a srcdoc frame's
+/// `fetch("../x")` resolves as its parent's would; the document's URL alone
+/// (about:srcdoc) resolves nothing relative. A worker's is its script URL,
+/// which relevantBaseURL answers.
+fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
+    const v8_engine = @import("v8");
+    if (ctx.getEngineContextAs(v8_engine.ffi.Context)) |v8_context| {
+        if (v8_engine.context_manager.getWindowForContext(v8_context)) |window| {
+            const document = interfaces.Window.get_document(window) catch null;
+            if (document) |d| {
+                const base = interfaces.Node.get_baseURI(d) catch null;
+                if (base) |b| {
+                    if (b.len > 0) return @constCast(b);
+                    d.ctx.allocator.free(b);
+                }
+            }
+        }
+    }
+    const url = relevantBaseURL(ctx) orelse return null;
+    return ctx.allocator.dupe(u8, url) catch null;
+}
+
 /// This's relevant settings object's API base URL.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
@@ -199,7 +253,8 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     const api_parser = @import("api_parser");
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
-    if (relevantBaseURL(ctx)) |base| {
+    if (apiBaseURL(ctx)) |base| {
+        defer ctx.allocator.free(base);
         base_record = api_parser.parseURL(ctx.allocator, base, null) catch null;
     }
 
@@ -242,16 +297,15 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         .request => |input_request| {
             // Step 6: Otherwise (input is a Request object)
             // Step 6.1: Assert input is a Request object
-            const input_state = input_request.getState(State);
-            const input_internal = input_state.own._internal.?;
+            const input_state = input_request.stateAs(State) orelse return error.TypeError;
+            const input_internal = input_state.own._internal orelse return error.TypeError;
 
             // Step 6.2: Set request to input's request
             // Clone the request
             base_request = try input_internal.request.clone();
 
-            // Step 6.3: Set signal to input's signal
-            // TODO: Get signal from input_state
-            signal = null;
+            // Step 6.3: Set signal to input's signal.
+            signal = input_state.own.signal;
         },
     }
     errdefer base_request.deinit();
@@ -411,20 +465,24 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // Step 31-34: Handle headers from init BEFORE creating instance
     // This ensures all headers are added while base_request is still the owner
     if (init_opts.headers) |headers_init| {
-        // Fill the request's headers with headers_init
+        // Step 32.2: this's headers' guard is "request-no-cors" when the
+        // mode is "no-cors", otherwise "request".
+        const no_cors = base_request.mode == .no_cors;
+        // Step 32.3 / 34: fill this's headers with headers_init - "fill" is
+        // Headers' "append" for each pair, under that guard.
         switch (headers_init) {
             .sequence_byte_string_sequence => |outer_seq| {
                 // Array of [name, value] pairs: sequence<sequence<ByteString>>
                 for (outer_seq) |inner_seq| {
-                    if (inner_seq.len >= 2) {
-                        try base_request.header_list.append(inner_seq[0], inner_seq[1]);
-                    }
+                    // "If header's size is not 2, then throw a TypeError."
+                    if (inner_seq.len != 2) return error.TypeError;
+                    try appendHeader(ctx.allocator, &base_request.header_list, inner_seq[0], inner_seq[1], no_cors);
                 }
             },
             .byte_string_byte_string_record => |entries| {
                 // Object with header entries: record<ByteString, ByteString>
                 for (entries) |entry| {
-                    try base_request.header_list.append(entry.key, entry.value);
+                    try appendHeader(ctx.allocator, &base_request.header_list, entry.key, entry.value, no_cors);
                 }
             },
         }
@@ -448,6 +506,13 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     const internal = state.own._internal.?;
     internal.request.deinit(); // Free the default empty request
     internal.request = base_request; // Transfer ownership
+
+    // Step 29 (with step 13's "If init["signal"] exists, then set signal to
+    // it"): signals is « signal » if signal is non-null; otherwise « ».
+    if (init_opts.signal) |init_signal| signal = init_signal;
+    const signals: []const *runtime.Instance = if (signal) |s| &.{s} else &.{};
+    // Step 30: this's signal is a dependent abort signal from signals.
+    state.own.signal = try abort_algorithms.createDependent(ctx, signals);
 
     // Steps 36-42: Handle body from init
     if (init_opts.body) |body_init| {
@@ -847,8 +912,9 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     cloned_internal.request.deinit();
     cloned_internal.request = cloned_request;
 
-    // TODO: Clone AbortSignal and create dependent signal (step 4-5)
-    // For now, we just clone the request structure
+    // Steps 3-4: clonedRequestObject's signal is a dependent abort signal
+    // from « this's signal ».
+    cloned_state.own.signal = try abort_algorithms.createDependent(instance.ctx, &.{state.own.signal});
 
     return cloned_instance;
 }
