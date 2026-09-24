@@ -324,10 +324,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         internal_state.script_final_url = null;
         // Don't return error - still schedule initialization
         if (ctx.getOptionalEventLoop()) |event_loop| {
-            event_loop.queueTask(event_loop_mod.Task{
-                .callback = initializeWorkerCallback,
-                .context = instance,
-            });
+            WorkerTask.queue(event_loop, instance, &initializeWorker);
         }
         return instance;
     };
@@ -360,10 +357,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // For reliable message delivery timing, the script fetch is done in the
     // constructor (above), only the script EXECUTION is deferred.
     if (ctx.getOptionalEventLoop()) |event_loop| {
-        event_loop.queueTask(event_loop_mod.Task{
-            .callback = initializeWorkerCallback,
-            .context = instance,
-        });
+        WorkerTask.queue(event_loop, instance, &initializeWorker);
     } else {
         // Fallback: try timer if no event loop available
         const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
@@ -486,6 +480,7 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
         if (internal.dedicated_worker) |dedicated_worker| {
             const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
             log.debug("[Worker.set_onmessage] worker={*}, queue_len={d}", .{ dedicated_worker, queue_len });
+            keepAliveWhileRunning(internal);
             dedicated_worker.processQueuedMessages();
         } else {
             log.debug("[Worker.set_onmessage] WARN: dedicated_worker is NULL! Cannot process queued messages.", .{});
@@ -523,7 +518,10 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 /// 4. Sets up DedicatedWorkerGlobalScope
 /// 5. Schedules script execution
 fn initializeWorkerCallback(user_data: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    initializeWorker(@ptrCast(@alignCast(user_data orelse return)));
+}
+
+fn initializeWorker(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
 
     // Get the stored context - we need it for timer operations
@@ -674,10 +672,9 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // - This ensures message dispatch happens before test timeout timers
     // - Using setTimeout(1ms) creates a race condition with test timeouts
     if (ctx.getOptionalEventLoop()) |event_loop| {
-        event_loop.queueTask(event_loop_mod.Task{
-            .callback = executeWorkerMessageDispatchCallback,
-            .context = internal.worker_instance,
-        });
+        if (internal.worker_instance) |worker_instance| {
+            WorkerTask.queue(event_loop, worker_instance, &dispatchMessagesOf);
+        }
     } else if (ctx.timer) |timer| {
         // Fallback to timer if no event loop available
         _ = timer.setTimeout(1, executeWorkerMessageDispatchCallback, internal.worker_instance);
@@ -759,6 +756,7 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     // 3. This avoids timer scheduling delays that cause test timeouts
     if (has_messages) {
         log.debug("[executeWorkerScriptCallback] Calling processQueuedMessages", .{});
+        keepAliveWhileRunning(internal);
         dedicated_worker.processQueuedMessages();
 
         // CRITICAL: Message handlers may have posted NEW messages via self.postMessage().
@@ -787,10 +785,64 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
 /// 3. setTimeout(1, executeWorkerMessageDispatchCallback) fires (we're here)
 /// 4. Messages dispatched to worker's onmessage handler
 fn executeWorkerMessageDispatchCallback(user_data: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    dispatchMessagesOf(@ptrCast(@alignCast(user_data orelse return)));
+}
+
+fn dispatchMessagesOf(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     dispatchWorkerMessages(internal);
 }
+
+/// A running worker keeps its Worker object alive, as Blink's
+/// ActiveScriptWrappable does. Dispatching the worker's messages runs the
+/// page's handlers, and one of them can drop the last reference to the Worker
+/// - the harness does, when the worker reports its tests complete. A
+/// collection then freed the Worker, and its DedicatedWorker, while
+/// processQueuedMessages was still walking its port: a segfault on every run
+/// of html/webappapis/atob/base64.any.js once a turn stopped draining the
+/// queue in one go. So the wrapper is held from the first dispatch on, and
+/// goes with the page.
+fn keepAliveWhileRunning(internal: *InternalState) void {
+    const instance = internal.worker_instance orelse return;
+    @import("v8").wrapper_cache_mod.holdStrong(instance);
+}
+
+/// An event-loop task for a Worker, holding it as (address, slab generation).
+///
+/// A Worker nothing has dispatched to yet is not held (keepAliveWhileRunning),
+/// so script can drop it and a collection free it - and reissue its slot -
+/// between the task being queued and being run. The task then reads whatever
+/// lives there; with the generation it runs only for the Worker it was for.
+const WorkerTask = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+    step: *const fn (*runtime.Instance) void,
+
+    fn queue(event_loop: anytype, instance: *runtime.Instance, step: *const fn (*runtime.Instance) void) void {
+        const allocator = instance.ctx.allocator;
+        const task = allocator.create(WorkerTask) catch return;
+        task.* = .{
+            .instance = instance,
+            .generation = runtime.SlabAllocator.generationOf(instance),
+            .allocator = allocator,
+            .step = step,
+        };
+        event_loop.queueTask(event_loop_mod.Task{ .callback = &run, .context = task, .drop = &drop });
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const task: *WorkerTask = @ptrCast(@alignCast(data orelse return));
+        defer task.allocator.destroy(task);
+        if (runtime.SlabAllocator.generationOf(task.instance) != task.generation) return;
+        task.step(task.instance);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const task: *WorkerTask = @ptrCast(@alignCast(data orelse return));
+        task.allocator.destroy(task);
+    }
+};
 
 /// Dispatch worker messages to main thread handlers.
 /// This is called either from the timer callback or synchronously as fallback.
@@ -834,6 +886,7 @@ fn dispatchWorkerMessages(internal: *InternalState) void {
     // Dispatch worker→main messages
     if (has_messages) {
         log.debug("[dispatchWorkerMessages] Calling processQueuedMessages", .{});
+        keepAliveWhileRunning(internal);
         dedicated_worker.processQueuedMessages();
         processAllPendingMessages(internal);
     }
@@ -887,6 +940,7 @@ fn dispatchWorkerMessagesCallback(user_data: ?*anyopaque) void {
     const dedicated_worker = internal.dedicated_worker orelse return;
 
     // Now dispatch messages - we're in a clean V8 state with proper HandleScope
+    keepAliveWhileRunning(internal);
     dedicated_worker.processQueuedMessages();
 }
 
@@ -1714,6 +1768,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             // This handles the echo pattern: main → worker → main
             if (internal.dedicated_worker) |dw| {
                 if (dw.port_pair.outside_port.message_queue.items.len > 0) {
+                    keepAliveWhileRunning(internal);
                     dw.processQueuedMessages();
                 }
             }
