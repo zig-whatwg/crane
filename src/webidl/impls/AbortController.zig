@@ -38,6 +38,13 @@ pub const InternalState = struct {
     /// `deinit` and `same_object.zig`.
     signal_pin: same_object.Pin,
 
+    /// The signal as it was when this controller made it. A wrap the pin
+    /// never saw - `Pin.hold` holds nothing without a context to wrap in -
+    /// still hands the signal to the wrapper cache, and a context's teardown
+    /// sweep frees cached objects in no particular order: the signal can go
+    /// before its controller.
+    signal_link: same_object.Link,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         if (self.signal_pin.isHeld()) {
             // Script has seen the signal, so V8's wrapper cache owns it and
@@ -50,10 +57,12 @@ pub const InternalState = struct {
             // So a collected controller freed a signal script still held, and
             // a collected signal left the controller pointing into the slab.
             self.signal_pin.release();
-        } else {
+        } else if (self.signal_link.isLive()) {
             // Never handed out - nothing else will ever free it.
             interfaces.AbortSignal.deinit(self.signal);
         }
+        // Otherwise the wrapper cache has already freed it, and its slot may
+        // hold something else by now.
         allocator.destroy(self);
     }
 };
@@ -80,6 +89,7 @@ pub fn init(
     internal.allocator = allocator;
     internal.signal = signal;
     internal.signal_pin = .{};
+    internal.signal_link = same_object.Link.to(signal);
 
     return instance;
 }
