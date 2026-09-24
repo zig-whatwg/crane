@@ -288,7 +288,8 @@ fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, 
         log.debug("could not create PromiseRejectionEvent: {}", .{err});
         return true;
     };
+    const generation = runtime.SlabAllocator.generationOf(event);
     const not_canceled = interfaces.EventTarget.call_dispatchEvent(global, event) catch true;
-    report_exception.releaseIfUnwrapped(event);
+    event.releaseIfUnwrapped(generation);
     return not_canceled;
 }

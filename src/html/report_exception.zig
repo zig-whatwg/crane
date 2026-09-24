@@ -161,24 +161,15 @@ fn fireErrorEvent(
         return true;
     };
 
+    const generation = runtime.SlabAllocator.generationOf(event);
     const not_canceled = interfaces.EventTarget.call_dispatchEvent(global, event) catch true;
 
     // An event no listener ever saw was never wrapped, so V8 holds no
     // reference to it and nothing else will ever free it - including the
     // Global of the exception it keeps. One that was wrapped belongs to the
     // wrapper cache from here on (a handler may have stored it).
-    releaseIfUnwrapped(event);
+    event.releaseIfUnwrapped(generation);
     return not_canceled;
-}
-
-/// Free `instance` now if no wrapper was ever created for it.
-pub fn releaseIfUnwrapped(instance: *runtime.Instance) void {
-    const engine = instance.ctx.getEngine() orelse return;
-    const getWrapper = engine.getWrapperForInstance orelse return;
-    const engine_ctx = instance.ctx.getEngineContext() orelse return;
-    const cache = instance.ctx.getV8WrapperCacheStorage() orelse return;
-    if (getWrapper(engine_ctx, cache, instance) != null) return;
-    runtime.Instance.deinit(instance);
 }
 
 /// The Window whose realm `context` (Global<Context>*) is, if any.

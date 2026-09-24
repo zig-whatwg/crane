@@ -193,6 +193,26 @@ pub const Instance = struct {
         // Step 3: Return Instance handle to slab allocator
         SlabAllocator.get().free(instance);
     }
+
+    /// Hand back an object the engine made for script and exposed only if
+    /// script asked for it - an event fired at a target, say - once the
+    /// hand-over is done. `generation` is `SlabAllocator.generationOf` read
+    /// when the object was made.
+    ///
+    /// A wrapper V8 collected during the hand-over has already freed it, and
+    /// its slot has moved on. A wrapper still in the cache owns it, and V8
+    /// frees it when that dies. Only an object nothing ever wrapped is still
+    /// the caller's - and nothing else will ever free it - so it is freed here.
+    pub fn releaseIfUnwrapped(instance: *Instance, generation: u64) void {
+        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+        if (SlabAllocator.generationOf(instance) != generation) return;
+        const engine = instance.ctx.getEngine() orelse return;
+        const getWrapper = engine.getWrapperForInstance orelse return;
+        const engine_ctx = instance.ctx.getEngineContext() orelse return;
+        const cache = instance.ctx.getV8WrapperCacheStorage() orelse return;
+        if (getWrapper(engine_ctx, cache, instance) != null) return;
+        deinit(instance);
+    }
 };
 
 /// A runtime-comparable identity for a comptime type.

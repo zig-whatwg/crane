@@ -2524,14 +2524,12 @@ fn fireAtScriptElement(
     };
     // Deliberately no `defer deinit`. A listener that runs can hand the event to
     // script, and V8 then holds a wrapper for it; freeing it here would be a
-    // use-after-free the moment the handler kept a reference. This is the same
-    // choice `HTMLParser.fireDOMContentLoadedEvent` makes - `errdefer` only.
-    //
-    // Not a leak: the Instance comes from the context's own allocator, the same
-    // one every DOM node script creates comes from, and is batch-freed with the
-    // rest at context teardown. One Event per external script in the document,
-    // bounded by the document, not per event-loop turn.
-    errdefer interfaces.Event.deinit(event);
+    // use-after-free the moment the handler kept a reference. Nor is it freed
+    // with the context: nothing sweeps a context's Instances, and the
+    // DebugAllocator reported one leak per external script. So the event is
+    // released after dispatch unless something wrapped it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
 
     // Fired by the user agent, not by script.
     impls.Event.setIsTrusted(event, true);

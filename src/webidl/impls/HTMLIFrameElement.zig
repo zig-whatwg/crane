@@ -899,7 +899,11 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
     };
 
     const event = Event.call_constructor(ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return;
-    defer Event.deinit(event);
+    // Not `defer deinit`: a listener can keep the event -
+    // `await new Promise(r => iframe.addEventListener("load", r))` resolves
+    // with it - and its wrapper then owns it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
 
     // Dispatch the event on the iframe element
     // HTMLIFrameElement inherits from HTMLElement -> Element -> Node -> EventTarget

@@ -3720,7 +3720,10 @@ fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type:
         runtime.DOMString.initInterned(event_type),
         webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = bubbles }),
     ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
     _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+    // A listener that kept the event keeps it alive; otherwise it is done.
+    event.releaseIfUnwrapped(generation);
 }
 
 /// "Fire a page transition event named pageshow at window with persisted"
@@ -3731,7 +3734,9 @@ fn firePageShow(document: *runtime.Instance, window: *runtime.Instance) void {
         runtime.DOMString.initInterned("pageshow"),
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = false }),
     ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
     _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// Operation: requestStorageAccess
