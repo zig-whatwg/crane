@@ -2405,6 +2405,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                 const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
+                                // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+                                defer v8.v8_Context_Dispose(current_context);
                                 const v8_converted = conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
@@ -2458,6 +2460,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                 const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
+                                // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+                                defer v8.v8_Context_Dispose(current_context);
                                 const v8_converted = conv.toV8Value(PayloadType, isolate_inner, current_context, result) catch {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
@@ -2477,9 +2481,29 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
 
                         info.setReturnValue(v8_value);
+                        // setReturnValue reads the handle into a Local. A value the
+                        // conversion above made is ours: every number, boolean,
+                        // string and enum read leaked a Global - 200,000
+                        // `v8_Number_New`s for 200,000 `list.length` reads.
+                        if (comptime getterValueIsOwned(PayloadType)) v8.v8_Global_Dispose(v8_value);
                     }
                 }
             };
+        }
+
+        /// Whether the getter conversion makes a fresh Global for every value
+        /// of `T` - numbers, booleans, strings and enums, and the null of
+        /// their optional forms - rather than handing back one it borrows
+        /// (a cached wrapper, a stored callback, a script value).
+        fn getterValueIsOwned(comptime T: type) bool {
+            const owned = [_]type{
+                u8,                u16,                u32,               i8,   i16,  i32, u64, i64, f32, f64, bool,
+                runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64,
+            };
+            inline for (owned) |O| {
+                if (T == O) return true;
+            }
+            return @typeInfo(T) == .@"enum";
         }
 
         /// Whether this interface's own or mixin state has the generated
@@ -4720,6 +4744,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No V8 context");
                 return .kNo;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
@@ -4930,6 +4956,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5421,6 +5449,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No V8 context");
                 return .kYes;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
@@ -6073,6 +6103,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 return .kNo;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -6788,6 +6820,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No V8 context");
                 return;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the iterator object (this)
             const iterator_obj = info.getThis();
@@ -6957,6 +6991,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No V8 context");
                 return;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the iterator object (this)
             const iterator_obj = info.getThis();
