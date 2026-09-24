@@ -437,6 +437,12 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch {
         return null;
     };
+    // HTML "create a new browsing context and document" step 15: the initial
+    // about:blank document's type is "html" and its content type
+    // "text/html". Set before the elements below are created, which it makes
+    // HTML elements.
+    document_internals.setDocumentType(document_instance, .html) catch {};
+    document_internals.setContentType(document_instance, "text/html") catch {};
 
     // Per HTML spec, about:blank documents must have a basic HTML structure:
     // <html><head></head><body></body></html>
@@ -556,11 +562,6 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     else
         null;
 
-    // Use the scripted parser which:
-    // 1. Creates a Document FIRST
-    // 2. Uses DomTreeAdapter to convert TreeNodes to DOM nodes incrementally
-    // 3. Scripts can access DOM nodes during parsing via querySelector etc.
-    //
     // CRITICAL: Check sandbox flags to determine if scripting is enabled.
     // Per HTML spec §4.8.5, when an iframe has the sandbox attribute:
     // - If empty (sandbox=""), ALL restrictions apply including script blocking
@@ -568,20 +569,42 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // The BrowsingContext.allowsScripts() method encapsulates this check.
     const scripting_enabled = browsing_ctx_ptr.allowsScripts();
 
+    // HTML "create and initialize a Document object" step 9: a new Document
+    // whose type is "html" and content type "text/html" ("load an HTML
+    // document"); step 10: the window's associated Document becomes it. Both
+    // happen before the parser exists, so the page's own scripts - run BY the
+    // parser - see the document they are in. Associating it only once
+    // parsing finished left those scripts on the frame's initial about:blank
+    // document: their getElementsByTagName, createElement and body were that
+    // document's.
+    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+    document_internals.setDocumentType(document_instance, .html) catch {};
+    document_internals.setContentType(document_instance, "text/html") catch {};
+
+    const DocumentImpl = @import("Document.zig");
+    if (window_instance) |window_inst| {
+        browsing_ctx_ptr.setActiveDocument(document_instance, window_inst);
+        const WindowImpl = @import("Window.zig");
+        WindowImpl.setDocument(window_inst, document_instance);
+        DocumentImpl.setDefaultView(document_instance, window_inst);
+    } else {
+        log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
+    }
+
+    // The scripted parser builds the tree incrementally through the
+    // DomTreeAdapter, so scripts can reach nodes already parsed.
     log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{clock.monotonicNanos()});
-    const document_instance = scripted_parser.parseHTMLWithScripting(
+    _ = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
         html_content,
-        .{ .scripting_enabled = scripting_enabled, .window = window_instance },
-    ) catch {
-        // Fall back to empty document on parse error
-        return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
+        .{ .scripting_enabled = scripting_enabled, .window = window_instance, .document = document_instance },
+    ) catch |err| {
+        // The document stays - with whatever was parsed - as the frame's
+        // document: a parse that fails part-way is still the page loaded.
+        log.warn("[parseHtmlForIframe] parsing stopped: {}", .{err});
     };
     log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{clock.monotonicNanos()});
-
-    // Set document type to HTML
-    document_internals.setDocumentType(document_instance, .html) catch {};
 
     // Create the V8 wrapper for the Document in the child context.
     // This is critical for cross-context access: when the parent context accesses
@@ -612,26 +635,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     };
 
     // Store the wrapper on the Document for cross-context access
-    const DocumentImpl = @import("Document.zig");
     DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
-
-    // Get the active window for this browsing context to associate with the document
-    if (browsing_ctx_ptr.getActiveWindow()) |window_ptr| {
-        // Set the document on the browsing context
-        browsing_ctx_ptr.setActiveDocument(document_instance, window_ptr);
-
-        // Also set the document on the Window
-        const WindowImpl = @import("Window.zig");
-        const window_inst: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-        log.debug("[parseHtmlForIframe] BC={*} Setting document {*} on Window {*}", .{ browsing_ctx_ptr, document_instance, window_inst });
-        WindowImpl.setDocument(window_inst, document_instance);
-        // Set the defaultView on the document (bidirectional Document <-> Window link)
-        // Note: This is also set by the parser via options.window, but we keep it here
-        // for consistency and in case of parse errors that fall back to createDocumentForIframe
-        DocumentImpl.setDefaultView(document_instance, window_inst);
-    } else {
-        log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
-    }
 
     return document_instance;
 }

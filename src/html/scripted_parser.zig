@@ -80,6 +80,13 @@ pub const ParseOptions = struct {
 
     /// Optional window to set as defaultView BEFORE parsing starts
     window: ?*runtime.Instance = null,
+
+    /// The document to parse into. Navigation creates it, and makes it the
+    /// window's associated Document, before the parser exists (HTML "create
+    /// and initialize a Document object" steps 9-10) - so the page's own
+    /// scripts, run by this parser, see the document they are in. Null
+    /// creates one here.
+    document: ?*runtime.Instance = null,
 };
 
 /// Context for script execution callback during parsing.
@@ -155,13 +162,14 @@ pub fn parseHTMLWithScripting(
     html: []const u8,
     options: ParseOptions,
 ) ParseError!*runtime.Instance {
-    // Step 1: Create DOM Document FIRST (before parsing)
-    // This is critical - the document must exist before any DOM nodes are created
-    const document = interfaces.Document.init(
+    // Step 1: Create DOM Document FIRST (before parsing), unless navigation
+    // already did. It must exist before any DOM nodes are created.
+    const owns_document = options.document == null;
+    const document = options.document orelse (interfaces.Document.init(
         allocator,
         ctx,
-    ) catch return error.OutOfMemory;
-    errdefer interfaces.Document.deinit(document);
+    ) catch return error.OutOfMemory);
+    errdefer if (owns_document) interfaces.Document.deinit(document);
 
     // Set document type to HTML
     document_internals.setDocumentType(document, .html) catch {};
