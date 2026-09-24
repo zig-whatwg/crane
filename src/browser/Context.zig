@@ -2271,22 +2271,16 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
     const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
 
-    // Need at least type and callback arguments
-    if (info.v8_FunctionCallbackInfo_Length() < 2) return;
+    // `type` and `callback` are required.
+    if (info.v8_FunctionCallbackInfo_Length() < 2) {
+        return throwTypeError(isolate, info, "Failed to execute 'addEventListener' on 'EventTarget': 2 arguments required.");
+    }
 
-    // Get type argument (first arg)
-    const type_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
-    if (!v8.ffi.v8_Value_IsString(@ptrCast(type_arg))) return;
-    const type_str: *v8.ffi.String = @ptrCast(type_arg);
-
-    // Convert V8 string to DOMString
-    const type_length = v8.ffi.v8_String_Utf8Length(type_str);
-    if (type_length <= 0) return;
     const allocator = std.heap.page_allocator;
-    const type_buffer = allocator.alloc(u8, @intCast(type_length)) catch return;
-    defer allocator.free(type_buffer);
-    _ = v8.ffi.v8_String_WriteUtf8(type_str, type_buffer.ptr, @intCast(type_length));
-    const event_type = runtime.DOMString.initOwned(type_buffer);
+    var event_type = listenerType(isolate, info, v8_ctx, allocator) orelse return;
+    defer event_type.deinit(allocator);
+    var options = listenerOptions(info, isolate, v8_ctx, allocator);
+    defer options.deinit(allocator);
 
     // Get callback argument (second arg)
     const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
@@ -2320,12 +2314,50 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         window_instance,
         event_type,
         @as(?*runtime.CallbackWrapper, runtime_wrapper),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        options.argument(),
     ) catch |err| {
         log.debug("[addEventListener] Error: {}\n", .{err});
         runtime_wrapper.deinit();
         allocator.destroy(runtime_wrapper);
     };
+}
+
+/// `DOMString type`, the first argument of add- and removeEventListener:
+/// ToString, so `null` is the type "null" and "" is a type like any other.
+/// Null when the conversion threw - a Symbol, or a toString() that throws -
+/// with the exception pending.
+fn listenerType(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, v8_ctx: *v8.ffi.Context, allocator: std.mem.Allocator) ?runtime.DOMString {
+    const arg = info.get(0);
+    defer v8.ffi.v8_Global_Dispose(arg);
+    return v8.conversions.fromV8Value(runtime.DOMString, allocator, isolate, v8_ctx, arg) catch |err| {
+        if (err != error.ExceptionPending) throwTypeError(isolate, info, "Failed to convert the event type to a string.");
+        return null;
+    };
+}
+
+/// The third argument of add- and removeEventListener: `options`, a boolean
+/// (capture) or a dictionary, for EventTarget to flatten as the WebIDL
+/// binding would hand it over. Owns the argument's handle, which EventTarget
+/// only reads during the call.
+const ListenerOptions = struct {
+    handle: ?*v8.ffi.Value = null,
+    value: ?runtime.JSValue = null,
+
+    fn argument(self: *const ListenerOptions) webidl.Opt(runtime.JSValue) {
+        return if (self.value) |v| webidl.Opt(runtime.JSValue).passed(v) else webidl.Opt(runtime.JSValue).notPassed();
+    }
+
+    fn deinit(self: *ListenerOptions, allocator: std.mem.Allocator) void {
+        if (self.value) |*v| v.deinit(allocator);
+        if (self.handle) |h| v8.ffi.v8_Global_Dispose(h);
+    }
+};
+
+fn listenerOptions(info: *const v8.ffi.FunctionCallbackInfo, isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, allocator: std.mem.Allocator) ListenerOptions {
+    if (info.v8_FunctionCallbackInfo_Length() < 3) return .{};
+    const handle = info.get(2);
+    const value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate, v8_ctx, handle) catch null;
+    return .{ .handle = handle, .value = value };
 }
 
 /// removeEventListener callback - delegates to EventTarget WebIDL implementation
@@ -2347,22 +2379,16 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
     const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
     const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
 
-    // Need at least type and callback arguments
-    if (info.v8_FunctionCallbackInfo_Length() < 2) return;
+    // `type` and `callback` are required.
+    if (info.v8_FunctionCallbackInfo_Length() < 2) {
+        return throwTypeError(isolate, info, "Failed to execute 'removeEventListener' on 'EventTarget': 2 arguments required.");
+    }
 
-    // Get type argument (first arg)
-    const type_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
-    if (!v8.ffi.v8_Value_IsString(@ptrCast(type_arg))) return;
-    const type_str: *v8.ffi.String = @ptrCast(type_arg);
-
-    // Convert V8 string to DOMString
-    const type_length = v8.ffi.v8_String_Utf8Length(type_str);
-    if (type_length <= 0) return;
     const allocator = std.heap.page_allocator;
-    const type_buffer = allocator.alloc(u8, @intCast(type_length)) catch return;
-    defer allocator.free(type_buffer);
-    _ = v8.ffi.v8_String_WriteUtf8(type_str, type_buffer.ptr, @intCast(type_length));
-    const event_type = runtime.DOMString.initOwned(type_buffer);
+    var event_type = listenerType(isolate, info, v8_ctx, allocator) orelse return;
+    defer event_type.deinit(allocator);
+    var options = listenerOptions(info, isolate, v8_ctx, allocator);
+    defer options.deinit(allocator);
 
     // Get callback argument (second arg)
     const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
@@ -2395,7 +2421,7 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
         window_instance,
         event_type,
         @as(?*runtime.CallbackWrapper, runtime_wrapper),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        options.argument(),
     ) catch |err| {
         log.debug("[removeEventListener] Error: {}\n", .{err});
     };
