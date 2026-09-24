@@ -3247,3 +3247,65 @@ lint, in about a minute.
 **Takeaway**: **A red test you have never seen go red is not a test.** Run a
 new one against the unfixed code first - that is what shows it is collected.
 
+
+---
+
+### Debugging: Redirect the runner's output into a pipe, never a file
+
+**Date**: 2026-09-24
+**Lesson**: `wpt_runner ... > run.log 2>&1` loses every engine `std.log` line
+and every `std.debug.print` - even a raw `write(2, ...)`. The same command
+piped (`2>&1 | cat > run.log`) keeps them all.
+
+**Why**: the runner writes its report through a 256 KB buffered
+`std.Io.File` writer. On a regular file that writer runs in positional mode:
+it `pwrite`s from its own offset, starting at 0, so when it flushes it
+overwrites whatever else reached the file first - the engine's log lines
+included. A pipe cannot be written positionally, so the writer streams and
+every line survives.
+
+**What Happened**: chasing the moving-between-documents timeouts, four
+rounds of instrumentation "never ran": warn logs, then `std.debug.print`,
+then raw writes, all absent - while lldb showed the instrumented function
+being hit. The silence was the log file, not the code. Piped, the first run
+showed every message being posted and delivered.
+
+**Fix**: `./zig-out/bin/wpt_runner <file> --wpt-root=tests/wpt 2>&1 | cat > log`.
+The same is why no `(warn)` line from the engine has ever appeared in a
+runner log that went to a file.
+
+**Takeaway**: **Before concluding instrumentation did not run, pipe the
+output.** An absent line in a redirected log proves nothing.
+
+---
+
+### Testing: `timeout_multiplier` also stretches the test's own waits
+
+**Date**: 2026-09-24
+**Lesson**: testharness.js multiplies `step_timeout` by `timeout_multiplier`,
+so the runner's `setup({timeout_multiplier: 6})` for `long` files made every
+deliberate wait in them six times longer.
+
+**Why**: the multiplier was a stand-in for the `<meta name="timeout">` that
+testharness.js cannot see (it is installed before the page is fetched). It
+did lift the harness timer to 60s - and scaled `step_timeout(2000)` to 12s
+with it.
+
+**What Happened**: `the-script-element/moving-between-documents/` (52 files)
+waits 2s and 4s after loading two slow frames. At 6x that is 36s of waiting;
+it fit the 60s ceiling while frames loaded instantly, and stopped fitting
+once b207665d7 made frames fetch their blocking stylesheet and scripts. The
+directory went from 29 OK to none, and the commit that exposed it was not
+the one at fault. With an explicit timeout, all 50 of its worklist files and
+two more under the-script-element/ pass: 53 TIMEOUT -> OK across the 393
+`long` files outside legacy-mb.
+
+**Fix**: a budget beyond the harness default takes
+`setup({explicit_timeout: true})`, as WPT's own runner does for every file,
+and `waitForCompletion` calls the harness's `timeout()` at the runner's
+ceiling - the harness then reports every subtest that ran.
+`config.Timeout.explicitTimeout` holds the rule, pinned by tests.
+
+**Takeaway**: **A knob that scales one clock usually scales others with
+it.** When a test's own timing matters, check what else a harness setting
+touches before using it to fix a timeout.

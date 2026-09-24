@@ -41,48 +41,42 @@ pub const Timeout = enum {
         };
     }
 
-    /// What to pass as `setup({timeout_multiplier: N})` so testharness.js
-    /// arms its own timeout at this budget.
+    /// Whether the runner, not testharness.js, times this file out - by
+    /// `setup({explicit_timeout: true})`, and a call to the harness's
+    /// `timeout()` at the runner's ceiling.
     ///
-    /// testharness.js decides its harness timeout for itself, in
-    /// `WindowTestEnvironment.test_timeout()`, by walking
-    /// `document.getElementsByTagName("meta")` for `name=timeout`. In a
-    /// browser that runs when the document above the `<script>` already
-    /// exists. The runner installs testharness.js *before* the page is
-    /// fetched - `loadTestHarness` then `loadPageWithOptions` - so that walk
-    /// always runs over an empty document, never finds the meta, and always
-    /// returns `settings.harness_timeout.normal`.
+    /// testharness.js arms its own timeout from `<meta name="timeout">`,
+    /// found in `WindowTestEnvironment.test_timeout()` by walking
+    /// `document.getElementsByTagName("meta")`. The runner installs
+    /// testharness.js before the page is fetched - `loadTestHarness`, then
+    /// `loadPageWithOptions` - so that walk sees an empty document and always
+    /// arms `settings.harness_timeout.normal`, 10s. A `long` file ran under a
+    /// 60s ceiling and a 10s harness timer, and the harness won.
     ///
-    /// So a `<meta name="timeout" content="long">` file got a 60s ceiling from
-    /// the runner and a 10s one from the harness, and the harness always won:
-    /// it fired at 10s, called `complete()`, and the file was recorded TIMEOUT
-    /// with whatever it had - usually nothing. 68 of the 664 sources under
-    /// html/browsers declare `long`, and every one of them was cut to a sixth
-    /// of its budget.
+    /// `setup({timeout_multiplier: 6})` put the two clocks back in step, and
+    /// broke every file that waits with `step_timeout`: testharness scales
+    /// those waits by the same multiplier, so a file's own 6s of settling
+    /// became 36s. `the-script-element/moving-between-documents/` waits
+    /// `step_timeout(2000)` and `step_timeout(4000)` after loading two slow
+    /// frames, and once those frames loaded for real it ran past its ceiling
+    /// in every file.
     ///
-    /// `timeout_multiplier` is testharness's own supported knob for a slow
-    /// host, and it multiplies exactly the value the meta lookup should have
-    /// produced. Injecting it is what puts the two clocks back in agreement.
-    pub fn harnessMultiplier(self: Timeout) u32 {
+    /// An explicit timeout is what WPT's own runner uses for every file: the
+    /// harness never ends the file itself, `step_timeout` stays real time,
+    /// and the runner's ceiling - the one clock - ends it through `timeout()`,
+    /// so the harness still reports every subtest that ran.
+    pub fn explicitTimeout(self: Timeout) bool {
         return switch (self) {
-            .normal => 1,
-            .long => 6,
+            .normal => false,
+            .long => true,
         };
     }
 };
 
-/// `Timeout.harnessMultiplier` for a budget that has already been flattened to
-/// milliseconds.
-///
-/// The browser layer carries the per-file ceiling as a `u64` rather than the
-/// enum, and rounding is the safe direction: a multiplier below 1 would arm
-/// the harness *inside* the runner's ceiling and reintroduce the very
-/// disagreement this exists to remove.
-pub fn harnessMultiplierForMillis(millis: u64) u32 {
-    const base = Timeout.normal.toMillis();
-    const n = millis / base;
-    if (n < 1) return 1;
-    return @intCast(n);
+/// `Timeout.explicitTimeout` for a budget already flattened to milliseconds:
+/// the harness keeps its own timer only while that fits inside the budget.
+pub fn explicitTimeoutForMillis(millis: u64) bool {
+    return millis > Timeout.normal.toMillis();
 }
 
 /// Test file type determined by extension
@@ -304,59 +298,45 @@ test "isExcluded" {
     try testing.expect(!isExcluded("dom/events/Event.html"));
 }
 
-test "the harness multiplier reproduces the budget the meta lookup would have" {
+test "only a budget beyond the harness default takes an explicit timeout" {
     const testing = std.testing;
 
-    // testharness.js starts from `settings.harness_timeout.normal`, which is
-    // the same 10s this enum calls `normal`. The multiplier has to carry it to
-    // exactly the runner's own ceiling, or the two clocks disagree again in
-    // the other direction and the harness outlives the runner.
-    const harness_base = Timeout.normal.toMillis();
-
-    try testing.expectEqual(@as(u32, 1), Timeout.normal.harnessMultiplier());
-    try testing.expectEqual(
-        Timeout.normal.toMillis(),
-        harness_base * Timeout.normal.harnessMultiplier(),
-    );
-
-    try testing.expectEqual(@as(u32, 6), Timeout.long.harnessMultiplier());
-    try testing.expectEqual(
-        Timeout.long.toMillis(),
-        harness_base * Timeout.long.harnessMultiplier(),
-    );
+    // testharness.js arms `settings.harness_timeout.normal` by itself - the
+    // same 10s this enum calls `normal` - so a normal file keeps it.
+    try testing.expect(!Timeout.normal.explicitTimeout());
+    // A long file cannot: that timer would end it at 10s of its 60s.
+    try testing.expect(Timeout.long.explicitTimeout());
 }
 
 test "the millisecond form agrees with the enum form" {
     const testing = std.testing;
 
     try testing.expectEqual(
-        Timeout.normal.harnessMultiplier(),
-        harnessMultiplierForMillis(Timeout.normal.toMillis()),
+        Timeout.normal.explicitTimeout(),
+        explicitTimeoutForMillis(Timeout.normal.toMillis()),
     );
     try testing.expectEqual(
-        Timeout.long.harnessMultiplier(),
-        harnessMultiplierForMillis(Timeout.long.toMillis()),
+        Timeout.long.explicitTimeout(),
+        explicitTimeoutForMillis(Timeout.long.toMillis()),
     );
 
-    // Never below 1. A budget shorter than the harness's own 10s floor must
-    // still leave the harness at its floor, not arm it early - the runner's
-    // ceiling is what ends such a file, and a harness firing first would take
-    // the subtest results away with it.
-    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(0));
-    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(1));
-    try testing.expectEqual(@as(u32, 1), harnessMultiplierForMillis(9_999));
+    // At or below the harness default, the harness's own timer fits inside
+    // the runner's ceiling; one millisecond past it, it would not.
+    try testing.expect(!explicitTimeoutForMillis(0));
+    try testing.expect(!explicitTimeoutForMillis(9_999));
+    try testing.expect(explicitTimeoutForMillis(Timeout.normal.toMillis() + 1));
 }
 
-test "every timeout has a multiplier that lands on its own budget" {
+test "every timeout either is the harness default or takes an explicit timeout" {
     const testing = std.testing;
 
     // Pins the relationship rather than the two known cases: a third Timeout
-    // added later with a multiplier that does not divide out lands here
-    // instead of in a sweep six weeks from now.
-    const base = Timeout.normal.toMillis();
+    // added later that keeps the harness's timer must be exactly its 10s, or
+    // the harness and the runner end the file at different times again.
+    const harness_default = Timeout.normal.toMillis();
     inline for (@typeInfo(Timeout).@"enum".fields) |field| {
         const t: Timeout = @enumFromInt(field.value);
-        try testing.expectEqual(t.toMillis(), base * t.harnessMultiplier());
+        if (!t.explicitTimeout()) try testing.expectEqual(harness_default, t.toMillis());
     }
 }
 

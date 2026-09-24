@@ -267,7 +267,7 @@ pub const WptBrowser = struct {
         workers.setDocumentOrigin(origin);
 
         // Load testharness.js
-        try self.loadTestHarness(ctx, timeout.harnessMultiplier());
+        try self.loadTestHarness(ctx, timeout.explicitTimeout());
 
         // Execute the test script
         _ = ctx.evaluateScript(test_content) catch |err| {
@@ -336,7 +336,7 @@ pub const WptBrowser = struct {
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute
-        try self.loadTestHarness(ctx, config.harnessMultiplierForMillis(timeout_ms));
+        try self.loadTestHarness(ctx, config.explicitTimeoutForMillis(timeout_ms));
 
         const nav_ms = lapMs(&phase);
 
@@ -469,11 +469,11 @@ pub const WptBrowser = struct {
 
     /// Load testharness.js and testharnessreport.js into the context
     ///
-    /// `harness_multiplier` is the `setup({timeout_multiplier: N})` this file's
-    /// budget needs. It cannot be left to testharness.js: that reads
-    /// `<meta name="timeout">` out of the document, and this runs before the
-    /// document exists. See `config.Timeout.harnessMultiplier`.
-    fn loadTestHarness(self: *WptBrowser, ctx: *Context, harness_multiplier: u32) !void {
+    /// `explicit_timeout` is whether this file's budget is the runner's to
+    /// enforce rather than the harness's. It cannot be left to testharness.js:
+    /// that reads `<meta name="timeout">` out of the document, and this runs
+    /// before the document exists. See `config.Timeout.explicitTimeout`.
+    fn loadTestHarness(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
         _ = ctx.v8_context; // Suppress unused warning
 
         // CRITICAL CHECK: Verify no state leaked from previous context
@@ -569,33 +569,28 @@ pub const WptBrowser = struct {
             log.warn("loadTestHarness: could not disable harness output: {}", .{err});
         };
 
-        // Hand the harness the budget it could not read for itself.
+        // A budget the harness cannot read for itself is the runner's.
         //
         // `WindowTestEnvironment.test_timeout()` walks the document's <meta>
         // elements for `name=timeout`, and this runs before the document has
         // been fetched - so that walk sees nothing and every file, including
-        // the ones that declare `content="long"`, gets the 10s default. The
-        // runner then honours the 60s it parsed from the same meta, the two
-        // clocks disagree, and the harness's always wins: it fires at 10s,
-        // calls complete(), and the file is recorded TIMEOUT with whatever had
-        // run by then. Verified on
-        // `back-forward-cache/eligibility/inflight-fetch-1.html`, a `long`
-        // file that ended at 9,942ms of a 60,000ms ceiling.
+        // the ones that declare `content="long"`, would get the 10s default,
+        // which fires first and ends a 60s file at 10s. An explicit timeout
+        // leaves the harness with no timer of its own: `waitForCompletion`
+        // calls its `timeout()` at the runner's ceiling instead.
         //
-        // Skipped at 1x: `setup()` moves the harness into its SETUP phase, and
-        // there is no reason to do that to the ~90% of files whose budget is
-        // already the harness default.
-        if (harness_multiplier > 1) {
-            var buf: [96]u8 = undefined;
-            const script = try std.fmt.bufPrint(
-                &buf,
-                "setup({{ timeout_multiplier: {d} }});",
-                .{harness_multiplier},
-            );
-            _ = ctx.evaluateScript(script) catch |err| {
+        // Not `timeout_multiplier`: testharness scales `step_timeout` by it
+        // too, so a `long` file's own waits ran six times longer - see
+        // `config.Timeout.explicitTimeout`.
+        //
+        // Skipped for the harness default: `setup()` moves the harness into
+        // its SETUP phase, and there is no reason to do that to the ~90% of
+        // files whose budget is already the harness's own.
+        if (explicit_timeout) {
+            _ = ctx.evaluateScript("setup({ explicit_timeout: true });") catch |err| {
                 // Same reasoning as the output flag: a file running on the
                 // short budget is worth more than no result at all.
-                log.warn("loadTestHarness: could not set the harness timeout: {}", .{err});
+                log.warn("loadTestHarness: could not set an explicit timeout: {}", .{err});
             };
         }
 
@@ -646,6 +641,10 @@ pub const WptBrowser = struct {
         _ = try ctx.evaluateScript(setup_script);
     }
 
+    /// How long `waitForCompletion` waits, past the ceiling, for a harness told
+    /// to time out to report.
+    const timeout_grace_ms: i64 = 2_000;
+
     /// Wait for test completion with proper blocking.
     ///
     /// This uses the new blocking event loop to efficiently wait for test completion.
@@ -687,6 +686,23 @@ pub const WptBrowser = struct {
                     return try self.collectResults(ctx, start_time, test_path);
                 }
             }
+        }
+
+        // The ceiling. A file under an explicit timeout has no harness timer
+        // of its own, and `timeout()` is how the harness learns its budget is
+        // spent: it completes, reporting every subtest that ran and the rest
+        // as TIMEOUT or NOTRUN. A file on the harness's own timer ignores the
+        // call. The grace is for completion callbacks queued behind it.
+        _ = ctx.evaluateScript("if (typeof timeout === 'function') timeout();") catch {};
+        const grace_deadline = clock.monotonicMillis() + timeout_grace_ms;
+        while (true) {
+            const complete_result = ctx.evaluateScript("window.__wpt_complete") catch null;
+            if (complete_result) |val| {
+                if (self.isV8True(val)) return try self.collectResults(ctx, start_time, test_path);
+            }
+            const now = clock.monotonicMillis();
+            if (now >= grace_deadline) break;
+            _ = self.browser.runEventLoopBlocking(@min(@as(u64, @intCast(grace_deadline - now)), check_interval_ms)) catch {};
         }
 
         // Timeout
