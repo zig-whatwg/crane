@@ -24,8 +24,6 @@ const document_internals = dom.document_internals;
 
 // Import related impls for factory methods (Golden Rule #13 - to be migrated)
 const DocumentTypeImpl = @import("DocumentType.zig");
-const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 const node_document = @import("dom").node_document;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
@@ -203,13 +201,12 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     var element: ?*runtime.Instance = null;
 
     if (qname_slice.len > 0) {
-        const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-
-        // Validate namespace and qualified name per WebIDL
-        try validateNamespace(ns_slice, qname_slice);
-
-        // Create element via createElementNS
-        element = try createElementNS(allocator, ctx, document, ns_slice, qname_slice);
+        // Step 3: "set element to the result of running the internal
+        // createElementNS steps, given document, namespace, qualifiedName,
+        // and an empty dictionary" - validate and extract, then create an
+        // element: an HTML-namespace root is an HTML element even here, in an
+        // XML document.
+        element = try interfaces.Document.call_createElementNS(document, namespace, qualifiedName, webidl.Opt(runtime.JSValue).notPassed());
     }
 
     // Step 4: If doctype is non-null, append doctype to document
@@ -296,14 +293,14 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     _ = try interfaces.Node.call_appendChild(doc, doctype);
 
     // Step 4: Create and append <html> element
-    const html = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "html");
-    errdefer interfaces.Element.deinit(html);
+    const html = try createHTMLElement(doc, "html");
+    errdefer runtime.Instance.deinit(html);
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(doc, html);
 
     // Step 5: Create and append <head> element to html
-    const head = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "head");
-    errdefer interfaces.Element.deinit(head);
+    const head = try createHTMLElement(doc, "head");
+    errdefer runtime.Instance.deinit(head);
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(html, head);
 
@@ -314,8 +311,8 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
         // Per spec, we create <title> element with whatever data is given (even empty)
         if (title_slice.len > 0 or true) { // Always create if title param passed
             // Step 6.1: Create and append <title> element to head
-            const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
-            errdefer interfaces.Element.deinit(title_elem);
+            const title_elem = try createHTMLElement(doc, "title");
+            errdefer runtime.Instance.deinit(title_elem);
             // Use interface instead of impl (per Golden Rule #13)
             _ = try interfaces.Node.call_appendChild(head, title_elem);
 
@@ -329,8 +326,8 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     }
 
     // Step 7: Create and append <body> element to html
-    const body = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "body");
-    errdefer interfaces.Element.deinit(body);
+    const body = try createHTMLElement(doc, "body");
+    errdefer runtime.Instance.deinit(body);
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(html, body);
 
@@ -392,85 +389,14 @@ fn isValidDoctypeName(name: []const u8) bool {
     return true;
 }
 
-/// Validate namespace and qualified name
-/// Spec: https://dom.spec.whatwg.org/#validate-and-extract
-fn validateNamespace(namespace: []const u8, qualified_name: []const u8) ImplError!void {
-    // If qualifiedName is empty string, namespace must also be empty or null
-    if (qualified_name.len == 0 and namespace.len > 0) {
-        return error.NamespaceError;
-    }
-
-    // Check for invalid characters in qualified name
-    for (qualified_name) |c| {
-        if (c == 0x00) return error.InvalidCharacterError;
-    }
-
-    // Parse prefix and local name
-    var prefix: ?[]const u8 = null;
-    var local_name: []const u8 = qualified_name;
-
-    if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_pos| {
-        prefix = qualified_name[0..colon_pos];
-        local_name = qualified_name[colon_pos + 1 ..];
-
-        // If prefix is non-null and namespace is empty, throw NamespaceError
-        if (namespace.len == 0) {
-            return error.NamespaceError;
-        }
-    }
-
-    // If prefix is "xml" and namespace is not XML namespace, throw NamespaceError
-    if (prefix) |p| {
-        if (std.mem.eql(u8, p, "xml") and !std.mem.eql(u8, namespace, "http://www.w3.org/XML/1998/namespace")) {
-            return error.NamespaceError;
-        }
-    }
-
-    // Local name must not be empty if we have a prefix
-    if (prefix != null and local_name.len == 0) {
-        return error.InvalidCharacterError;
-    }
-}
-
-/// Create an element with namespace
-/// Used by createDocument and createHTMLDocument
-fn createElementNS(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    document: *runtime.Instance,
-    namespace: []const u8,
-    qualified_name: []const u8,
-) !*runtime.Instance {
-    // Create element via Element interface (per Golden Rule #13)
-    const element = try interfaces.Element.init(
-        allocator,
-        ctx,
+/// "The result of creating an element given doc, <localName>, and the HTML
+/// namespace" (createHTMLDocument steps 4-7), through the document's own
+/// createElementNS - so each is the HTML element interface for its name.
+fn createHTMLElement(doc: *runtime.Instance, local_name: []const u8) !*runtime.Instance {
+    return interfaces.Document.call_createElementNS(
+        doc,
+        runtime.DOMString.initInterned(HTML_NAMESPACE),
+        runtime.DOMString.initInterned(local_name),
+        webidl.Opt(runtime.JSValue).notPassed(),
     );
-    errdefer interfaces.Element.deinit(element);
-
-    // Set node type to ELEMENT_NODE
-    try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
-
-    // Parse prefix and local name
-    var prefix: ?[]const u8 = null;
-    var local_name: []const u8 = qualified_name;
-
-    if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_pos| {
-        prefix = qualified_name[0..colon_pos];
-        local_name = qualified_name[colon_pos + 1 ..];
-    }
-
-    // Set element properties
-    try ElementImpl.setLocalName(element, local_name);
-    if (namespace.len > 0) {
-        try ElementImpl.setNamespaceURI(element, namespace);
-    }
-    if (prefix) |p| {
-        try ElementImpl.setPrefix(element, p);
-    }
-
-    // Set owner document
-    try node_document.set(element, document);
-
-    return element;
 }

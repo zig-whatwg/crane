@@ -193,11 +193,6 @@ src/webidl/impls/CacheStorage.zig Cache.call_match 2
 src/webidl/impls/CacheStorage.zig Cache.initWithName 1
 src/webidl/impls/ChildNode.zig ParentNode.NodeOrString 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
-src/webidl/impls/DOMImplementation.zig Element.setLocalName 1
-src/webidl/impls/DOMImplementation.zig Element.setNamespaceURI 1
-src/webidl/impls/DOMImplementation.zig Element.setPrefix 1
-src/webidl/impls/DOMImplementation.zig Node.NodeType 1
-src/webidl/impls/DOMImplementation.zig Node.setNodeType 1
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
 src/webidl/impls/DOMQuad.zig DOMRect.initWithDimensions 1
 src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 4
