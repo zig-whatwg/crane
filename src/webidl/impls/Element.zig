@@ -3721,24 +3721,6 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 // Event handler content attributes (HTML §8.1.8.1)
 // =============================================================================
 
-/// The event handlers a body or frameset element's content attributes set on
-/// the WINDOW rather than on the element: the WindowEventHandlers members and
-/// the "Window-reflecting body element event handler set".
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#determining-the-target-of-an-event-handler
-const window_reflecting_body_handlers = [_][]const u8{
-    // Window-reflecting body element event handler set
-    "onblur",         "onerror",              "onfocus",
-    "onload",         "onresize",             "onscroll",
-    // WindowEventHandlers
-    "onafterprint",   "onbeforeprint",        "onbeforeunload",
-    "onhashchange",   "onlanguagechange",     "onmessage",
-    "onmessageerror", "onoffline",            "ononline",
-    "onpagehide",     "onpagereveal",         "onpageshow",
-    "onpageswap",     "onpopstate",           "onrejectionhandled",
-    "onstorage",      "onunhandledrejection", "onunload",
-};
-
 /// The attribute change steps that synchronize event handler content
 /// attributes with event handlers.
 ///
@@ -3780,9 +3762,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const element_name = internal.local_name.asSlice();
     const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
-        for (window_reflecting_body_handlers) |h| {
-            if (std.mem.eql(u8, h, local_name)) break true;
-        } else false;
+        @import("event_handler_target.zig").isWindowReflecting(local_name);
 
     // A document with no browsing context has no active global to run in,
     // and "getting the current value" would never compile the handler there

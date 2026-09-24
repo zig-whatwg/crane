@@ -18,7 +18,10 @@
 
 const std = @import("std");
 
-pub const names = [_][]const u8{};
+pub const names = [_][]const u8{
+    "GlobalEventHandlers",
+    "WindowEventHandlers",
+};
 
 pub fn isInherited(name: []const u8) bool {
     for (names) |inherited| {

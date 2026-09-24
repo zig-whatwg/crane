@@ -466,173 +466,68 @@ pub const HTMLBodyElement = struct {
         try HTMLBodyElementImpl.set_background(instance, value);
     }
 
-    pub fn get_onafterprint(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onafterprint(instance);
-    }
+    pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;
+    pub const set_onafterprint = mixins.WindowEventHandlers.set_onafterprint;
 
-    pub fn set_onafterprint(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onafterprint(instance, value);
-    }
+    pub const get_onbeforeprint = mixins.WindowEventHandlers.get_onbeforeprint;
+    pub const set_onbeforeprint = mixins.WindowEventHandlers.set_onbeforeprint;
 
-    pub fn get_onbeforeprint(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onbeforeprint(instance);
-    }
+    pub const get_onbeforeunload = mixins.WindowEventHandlers.get_onbeforeunload;
+    pub const set_onbeforeunload = mixins.WindowEventHandlers.set_onbeforeunload;
 
-    pub fn set_onbeforeprint(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onbeforeprint(instance, value);
-    }
+    pub const get_onhashchange = mixins.WindowEventHandlers.get_onhashchange;
+    pub const set_onhashchange = mixins.WindowEventHandlers.set_onhashchange;
 
-    pub fn get_onbeforeunload(instance: *runtime.Instance) anyerror!OnBeforeUnloadEventHandler {
-        return try HTMLBodyElementImpl.get_onbeforeunload(instance);
-    }
+    pub const get_onlanguagechange = mixins.WindowEventHandlers.get_onlanguagechange;
+    pub const set_onlanguagechange = mixins.WindowEventHandlers.set_onlanguagechange;
 
-    pub fn set_onbeforeunload(instance: *runtime.Instance, value: OnBeforeUnloadEventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onbeforeunload(instance, value);
-    }
+    pub const get_onmessage = mixins.WindowEventHandlers.get_onmessage;
+    pub const set_onmessage = mixins.WindowEventHandlers.set_onmessage;
 
-    pub fn get_onhashchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onhashchange(instance);
-    }
+    pub const get_onmessageerror = mixins.WindowEventHandlers.get_onmessageerror;
+    pub const set_onmessageerror = mixins.WindowEventHandlers.set_onmessageerror;
 
-    pub fn set_onhashchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onhashchange(instance, value);
-    }
+    pub const get_onoffline = mixins.WindowEventHandlers.get_onoffline;
+    pub const set_onoffline = mixins.WindowEventHandlers.set_onoffline;
 
-    pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onlanguagechange(instance);
-    }
+    pub const get_ononline = mixins.WindowEventHandlers.get_ononline;
+    pub const set_ononline = mixins.WindowEventHandlers.set_ononline;
 
-    pub fn set_onlanguagechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onlanguagechange(instance, value);
-    }
+    pub const get_onpagehide = mixins.WindowEventHandlers.get_onpagehide;
+    pub const set_onpagehide = mixins.WindowEventHandlers.set_onpagehide;
 
-    pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onmessage(instance);
-    }
+    pub const get_onpagereveal = mixins.WindowEventHandlers.get_onpagereveal;
+    pub const set_onpagereveal = mixins.WindowEventHandlers.set_onpagereveal;
 
-    pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onmessage(instance, value);
-    }
+    pub const get_onpageshow = mixins.WindowEventHandlers.get_onpageshow;
+    pub const set_onpageshow = mixins.WindowEventHandlers.set_onpageshow;
 
-    pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onmessageerror(instance);
-    }
+    pub const get_onpageswap = mixins.WindowEventHandlers.get_onpageswap;
+    pub const set_onpageswap = mixins.WindowEventHandlers.set_onpageswap;
 
-    pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onmessageerror(instance, value);
-    }
+    pub const get_onpopstate = mixins.WindowEventHandlers.get_onpopstate;
+    pub const set_onpopstate = mixins.WindowEventHandlers.set_onpopstate;
 
-    pub fn get_onoffline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onoffline(instance);
-    }
+    pub const get_onrejectionhandled = mixins.WindowEventHandlers.get_onrejectionhandled;
+    pub const set_onrejectionhandled = mixins.WindowEventHandlers.set_onrejectionhandled;
 
-    pub fn set_onoffline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onoffline(instance, value);
-    }
+    pub const get_onstorage = mixins.WindowEventHandlers.get_onstorage;
+    pub const set_onstorage = mixins.WindowEventHandlers.set_onstorage;
 
-    pub fn get_ononline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_ononline(instance);
-    }
+    pub const get_onunhandledrejection = mixins.WindowEventHandlers.get_onunhandledrejection;
+    pub const set_onunhandledrejection = mixins.WindowEventHandlers.set_onunhandledrejection;
 
-    pub fn set_ononline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_ononline(instance, value);
-    }
+    pub const get_onunload = mixins.WindowEventHandlers.get_onunload;
+    pub const set_onunload = mixins.WindowEventHandlers.set_onunload;
 
-    pub fn get_onpagehide(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onpagehide(instance);
-    }
+    pub const get_ongamepadconnected = mixins.WindowEventHandlers.get_ongamepadconnected;
+    pub const set_ongamepadconnected = mixins.WindowEventHandlers.set_ongamepadconnected;
 
-    pub fn set_onpagehide(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onpagehide(instance, value);
-    }
+    pub const get_ongamepaddisconnected = mixins.WindowEventHandlers.get_ongamepaddisconnected;
+    pub const set_ongamepaddisconnected = mixins.WindowEventHandlers.set_ongamepaddisconnected;
 
-    pub fn get_onpagereveal(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onpagereveal(instance);
-    }
-
-    pub fn set_onpagereveal(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onpagereveal(instance, value);
-    }
-
-    pub fn get_onpageshow(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onpageshow(instance);
-    }
-
-    pub fn set_onpageshow(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onpageshow(instance, value);
-    }
-
-    pub fn get_onpageswap(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onpageswap(instance);
-    }
-
-    pub fn set_onpageswap(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onpageswap(instance, value);
-    }
-
-    pub fn get_onpopstate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onpopstate(instance);
-    }
-
-    pub fn set_onpopstate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onpopstate(instance, value);
-    }
-
-    pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onrejectionhandled(instance);
-    }
-
-    pub fn set_onrejectionhandled(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onrejectionhandled(instance, value);
-    }
-
-    pub fn get_onstorage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onstorage(instance);
-    }
-
-    pub fn set_onstorage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onstorage(instance, value);
-    }
-
-    pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onunhandledrejection(instance);
-    }
-
-    pub fn set_onunhandledrejection(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onunhandledrejection(instance, value);
-    }
-
-    pub fn get_onunload(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onunload(instance);
-    }
-
-    pub fn set_onunload(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onunload(instance, value);
-    }
-
-    pub fn get_ongamepadconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_ongamepadconnected(instance);
-    }
-
-    pub fn set_ongamepadconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_ongamepadconnected(instance, value);
-    }
-
-    pub fn get_ongamepaddisconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_ongamepaddisconnected(instance);
-    }
-
-    pub fn set_ongamepaddisconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_ongamepaddisconnected(instance, value);
-    }
-
-    pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onportalactivate(instance);
-    }
-
-    pub fn set_onportalactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onportalactivate(instance, value);
-    }
+    pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
+    pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
     /// (bit i = argument i; an attribute setter's value is bit 0).

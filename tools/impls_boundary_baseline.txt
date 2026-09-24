@@ -234,7 +234,6 @@ src/webidl/impls/Element.zig ParentNode.call_append 1
 src/webidl/impls/Element.zig ParentNode.closest 1
 src/webidl/impls/Element.zig ParentNode.matches 1
 src/webidl/impls/Element.zig ShadowRoot.create 1
-src/webidl/impls/EventTarget.zig Document.getInternal 1
 src/webidl/impls/EventTarget.zig Event.clearPath 6
 src/webidl/impls/EventTarget.zig Event.clearPropagationFlags 6
 src/webidl/impls/EventTarget.zig Event.getCanceledFlag 6
@@ -251,8 +250,6 @@ src/webidl/impls/EventTarget.zig Event.setInPassiveListenerFlag 12
 src/webidl/impls/EventTarget.zig Event.setIsTrusted 6
 src/webidl/impls/EventTarget.zig Event.setRelatedTarget 6
 src/webidl/impls/EventTarget.zig Event.setTarget 6
-src/webidl/impls/EventTarget.zig HTMLElement.getInternalState 1
-src/webidl/impls/EventTarget.zig Window.getInternal 1
 src/webidl/impls/FileList.zig File.createFromBytes 4
 src/webidl/impls/FileReader.zig Blob.getInternal 4
 src/webidl/impls/FileReaderSync.zig Blob.InternalState 1

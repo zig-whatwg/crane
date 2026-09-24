@@ -1785,1019 +1785,386 @@ pub const Window = struct {
         return try WindowImpl.get_pushManager(instance);
     }
 
-    pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onabort(instance);
-    }
-
-    pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onabort(instance, value);
-    }
-
-    pub fn get_onauxclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onauxclick(instance);
-    }
-
-    pub fn set_onauxclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onauxclick(instance, value);
-    }
-
-    pub fn get_onbeforeinput(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforeinput(instance);
-    }
-
-    pub fn set_onbeforeinput(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforeinput(instance, value);
-    }
-
-    pub fn get_onbeforematch(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforematch(instance);
-    }
-
-    pub fn set_onbeforematch(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforematch(instance, value);
-    }
-
-    pub fn get_onbeforetoggle(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforetoggle(instance);
-    }
-
-    pub fn set_onbeforetoggle(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforetoggle(instance, value);
-    }
-
-    pub fn get_onblur(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onblur(instance);
-    }
-
-    pub fn set_onblur(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onblur(instance, value);
-    }
-
-    pub fn get_oncancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncancel(instance);
-    }
-
-    pub fn set_oncancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncancel(instance, value);
-    }
-
-    pub fn get_oncanplay(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncanplay(instance);
-    }
-
-    pub fn set_oncanplay(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncanplay(instance, value);
-    }
-
-    pub fn get_oncanplaythrough(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncanplaythrough(instance);
-    }
-
-    pub fn set_oncanplaythrough(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncanplaythrough(instance, value);
-    }
-
-    pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onchange(instance);
-    }
-
-    pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onchange(instance, value);
-    }
-
-    pub fn get_onclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onclick(instance);
-    }
-
-    pub fn set_onclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onclick(instance, value);
-    }
-
-    pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onclose(instance);
-    }
-
-    pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onclose(instance, value);
-    }
-
-    pub fn get_oncommand(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncommand(instance);
-    }
-
-    pub fn set_oncommand(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncommand(instance, value);
-    }
-
-    pub fn get_oncontextlost(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncontextlost(instance);
-    }
-
-    pub fn set_oncontextlost(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncontextlost(instance, value);
-    }
-
-    pub fn get_oncontextmenu(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncontextmenu(instance);
-    }
-
-    pub fn set_oncontextmenu(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncontextmenu(instance, value);
-    }
-
-    pub fn get_oncontextrestored(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncontextrestored(instance);
-    }
-
-    pub fn set_oncontextrestored(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncontextrestored(instance, value);
-    }
-
-    pub fn get_oncopy(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncopy(instance);
-    }
-
-    pub fn set_oncopy(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncopy(instance, value);
-    }
-
-    pub fn get_oncuechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncuechange(instance);
-    }
-
-    pub fn set_oncuechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncuechange(instance, value);
-    }
-
-    pub fn get_oncut(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oncut(instance);
-    }
-
-    pub fn set_oncut(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oncut(instance, value);
-    }
-
-    pub fn get_ondblclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondblclick(instance);
-    }
-
-    pub fn set_ondblclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondblclick(instance, value);
-    }
-
-    pub fn get_ondrag(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondrag(instance);
-    }
-
-    pub fn set_ondrag(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondrag(instance, value);
-    }
-
-    pub fn get_ondragend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondragend(instance);
-    }
-
-    pub fn set_ondragend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondragend(instance, value);
-    }
-
-    pub fn get_ondragenter(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondragenter(instance);
-    }
-
-    pub fn set_ondragenter(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondragenter(instance, value);
-    }
-
-    pub fn get_ondragleave(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondragleave(instance);
-    }
-
-    pub fn set_ondragleave(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondragleave(instance, value);
-    }
-
-    pub fn get_ondragover(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondragover(instance);
-    }
-
-    pub fn set_ondragover(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondragover(instance, value);
-    }
-
-    pub fn get_ondragstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondragstart(instance);
-    }
-
-    pub fn set_ondragstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondragstart(instance, value);
-    }
-
-    pub fn get_ondrop(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondrop(instance);
-    }
-
-    pub fn set_ondrop(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondrop(instance, value);
-    }
-
-    pub fn get_ondurationchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondurationchange(instance);
-    }
-
-    pub fn set_ondurationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondurationchange(instance, value);
-    }
-
-    pub fn get_onemptied(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onemptied(instance);
-    }
-
-    pub fn set_onemptied(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onemptied(instance, value);
-    }
-
-    pub fn get_onended(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onended(instance);
-    }
-
-    pub fn set_onended(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onended(instance, value);
-    }
-
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!OnErrorEventHandler {
-        return try WindowImpl.get_onerror(instance);
-    }
-
-    pub fn set_onerror(instance: *runtime.Instance, value: OnErrorEventHandler) anyerror!void {
-        try WindowImpl.set_onerror(instance, value);
-    }
-
-    pub fn get_onfocus(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onfocus(instance);
-    }
-
-    pub fn set_onfocus(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onfocus(instance, value);
-    }
-
-    pub fn get_onformdata(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onformdata(instance);
-    }
-
-    pub fn set_onformdata(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onformdata(instance, value);
-    }
-
-    pub fn get_oninput(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oninput(instance);
-    }
-
-    pub fn set_oninput(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oninput(instance, value);
-    }
-
-    pub fn get_oninvalid(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_oninvalid(instance);
-    }
-
-    pub fn set_oninvalid(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_oninvalid(instance, value);
-    }
-
-    pub fn get_onkeydown(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onkeydown(instance);
-    }
-
-    pub fn set_onkeydown(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onkeydown(instance, value);
-    }
-
-    pub fn get_onkeypress(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onkeypress(instance);
-    }
-
-    pub fn set_onkeypress(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onkeypress(instance, value);
-    }
-
-    pub fn get_onkeyup(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onkeyup(instance);
-    }
-
-    pub fn set_onkeyup(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onkeyup(instance, value);
-    }
-
-    pub fn get_onload(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onload(instance);
-    }
-
-    pub fn set_onload(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onload(instance, value);
-    }
-
-    pub fn get_onloadeddata(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onloadeddata(instance);
-    }
-
-    pub fn set_onloadeddata(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onloadeddata(instance, value);
-    }
-
-    pub fn get_onloadedmetadata(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onloadedmetadata(instance);
-    }
-
-    pub fn set_onloadedmetadata(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onloadedmetadata(instance, value);
-    }
-
-    pub fn get_onloadstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onloadstart(instance);
-    }
-
-    pub fn set_onloadstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onloadstart(instance, value);
-    }
-
-    pub fn get_onmousedown(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmousedown(instance);
-    }
-
-    pub fn set_onmousedown(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmousedown(instance, value);
-    }
+    pub const get_onabort = mixins.GlobalEventHandlers.get_onabort;
+    pub const set_onabort = mixins.GlobalEventHandlers.set_onabort;
+
+    pub const get_onauxclick = mixins.GlobalEventHandlers.get_onauxclick;
+    pub const set_onauxclick = mixins.GlobalEventHandlers.set_onauxclick;
+
+    pub const get_onbeforeinput = mixins.GlobalEventHandlers.get_onbeforeinput;
+    pub const set_onbeforeinput = mixins.GlobalEventHandlers.set_onbeforeinput;
+
+    pub const get_onbeforematch = mixins.GlobalEventHandlers.get_onbeforematch;
+    pub const set_onbeforematch = mixins.GlobalEventHandlers.set_onbeforematch;
+
+    pub const get_onbeforetoggle = mixins.GlobalEventHandlers.get_onbeforetoggle;
+    pub const set_onbeforetoggle = mixins.GlobalEventHandlers.set_onbeforetoggle;
+
+    pub const get_onblur = mixins.GlobalEventHandlers.get_onblur;
+    pub const set_onblur = mixins.GlobalEventHandlers.set_onblur;
+
+    pub const get_oncancel = mixins.GlobalEventHandlers.get_oncancel;
+    pub const set_oncancel = mixins.GlobalEventHandlers.set_oncancel;
+
+    pub const get_oncanplay = mixins.GlobalEventHandlers.get_oncanplay;
+    pub const set_oncanplay = mixins.GlobalEventHandlers.set_oncanplay;
+
+    pub const get_oncanplaythrough = mixins.GlobalEventHandlers.get_oncanplaythrough;
+    pub const set_oncanplaythrough = mixins.GlobalEventHandlers.set_oncanplaythrough;
+
+    pub const get_onchange = mixins.GlobalEventHandlers.get_onchange;
+    pub const set_onchange = mixins.GlobalEventHandlers.set_onchange;
+
+    pub const get_onclick = mixins.GlobalEventHandlers.get_onclick;
+    pub const set_onclick = mixins.GlobalEventHandlers.set_onclick;
+
+    pub const get_onclose = mixins.GlobalEventHandlers.get_onclose;
+    pub const set_onclose = mixins.GlobalEventHandlers.set_onclose;
+
+    pub const get_oncommand = mixins.GlobalEventHandlers.get_oncommand;
+    pub const set_oncommand = mixins.GlobalEventHandlers.set_oncommand;
+
+    pub const get_oncontextlost = mixins.GlobalEventHandlers.get_oncontextlost;
+    pub const set_oncontextlost = mixins.GlobalEventHandlers.set_oncontextlost;
+
+    pub const get_oncontextmenu = mixins.GlobalEventHandlers.get_oncontextmenu;
+    pub const set_oncontextmenu = mixins.GlobalEventHandlers.set_oncontextmenu;
+
+    pub const get_oncontextrestored = mixins.GlobalEventHandlers.get_oncontextrestored;
+    pub const set_oncontextrestored = mixins.GlobalEventHandlers.set_oncontextrestored;
+
+    pub const get_oncopy = mixins.GlobalEventHandlers.get_oncopy;
+    pub const set_oncopy = mixins.GlobalEventHandlers.set_oncopy;
+
+    pub const get_oncuechange = mixins.GlobalEventHandlers.get_oncuechange;
+    pub const set_oncuechange = mixins.GlobalEventHandlers.set_oncuechange;
+
+    pub const get_oncut = mixins.GlobalEventHandlers.get_oncut;
+    pub const set_oncut = mixins.GlobalEventHandlers.set_oncut;
+
+    pub const get_ondblclick = mixins.GlobalEventHandlers.get_ondblclick;
+    pub const set_ondblclick = mixins.GlobalEventHandlers.set_ondblclick;
+
+    pub const get_ondrag = mixins.GlobalEventHandlers.get_ondrag;
+    pub const set_ondrag = mixins.GlobalEventHandlers.set_ondrag;
+
+    pub const get_ondragend = mixins.GlobalEventHandlers.get_ondragend;
+    pub const set_ondragend = mixins.GlobalEventHandlers.set_ondragend;
+
+    pub const get_ondragenter = mixins.GlobalEventHandlers.get_ondragenter;
+    pub const set_ondragenter = mixins.GlobalEventHandlers.set_ondragenter;
+
+    pub const get_ondragleave = mixins.GlobalEventHandlers.get_ondragleave;
+    pub const set_ondragleave = mixins.GlobalEventHandlers.set_ondragleave;
+
+    pub const get_ondragover = mixins.GlobalEventHandlers.get_ondragover;
+    pub const set_ondragover = mixins.GlobalEventHandlers.set_ondragover;
+
+    pub const get_ondragstart = mixins.GlobalEventHandlers.get_ondragstart;
+    pub const set_ondragstart = mixins.GlobalEventHandlers.set_ondragstart;
+
+    pub const get_ondrop = mixins.GlobalEventHandlers.get_ondrop;
+    pub const set_ondrop = mixins.GlobalEventHandlers.set_ondrop;
+
+    pub const get_ondurationchange = mixins.GlobalEventHandlers.get_ondurationchange;
+    pub const set_ondurationchange = mixins.GlobalEventHandlers.set_ondurationchange;
+
+    pub const get_onemptied = mixins.GlobalEventHandlers.get_onemptied;
+    pub const set_onemptied = mixins.GlobalEventHandlers.set_onemptied;
+
+    pub const get_onended = mixins.GlobalEventHandlers.get_onended;
+    pub const set_onended = mixins.GlobalEventHandlers.set_onended;
+
+    pub const get_onerror = mixins.GlobalEventHandlers.get_onerror;
+    pub const set_onerror = mixins.GlobalEventHandlers.set_onerror;
+
+    pub const get_onfocus = mixins.GlobalEventHandlers.get_onfocus;
+    pub const set_onfocus = mixins.GlobalEventHandlers.set_onfocus;
+
+    pub const get_onformdata = mixins.GlobalEventHandlers.get_onformdata;
+    pub const set_onformdata = mixins.GlobalEventHandlers.set_onformdata;
+
+    pub const get_oninput = mixins.GlobalEventHandlers.get_oninput;
+    pub const set_oninput = mixins.GlobalEventHandlers.set_oninput;
+
+    pub const get_oninvalid = mixins.GlobalEventHandlers.get_oninvalid;
+    pub const set_oninvalid = mixins.GlobalEventHandlers.set_oninvalid;
+
+    pub const get_onkeydown = mixins.GlobalEventHandlers.get_onkeydown;
+    pub const set_onkeydown = mixins.GlobalEventHandlers.set_onkeydown;
+
+    pub const get_onkeypress = mixins.GlobalEventHandlers.get_onkeypress;
+    pub const set_onkeypress = mixins.GlobalEventHandlers.set_onkeypress;
+
+    pub const get_onkeyup = mixins.GlobalEventHandlers.get_onkeyup;
+    pub const set_onkeyup = mixins.GlobalEventHandlers.set_onkeyup;
+
+    pub const get_onload = mixins.GlobalEventHandlers.get_onload;
+    pub const set_onload = mixins.GlobalEventHandlers.set_onload;
+
+    pub const get_onloadeddata = mixins.GlobalEventHandlers.get_onloadeddata;
+    pub const set_onloadeddata = mixins.GlobalEventHandlers.set_onloadeddata;
+
+    pub const get_onloadedmetadata = mixins.GlobalEventHandlers.get_onloadedmetadata;
+    pub const set_onloadedmetadata = mixins.GlobalEventHandlers.set_onloadedmetadata;
+
+    pub const get_onloadstart = mixins.GlobalEventHandlers.get_onloadstart;
+    pub const set_onloadstart = mixins.GlobalEventHandlers.set_onloadstart;
+
+    pub const get_onmousedown = mixins.GlobalEventHandlers.get_onmousedown;
+    pub const set_onmousedown = mixins.GlobalEventHandlers.set_onmousedown;
 
     /// Extended attributes: [LegacyLenientThis]
-    pub fn get_onmouseenter(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmouseenter(instance);
-    }
+    pub const get_onmouseenter = mixins.GlobalEventHandlers.get_onmouseenter;
+    pub const set_onmouseenter = mixins.GlobalEventHandlers.set_onmouseenter;
 
     /// Extended attributes: [LegacyLenientThis]
-    pub fn set_onmouseenter(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmouseenter(instance, value);
-    }
-
-    /// Extended attributes: [LegacyLenientThis]
-    pub fn get_onmouseleave(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmouseleave(instance);
-    }
-
-    /// Extended attributes: [LegacyLenientThis]
-    pub fn set_onmouseleave(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmouseleave(instance, value);
-    }
-
-    pub fn get_onmousemove(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmousemove(instance);
-    }
-
-    pub fn set_onmousemove(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmousemove(instance, value);
-    }
-
-    pub fn get_onmouseout(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmouseout(instance);
-    }
-
-    pub fn set_onmouseout(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmouseout(instance, value);
-    }
-
-    pub fn get_onmouseover(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmouseover(instance);
-    }
-
-    pub fn set_onmouseover(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmouseover(instance, value);
-    }
-
-    pub fn get_onmouseup(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmouseup(instance);
-    }
-
-    pub fn set_onmouseup(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmouseup(instance, value);
-    }
-
-    pub fn get_onpaste(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpaste(instance);
-    }
-
-    pub fn set_onpaste(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpaste(instance, value);
-    }
-
-    pub fn get_onpause(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpause(instance);
-    }
-
-    pub fn set_onpause(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpause(instance, value);
-    }
-
-    pub fn get_onplay(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onplay(instance);
-    }
-
-    pub fn set_onplay(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onplay(instance, value);
-    }
-
-    pub fn get_onplaying(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onplaying(instance);
-    }
-
-    pub fn set_onplaying(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onplaying(instance, value);
-    }
-
-    pub fn get_onprogress(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onprogress(instance);
-    }
-
-    pub fn set_onprogress(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onprogress(instance, value);
-    }
-
-    pub fn get_onratechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onratechange(instance);
-    }
-
-    pub fn set_onratechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onratechange(instance, value);
-    }
-
-    pub fn get_onreset(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onreset(instance);
-    }
-
-    pub fn set_onreset(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onreset(instance, value);
-    }
-
-    pub fn get_onresize(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onresize(instance);
-    }
-
-    pub fn set_onresize(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onresize(instance, value);
-    }
-
-    pub fn get_onscroll(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onscroll(instance);
-    }
-
-    pub fn set_onscroll(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onscroll(instance, value);
-    }
-
-    pub fn get_onscrollend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onscrollend(instance);
-    }
-
-    pub fn set_onscrollend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onscrollend(instance, value);
-    }
-
-    pub fn get_onsecuritypolicyviolation(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onsecuritypolicyviolation(instance);
-    }
-
-    pub fn set_onsecuritypolicyviolation(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onsecuritypolicyviolation(instance, value);
-    }
-
-    pub fn get_onseeked(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onseeked(instance);
-    }
-
-    pub fn set_onseeked(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onseeked(instance, value);
-    }
-
-    pub fn get_onseeking(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onseeking(instance);
-    }
-
-    pub fn set_onseeking(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onseeking(instance, value);
-    }
-
-    pub fn get_onselect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onselect(instance);
-    }
-
-    pub fn set_onselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onselect(instance, value);
-    }
-
-    pub fn get_onslotchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onslotchange(instance);
-    }
-
-    pub fn set_onslotchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onslotchange(instance, value);
-    }
-
-    pub fn get_onstalled(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onstalled(instance);
-    }
-
-    pub fn set_onstalled(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onstalled(instance, value);
-    }
-
-    pub fn get_onsubmit(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onsubmit(instance);
-    }
-
-    pub fn set_onsubmit(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onsubmit(instance, value);
-    }
-
-    pub fn get_onsuspend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onsuspend(instance);
-    }
-
-    pub fn set_onsuspend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onsuspend(instance, value);
-    }
-
-    pub fn get_ontimeupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontimeupdate(instance);
-    }
-
-    pub fn set_ontimeupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontimeupdate(instance, value);
-    }
-
-    pub fn get_ontoggle(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontoggle(instance);
-    }
-
-    pub fn set_ontoggle(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontoggle(instance, value);
-    }
-
-    pub fn get_onvolumechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onvolumechange(instance);
-    }
-
-    pub fn set_onvolumechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onvolumechange(instance, value);
-    }
-
-    pub fn get_onwaiting(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwaiting(instance);
-    }
-
-    pub fn set_onwaiting(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwaiting(instance, value);
-    }
-
-    pub fn get_onwebkitanimationend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwebkitanimationend(instance);
-    }
-
-    pub fn set_onwebkitanimationend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwebkitanimationend(instance, value);
-    }
-
-    pub fn get_onwebkitanimationiteration(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwebkitanimationiteration(instance);
-    }
-
-    pub fn set_onwebkitanimationiteration(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwebkitanimationiteration(instance, value);
-    }
-
-    pub fn get_onwebkitanimationstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwebkitanimationstart(instance);
-    }
-
-    pub fn set_onwebkitanimationstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwebkitanimationstart(instance, value);
-    }
-
-    pub fn get_onwebkittransitionend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwebkittransitionend(instance);
-    }
-
-    pub fn set_onwebkittransitionend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwebkittransitionend(instance, value);
-    }
-
-    pub fn get_onwheel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onwheel(instance);
-    }
-
-    pub fn set_onwheel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onwheel(instance, value);
-    }
-
-    pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onselectstart(instance);
-    }
-
-    pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onselectstart(instance, value);
-    }
-
-    pub fn get_onselectionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onselectionchange(instance);
-    }
-
-    pub fn set_onselectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onselectionchange(instance, value);
-    }
-
-    pub fn get_onanimationstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onanimationstart(instance);
-    }
-
-    pub fn set_onanimationstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onanimationstart(instance, value);
-    }
-
-    pub fn get_onanimationiteration(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onanimationiteration(instance);
-    }
-
-    pub fn set_onanimationiteration(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onanimationiteration(instance, value);
-    }
-
-    pub fn get_onanimationend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onanimationend(instance);
-    }
-
-    pub fn set_onanimationend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onanimationend(instance, value);
-    }
-
-    pub fn get_onanimationcancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onanimationcancel(instance);
-    }
-
-    pub fn set_onanimationcancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onanimationcancel(instance, value);
-    }
-
-    pub fn get_ontransitionrun(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontransitionrun(instance);
-    }
-
-    pub fn set_ontransitionrun(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontransitionrun(instance, value);
-    }
-
-    pub fn get_ontransitionstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontransitionstart(instance);
-    }
-
-    pub fn set_ontransitionstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontransitionstart(instance, value);
-    }
-
-    pub fn get_ontransitionend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontransitionend(instance);
-    }
-
-    pub fn set_ontransitionend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontransitionend(instance, value);
-    }
-
-    pub fn get_ontransitioncancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontransitioncancel(instance);
-    }
-
-    pub fn set_ontransitioncancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontransitioncancel(instance, value);
-    }
-
-    pub fn get_onbeforexrselect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforexrselect(instance);
-    }
-
-    pub fn set_onbeforexrselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforexrselect(instance, value);
-    }
-
-    pub fn get_onpointerover(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerover(instance);
-    }
-
-    pub fn set_onpointerover(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerover(instance, value);
-    }
-
-    pub fn get_onpointerenter(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerenter(instance);
-    }
-
-    pub fn set_onpointerenter(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerenter(instance, value);
-    }
-
-    pub fn get_onpointerdown(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerdown(instance);
-    }
-
-    pub fn set_onpointerdown(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerdown(instance, value);
-    }
-
-    pub fn get_onpointermove(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointermove(instance);
-    }
-
-    pub fn set_onpointermove(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointermove(instance, value);
-    }
+    pub const get_onmouseleave = mixins.GlobalEventHandlers.get_onmouseleave;
+    pub const set_onmouseleave = mixins.GlobalEventHandlers.set_onmouseleave;
+
+    pub const get_onmousemove = mixins.GlobalEventHandlers.get_onmousemove;
+    pub const set_onmousemove = mixins.GlobalEventHandlers.set_onmousemove;
+
+    pub const get_onmouseout = mixins.GlobalEventHandlers.get_onmouseout;
+    pub const set_onmouseout = mixins.GlobalEventHandlers.set_onmouseout;
+
+    pub const get_onmouseover = mixins.GlobalEventHandlers.get_onmouseover;
+    pub const set_onmouseover = mixins.GlobalEventHandlers.set_onmouseover;
+
+    pub const get_onmouseup = mixins.GlobalEventHandlers.get_onmouseup;
+    pub const set_onmouseup = mixins.GlobalEventHandlers.set_onmouseup;
+
+    pub const get_onpaste = mixins.GlobalEventHandlers.get_onpaste;
+    pub const set_onpaste = mixins.GlobalEventHandlers.set_onpaste;
+
+    pub const get_onpause = mixins.GlobalEventHandlers.get_onpause;
+    pub const set_onpause = mixins.GlobalEventHandlers.set_onpause;
+
+    pub const get_onplay = mixins.GlobalEventHandlers.get_onplay;
+    pub const set_onplay = mixins.GlobalEventHandlers.set_onplay;
+
+    pub const get_onplaying = mixins.GlobalEventHandlers.get_onplaying;
+    pub const set_onplaying = mixins.GlobalEventHandlers.set_onplaying;
+
+    pub const get_onprogress = mixins.GlobalEventHandlers.get_onprogress;
+    pub const set_onprogress = mixins.GlobalEventHandlers.set_onprogress;
+
+    pub const get_onratechange = mixins.GlobalEventHandlers.get_onratechange;
+    pub const set_onratechange = mixins.GlobalEventHandlers.set_onratechange;
+
+    pub const get_onreset = mixins.GlobalEventHandlers.get_onreset;
+    pub const set_onreset = mixins.GlobalEventHandlers.set_onreset;
+
+    pub const get_onresize = mixins.GlobalEventHandlers.get_onresize;
+    pub const set_onresize = mixins.GlobalEventHandlers.set_onresize;
+
+    pub const get_onscroll = mixins.GlobalEventHandlers.get_onscroll;
+    pub const set_onscroll = mixins.GlobalEventHandlers.set_onscroll;
+
+    pub const get_onscrollend = mixins.GlobalEventHandlers.get_onscrollend;
+    pub const set_onscrollend = mixins.GlobalEventHandlers.set_onscrollend;
+
+    pub const get_onsecuritypolicyviolation = mixins.GlobalEventHandlers.get_onsecuritypolicyviolation;
+    pub const set_onsecuritypolicyviolation = mixins.GlobalEventHandlers.set_onsecuritypolicyviolation;
+
+    pub const get_onseeked = mixins.GlobalEventHandlers.get_onseeked;
+    pub const set_onseeked = mixins.GlobalEventHandlers.set_onseeked;
+
+    pub const get_onseeking = mixins.GlobalEventHandlers.get_onseeking;
+    pub const set_onseeking = mixins.GlobalEventHandlers.set_onseeking;
+
+    pub const get_onselect = mixins.GlobalEventHandlers.get_onselect;
+    pub const set_onselect = mixins.GlobalEventHandlers.set_onselect;
+
+    pub const get_onslotchange = mixins.GlobalEventHandlers.get_onslotchange;
+    pub const set_onslotchange = mixins.GlobalEventHandlers.set_onslotchange;
+
+    pub const get_onstalled = mixins.GlobalEventHandlers.get_onstalled;
+    pub const set_onstalled = mixins.GlobalEventHandlers.set_onstalled;
+
+    pub const get_onsubmit = mixins.GlobalEventHandlers.get_onsubmit;
+    pub const set_onsubmit = mixins.GlobalEventHandlers.set_onsubmit;
+
+    pub const get_onsuspend = mixins.GlobalEventHandlers.get_onsuspend;
+    pub const set_onsuspend = mixins.GlobalEventHandlers.set_onsuspend;
+
+    pub const get_ontimeupdate = mixins.GlobalEventHandlers.get_ontimeupdate;
+    pub const set_ontimeupdate = mixins.GlobalEventHandlers.set_ontimeupdate;
+
+    pub const get_ontoggle = mixins.GlobalEventHandlers.get_ontoggle;
+    pub const set_ontoggle = mixins.GlobalEventHandlers.set_ontoggle;
+
+    pub const get_onvolumechange = mixins.GlobalEventHandlers.get_onvolumechange;
+    pub const set_onvolumechange = mixins.GlobalEventHandlers.set_onvolumechange;
+
+    pub const get_onwaiting = mixins.GlobalEventHandlers.get_onwaiting;
+    pub const set_onwaiting = mixins.GlobalEventHandlers.set_onwaiting;
+
+    pub const get_onwebkitanimationend = mixins.GlobalEventHandlers.get_onwebkitanimationend;
+    pub const set_onwebkitanimationend = mixins.GlobalEventHandlers.set_onwebkitanimationend;
+
+    pub const get_onwebkitanimationiteration = mixins.GlobalEventHandlers.get_onwebkitanimationiteration;
+    pub const set_onwebkitanimationiteration = mixins.GlobalEventHandlers.set_onwebkitanimationiteration;
+
+    pub const get_onwebkitanimationstart = mixins.GlobalEventHandlers.get_onwebkitanimationstart;
+    pub const set_onwebkitanimationstart = mixins.GlobalEventHandlers.set_onwebkitanimationstart;
+
+    pub const get_onwebkittransitionend = mixins.GlobalEventHandlers.get_onwebkittransitionend;
+    pub const set_onwebkittransitionend = mixins.GlobalEventHandlers.set_onwebkittransitionend;
+
+    pub const get_onwheel = mixins.GlobalEventHandlers.get_onwheel;
+    pub const set_onwheel = mixins.GlobalEventHandlers.set_onwheel;
+
+    pub const get_onselectstart = mixins.GlobalEventHandlers.get_onselectstart;
+    pub const set_onselectstart = mixins.GlobalEventHandlers.set_onselectstart;
+
+    pub const get_onselectionchange = mixins.GlobalEventHandlers.get_onselectionchange;
+    pub const set_onselectionchange = mixins.GlobalEventHandlers.set_onselectionchange;
+
+    pub const get_onanimationstart = mixins.GlobalEventHandlers.get_onanimationstart;
+    pub const set_onanimationstart = mixins.GlobalEventHandlers.set_onanimationstart;
+
+    pub const get_onanimationiteration = mixins.GlobalEventHandlers.get_onanimationiteration;
+    pub const set_onanimationiteration = mixins.GlobalEventHandlers.set_onanimationiteration;
+
+    pub const get_onanimationend = mixins.GlobalEventHandlers.get_onanimationend;
+    pub const set_onanimationend = mixins.GlobalEventHandlers.set_onanimationend;
+
+    pub const get_onanimationcancel = mixins.GlobalEventHandlers.get_onanimationcancel;
+    pub const set_onanimationcancel = mixins.GlobalEventHandlers.set_onanimationcancel;
+
+    pub const get_ontransitionrun = mixins.GlobalEventHandlers.get_ontransitionrun;
+    pub const set_ontransitionrun = mixins.GlobalEventHandlers.set_ontransitionrun;
+
+    pub const get_ontransitionstart = mixins.GlobalEventHandlers.get_ontransitionstart;
+    pub const set_ontransitionstart = mixins.GlobalEventHandlers.set_ontransitionstart;
+
+    pub const get_ontransitionend = mixins.GlobalEventHandlers.get_ontransitionend;
+    pub const set_ontransitionend = mixins.GlobalEventHandlers.set_ontransitionend;
+
+    pub const get_ontransitioncancel = mixins.GlobalEventHandlers.get_ontransitioncancel;
+    pub const set_ontransitioncancel = mixins.GlobalEventHandlers.set_ontransitioncancel;
+
+    pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
+    pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
+
+    pub const get_onpointerover = mixins.GlobalEventHandlers.get_onpointerover;
+    pub const set_onpointerover = mixins.GlobalEventHandlers.set_onpointerover;
+
+    pub const get_onpointerenter = mixins.GlobalEventHandlers.get_onpointerenter;
+    pub const set_onpointerenter = mixins.GlobalEventHandlers.set_onpointerenter;
+
+    pub const get_onpointerdown = mixins.GlobalEventHandlers.get_onpointerdown;
+    pub const set_onpointerdown = mixins.GlobalEventHandlers.set_onpointerdown;
+
+    pub const get_onpointermove = mixins.GlobalEventHandlers.get_onpointermove;
+    pub const set_onpointermove = mixins.GlobalEventHandlers.set_onpointermove;
 
     /// Extended attributes: [SecureContext]
-    pub fn get_onpointerrawupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerrawupdate(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn set_onpointerrawupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerrawupdate(instance, value);
-    }
-
-    pub fn get_onpointerup(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerup(instance);
-    }
-
-    pub fn set_onpointerup(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerup(instance, value);
-    }
-
-    pub fn get_onpointercancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointercancel(instance);
-    }
-
-    pub fn set_onpointercancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointercancel(instance, value);
-    }
-
-    pub fn get_onpointerout(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerout(instance);
-    }
-
-    pub fn set_onpointerout(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerout(instance, value);
-    }
-
-    pub fn get_onpointerleave(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpointerleave(instance);
-    }
-
-    pub fn set_onpointerleave(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpointerleave(instance, value);
-    }
-
-    pub fn get_ongotpointercapture(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ongotpointercapture(instance);
-    }
-
-    pub fn set_ongotpointercapture(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ongotpointercapture(instance, value);
-    }
-
-    pub fn get_onlostpointercapture(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onlostpointercapture(instance);
-    }
-
-    pub fn set_onlostpointercapture(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onlostpointercapture(instance, value);
-    }
-
-    pub fn get_ontouchstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontouchstart(instance);
-    }
-
-    pub fn set_ontouchstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontouchstart(instance, value);
-    }
-
-    pub fn get_ontouchend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontouchend(instance);
-    }
-
-    pub fn set_ontouchend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontouchend(instance, value);
-    }
-
-    pub fn get_ontouchmove(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontouchmove(instance);
-    }
-
-    pub fn set_ontouchmove(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontouchmove(instance, value);
-    }
-
-    pub fn get_ontouchcancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ontouchcancel(instance);
-    }
-
-    pub fn set_ontouchcancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ontouchcancel(instance, value);
-    }
-
-    pub fn get_onfencedtreeclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onfencedtreeclick(instance);
-    }
-
-    pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onfencedtreeclick(instance, value);
-    }
-
-    pub fn get_onsnapchanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onsnapchanged(instance);
-    }
-
-    pub fn set_onsnapchanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onsnapchanged(instance, value);
-    }
+    pub const get_onpointerrawupdate = mixins.GlobalEventHandlers.get_onpointerrawupdate;
+    pub const set_onpointerrawupdate = mixins.GlobalEventHandlers.set_onpointerrawupdate;
 
-    pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onsnapchanging(instance);
-    }
+    pub const get_onpointerup = mixins.GlobalEventHandlers.get_onpointerup;
+    pub const set_onpointerup = mixins.GlobalEventHandlers.set_onpointerup;
 
-    pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onsnapchanging(instance, value);
-    }
+    pub const get_onpointercancel = mixins.GlobalEventHandlers.get_onpointercancel;
+    pub const set_onpointercancel = mixins.GlobalEventHandlers.set_onpointercancel;
 
-    pub fn get_onafterprint(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onafterprint(instance);
-    }
+    pub const get_onpointerout = mixins.GlobalEventHandlers.get_onpointerout;
+    pub const set_onpointerout = mixins.GlobalEventHandlers.set_onpointerout;
 
-    pub fn set_onafterprint(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onafterprint(instance, value);
-    }
+    pub const get_onpointerleave = mixins.GlobalEventHandlers.get_onpointerleave;
+    pub const set_onpointerleave = mixins.GlobalEventHandlers.set_onpointerleave;
 
-    pub fn get_onbeforeprint(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforeprint(instance);
-    }
+    pub const get_ongotpointercapture = mixins.GlobalEventHandlers.get_ongotpointercapture;
+    pub const set_ongotpointercapture = mixins.GlobalEventHandlers.set_ongotpointercapture;
 
-    pub fn set_onbeforeprint(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforeprint(instance, value);
-    }
+    pub const get_onlostpointercapture = mixins.GlobalEventHandlers.get_onlostpointercapture;
+    pub const set_onlostpointercapture = mixins.GlobalEventHandlers.set_onlostpointercapture;
 
-    pub fn get_onbeforeunload(instance: *runtime.Instance) anyerror!OnBeforeUnloadEventHandler {
-        return try WindowImpl.get_onbeforeunload(instance);
-    }
+    pub const get_ontouchstart = mixins.GlobalEventHandlers.get_ontouchstart;
+    pub const set_ontouchstart = mixins.GlobalEventHandlers.set_ontouchstart;
 
-    pub fn set_onbeforeunload(instance: *runtime.Instance, value: OnBeforeUnloadEventHandler) anyerror!void {
-        try WindowImpl.set_onbeforeunload(instance, value);
-    }
+    pub const get_ontouchend = mixins.GlobalEventHandlers.get_ontouchend;
+    pub const set_ontouchend = mixins.GlobalEventHandlers.set_ontouchend;
 
-    pub fn get_onhashchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onhashchange(instance);
-    }
+    pub const get_ontouchmove = mixins.GlobalEventHandlers.get_ontouchmove;
+    pub const set_ontouchmove = mixins.GlobalEventHandlers.set_ontouchmove;
 
-    pub fn set_onhashchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onhashchange(instance, value);
-    }
+    pub const get_ontouchcancel = mixins.GlobalEventHandlers.get_ontouchcancel;
+    pub const set_ontouchcancel = mixins.GlobalEventHandlers.set_ontouchcancel;
 
-    pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onlanguagechange(instance);
-    }
+    pub const get_onfencedtreeclick = mixins.GlobalEventHandlers.get_onfencedtreeclick;
+    pub const set_onfencedtreeclick = mixins.GlobalEventHandlers.set_onfencedtreeclick;
 
-    pub fn set_onlanguagechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onlanguagechange(instance, value);
-    }
+    pub const get_onsnapchanged = mixins.GlobalEventHandlers.get_onsnapchanged;
+    pub const set_onsnapchanged = mixins.GlobalEventHandlers.set_onsnapchanged;
 
-    pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmessage(instance);
-    }
+    pub const get_onsnapchanging = mixins.GlobalEventHandlers.get_onsnapchanging;
+    pub const set_onsnapchanging = mixins.GlobalEventHandlers.set_onsnapchanging;
 
-    pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmessage(instance, value);
-    }
+    pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;
+    pub const set_onafterprint = mixins.WindowEventHandlers.set_onafterprint;
 
-    pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onmessageerror(instance);
-    }
+    pub const get_onbeforeprint = mixins.WindowEventHandlers.get_onbeforeprint;
+    pub const set_onbeforeprint = mixins.WindowEventHandlers.set_onbeforeprint;
 
-    pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onmessageerror(instance, value);
-    }
+    pub const get_onbeforeunload = mixins.WindowEventHandlers.get_onbeforeunload;
+    pub const set_onbeforeunload = mixins.WindowEventHandlers.set_onbeforeunload;
 
-    pub fn get_onoffline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onoffline(instance);
-    }
+    pub const get_onhashchange = mixins.WindowEventHandlers.get_onhashchange;
+    pub const set_onhashchange = mixins.WindowEventHandlers.set_onhashchange;
 
-    pub fn set_onoffline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onoffline(instance, value);
-    }
+    pub const get_onlanguagechange = mixins.WindowEventHandlers.get_onlanguagechange;
+    pub const set_onlanguagechange = mixins.WindowEventHandlers.set_onlanguagechange;
 
-    pub fn get_ononline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ononline(instance);
-    }
+    pub const get_onmessage = mixins.WindowEventHandlers.get_onmessage;
+    pub const set_onmessage = mixins.WindowEventHandlers.set_onmessage;
 
-    pub fn set_ononline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ononline(instance, value);
-    }
+    pub const get_onmessageerror = mixins.WindowEventHandlers.get_onmessageerror;
+    pub const set_onmessageerror = mixins.WindowEventHandlers.set_onmessageerror;
 
-    pub fn get_onpagehide(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpagehide(instance);
-    }
+    pub const get_onoffline = mixins.WindowEventHandlers.get_onoffline;
+    pub const set_onoffline = mixins.WindowEventHandlers.set_onoffline;
 
-    pub fn set_onpagehide(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpagehide(instance, value);
-    }
+    pub const get_ononline = mixins.WindowEventHandlers.get_ononline;
+    pub const set_ononline = mixins.WindowEventHandlers.set_ononline;
 
-    pub fn get_onpagereveal(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpagereveal(instance);
-    }
+    pub const get_onpagehide = mixins.WindowEventHandlers.get_onpagehide;
+    pub const set_onpagehide = mixins.WindowEventHandlers.set_onpagehide;
 
-    pub fn set_onpagereveal(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpagereveal(instance, value);
-    }
+    pub const get_onpagereveal = mixins.WindowEventHandlers.get_onpagereveal;
+    pub const set_onpagereveal = mixins.WindowEventHandlers.set_onpagereveal;
 
-    pub fn get_onpageshow(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpageshow(instance);
-    }
+    pub const get_onpageshow = mixins.WindowEventHandlers.get_onpageshow;
+    pub const set_onpageshow = mixins.WindowEventHandlers.set_onpageshow;
 
-    pub fn set_onpageshow(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpageshow(instance, value);
-    }
+    pub const get_onpageswap = mixins.WindowEventHandlers.get_onpageswap;
+    pub const set_onpageswap = mixins.WindowEventHandlers.set_onpageswap;
 
-    pub fn get_onpageswap(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpageswap(instance);
-    }
+    pub const get_onpopstate = mixins.WindowEventHandlers.get_onpopstate;
+    pub const set_onpopstate = mixins.WindowEventHandlers.set_onpopstate;
 
-    pub fn set_onpageswap(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpageswap(instance, value);
-    }
+    pub const get_onrejectionhandled = mixins.WindowEventHandlers.get_onrejectionhandled;
+    pub const set_onrejectionhandled = mixins.WindowEventHandlers.set_onrejectionhandled;
 
-    pub fn get_onpopstate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onpopstate(instance);
-    }
+    pub const get_onstorage = mixins.WindowEventHandlers.get_onstorage;
+    pub const set_onstorage = mixins.WindowEventHandlers.set_onstorage;
 
-    pub fn set_onpopstate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onpopstate(instance, value);
-    }
+    pub const get_onunhandledrejection = mixins.WindowEventHandlers.get_onunhandledrejection;
+    pub const set_onunhandledrejection = mixins.WindowEventHandlers.set_onunhandledrejection;
 
-    pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onrejectionhandled(instance);
-    }
+    pub const get_onunload = mixins.WindowEventHandlers.get_onunload;
+    pub const set_onunload = mixins.WindowEventHandlers.set_onunload;
 
-    pub fn set_onrejectionhandled(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onrejectionhandled(instance, value);
-    }
+    pub const get_ongamepadconnected = mixins.WindowEventHandlers.get_ongamepadconnected;
+    pub const set_ongamepadconnected = mixins.WindowEventHandlers.set_ongamepadconnected;
 
-    pub fn get_onstorage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onstorage(instance);
-    }
+    pub const get_ongamepaddisconnected = mixins.WindowEventHandlers.get_ongamepaddisconnected;
+    pub const set_ongamepaddisconnected = mixins.WindowEventHandlers.set_ongamepaddisconnected;
 
-    pub fn set_onstorage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onstorage(instance, value);
-    }
-
-    pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onunhandledrejection(instance);
-    }
-
-    pub fn set_onunhandledrejection(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onunhandledrejection(instance, value);
-    }
-
-    pub fn get_onunload(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onunload(instance);
-    }
-
-    pub fn set_onunload(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onunload(instance, value);
-    }
-
-    pub fn get_ongamepadconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ongamepadconnected(instance);
-    }
-
-    pub fn set_ongamepadconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ongamepadconnected(instance, value);
-    }
-
-    pub fn get_ongamepaddisconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ongamepaddisconnected(instance);
-    }
-
-    pub fn set_ongamepaddisconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ongamepaddisconnected(instance, value);
-    }
-
-    pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onportalactivate(instance);
-    }
-
-    pub fn set_onportalactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onportalactivate(instance, value);
-    }
+    pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
+    pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
 
     /// Extended attributes: [Replaceable]
     pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {

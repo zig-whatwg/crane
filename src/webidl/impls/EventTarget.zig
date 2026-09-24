@@ -80,6 +80,18 @@ pub const InternalState = struct {
     /// This is filled in by Node's init - EventTarget itself uses 0.
     node_type: u16 = 0,
 
+    /// HTML "event handler map" (§8.1.8.1): the event handlers whose target
+    /// this is, by event type ("click" for onclick). Created with the first
+    /// one - most targets never have any. A value is the handler as the
+    /// binding converted it, a tagged V8 Global, kept as its address so that
+    /// EventHandler, OnErrorEventHandler and OnBeforeUnloadEventHandler share
+    /// the map. The keys are the IDL attributes' literal event types.
+    ///
+    /// The Globals are not disposed here, as none of the per-interface maps
+    /// this replaces disposed them. TODO(handles): dispose a replaced value and
+    /// the rest at teardown, measured with `leaks --atExit`.
+    event_handler_map: ?*std.StringHashMapUnmanaged(usize) = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -117,6 +129,11 @@ pub const InternalState = struct {
             }
             list.deinit();
             self.allocator.destroy(list);
+        }
+        if (self.event_handler_map) |map| {
+            map.deinit(self.allocator);
+            self.allocator.destroy(map);
+            self.event_handler_map = null;
         }
     }
 
@@ -517,6 +534,55 @@ pub fn deactivateEventHandler(instance: *runtime.Instance, event_type: []const u
         _ = list.remove(i) catch {};
         return;
     }
+}
+
+/// "Getting the current value of the event handler" (HTML §8.1.8.1) for
+/// `target`'s handler for `event_type`: its value, or null. Handlers are
+/// compiled when their content attribute is set (Element's event handler
+/// content attribute steps), so there is no uncompiled value to compile here.
+pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
+    const address = eventHandlerAddress(target, event_type) orelse return null;
+    // The address is a tagged Global, deliberately misaligned for a function
+    // pointer, so no cast will make one of it; a byte copy performs no
+    // alignment check (the same as conversions.zig). Everything that uses the
+    // value untags it first.
+    const Callable = @typeInfo(Handler).optional.child;
+    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
+    var handler: Callable = undefined;
+    @memcpy(std.mem.asBytes(&handler), std.mem.asBytes(&address));
+    return handler;
+}
+
+/// The event handler IDL attribute setter's steps 3 and 4 (HTML §8.1.8.1) on
+/// `target`: null deactivates the handler; any other value becomes the
+/// handler's value, which is then activated.
+pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, value: Handler) !void {
+    const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
+    // Step 3: "If the given value is null, then deactivate an event handler
+    // given eventTarget and name."
+    const handler = value orelse {
+        if (internal.event_handler_map) |map| _ = map.remove(event_type);
+        deactivateEventHandler(target, event_type);
+        return;
+    };
+    // Step 4: set eventHandler's value to the given value, then activate it.
+    const map = internal.event_handler_map orelse blk: {
+        const created = try internal.allocator.create(std.StringHashMapUnmanaged(usize));
+        created.* = .empty;
+        internal.event_handler_map = created;
+        break :blk created;
+    };
+    var address: usize = undefined;
+    @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
+    try map.put(internal.allocator, event_type, address);
+    try activateEventHandler(target, event_type);
+}
+
+/// The tagged address `eventHandler` reads, for dispatch.
+fn eventHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
+    const internal = getInternalFromRegistry(target) orelse return null;
+    const map = internal.event_handler_map orelse return null;
+    return map.get(event_type);
 }
 
 /// Operation: addEventListener
@@ -1178,60 +1244,10 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // Get the event type
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
-    // Try to get the event handler - first from HTMLElement, then from Window
-    // Both store tagged V8 Global handles, but in different formats:
-    // - HTMLElement: *anyopaque (with pointer tag bits)
-    // - Window: typedefs.EventHandler (?*fn) (which is actually a tagged Global handle)
-    var raw_ptr: ?*anyopaque = null;
-
-    // Try HTMLElement's internal state first
-    // BRAND-CHECK FIRST. `HTMLElement.getInternalState` is an InstanceRegistry
-    // lookup keyed on `@intFromPtr(instance)`, and the slab RECYCLES instance
-    // addresses - so on a target that is not an HTMLElement it can return a
-    // stale entry belonging to a freed element that happened to live at this
-    // address. Reading `event_handlers` out of that freed state panics with
-    // "incorrect alignment" inside HashMap.header, taking the process with it.
-    //
-    // Reachable from `new EventTarget()` + dispatchEvent the moment dispatch
-    // started succeeding for constructed Event subclasses.
-    //
-    // `stateAs` answers "is this really an HTMLElement" from the vtable
-    // ancestry and returns null when it cannot, which is the conservative
-    // answer here.
-    if (instance.stateAs(interfaces.HTMLElement.State) != null) {
-        const HTMLElementImpl = @import("HTMLElement.zig");
-        if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
-            raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice());
-        }
-    }
-
-    // If not found in HTMLElement, try Window's event handlers
-    if (raw_ptr == null) {
-        const WindowImpl = @import("Window.zig");
-        // Same brand-check reasoning as the HTMLElement lookup above.
-        if (if (instance.stateAs(interfaces.Window.State) != null) WindowImpl.getInternal(instance) else null) |window_internal| {
-            // Window stores EventHandler (= ?*fn), but it's actually a tagged Global handle.
-            // We need to get the function pointer and cast it to *anyopaque.
-            if (window_internal.event_handlers.get(event_type_str.asSlice())) |handler| {
-                if (handler) |fn_ptr| {
-                    // The function pointer is actually a tagged Global handle pointer
-                    // Cast it to *anyopaque to match HTMLElement's format
-                    raw_ptr = @ptrFromInt(@intFromPtr(fn_ptr));
-                }
-            }
-        }
-    }
-
-    // Then the Document's own storage, which nothing consulted before - so
-    // `document.onclick = f` was stored and never ran.
-    if (raw_ptr == null) {
-        const DocumentImpl = @import("Document.zig");
-        if (if (instance.stateAs(interfaces.Document.State) != null) DocumentImpl.getInternal(instance) else null) |document_internal| {
-            if (document_internal.event_handlers.get(event_type_str.asSlice())) |handler| {
-                if (handler) |fn_ptr| raw_ptr = @ptrFromInt(@intFromPtr(fn_ptr));
-            }
-        }
-    }
+    // The handler, from this target's event handler map. Every event handler
+    // IDL attribute keeps its value there, whichever interface declared it.
+    const handler_address = eventHandlerAddress(instance, event_type_str.asSlice()) orelse return;
+    const raw_ptr: ?*anyopaque = @ptrFromInt(handler_address);
 
     // If no handler found, return early
     const handler_ptr = raw_ptr orelse return;
