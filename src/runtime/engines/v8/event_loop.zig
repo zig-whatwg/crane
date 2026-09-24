@@ -370,20 +370,15 @@ pub const V8EventLoop = struct {
         // This handles any pending Promise.then() callbacks, queueMicrotask(), etc.
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
-        // Step 2: Execute ALL tasks from our task queue
-        // This ensures worker init tasks and other queued work completes
-        // before we poll timers (which includes test timeouts)
-        while (self.tasks.items.len > 0) {
-            const task = self.tasks.orderedRemove(0);
-            task.callback(task.context);
-            did_work = true;
-            // Run microtasks after each task - it may have resolved Promises
-            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-        }
+        // Step 2: Run the tasks queued before this turn began.
+        if (self.runQueuedTasks()) did_work = true;
 
         // Step 3: Calculate optimal wait time
         // We want to wake up when the next timer fires OR when max_wait_ms expires
         const wait_time = blk: {
+            // A task left for the next turn is work waiting now: poll, but
+            // do not block.
+            if (self.tasks.items.len > 0) break :blk 0;
             if (self.timer_manager) |mgr| {
                 if (mgr.getNextTimerDeadline()) |deadline| {
                     // Wake up at whichever comes first: timer deadline or max wait
@@ -408,15 +403,28 @@ pub const V8EventLoop = struct {
         // Timer callbacks may have scheduled JS callbacks that created Promises
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
-        // Step 6: Process ALL newly queued tasks from timer callbacks
-        while (self.tasks.items.len > 0) {
+        // Tasks queued during this turn - by the tasks above or by timer
+        // callbacks - wait for the next one, which a non-empty queue makes
+        // the caller start at once.
+        return did_work or self.hasPendingWork();
+    }
+
+    /// Run the tasks queued so far, each followed by a microtask checkpoint
+    /// (it may have resolved promises). A task they queue waits for the next
+    /// turn, as HTML's event loop runs one task per iteration. Draining until
+    /// the queue was empty let a task that queues a task - a frame whose load
+    /// handler navigates the frame, whose next load runs the handler again -
+    /// keep a turn from ever returning, and with it the deadline its caller
+    /// checks between turns. Returns whether any task ran.
+    fn runQueuedTasks(self: *Self) bool {
+        var budget = self.tasks.items.len;
+        if (budget == 0) return false;
+        while (budget > 0 and self.tasks.items.len > 0) : (budget -= 1) {
             const task = self.tasks.orderedRemove(0);
             task.callback(task.context);
-            did_work = true;
             v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
         }
-
-        return did_work or self.hasPendingWork();
+        return true;
     }
 
     /// Check if there's pending work that should prevent idle.
