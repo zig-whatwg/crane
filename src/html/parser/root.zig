@@ -68,6 +68,7 @@ pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 // Tag name string interning (performance optimization)
 pub const tag_name_intern = @import("tag_name_intern.zig");
 pub const internTagName = tag_name_intern.intern;
+pub const internTagNameExact = tag_name_intern.internExact;
 pub const isKnownHtmlTag = tag_name_intern.isKnownHtmlTag;
 pub const eqlInternedTag = tag_name_intern.eqlInterned;
 

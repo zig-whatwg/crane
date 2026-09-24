@@ -37,6 +37,7 @@ pub const SlotAssignmentMode = enum {
 // Import local helpers
 const slot_helpers = @import("slot_helpers.zig");
 const tree_helpers = @import("tree_helpers.zig");
+const names = @import("names.zig");
 
 /// Valid shadow host names per DOM spec
 const VALID_SHADOW_HOST_NAMES = [_][]const u8{
@@ -46,54 +47,6 @@ const VALID_SHADOW_HOST_NAMES = [_][]const u8{
     "p",       "section", "span",
 };
 
-/// Check if a name is a valid custom element name
-///
-/// Spec: https://html.spec.whatwg.org/#valid-custom-element-name
-/// A valid custom element name must:
-/// - Contain a hyphen (-)
-/// - Start with a lowercase ASCII letter (a-z)
-/// - Only contain lowercase ASCII letters, digits, hyphens, dots, underscores
-/// - Not be one of the reserved names
-fn isValidCustomElementName(name: []const u8) bool {
-    // Reserved names per HTML spec
-    const RESERVED_NAMES = [_][]const u8{
-        "annotation-xml",
-        "color-profile",
-        "font-face",
-        "font-face-src",
-        "font-face-uri",
-        "font-face-format",
-        "font-face-name",
-        "missing-glyph",
-    };
-
-    // Must contain a hyphen
-    if (std.mem.indexOfScalar(u8, name, '-') == null) {
-        return false;
-    }
-
-    // Must start with lowercase ASCII letter
-    if (name.len == 0 or !std.ascii.isLower(name[0])) {
-        return false;
-    }
-
-    // Check all characters are valid: lowercase letters, digits, hyphen, dot, underscore
-    for (name) |c| {
-        if (!std.ascii.isLower(c) and !std.ascii.isDigit(c) and c != '-' and c != '.' and c != '_') {
-            return false;
-        }
-    }
-
-    // Must not be a reserved name
-    for (RESERVED_NAMES) |reserved| {
-        if (std.mem.eql(u8, name, reserved)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /// Check if a local name is a valid shadow host name
 ///
 /// DOM §4.10.2 - A valid shadow host name is:
@@ -101,7 +54,7 @@ fn isValidCustomElementName(name: []const u8) bool {
 /// - one of the standard HTML elements listed above
 fn isValidShadowHostName(local_name: []const u8) bool {
     // Check if it's a valid custom element name
-    if (isValidCustomElementName(local_name)) {
+    if (names.isValidCustomElementName(local_name)) {
         return true;
     }
 
@@ -150,7 +103,7 @@ pub fn attachShadowRoot(
     }
 
     // Step 3: If element's local name is a valid custom element name, or element's "is" value is non-null:
-    if (isValidCustomElementName(element.local_name) or element.is_value != null) {
+    if (names.isValidCustomElementName(element.local_name) or element.is_value != null) {
         // Step 3.1: Let definition be the result of looking up a custom element definition
         // given element's custom element registry, its namespace, its local name, and its is value
         // Note: Custom element registry lookup deferred until Custom Elements spec implementation

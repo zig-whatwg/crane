@@ -628,9 +628,10 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
     // Free existing local name
     internal.local_name.deinit(internal.allocator);
 
-    // Try to use interned tag name for common HTML elements
+    // Try to use interned tag name for common HTML elements - on an exact
+    // match only: a local name is case-sensitive.
     const html_core = @import("html_core");
-    if (html_core.internTagName(local_name)) |interned| {
+    if (html_core.internTagNameExact(local_name)) |interned| {
         // Use interned static string - no allocation needed
         internal.local_name = runtime.DOMString.initInterned(interned);
     } else {
@@ -647,7 +648,8 @@ pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString
         // Clone to transfer ownership to caller (interface layer will free)
         return try ns.clone(instance.ctx.allocator);
     }
-    return runtime.DOMString.initEmpty();
+    // DOMString?: an element in no namespace answers null, not "".
+    return null;
 }
 
 /// Getter for prefix

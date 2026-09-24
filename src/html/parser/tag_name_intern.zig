@@ -261,6 +261,14 @@ pub fn intern(tag_name: []const u8) ?[]const u8 {
     return null;
 }
 
+/// The interned copy of `tag_name`, only on an exact match. An element's local
+/// name is case-sensitive - createElementNS(ns, "DIV") and an XML document's
+/// createElement("DIV") keep "DIV" - so naming an element must not lowercase
+/// it the way the tokenizer-facing `intern` does.
+pub fn internExact(tag_name: []const u8) ?[]const u8 {
+    return interned_tags.get(tag_name);
+}
+
 /// Check if a tag name is a known HTML element.
 ///
 /// This is useful for determining whether an element needs special

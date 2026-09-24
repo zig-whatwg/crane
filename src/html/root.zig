@@ -113,6 +113,7 @@ pub const FragmentParseOptions = parser.FragmentParseOptions;
 // Tag name string interning (performance optimization)
 pub const tag_name_intern = parser.tag_name_intern;
 pub const internTagName = parser.internTagName;
+pub const internTagNameExact = parser.internTagNameExact;
 pub const isKnownHtmlTag = parser.isKnownHtmlTag;
 pub const eqlInternedTag = parser.eqlInternedTag;
 
@@ -267,6 +268,9 @@ pub const shouldBlockScriptExecution = stylesheet_blocking.shouldBlockScriptExec
 
 // Permissions Policy (W3C Permissions Policy spec)
 pub const permissions_policy = @import("permissions_policy.zig");
+
+// The element interface for an element in the HTML namespace (§3.2.2)
+pub const element_interface = @import("element_interface.zig");
 
 // Re-export commonly used permissions policy types
 pub const PermissionsPolicy = permissions_policy.PermissionsPolicy;

@@ -16,6 +16,7 @@
 //! - **Upgrade**: Converting an undefined element to a custom element when its definition is registered
 
 const std = @import("std");
+const dom_names = @import("dom").names;
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -232,43 +233,6 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
-/// Validate a custom element name per spec
-/// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name
-pub fn isValidCustomElementName(name: []const u8) bool {
-    if (name.len == 0) return false;
-
-    // Must start with ASCII lower alpha
-    if (name[0] < 'a' or name[0] > 'z') return false;
-
-    // Must contain a hyphen
-    var has_hyphen = false;
-    for (name) |c| {
-        if (c == '-') {
-            has_hyphen = true;
-        }
-        // Must not contain ASCII upper alpha
-        if (c >= 'A' and c <= 'Z') return false;
-    }
-    if (!has_hyphen) return false;
-
-    // Must not be one of the reserved names
-    const reserved_names = [_][]const u8{
-        "annotation-xml",
-        "color-profile",
-        "font-face",
-        "font-face-src",
-        "font-face-uri",
-        "font-face-format",
-        "font-face-name",
-        "missing-glyph",
-    };
-    for (reserved_names) |reserved| {
-        if (std.mem.eql(u8, name, reserved)) return false;
-    }
-
-    return true;
-}
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -324,7 +288,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     // (Handled by the callback type)
 
     // Step 2: If name is not a valid custom element name, throw SyntaxError
-    if (!isValidCustomElementName(name_str)) {
+    if (!dom_names.isValidCustomElementName(name_str)) {
         return error.SyntaxError;
     }
 
@@ -354,7 +318,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
             }
 
             // Step 7.2: If extends is a valid custom element name, throw NotSupportedError
-            if (isValidCustomElementName(extends_str)) {
+            if (dom_names.isValidCustomElementName(extends_str)) {
                 return error.NotSupportedError;
             }
 
@@ -521,7 +485,7 @@ pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) an
     const name_str = name.asSlice();
 
     // Step 1: If name is not a valid custom element name, return rejected promise with SyntaxError
-    if (!isValidCustomElementName(name_str)) {
+    if (!dom_names.isValidCustomElementName(name_str)) {
         return error.SyntaxError;
     }
 
@@ -590,34 +554,6 @@ pub fn lookUpCustomElementDefinition(
 // ============================================================================
 // Tests
 // ============================================================================
-
-test "isValidCustomElementName" {
-    // Valid names
-    try std.testing.expect(isValidCustomElementName("my-element"));
-    try std.testing.expect(isValidCustomElementName("x-foo"));
-    try std.testing.expect(isValidCustomElementName("my-custom-element"));
-    try std.testing.expect(isValidCustomElementName("a-b"));
-
-    // Invalid names - no hyphen
-    try std.testing.expect(!isValidCustomElementName("myelement"));
-    try std.testing.expect(!isValidCustomElementName("div"));
-
-    // Invalid names - doesn't start with lowercase
-    try std.testing.expect(!isValidCustomElementName("My-element"));
-    try std.testing.expect(!isValidCustomElementName("1-element"));
-    try std.testing.expect(!isValidCustomElementName("-element"));
-
-    // Invalid names - contains uppercase
-    try std.testing.expect(!isValidCustomElementName("my-Element"));
-
-    // Invalid names - reserved names
-    try std.testing.expect(!isValidCustomElementName("annotation-xml"));
-    try std.testing.expect(!isValidCustomElementName("color-profile"));
-    try std.testing.expect(!isValidCustomElementName("font-face"));
-
-    // Invalid names - empty
-    try std.testing.expect(!isValidCustomElementName(""));
-}
 
 test "isKnownHTMLElement" {
     try std.testing.expect(isKnownHTMLElement("div"));

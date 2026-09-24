@@ -81,6 +81,45 @@ pub fn isValidElementLocalName(name: []const u8) bool {
     return true;
 }
 
+/// HTML's "valid custom element name". It sits with the DOM name checks
+/// because its first rule is one of them, and because DOM ("valid shadow host
+/// name") and HTML (the element interface, `customElements.define()`) both ask
+/// it.
+/// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name
+pub fn isValidCustomElementName(name: []const u8) bool {
+    // "name is a valid element local name;"
+    if (!isValidElementLocalName(name)) return false;
+
+    // "name's 0th code point is an ASCII lower alpha;"
+    if (!std.ascii.isLower(name[0])) return false;
+
+    // "name does not contain any ASCII upper alphas;" and "name contains a
+    // U+002D (-);"
+    var has_hyphen = false;
+    for (name) |c| {
+        if (std.ascii.isUpper(c)) return false;
+        if (c == '-') has_hyphen = true;
+    }
+    if (!has_hyphen) return false;
+
+    // "name is not one of the following" - every hyphenated element name in
+    // SVG 2 and MathML.
+    const reserved = [_][]const u8{
+        "annotation-xml",
+        "color-profile",
+        "font-face",
+        "font-face-src",
+        "font-face-uri",
+        "font-face-format",
+        "font-face-name",
+        "missing-glyph",
+    };
+    for (reserved) |r| {
+        if (std.mem.eql(u8, name, r)) return false;
+    }
+    return true;
+}
+
 /// "A string is a valid doctype name if it does not contain ASCII whitespace,
 /// U+0000 NULL, or U+003E (>)." The empty string is one.
 pub fn isValidDoctypeName(name: []const u8) bool {
@@ -163,4 +202,26 @@ pub fn validateAndExtract(namespace_arg: ?[]const u8, qualified_name: []const u8
 
 fn eqlOpt(a: ?[]const u8, b: []const u8) bool {
     return if (a) |x| std.mem.eql(u8, x, b) else false;
+}
+
+test "valid custom element name" {
+    const valid = [_][]const u8{ "my-element", "x-foo", "a-", "a-b.c_d", "math-\u{3b1}", "emotion-\u{1f60d}", "annotation-xml-custom" };
+    for (valid) |name| try std.testing.expect(isValidCustomElementName(name));
+
+    const invalid = [_][]const u8{
+        "", // not a valid element local name
+        "myelement", // no hyphen
+        "My-element", // 0th code point is not an ASCII lower alpha
+        "1-element",
+        "-element",
+        "my-Element", // an ASCII upper alpha
+        "a- b", // ASCII whitespace: not a valid element local name
+        "a-\x00",
+        "a-/",
+        "a->",
+        "annotation-xml", // reserved
+        "font-face-name",
+        "missing-glyph",
+    };
+    for (invalid) |name| try std.testing.expect(!isValidCustomElementName(name));
 }
