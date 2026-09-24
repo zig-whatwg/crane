@@ -319,8 +319,8 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_transferControlToOffscreen(instance);
     }
 
-    pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
-        return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
+    pub fn call_toBlob(instance: *runtime.Instance, callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
+        return try HTMLCanvasElementImpl.call_toBlob(instance, callback, @"type", quality);
     }
 
     pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {

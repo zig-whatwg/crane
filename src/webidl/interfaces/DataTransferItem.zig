@@ -120,8 +120,8 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.get_type(instance);
     }
 
-    pub fn call_getAsString(instance: *runtime.Instance, _callback: ?FunctionStringCallback) anyerror!void {
-        return try DataTransferItemImpl.call_getAsString(instance, _callback);
+    pub fn call_getAsString(instance: *runtime.Instance, callback: ?FunctionStringCallback) anyerror!void {
+        return try DataTransferItemImpl.call_getAsString(instance, callback);
     }
 
     pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {

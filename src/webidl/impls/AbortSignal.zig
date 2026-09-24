@@ -155,7 +155,7 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// Spec: § 3.3.2 "Returns a signal that is aborted when any of the given signals are aborted"
 /// Note: Full implementation requires DOM event infrastructure
 /// Static methods use call_static_<name> convention (_any has underscore prefix in IDL)
-pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
+pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     // Requires iteration over signals and event listener setup

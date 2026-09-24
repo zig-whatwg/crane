@@ -128,7 +128,10 @@ pub const Lexer = struct {
             const token_type = getKeyword(lexeme) orelse .identifier;
             return Token{
                 .type = token_type,
-                .lexeme = lexeme,
+                // WebIDL §2.2: an identifier's value is the token with its
+                // leading "_" removed - the escape that lets `_any` name a
+                // member `any`, a keyword.
+                .lexeme = if (token_type == .identifier and lexeme.len > 1 and lexeme[0] == '_') lexeme[1..] else lexeme,
                 .line = start_line,
                 .column = start_column,
             };

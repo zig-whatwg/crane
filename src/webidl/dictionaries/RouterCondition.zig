@@ -12,6 +12,6 @@ pub const RouterCondition = struct {
     requestMode: ?enums.RequestMode = null,
     requestDestination: ?enums.RequestDestination = null,
     runningStatus: ?enums.RunningStatus = null,
-    _or: ?[]const RouterCondition = null,
+    @"or": ?[]const RouterCondition = null,
     not: ?RouterCondition = null,
 };

@@ -7,5 +7,5 @@ const typedefs = @import("typedefs");
 
 pub const SanitizerAttributeNamespace = struct {
     name: runtime.DOMString,
-    _namespace: ?runtime.DOMString = null,
+    namespace: ?runtime.DOMString = null,
 };

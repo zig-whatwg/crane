@@ -32,7 +32,7 @@ pub const RdfTriple = struct {
         pub const properties = .{
             .{ "subject", "get_subject", null },
             .{ "predicate", "get_predicate", null },
-            .{ "_object", "get__object", null },
+            .{ "object", "get_object", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -48,7 +48,7 @@ pub const RdfTriple = struct {
         pub const eager_properties = .{
             .{ "subject", "get_subject", null },
             .{ "predicate", "get_predicate", null },
-            .{ "_object", "get__object", null },
+            .{ "object", "get_object", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -63,7 +63,7 @@ pub const RdfTriple = struct {
         struct {
             subject: runtime.USVString = undefined,
             predicate: runtime.USVString = undefined,
-            _object: union(enum) {
+            object: union(enum) {
                 USVString: runtime.USVString,
                 RdfLiteral: RdfLiteral,
             } = undefined,
@@ -72,7 +72,7 @@ pub const RdfTriple = struct {
     );
 
     const delegates = .{
-        .get__object = &get__object,
+        .get_object = &get_object,
         .get_predicate = &get_predicate,
         .get_subject = &get_subject,
 
@@ -117,7 +117,7 @@ pub const RdfTriple = struct {
         return try RdfTripleImpl.get_predicate(instance);
     }
 
-    pub fn get__object(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try RdfTripleImpl.get__object(instance);
+    pub fn get_object(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try RdfTripleImpl.get_object(instance);
     }
 };

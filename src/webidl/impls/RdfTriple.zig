@@ -64,7 +64,7 @@ pub fn get_predicate(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for _object
-pub fn get__object(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_object(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

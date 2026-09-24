@@ -60,7 +60,7 @@ pub fn set_onprioritychange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: _any
-pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue, init_data: webidl.Opt(dictionaries.TaskSignalAnyInit)) anyerror!*runtime.Instance {
+pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue, init_data: webidl.Opt(dictionaries.TaskSignalAnyInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     _ = init_data;

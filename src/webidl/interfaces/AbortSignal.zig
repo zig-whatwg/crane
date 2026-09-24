@@ -52,14 +52,14 @@ pub const AbortSignal = struct {
         pub const static_methods = .{
             .{ "abort", "call_static_abort", 0 },
             .{ "timeout", "call_static_timeout", 1 },
-            .{ "_any", "call_static__any", 1 },
+            .{ "any", "call_static_any", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
             "timeout",
-            "_any",
+            "any",
             "throwIfAborted",
         };
 
@@ -166,9 +166,9 @@ pub const AbortSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
+    pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
-        return try AbortSignalImpl.call_static__any(instance, signals);
+        return try AbortSignalImpl.call_static_any(instance, signals);
     }
 };

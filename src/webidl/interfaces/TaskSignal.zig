@@ -52,12 +52,12 @@ pub const TaskSignal = struct {
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "_any", "call_static__any", 1 },
+            .{ "any", "call_static_any", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "_any",
+            "any",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -137,9 +137,9 @@ pub const TaskSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue, init_data: webidl.Opt(TaskSignalAnyInit)) anyerror!*runtime.Instance {
+    pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue, init_data: webidl.Opt(TaskSignalAnyInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
-        return try TaskSignalImpl.call_static__any(instance, signals, init_data);
+        return try TaskSignalImpl.call_static_any(instance, signals, init_data);
     }
 };
