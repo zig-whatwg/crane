@@ -1395,54 +1395,6 @@ pub const Context = struct {
         // (see bindings.zig initializeNamespaces -> Console.registerGlobal)
         // The native binding provides proper console.log/error/etc with output to stderr
 
-        // Register btoa/atob for base64 encoding/decoding
-        {
-            const btoa_atob_script =
-                \\(function() {
-                \\  // btoa: binary string to base64
-                \\  globalThis.btoa = function(str) {
-                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-                \\    var result = '';
-                \\    var i = 0;
-                \\    while (i < str.length) {
-                \\      var a = str.charCodeAt(i++) || 0;
-                \\      var b = str.charCodeAt(i++) || 0;
-                \\      var c = str.charCodeAt(i++) || 0;
-                \\      var triplet = (a << 16) | (b << 8) | c;
-                \\      result += chars[(triplet >> 18) & 63];
-                \\      result += chars[(triplet >> 12) & 63];
-                \\      result += (i > str.length + 1) ? '=' : chars[(triplet >> 6) & 63];
-                \\      result += (i > str.length) ? '=' : chars[triplet & 63];
-                \\    }
-                \\    return result;
-                \\  };
-                \\  
-                \\  // atob: base64 to binary string
-                \\  globalThis.atob = function(str) {
-                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-                \\    str = str.replace(/=+$/, '');
-                \\    var result = '';
-                \\    var i = 0;
-                \\    while (i < str.length) {
-                \\      var a = chars.indexOf(str[i++]);
-                \\      var b = chars.indexOf(str[i++]);
-                \\      var c = chars.indexOf(str[i++]);
-                \\      var d = chars.indexOf(str[i++]);
-                \\      // Use 0 instead of -1 in triplet calculation to prevent corruption
-                \\      var triplet = (a << 18) | (b << 12) | ((c === -1 ? 0 : c) << 6) | (d === -1 ? 0 : d);
-                \\      result += String.fromCharCode((triplet >> 16) & 255);
-                \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
-                \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
-                \\    }
-                \\    return result;
-                \\  };
-                \\})();
-            ;
-            _ = self.evaluateScript(btoa_atob_script) catch |err| {
-                log.debug("Warning: Failed to register btoa/atob: {}\n", .{err});
-            };
-        }
-
         // NOTE: getComputedStyle is now properly defined on Window.prototype via WebIDL binding.
         // The Window.call_getComputedStyle implementation creates a proper CSSStyleDeclaration
         // with named property handlers for CSS property access (e.g., style.borderStyle).

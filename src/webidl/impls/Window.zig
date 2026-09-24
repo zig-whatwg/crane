@@ -2155,9 +2155,7 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: atob
 pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
 }
 
 /// Operation: alert
@@ -2177,9 +2175,7 @@ pub fn call_alert(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: btoa
 pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
 /// Operation: focus

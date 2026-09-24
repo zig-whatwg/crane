@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const html_core = @import("html_core");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -123,17 +124,19 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 }
 
 /// Operation: atob
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-atob
 pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    // Freed by the binding.
+    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
 }
 
 /// Operation: btoa
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-btoa
 pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    // Freed by the binding.
+    return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
 /// Operation: createImageBitmap

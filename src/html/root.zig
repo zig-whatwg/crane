@@ -271,6 +271,7 @@ pub const permissions_policy = @import("permissions_policy.zig");
 
 // The element interface for an element in the HTML namespace (§3.2.2)
 pub const element_interface = @import("element_interface.zig");
+pub const base64_utility = @import("base64_utility.zig");
 
 // Re-export commonly used permissions policy types
 pub const PermissionsPolicy = permissions_policy.PermissionsPolicy;

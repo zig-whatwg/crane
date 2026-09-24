@@ -152,3 +152,52 @@ pub fn isomorphicEncode(allocator: Allocator, string: String) !ByteSequence {
 
     return result;
 }
+
+/// Isomorphic encode a string held as UTF-8 (the engine's DOMString
+/// representation): each code point, which must not exceed U+00FF, as one
+/// byte. A lone surrogate reaches here as U+FFFD, and fails the same way.
+/// WHATWG Infra Standard §4.6 "isomorphic encode"
+pub fn isomorphicEncodeUtf8(allocator: Allocator, text: []const u8) ByteError![]u8 {
+    const view = std.unicode.Utf8View.init(text) catch return ByteError.InvalidUtf8;
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer bytes.deinit(allocator);
+    try bytes.ensureTotalCapacity(allocator, text.len);
+    var it = view.iterator();
+    while (it.nextCodepoint()) |code_point| {
+        if (code_point > 0xFF) return ByteError.InvalidIsomorphicEncoding;
+        bytes.appendAssumeCapacity(@intCast(code_point));
+    }
+    return bytes.toOwnedSlice(allocator);
+}
+
+/// Isomorphic decode a byte sequence into a string held as UTF-8: each byte
+/// as the code point of the same value.
+/// WHATWG Infra Standard §4.4 "isomorphic decode"
+pub fn isomorphicDecodeToUtf8(allocator: Allocator, bytes: ByteSequence) ByteError![]u8 {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer text.deinit(allocator);
+    try text.ensureTotalCapacity(allocator, bytes.len * 2);
+    for (bytes) |b| {
+        var buf: [2]u8 = undefined;
+        const n = std.unicode.utf8Encode(b, &buf) catch unreachable;
+        text.appendSliceAssumeCapacity(buf[0..n]);
+    }
+    return text.toOwnedSlice(allocator);
+}
+
+test "isomorphic encode of a UTF-8 string" {
+    const allocator = std.testing.allocator;
+    const bytes = try isomorphicEncodeUtf8(allocator, "a\xc3\xbf");
+    defer allocator.free(bytes);
+    try std.testing.expectEqualSlices(u8, &.{ 'a', 0xFF }, bytes);
+    // U+0100 is not an isomorphic string's code point.
+    try std.testing.expectError(ByteError.InvalidIsomorphicEncoding, isomorphicEncodeUtf8(allocator, "\xc4\x80"));
+    try std.testing.expectError(ByteError.InvalidUtf8, isomorphicEncodeUtf8(allocator, "\xff"));
+}
+
+test "isomorphic decode to UTF-8" {
+    const allocator = std.testing.allocator;
+    const text = try isomorphicDecodeToUtf8(allocator, &.{ 'a', 0x80, 0xFF });
+    defer allocator.free(text);
+    try std.testing.expectEqualStrings("a\xc2\x80\xc3\xbf", text);
+}

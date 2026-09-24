@@ -515,83 +515,14 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
     return error.NotImplemented;
 }
 
-/// Operation: atob
-///
-/// Spec: HTML Standard § 8.3 Base64 utility methods
-/// https://html.spec.whatwg.org/#dom-atob
-///
-/// "The atob(data) method must run the following steps:
-/// 1. Let decodedData be the result of running forgiving-base64 decode on data.
-/// 2. If decodedData is failure, then throw an "InvalidCharacterError" DOMException.
-/// 3. Return decodedData."
+/// Operation: atob - the WindowOrWorkerGlobalScope mixin's.
 pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    const input = data.asSlice();
-
-    // Handle empty input - ByteString is just []const u8
-    if (input.len == 0) {
-        return "";
-    }
-
-    // Calculate decoded length using standard library function
-    const state = instance.getState(State);
-    const allocator = if (state.own._internal) |internal| internal.allocator else std.heap.page_allocator;
-
-    // Use calcSizeForSlice to get exact decoded length
-    const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(input) catch {
-        return error.InvalidCharacter;
-    };
-
-    // Allocate buffer for decoded data
-    const buffer = allocator.alloc(u8, decoded_len) catch return error.OutOfMemory;
-    errdefer allocator.free(buffer);
-
-    // Decode using standard base64 - decode returns void on success
-    std.base64.standard.Decoder.decode(buffer, input) catch {
-        allocator.free(buffer);
-        return error.InvalidCharacter;
-    };
-
-    // Return the buffer - ByteString is just []const u8
-    // NOTE: The caller is responsible for freeing this buffer
-    return buffer;
+    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
 }
 
-/// Operation: btoa
-///
-/// Spec: HTML Standard § 8.3 Base64 utility methods
-/// https://html.spec.whatwg.org/#dom-btoa
-///
-/// "The btoa(data) method must run the following steps:
-/// 1. If data contains any character whose code point is greater than U+00FF,
-///    throw an "InvalidCharacterError" DOMException.
-/// 2. Return the forgiving-base64 encode of data."
+/// Operation: btoa - the WindowOrWorkerGlobalScope mixin's.
 pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    const input = data.asSlice();
-
-    // Step 1: Validate all characters are in Latin-1 range (U+0000 to U+00FF)
-    // Since we're dealing with bytes (0-255), this is implicitly satisfied
-
-    // Handle empty input
-    if (input.len == 0) {
-        return runtime.DOMString.initEmpty();
-    }
-
-    // Step 2: Encode to base64
-    const state = instance.getState(State);
-    const allocator = if (state.own._internal) |internal| internal.allocator else std.heap.page_allocator;
-
-    // Calculate encoded length
-    const encoded_len = std.base64.standard.Encoder.calcSize(input.len);
-    const buffer = allocator.alloc(u8, encoded_len) catch return error.OutOfMemory;
-    errdefer allocator.free(buffer);
-
-    // Encode - returns a const slice INTO buffer, so hand initOwned the mutable
-    // buffer itself. The bytes are the same; only `buffer` carries the ownership
-    // that DOMString.deinit will act on.
-    const encoded = std.base64.standard.Encoder.encode(buffer, input);
-
-    // NOTE: The caller is responsible for freeing via DOMString.deinit(allocator)
-    return runtime.DOMString.initOwned(buffer[0..encoded.len]);
+    return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
 /// Operation: setInterval

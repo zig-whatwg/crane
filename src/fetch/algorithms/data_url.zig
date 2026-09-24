@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 
 /// Result of processing a data: URL.
 pub const DataUrlResult = struct {
@@ -111,8 +112,9 @@ pub fn processDataUrl(allocator: Allocator, url_str: []const u8) DataUrlError!?D
         const percent_decoded = try percentDecode(allocator, encoded_body);
         defer allocator.free(percent_decoded);
 
-        body = forgivingBase64Decode(allocator, percent_decoded) catch {
-            return DataUrlError.Base64DecodeFailed;
+        body = infra.base64.forgivingBase64Decode(allocator, percent_decoded) catch |err| switch (err) {
+            error.InvalidBase64 => return DataUrlError.Base64DecodeFailed,
+            error.OutOfMemory => return error.OutOfMemory,
         };
     } else {
         // Step 12: Just percent-decode
@@ -179,41 +181,6 @@ fn hexValue(c: u8) u8 {
     if (c >= 'a' and c <= 'f') return c - 'a' + 10;
     if (c >= 'A' and c <= 'F') return c - 'A' + 10;
     unreachable;
-}
-
-/// Forgiving base64 decode per WHATWG Infra spec.
-/// Strips ASCII whitespace before decoding.
-fn forgivingBase64Decode(allocator: Allocator, encoded: []const u8) ![]const u8 {
-    // Count non-whitespace characters
-    var count: usize = 0;
-    for (encoded) |c| {
-        if (!isAsciiWhitespace(c)) count += 1;
-    }
-
-    // Strip whitespace
-    const stripped = try allocator.alloc(u8, count);
-    defer allocator.free(stripped);
-
-    var idx: usize = 0;
-    for (encoded) |c| {
-        if (!isAsciiWhitespace(c)) {
-            stripped[idx] = c;
-            idx += 1;
-        }
-    }
-
-    // Decode
-    const decoder = std.base64.standard.Decoder;
-    const decoded_len = try decoder.calcSizeForSlice(stripped);
-    const result = try allocator.alloc(u8, decoded_len);
-    errdefer allocator.free(result);
-
-    try decoder.decode(result, stripped);
-    return result;
-}
-
-fn isAsciiWhitespace(c: u8) bool {
-    return c == 0x09 or c == 0x0A or c == 0x0C or c == 0x0D or c == 0x20;
 }
 
 // =============================================================================

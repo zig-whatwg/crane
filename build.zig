@@ -1793,6 +1793,8 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("url_record", url_internal_url_record_mod);
     fetch_mod.addImport("basic_parser", url_basic_parser_mod);
     fetch_mod.addImport("url_serializer", url_serializer_mod);
+    // A base64 data: URL body is Infra's forgiving-base64 decode.
+    fetch_mod.addImport("infra", infra_mod);
 
     // Configure libcurl for network requests
     if (use_system_curl) {
@@ -1807,7 +1809,6 @@ pub fn build(b: *std.Build) void {
     }
 
     // fetch_mod dependencies will be added as implementation progresses:
-    // fetch_mod.addImport("infra", infra_mod);
     // fetch_mod.addImport("url", url_mod);
     // fetch_mod.addImport("streams", streams_mod);
     // fetch_mod.addImport("encoding", encoding_mod);

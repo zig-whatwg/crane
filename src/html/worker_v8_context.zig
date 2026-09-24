@@ -1144,6 +1144,21 @@ pub const WorkerV8Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
 
+        // atob() and btoa() - WindowOrWorkerGlobalScope, HTML §8.3.
+        inline for (.{ .{ "atob", &workerAtobCallback }, .{ "btoa", &workerBtoaCallback } }) |native| {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, native[1], null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, native[0], native[0].len) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
         // Set up worker 'name' property
         const name = dedicated_worker.getName();
         if (name.len > 0) {
@@ -1332,56 +1347,6 @@ pub const WorkerV8Context = struct {
                 return error.StringCreationFailed;
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // ====================================================================
-        // Base64 functions - btoa, atob
-        // Per HTML spec: https://html.spec.whatwg.org/#dom-btoa
-        // Part of WindowOrWorkerGlobalScope mixin
-        // ====================================================================
-        {
-            const btoa_atob_script =
-                \\(function() {
-                \\  // btoa: binary string to base64
-                \\  globalThis.btoa = function(str) {
-                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-                \\    var result = '';
-                \\    var i = 0;
-                \\    while (i < str.length) {
-                \\      var a = str.charCodeAt(i++) || 0;
-                \\      var b = str.charCodeAt(i++) || 0;
-                \\      var c = str.charCodeAt(i++) || 0;
-                \\      var triplet = (a << 16) | (b << 8) | c;
-                \\      result += chars[(triplet >> 18) & 63];
-                \\      result += chars[(triplet >> 12) & 63];
-                \\      result += (i > str.length + 1) ? '=' : chars[(triplet >> 6) & 63];
-                \\      result += (i > str.length) ? '=' : chars[triplet & 63];
-                \\    }
-                \\    return result;
-                \\  };
-                \\
-                \\  // atob: base64 to binary string
-                \\  globalThis.atob = function(str) {
-                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-                \\    str = str.replace(/=+$/, '');
-                \\    var result = '';
-                \\    var i = 0;
-                \\    while (i < str.length) {
-                \\      var a = chars.indexOf(str[i++]);
-                \\      var b = chars.indexOf(str[i++]);
-                \\      var c = chars.indexOf(str[i++]);
-                \\      var d = chars.indexOf(str[i++]);
-                \\      // Use 0 instead of -1 in triplet calculation to prevent corruption
-                \\      var triplet = (a << 18) | (b << 12) | ((c === -1 ? 0 : c) << 6) | (d === -1 ? 0 : d);
-                \\      result += String.fromCharCode((triplet >> 16) & 255);
-                \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
-                \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
-                \\    }
-                \\    return result;
-                \\  };
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(btoa_atob_script);
         }
 
         // ====================================================================
@@ -2808,6 +2773,48 @@ fn workerStructuredCloneCallback(info: *const v8.ffi.FunctionCallbackInfo) callc
     };
 
     info.setReturnValue(cloned);
+}
+
+fn workerAtobCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerBase64(info, "atob", html_core.base64_utility.atob);
+}
+
+fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerBase64(info, "btoa", html_core.base64_utility.btoa);
+}
+
+/// The binding of `DOMString atob(DOMString data)` and of btoa: convert the
+/// argument, run the steps, and return the string or throw what they throw.
+fn workerBase64(
+    info: *const v8.ffi.FunctionCallbackInfo,
+    comptime name: []const u8,
+    steps: *const fn (Allocator, []const u8) html_core.base64_utility.Error![]u8,
+) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Context_Dispose(context);
+    const allocator = getWorkerAllocator() orelse std.heap.page_allocator;
+
+    // `data` is required.
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        v8.conversions.throwTypeErrorFromContext(isolate, context, "Failed to execute '" ++ name ++ "': 1 argument required, but only 0 present.");
+        return;
+    }
+    const arg = info.get(0);
+    defer v8.ffi.v8_Global_Dispose(arg);
+    var data = v8.conversions.fromV8Value(runtime.DOMString, allocator, isolate, context, arg) catch return;
+    defer data.deinit(allocator);
+
+    const result = steps(allocator, data.asSlice()) catch |err| {
+        v8.conversions.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+        return;
+    };
+    defer allocator.free(result);
+    // Owned: v8_String_NewFromUtf8 returns a Global the caller disposes;
+    // setReturnValue reads it into a Local.
+    const str = v8.ffi.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse return;
+    defer v8.ffi.v8_String_Dispose(str);
+    info.setReturnValue(@ptrCast(str));
 }
 
 /// Dispatch a MessageEvent to the worker's self.onmessage handler
