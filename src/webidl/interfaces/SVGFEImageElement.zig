@@ -284,25 +284,15 @@ pub const SVGFEImageElement = struct {
         return try SVGFEImageElementImpl.get_crossOrigin(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEImageElementImpl.get_x(instance);
-    }
+    pub const get_x = mixins.SVGFilterPrimitiveStandardAttributes.get_x;
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEImageElementImpl.get_y(instance);
-    }
+    pub const get_y = mixins.SVGFilterPrimitiveStandardAttributes.get_y;
 
-    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEImageElementImpl.get_width(instance);
-    }
+    pub const get_width = mixins.SVGFilterPrimitiveStandardAttributes.get_width;
 
-    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEImageElementImpl.get_height(instance);
-    }
+    pub const get_height = mixins.SVGFilterPrimitiveStandardAttributes.get_height;
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEImageElementImpl.get_result(instance);
-    }
+    pub const get_result = mixins.SVGFilterPrimitiveStandardAttributes.get_result;
 
     /// Extended attributes: [SameObject]
     pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -311,7 +301,7 @@ pub const SVGFEImageElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGFEImageElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }

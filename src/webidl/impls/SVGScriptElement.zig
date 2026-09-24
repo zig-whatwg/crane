@@ -51,12 +51,6 @@ pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString 
     return null;
 }
 
-/// Getter for href
-pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for type
 pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;

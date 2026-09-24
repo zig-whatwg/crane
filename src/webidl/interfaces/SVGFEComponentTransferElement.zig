@@ -268,23 +268,13 @@ pub const SVGFEComponentTransferElement = struct {
         return try SVGFEComponentTransferElementImpl.get_in1(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEComponentTransferElementImpl.get_x(instance);
-    }
+    pub const get_x = mixins.SVGFilterPrimitiveStandardAttributes.get_x;
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEComponentTransferElementImpl.get_y(instance);
-    }
+    pub const get_y = mixins.SVGFilterPrimitiveStandardAttributes.get_y;
 
-    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEComponentTransferElementImpl.get_width(instance);
-    }
+    pub const get_width = mixins.SVGFilterPrimitiveStandardAttributes.get_width;
 
-    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEComponentTransferElementImpl.get_height(instance);
-    }
+    pub const get_height = mixins.SVGFilterPrimitiveStandardAttributes.get_height;
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEComponentTransferElementImpl.get_result(instance);
-    }
+    pub const get_result = mixins.SVGFilterPrimitiveStandardAttributes.get_result;
 };

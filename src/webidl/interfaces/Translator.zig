@@ -149,9 +149,7 @@ pub const Translator = struct {
         return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try TranslatorImpl.call_destroy(instance);
-    }
+    pub const call_destroy = mixins.DestroyableModel.call_destroy;
 
     pub fn call_static_create(instance: *runtime.Instance, options: TranslatorCreateOptions) anyerror!runtime.JSValue {
         return try TranslatorImpl.call_static_create(instance, options);

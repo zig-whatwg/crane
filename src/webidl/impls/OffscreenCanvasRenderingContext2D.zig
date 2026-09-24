@@ -46,30 +46,6 @@ pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for globalAlpha
-pub fn get_globalAlpha(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for globalCompositeOperation
-pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for imageSmoothingEnabled
-pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for imageSmoothingQuality
-pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!enums.ImageSmoothingQuality {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for strokeStyle
 pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
@@ -78,36 +54,6 @@ pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Getter for fillStyle
 pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for shadowOffsetX
-pub fn get_shadowOffsetX(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for shadowOffsetY
-pub fn get_shadowOffsetY(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for shadowBlur
-pub fn get_shadowBlur(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for shadowColor
-pub fn get_shadowColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for filter
-pub fn get_filter(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -142,100 +88,6 @@ pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
-/// Getter for lang
-pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for font
-pub fn get_font(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for textAlign
-pub fn get_textAlign(instance: *runtime.Instance) anyerror!enums.CanvasTextAlign {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for textBaseline
-pub fn get_textBaseline(instance: *runtime.Instance) anyerror!enums.CanvasTextBaseline {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) anyerror!enums.CanvasDirection {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for letterSpacing
-pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fontKerning
-pub fn get_fontKerning(instance: *runtime.Instance) anyerror!enums.CanvasFontKerning {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fontStretch
-pub fn get_fontStretch(instance: *runtime.Instance) anyerror!enums.CanvasFontStretch {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fontVariantCaps
-pub fn get_fontVariantCaps(instance: *runtime.Instance) anyerror!enums.CanvasFontVariantCaps {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for textRendering
-pub fn get_textRendering(instance: *runtime.Instance) anyerror!enums.CanvasTextRendering {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for wordSpacing
-pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for globalAlpha
-pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for globalCompositeOperation
-pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for imageSmoothingEnabled
-pub fn set_imageSmoothingEnabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for imageSmoothingQuality
-pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.ImageSmoothingQuality) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for strokeStyle
 pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
@@ -245,41 +97,6 @@ pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anye
 
 /// Setter for fillStyle
 pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for shadowOffsetX
-pub fn set_shadowOffsetX(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for shadowOffsetY
-pub fn set_shadowOffsetY(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for shadowBlur
-pub fn set_shadowBlur(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for shadowColor
-pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for filter
-pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -320,83 +137,6 @@ pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void
     return error.NotImplemented;
 }
 
-/// Setter for lang
-pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for font
-pub fn set_font(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for textAlign
-pub fn set_textAlign(instance: *runtime.Instance, value: enums.CanvasTextAlign) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for textBaseline
-pub fn set_textBaseline(instance: *runtime.Instance, value: enums.CanvasTextBaseline) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for direction
-pub fn set_direction(instance: *runtime.Instance, value: enums.CanvasDirection) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for letterSpacing
-pub fn set_letterSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fontKerning
-pub fn set_fontKerning(instance: *runtime.Instance, value: enums.CanvasFontKerning) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fontStretch
-pub fn set_fontStretch(instance: *runtime.Instance, value: enums.CanvasFontStretch) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fontVariantCaps
-pub fn set_fontVariantCaps(instance: *runtime.Instance, value: enums.CanvasFontVariantCaps) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for textRendering
-pub fn set_textRendering(instance: *runtime.Instance, value: enums.CanvasTextRendering) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for wordSpacing
-pub fn set_wordSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: rect
 pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
@@ -404,15 +144,6 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) an
     _ = y;
     _ = w;
     _ = h;
-    return error.NotImplemented;
-}
-
-/// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!bool {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = fillRule;
     return error.NotImplemented;
 }
 
@@ -436,89 +167,12 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
     return error.NotImplemented;
 }
 
-/// Operation: clearRect
-pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = w;
-    _ = h;
-    return error.NotImplemented;
-}
-
 /// Operation: createConicGradient
 pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = startAngle;
     _ = x;
     _ = y;
-    return error.NotImplemented;
-}
-
-/// Operation: transform
-pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-    _ = instance;
-    _ = a;
-    _ = b;
-    _ = c;
-    _ = d;
-    _ = e;
-    _ = f;
-    return error.NotImplemented;
-}
-
-/// Operation: restore
-pub fn call_restore(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!void {
-    _ = instance;
-    _ = fillRule;
-    return error.NotImplemented;
-}
-
-/// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: strokeText
-pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-    _ = instance;
-    _ = text;
-    _ = x;
-    _ = y;
-    _ = maxWidth;
-    return error.NotImplemented;
-}
-
-/// Operation: stroke
-pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: drawImage
-pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, dx: f64, dy: f64) anyerror!void {
-    _ = instance;
-    _ = image;
-    _ = dx;
-    _ = dy;
-    return error.NotImplemented;
-}
-
-/// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = sx;
-    _ = sy;
-    _ = sw;
-    _ = sh;
-    _ = settings;
     return error.NotImplemented;
 }
 
@@ -531,12 +185,6 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
     _ = startAngle;
     _ = endAngle;
     _ = counterclockwise;
-    return error.NotImplemented;
-}
-
-/// Operation: getTransform
-pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
     return error.NotImplemented;
 }
 
@@ -585,12 +233,6 @@ pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     return error.NotImplemented;
 }
 
-/// Operation: resetTransform
-pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: arcTo
 pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
     _ = instance;
@@ -602,22 +244,10 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
     return error.NotImplemented;
 }
 
-/// Operation: getContextAttributes
-pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionaries.CanvasRenderingContext2DSettings {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: setLineDash
 pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = segments;
-    return error.NotImplemented;
-}
-
-/// Operation: save
-pub fn call_save(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
     return error.NotImplemented;
 }
 
@@ -639,20 +269,6 @@ pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x:
     return error.NotImplemented;
 }
 
-/// Operation: isContextLost
-pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
 /// Operation: bezierCurveTo
 pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
     _ = instance;
@@ -665,38 +281,6 @@ pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2
     return error.NotImplemented;
 }
 
-/// Operation: rotate
-pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
-    _ = instance;
-    _ = angle;
-    return error.NotImplemented;
-}
-
-/// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = sw;
-    _ = sh;
-    _ = settings;
-    return error.NotImplemented;
-}
-
-/// Operation: scale
-pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
-/// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
 /// Operation: createLinearGradient
 pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
     _ = instance;
@@ -704,76 +288,5 @@ pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, 
     _ = y0;
     _ = x1;
     _ = y1;
-    return error.NotImplemented;
-}
-
-/// Operation: strokeRect
-pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = w;
-    _ = h;
-    return error.NotImplemented;
-}
-
-/// Operation: setTransform
-pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-    _ = instance;
-    _ = a;
-    _ = b;
-    _ = c;
-    _ = d;
-    _ = e;
-    _ = f;
-    return error.NotImplemented;
-}
-
-/// Operation: fillRect
-pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    _ = w;
-    _ = h;
-    return error.NotImplemented;
-}
-
-/// Operation: beginPath
-pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: fillText
-pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-    _ = instance;
-    _ = text;
-    _ = x;
-    _ = y;
-    _ = maxWidth;
-    return error.NotImplemented;
-}
-
-/// Operation: measureText
-pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = text;
-    return error.NotImplemented;
-}
-
-/// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!void {
-    _ = instance;
-    _ = fillRule;
-    return error.NotImplemented;
-}
-
-/// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
-    _ = instance;
-    _ = imageData;
-    _ = dx;
-    _ = dy;
     return error.NotImplemented;
 }

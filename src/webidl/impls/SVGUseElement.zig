@@ -74,9 +74,3 @@ pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!?*runtime.
     _ = instance;
     return null;
 }
-
-/// Getter for href
-pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}

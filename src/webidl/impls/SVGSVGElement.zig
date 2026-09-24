@@ -76,18 +76,6 @@ pub fn get_currentTranslate(instance: *runtime.Instance) anyerror!*runtime.Insta
     return error.NotImplemented;
 }
 
-/// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for currentScale
 pub fn set_currentScale(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;

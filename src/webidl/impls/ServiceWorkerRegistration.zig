@@ -199,12 +199,6 @@ pub fn get_paymentManager(instance: *runtime.Instance) anyerror!*runtime.Instanc
     return error.NotImplemented;
 }
 
-/// Getter for pushManager
-pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for onupdatefound
 pub fn set_onupdatefound(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;

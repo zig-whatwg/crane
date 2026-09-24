@@ -209,7 +209,7 @@ src/webidl/impls/Document.zig Element.setNamespaceURI 11
 src/webidl/impls/Document.zig Element.setPrefix 11
 src/webidl/impls/Document.zig Event.setInitializedFlag 1
 src/webidl/impls/Document.zig HTMLCollection.addElement 25
-src/webidl/impls/Document.zig HTMLParser.parseFragment 9
+src/webidl/impls/Document.zig HTMLParser.parseFragment 4
 src/webidl/impls/Document.zig ProcessingInstruction.createProcessingInstruction 2
 src/webidl/impls/Document.zig ProcessingInstruction.getTarget 1
 src/webidl/impls/Document.zig Range.call_deleteContents 1

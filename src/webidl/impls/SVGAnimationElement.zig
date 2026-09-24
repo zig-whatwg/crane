@@ -63,18 +63,6 @@ pub fn get_onrepeat(instance: *runtime.Instance) anyerror!typedefs.EventHandler 
     return error.NotImplemented;
 }
 
-/// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for onbegin
 pub fn set_onbegin(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;

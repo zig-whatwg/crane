@@ -139,9 +139,7 @@ pub const XRDepthInformation = struct {
         return try XRDepthInformationImpl.get_rawValueToMeters(instance);
     }
 
-    pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try XRDepthInformationImpl.get_projectionMatrix(instance);
-    }
+    pub const get_projectionMatrix = mixins.XRViewGeometry.get_projectionMatrix;
 
     /// Extended attributes: [SameObject]
     pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -150,7 +148,7 @@ pub const XRDepthInformation = struct {
         if (state.own.cached_transform) |cached| {
             return cached;
         }
-        const value = try XRDepthInformationImpl.get_transform(instance);
+        const value = try mixins.XRViewGeometry.get_transform(instance);
         state.own.cached_transform = value;
         return value;
     }

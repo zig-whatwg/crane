@@ -119,12 +119,6 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
     return error.NotImplemented;
 }
 
-/// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: create (static)
 pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RewriterCreateOptions)) anyerror!runtime.JSValue {
     _ = instance;

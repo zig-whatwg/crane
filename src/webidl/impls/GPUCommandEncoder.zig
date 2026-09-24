@@ -40,19 +40,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for label
-pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: copyBufferToBuffer
 pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(typedefs.GPUSize64)) anyerror!void {
     _ = instance;
@@ -80,12 +67,6 @@ pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: dictionarie
     return error.NotImplemented;
 }
 
-/// Operation: popDebugGroup
-pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: copyTextureToTexture
 pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyTextureInfo, destination: dictionaries.GPUTexelCopyTextureInfo, copySize: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
@@ -103,20 +84,6 @@ pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Inst
     _ = queryCount;
     _ = destination;
     _ = destinationOffset;
-    return error.NotImplemented;
-}
-
-/// Operation: insertDebugMarker
-pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = markerLabel;
-    return error.NotImplemented;
-}
-
-/// Operation: pushDebugGroup
-pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = groupLabel;
     return error.NotImplemented;
 }
 

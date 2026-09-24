@@ -154,25 +154,16 @@ pub const GPUCommandEncoder = struct {
         GPUCommandEncoderImpl.deinit(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUCommandEncoderImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUCommandEncoderImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
         return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
     }
 
-    pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
-        return try GPUCommandEncoderImpl.call_popDebugGroup(instance);
-    }
+    pub const call_popDebugGroup = mixins.GPUDebugCommandsMixin.call_popDebugGroup;
 
-    pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
-        return try GPUCommandEncoderImpl.call_insertDebugMarker(instance, markerLabel);
-    }
+    pub const call_insertDebugMarker = mixins.GPUDebugCommandsMixin.call_insertDebugMarker;
 
     pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
@@ -206,9 +197,7 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_copyTextureToTexture(instance, source, destination, copySize);
     }
 
-    pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
-        return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
-    }
+    pub const call_pushDebugGroup = mixins.GPUDebugCommandsMixin.call_pushDebugGroup;
 
     pub fn call_copyBufferToBuffer__1(instance: *runtime.Instance, source: *runtime.Instance, sourceOffset: GPUSize64, destination: *runtime.Instance, destinationOffset: GPUSize64, size: webidl.Opt(GPUSize64)) anyerror!void {
         if (comptime @hasDecl(GPUCommandEncoderImpl, "call_copyBufferToBuffer__1")) {

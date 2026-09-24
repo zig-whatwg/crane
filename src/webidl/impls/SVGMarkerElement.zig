@@ -87,18 +87,6 @@ pub fn get_orient(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for orient
 pub fn set_orient(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;

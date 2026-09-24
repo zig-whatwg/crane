@@ -284,9 +284,7 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ServiceWorkerRegistrationImpl.get_pushManager(instance);
-    }
+    pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
     /// Extended attributes: [NewObject]
     pub fn call_unregister(instance: *runtime.Instance) anyerror!runtime.JSValue {

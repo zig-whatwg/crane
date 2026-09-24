@@ -58,58 +58,6 @@ pub fn get_isPrimary(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Getter for oncharacteristicvaluechanged
-pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onserviceadded
-pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onservicechanged
-pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onserviceremoved
-pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for oncharacteristicvaluechanged
-pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onserviceadded
-pub fn set_onserviceadded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onservicechanged
-pub fn set_onservicechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onserviceremoved
-pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: getCharacteristic
 pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: typedefs.BluetoothCharacteristicUUID) anyerror!runtime.JSValue {
     _ = instance;

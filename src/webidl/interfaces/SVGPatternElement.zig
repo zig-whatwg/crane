@@ -387,7 +387,7 @@ pub const SVGPatternElement = struct {
         if (state.own.cached_viewBox) |cached| {
             return cached;
         }
-        const value = try SVGPatternElementImpl.get_viewBox(instance);
+        const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
         return value;
     }
@@ -399,7 +399,7 @@ pub const SVGPatternElement = struct {
         if (state.own.cached_preserveAspectRatio) |cached| {
             return cached;
         }
-        const value = try SVGPatternElementImpl.get_preserveAspectRatio(instance);
+        const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
         return value;
     }
@@ -411,7 +411,7 @@ pub const SVGPatternElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGPatternElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }

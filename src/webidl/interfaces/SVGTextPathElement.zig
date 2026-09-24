@@ -371,7 +371,7 @@ pub const SVGTextPathElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGTextPathElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }

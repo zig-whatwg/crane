@@ -52,24 +52,3 @@ pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.S
 
     return instance;
 }
-
-/// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(typedefs.CryptoKeyID)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = key;
-    _ = keyID;
-    return error.NotImplemented;
-}

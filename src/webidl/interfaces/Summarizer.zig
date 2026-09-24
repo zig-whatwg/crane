@@ -188,9 +188,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.call_measureInputUsage(instance, input, options);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try SummarizerImpl.call_destroy(instance);
-    }
+    pub const call_destroy = mixins.DestroyableModel.call_destroy;
 
     pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
         return try SummarizerImpl.call_summarizeStreaming(instance, input, options);

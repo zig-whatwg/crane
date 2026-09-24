@@ -40,19 +40,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for label
-pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: dispatchWorkgroups
 pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: webidl.Opt(typedefs.GPUSize32), workgroupCountZ: webidl.Opt(typedefs.GPUSize32)) anyerror!void {
     _ = instance;
@@ -62,40 +49,11 @@ pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typ
     return error.NotImplemented;
 }
 
-/// Operation: popDebugGroup
-pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = index;
-    _ = bindGroup;
-    _ = dynamicOffsets;
-    return error.NotImplemented;
-}
-
 /// Operation: dispatchWorkgroupsIndirect
 pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) anyerror!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
-    return error.NotImplemented;
-}
-
-/// Operation: insertDebugMarker
-pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = markerLabel;
-    return error.NotImplemented;
-}
-
-/// Operation: pushDebugGroup
-pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = groupLabel;
     return error.NotImplemented;
 }
 

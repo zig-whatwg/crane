@@ -278,7 +278,7 @@ pub const SVGScriptElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGScriptElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }

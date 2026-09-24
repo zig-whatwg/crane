@@ -46,18 +46,6 @@ pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: getScreenCTM
 pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;

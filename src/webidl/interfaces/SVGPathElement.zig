@@ -277,17 +277,13 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getTotalLength(instance);
     }
 
-    pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
-        return try SVGPathElementImpl.call_setPathData(instance, pathData);
-    }
+    pub const call_setPathData = mixins.SVGPathData.call_setPathData;
 
     pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!?*runtime.Instance {
         return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
     }
 
-    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!runtime.JSValue {
-        return try SVGPathElementImpl.call_getPathData(instance, settings);
-    }
+    pub const call_getPathData = mixins.SVGPathData.call_getPathData;
 
     pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         return try SVGPathElementImpl.call_getPointAtLength(instance, distance);

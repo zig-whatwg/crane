@@ -192,9 +192,7 @@ pub const Writer = struct {
         return try WriterImpl.call_writeStreaming(instance, input, options);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try WriterImpl.call_destroy(instance);
-    }
+    pub const call_destroy = mixins.DestroyableModel.call_destroy;
 
     pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(WriterCreateOptions)) anyerror!runtime.JSValue {
         return try WriterImpl.call_static_create(instance, options);

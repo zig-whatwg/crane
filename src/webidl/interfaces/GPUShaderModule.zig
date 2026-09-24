@@ -105,13 +105,8 @@ pub const GPUShaderModule = struct {
         GPUShaderModuleImpl.deinit(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUShaderModuleImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUShaderModuleImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_getCompilationInfo(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GPUShaderModuleImpl.call_getCompilationInfo(instance);

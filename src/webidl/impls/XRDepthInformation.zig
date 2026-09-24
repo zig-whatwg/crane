@@ -62,15 +62,3 @@ pub fn get_rawValueToMeters(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
-
-/// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}

@@ -38,9 +38,3 @@ pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
-
-/// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}

@@ -40,19 +40,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for label
-pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: onSubmittedWorkDone
 pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;

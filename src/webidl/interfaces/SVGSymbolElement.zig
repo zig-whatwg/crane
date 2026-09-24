@@ -266,7 +266,7 @@ pub const SVGSymbolElement = struct {
         if (state.own.cached_viewBox) |cached| {
             return cached;
         }
-        const value = try SVGSymbolElementImpl.get_viewBox(instance);
+        const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
         return value;
     }
@@ -278,7 +278,7 @@ pub const SVGSymbolElement = struct {
         if (state.own.cached_preserveAspectRatio) |cached| {
             return cached;
         }
-        const value = try SVGSymbolElementImpl.get_preserveAspectRatio(instance);
+        const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
         return value;
     }

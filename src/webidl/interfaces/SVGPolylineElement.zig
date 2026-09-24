@@ -270,7 +270,7 @@ pub const SVGPolylineElement = struct {
         if (state.own.cached_points) |cached| {
             return cached;
         }
-        const value = try SVGPolylineElementImpl.get_points(instance);
+        const value = try mixins.SVGAnimatedPoints.get_points(instance);
         state.own.cached_points = value;
         return value;
     }
@@ -282,7 +282,7 @@ pub const SVGPolylineElement = struct {
         if (state.own.cached_animatedPoints) |cached| {
             return cached;
         }
-        const value = try SVGPolylineElementImpl.get_animatedPoints(instance);
+        const value = try mixins.SVGAnimatedPoints.get_animatedPoints(instance);
         state.own.cached_animatedPoints = value;
         return value;
     }

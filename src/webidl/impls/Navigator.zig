@@ -266,48 +266,6 @@ pub fn get_mediaDevices(instance: *runtime.Instance) anyerror!*runtime.Instance 
     return error.NotImplemented;
 }
 
-/// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for gpu
-pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for globalPrivacyControl
-pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for webdriver
-pub fn get_webdriver(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for connection
-pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for ml
-pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for deviceMemory
-pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for storage
 ///
 /// Returns the StorageManager for this Navigator.
@@ -338,12 +296,6 @@ pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.storage_manager = storage_manager;
 
     return storage_manager;
-}
-
-/// Getter for storageBuckets
-pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
 }
 
 /// Getter for appCodeName
@@ -470,24 +422,6 @@ pub fn get_cookieEnabled(instance: *runtime.Instance) anyerror!bool {
     return true;
 }
 
-/// Getter for plugins
-pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for mimeTypes
-pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for pdfViewerEnabled
-pub fn get_pdfViewerEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for hardwareConcurrency
 /// Per HTML Standard: Returns the number of logical processors available.
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
@@ -495,12 +429,6 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     // Use std.Thread.getCpuCount() to get actual CPU count
     const cpu_count = std.Thread.getCpuCount() catch 1;
     return @intCast(cpu_count);
-}
-
-/// Getter for userAgentData
-pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
 }
 
 /// Operation: requestMIDIAccess
@@ -569,13 +497,6 @@ pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = contents;
-    return error.NotImplemented;
-}
-
 /// Operation: canLoadAdAuctionFencedFrame
 pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
@@ -596,24 +517,10 @@ pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data
     return error.NotImplemented;
 }
 
-/// Operation: unregisterProtocolHandler
-pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = scheme;
-    _ = url;
-    return error.NotImplemented;
-}
-
 /// Operation: queryHandwritingRecognizer
 pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraint;
-    return error.NotImplemented;
-}
-
-/// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
     return error.NotImplemented;
 }
 
@@ -643,12 +550,6 @@ pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: typ
 pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": enums.AutoplayPolicyMediaType) anyerror!enums.AutoplayPolicy {
     _ = instance;
     _ = @"type";
-    return error.NotImplemented;
-}
-
-/// Operation: javaEnabled
-pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
     return error.NotImplemented;
 }
 
@@ -693,13 +594,5 @@ pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedef
     _ = instance;
     _ = urnOrConfig;
     _ = send_reports;
-    return error.NotImplemented;
-}
-
-/// Operation: registerProtocolHandler
-pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = scheme;
-    _ = url;
     return error.NotImplemented;
 }

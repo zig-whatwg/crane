@@ -1,3 +1,5 @@
+//! Implementation for SVGFilterPrimitiveStandardAttributes mixin
+
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -7,9 +9,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const mixins = @import("mixins");
-const SVGFEDisplacementMapElement = interfaces.SVGFEDisplacementMapElement;
+const SVGFilterPrimitiveStandardAttributes = interfaces.SVGFilterPrimitiveStandardAttributes;
 
-pub const State = SVGFEDisplacementMapElement.State;
+pub const State = SVGFilterPrimitiveStandardAttributes.State;
 
 pub const ImplError = error{
     NotImplemented,
@@ -42,32 +44,32 @@ pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance's owned resources here (strings, arrays, etc.)
 }
 
-/// Getter for in1
-pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
+/// Getter for x
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Getter for in2
-pub fn get_in2(instance: *runtime.Instance) anyerror!*runtime.Instance {
+/// Getter for y
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Getter for scale
-pub fn get_scale(instance: *runtime.Instance) anyerror!*runtime.Instance {
+/// Getter for width
+pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Getter for xChannelSelector
-pub fn get_xChannelSelector(instance: *runtime.Instance) anyerror!*runtime.Instance {
+/// Getter for height
+pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Getter for yChannelSelector
-pub fn get_yChannelSelector(instance: *runtime.Instance) anyerror!*runtime.Instance {
+/// Getter for result
+pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -76,21 +76,8 @@ pub fn get_onuncapturederror(instance: *runtime.Instance) anyerror!typedefs.Even
     return error.NotImplemented;
 }
 
-/// Getter for label
-pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for onuncapturederror
 pub fn set_onuncapturederror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

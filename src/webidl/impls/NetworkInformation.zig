@@ -75,12 +75,6 @@ pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler 
     return error.NotImplemented;
 }
 
-/// Getter for saveData
-pub fn get_saveData(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for onchange
 pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;

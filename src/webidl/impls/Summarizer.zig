@@ -119,12 +119,6 @@ pub fn call_summarize(instance: *runtime.Instance, input: runtime.DOMString, opt
     return error.NotImplemented;
 }
 
-/// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: create (static)
 pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateOptions)) anyerror!runtime.JSValue {
     _ = instance;

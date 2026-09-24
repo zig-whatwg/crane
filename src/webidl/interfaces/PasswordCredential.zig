@@ -121,11 +121,7 @@ pub const PasswordCredential = struct {
         return try PasswordCredentialImpl.get_password(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try PasswordCredentialImpl.get_name(instance);
-    }
+    pub const get_name = mixins.CredentialUserData.get_name;
 
-    pub fn get_iconURL(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try PasswordCredentialImpl.get_iconURL(instance);
-    }
+    pub const get_iconURL = mixins.CredentialUserData.get_iconURL;
 };

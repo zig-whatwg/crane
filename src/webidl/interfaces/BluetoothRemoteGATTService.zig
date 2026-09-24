@@ -179,37 +179,17 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.get_isPrimary(instance);
     }
 
-    pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothRemoteGATTServiceImpl.get_oncharacteristicvaluechanged(instance);
-    }
+    pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
+    pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
-    pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothRemoteGATTServiceImpl.set_oncharacteristicvaluechanged(instance, value);
-    }
+    pub const get_onserviceadded = mixins.ServiceEventHandlers.get_onserviceadded;
+    pub const set_onserviceadded = mixins.ServiceEventHandlers.set_onserviceadded;
 
-    pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothRemoteGATTServiceImpl.get_onserviceadded(instance);
-    }
+    pub const get_onservicechanged = mixins.ServiceEventHandlers.get_onservicechanged;
+    pub const set_onservicechanged = mixins.ServiceEventHandlers.set_onservicechanged;
 
-    pub fn set_onserviceadded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothRemoteGATTServiceImpl.set_onserviceadded(instance, value);
-    }
-
-    pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothRemoteGATTServiceImpl.get_onservicechanged(instance);
-    }
-
-    pub fn set_onservicechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothRemoteGATTServiceImpl.set_onservicechanged(instance, value);
-    }
-
-    pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothRemoteGATTServiceImpl.get_onserviceremoved(instance);
-    }
-
-    pub fn set_onserviceremoved(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothRemoteGATTServiceImpl.set_onserviceremoved(instance, value);
-    }
+    pub const get_onserviceremoved = mixins.ServiceEventHandlers.get_onserviceremoved;
+    pub const set_onserviceremoved = mixins.ServiceEventHandlers.set_onserviceremoved;
 
     pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);

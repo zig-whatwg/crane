@@ -107,18 +107,8 @@ pub const GPUComputePipeline = struct {
         GPUComputePipelineImpl.deinit(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUComputePipelineImpl.get_label(instance);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUComputePipelineImpl.set_label(instance, value);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-
-        return try GPUComputePipelineImpl.call_getBindGroupLayout(instance, index);
-    }
+    pub const call_getBindGroupLayout = mixins.GPUPipelineBase.call_getBindGroupLayout;
 };

@@ -133,50 +133,8 @@ pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance
     return error.NotImplemented;
 }
 
-/// Getter for locks
-pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for gpu
-pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for globalPrivacyControl
-pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for connection
-pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for ml
-pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for deviceMemory
-pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for storage
 pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for storageBuckets
-pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -344,27 +302,8 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     return 1;
 }
 
-/// Getter for userAgentData
-pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: taintEnabled
 pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = contents;
-    return error.NotImplemented;
-}
-
-/// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

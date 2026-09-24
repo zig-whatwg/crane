@@ -1290,12 +1290,6 @@ pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for pushManager
-pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 // =============================================================================
 // Event handler IDL attributes (HTML §8.1.8.1)
 // =============================================================================

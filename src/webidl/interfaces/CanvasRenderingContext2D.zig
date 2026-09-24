@@ -435,37 +435,17 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.get_canvas(instance);
     }
 
-    pub fn get_globalAlpha(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_globalAlpha(instance);
-    }
+    pub const get_globalAlpha = mixins.CanvasCompositing.get_globalAlpha;
+    pub const set_globalAlpha = mixins.CanvasCompositing.set_globalAlpha;
 
-    pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_globalAlpha(instance, value);
-    }
+    pub const get_globalCompositeOperation = mixins.CanvasCompositing.get_globalCompositeOperation;
+    pub const set_globalCompositeOperation = mixins.CanvasCompositing.set_globalCompositeOperation;
 
-    pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_globalCompositeOperation(instance);
-    }
+    pub const get_imageSmoothingEnabled = mixins.CanvasImageSmoothing.get_imageSmoothingEnabled;
+    pub const set_imageSmoothingEnabled = mixins.CanvasImageSmoothing.set_imageSmoothingEnabled;
 
-    pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_globalCompositeOperation(instance, value);
-    }
-
-    pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try CanvasRenderingContext2DImpl.get_imageSmoothingEnabled(instance);
-    }
-
-    pub fn set_imageSmoothingEnabled(instance: *runtime.Instance, value: bool) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_imageSmoothingEnabled(instance, value);
-    }
-
-    pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!ImageSmoothingQuality {
-        return try CanvasRenderingContext2DImpl.get_imageSmoothingQuality(instance);
-    }
-
-    pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: ImageSmoothingQuality) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_imageSmoothingQuality(instance, value);
-    }
+    pub const get_imageSmoothingQuality = mixins.CanvasImageSmoothing.get_imageSmoothingQuality;
+    pub const set_imageSmoothingQuality = mixins.CanvasImageSmoothing.set_imageSmoothingQuality;
 
     pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasRenderingContext2DImpl.get_strokeStyle(instance);
@@ -483,45 +463,20 @@ pub const CanvasRenderingContext2D = struct {
         try CanvasRenderingContext2DImpl.set_fillStyle(instance, value);
     }
 
-    pub fn get_shadowOffsetX(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_shadowOffsetX(instance);
-    }
+    pub const get_shadowOffsetX = mixins.CanvasShadowStyles.get_shadowOffsetX;
+    pub const set_shadowOffsetX = mixins.CanvasShadowStyles.set_shadowOffsetX;
 
-    pub fn set_shadowOffsetX(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_shadowOffsetX(instance, value);
-    }
+    pub const get_shadowOffsetY = mixins.CanvasShadowStyles.get_shadowOffsetY;
+    pub const set_shadowOffsetY = mixins.CanvasShadowStyles.set_shadowOffsetY;
 
-    pub fn get_shadowOffsetY(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_shadowOffsetY(instance);
-    }
+    pub const get_shadowBlur = mixins.CanvasShadowStyles.get_shadowBlur;
+    pub const set_shadowBlur = mixins.CanvasShadowStyles.set_shadowBlur;
 
-    pub fn set_shadowOffsetY(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_shadowOffsetY(instance, value);
-    }
+    pub const get_shadowColor = mixins.CanvasShadowStyles.get_shadowColor;
+    pub const set_shadowColor = mixins.CanvasShadowStyles.set_shadowColor;
 
-    pub fn get_shadowBlur(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_shadowBlur(instance);
-    }
-
-    pub fn set_shadowBlur(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_shadowBlur(instance, value);
-    }
-
-    pub fn get_shadowColor(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_shadowColor(instance);
-    }
-
-    pub fn set_shadowColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_shadowColor(instance, value);
-    }
-
-    pub fn get_filter(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_filter(instance);
-    }
-
-    pub fn set_filter(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_filter(instance, value);
-    }
+    pub const get_filter = mixins.CanvasFilters.get_filter;
+    pub const set_filter = mixins.CanvasFilters.set_filter;
 
     pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
         return try CanvasRenderingContext2DImpl.get_lineWidth(instance);
@@ -563,118 +518,52 @@ pub const CanvasRenderingContext2D = struct {
         try CanvasRenderingContext2DImpl.set_lineDashOffset(instance, value);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_lang(instance);
-    }
+    pub const get_lang = mixins.CanvasTextDrawingStyles.get_lang;
+    pub const set_lang = mixins.CanvasTextDrawingStyles.set_lang;
 
-    pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_lang(instance, value);
-    }
+    pub const get_font = mixins.CanvasTextDrawingStyles.get_font;
+    pub const set_font = mixins.CanvasTextDrawingStyles.set_font;
 
-    pub fn get_font(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_font(instance);
-    }
+    pub const get_textAlign = mixins.CanvasTextDrawingStyles.get_textAlign;
+    pub const set_textAlign = mixins.CanvasTextDrawingStyles.set_textAlign;
 
-    pub fn set_font(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_font(instance, value);
-    }
+    pub const get_textBaseline = mixins.CanvasTextDrawingStyles.get_textBaseline;
+    pub const set_textBaseline = mixins.CanvasTextDrawingStyles.set_textBaseline;
 
-    pub fn get_textAlign(instance: *runtime.Instance) anyerror!CanvasTextAlign {
-        return try CanvasRenderingContext2DImpl.get_textAlign(instance);
-    }
+    pub const get_direction = mixins.CanvasTextDrawingStyles.get_direction;
+    pub const set_direction = mixins.CanvasTextDrawingStyles.set_direction;
 
-    pub fn set_textAlign(instance: *runtime.Instance, value: CanvasTextAlign) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_textAlign(instance, value);
-    }
+    pub const get_letterSpacing = mixins.CanvasTextDrawingStyles.get_letterSpacing;
+    pub const set_letterSpacing = mixins.CanvasTextDrawingStyles.set_letterSpacing;
 
-    pub fn get_textBaseline(instance: *runtime.Instance) anyerror!CanvasTextBaseline {
-        return try CanvasRenderingContext2DImpl.get_textBaseline(instance);
-    }
+    pub const get_fontKerning = mixins.CanvasTextDrawingStyles.get_fontKerning;
+    pub const set_fontKerning = mixins.CanvasTextDrawingStyles.set_fontKerning;
 
-    pub fn set_textBaseline(instance: *runtime.Instance, value: CanvasTextBaseline) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_textBaseline(instance, value);
-    }
+    pub const get_fontStretch = mixins.CanvasTextDrawingStyles.get_fontStretch;
+    pub const set_fontStretch = mixins.CanvasTextDrawingStyles.set_fontStretch;
 
-    pub fn get_direction(instance: *runtime.Instance) anyerror!CanvasDirection {
-        return try CanvasRenderingContext2DImpl.get_direction(instance);
-    }
+    pub const get_fontVariantCaps = mixins.CanvasTextDrawingStyles.get_fontVariantCaps;
+    pub const set_fontVariantCaps = mixins.CanvasTextDrawingStyles.set_fontVariantCaps;
 
-    pub fn set_direction(instance: *runtime.Instance, value: CanvasDirection) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_direction(instance, value);
-    }
+    pub const get_textRendering = mixins.CanvasTextDrawingStyles.get_textRendering;
+    pub const set_textRendering = mixins.CanvasTextDrawingStyles.set_textRendering;
 
-    pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_letterSpacing(instance);
-    }
-
-    pub fn set_letterSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_letterSpacing(instance, value);
-    }
-
-    pub fn get_fontKerning(instance: *runtime.Instance) anyerror!CanvasFontKerning {
-        return try CanvasRenderingContext2DImpl.get_fontKerning(instance);
-    }
-
-    pub fn set_fontKerning(instance: *runtime.Instance, value: CanvasFontKerning) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_fontKerning(instance, value);
-    }
-
-    pub fn get_fontStretch(instance: *runtime.Instance) anyerror!CanvasFontStretch {
-        return try CanvasRenderingContext2DImpl.get_fontStretch(instance);
-    }
-
-    pub fn set_fontStretch(instance: *runtime.Instance, value: CanvasFontStretch) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_fontStretch(instance, value);
-    }
-
-    pub fn get_fontVariantCaps(instance: *runtime.Instance) anyerror!CanvasFontVariantCaps {
-        return try CanvasRenderingContext2DImpl.get_fontVariantCaps(instance);
-    }
-
-    pub fn set_fontVariantCaps(instance: *runtime.Instance, value: CanvasFontVariantCaps) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_fontVariantCaps(instance, value);
-    }
-
-    pub fn get_textRendering(instance: *runtime.Instance) anyerror!CanvasTextRendering {
-        return try CanvasRenderingContext2DImpl.get_textRendering(instance);
-    }
-
-    pub fn set_textRendering(instance: *runtime.Instance, value: CanvasTextRendering) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_textRendering(instance, value);
-    }
-
-    pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!DOMString {
-        return try CanvasRenderingContext2DImpl.get_wordSpacing(instance);
-    }
-
-    pub fn set_wordSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_wordSpacing(instance, value);
-    }
+    pub const get_wordSpacing = mixins.CanvasTextDrawingStyles.get_wordSpacing;
+    pub const set_wordSpacing = mixins.CanvasTextDrawingStyles.set_wordSpacing;
 
     pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
         return try CanvasRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
-    pub fn call_save(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_save(instance);
-    }
+    pub const call_save = mixins.CanvasState.call_save;
 
-    pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
-        // [EnforceRange] on sw
-        if (!runtime.isInRange(i32, sw)) return error.TypeError;
-        // [EnforceRange] on sh
-        if (!runtime.isInRange(i32, sh)) return error.TypeError;
-
-        return try CanvasRenderingContext2DImpl.call_createImageData(instance, sw, sh, settings);
-    }
+    pub const call_createImageData = mixins.CanvasImageData.call_createImageData;
 
     pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_moveTo(instance, x, y);
     }
 
-    pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_stroke(instance);
-    }
+    pub const call_stroke = mixins.CanvasDrawPath.call_stroke;
 
     pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_setLineDash(instance, segments);
@@ -684,19 +573,13 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
-    pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_fillRect(instance, x, y, w, h);
-    }
+    pub const call_fillRect = mixins.CanvasRect.call_fillRect;
 
     pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
         return try CanvasRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try CanvasRenderingContext2DImpl.call_getTransform(instance);
-    }
+    pub const call_getTransform = mixins.CanvasTransform.call_getTransform;
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
@@ -706,103 +589,53 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
-    pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_drawFocusIfNeeded(instance, element);
-    }
+    pub const call_drawFocusIfNeeded = mixins.CanvasUserInterface.call_drawFocusIfNeeded;
 
-    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
-        // [EnforceRange] on sx
-        if (!runtime.isInRange(i32, sx)) return error.TypeError;
-        // [EnforceRange] on sy
-        if (!runtime.isInRange(i32, sy)) return error.TypeError;
-        // [EnforceRange] on sw
-        if (!runtime.isInRange(i32, sw)) return error.TypeError;
-        // [EnforceRange] on sh
-        if (!runtime.isInRange(i32, sh)) return error.TypeError;
-
-        return try CanvasRenderingContext2DImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
-    }
+    pub const call_getImageData = mixins.CanvasImageData.call_getImageData;
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
-    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
-        return try CanvasRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
-    }
+    pub const call_isPointInPath = mixins.CanvasDrawPath.call_isPointInPath;
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
-    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
-        return try CanvasRenderingContext2DImpl.call_isContextLost(instance);
-    }
+    pub const call_isContextLost = mixins.CanvasState.call_isContextLost;
 
-    pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!CanvasRenderingContext2DSettings {
-        return try CanvasRenderingContext2DImpl.call_getContextAttributes(instance);
-    }
+    pub const call_getContextAttributes = mixins.CanvasSettings.call_getContextAttributes;
 
-    pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_rotate(instance, angle);
-    }
+    pub const call_rotate = mixins.CanvasTransform.call_rotate;
 
-    pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
-        // [EnforceRange] on dx
-        if (!runtime.isInRange(i32, dx)) return error.TypeError;
-        // [EnforceRange] on dy
-        if (!runtime.isInRange(i32, dy)) return error.TypeError;
+    pub const call_putImageData = mixins.CanvasImageData.call_putImageData;
 
-        return try CanvasRenderingContext2DImpl.call_putImageData(instance, imageData, dx, dy);
-    }
+    pub const call_beginPath = mixins.CanvasDrawPath.call_beginPath;
 
-    pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_beginPath(instance);
-    }
+    pub const call_clearRect = mixins.CanvasRect.call_clearRect;
 
-    pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
-    }
+    pub const call_scale = mixins.CanvasTransform.call_scale;
 
-    pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_scale(instance, x, y);
-    }
+    pub const call_strokeRect = mixins.CanvasRect.call_strokeRect;
 
-    pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
-    }
+    pub const call_reset = mixins.CanvasState.call_reset;
 
-    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_reset(instance);
-    }
+    pub const call_translate = mixins.CanvasTransform.call_translate;
 
-    pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_translate(instance, x, y);
-    }
+    pub const call_drawImage = mixins.CanvasDrawImage.call_drawImage;
 
-    pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
-    }
-
-    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
-    }
+    pub const call_setTransform = mixins.CanvasTransform.call_setTransform;
 
     pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
         return try CanvasRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
 
-    pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_fill(instance, fillRule);
-    }
+    pub const call_fill = mixins.CanvasDrawPath.call_fill;
 
-    pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_fillText(instance, text, x, y, maxWidth);
-    }
+    pub const call_fillText = mixins.CanvasText.call_fillText;
 
-    pub fn call_restore(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_restore(instance);
-    }
+    pub const call_restore = mixins.CanvasState.call_restore;
 
     pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasRenderingContext2DImpl.call_getLineDash(instance);
@@ -812,9 +645,7 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
     }
 
-    pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_strokeText(instance, text, x, y, maxWidth);
-    }
+    pub const call_strokeText = mixins.CanvasText.call_strokeText;
 
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
         return try CanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
@@ -824,21 +655,13 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_closePath(instance);
     }
 
-    pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_resetTransform(instance);
-    }
+    pub const call_resetTransform = mixins.CanvasTransform.call_resetTransform;
 
-    pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
-        return try CanvasRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
-    }
+    pub const call_isPointInStroke = mixins.CanvasDrawPath.call_isPointInStroke;
 
-    pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_transform(instance, a, b, c, d, e, f);
-    }
+    pub const call_transform = mixins.CanvasTransform.call_transform;
 
-    pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
-        return try CanvasRenderingContext2DImpl.call_measureText(instance, text);
-    }
+    pub const call_measureText = mixins.CanvasText.call_measureText;
 
     pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_quadraticCurveTo(instance, cpx, cpy, x, y);
@@ -848,110 +671,29 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_lineTo(instance, x, y);
     }
 
-    pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_clip(instance, fillRule);
-    }
+    pub const call_clip = mixins.CanvasDrawPath.call_clip;
 
-    pub fn call_createImageData__1(instance: *runtime.Instance, imageData: *runtime.Instance) anyerror!*runtime.Instance {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_createImageData__1")) {
-            return try CanvasRenderingContext2DImpl.call_createImageData__1(instance, imageData);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_createImageData__1 = mixins.CanvasImageData.call_createImageData__1;
 
-    pub fn call_stroke__1(instance: *runtime.Instance, path: *runtime.Instance) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_stroke__1")) {
-            return try CanvasRenderingContext2DImpl.call_stroke__1(instance, path);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_stroke__1 = mixins.CanvasDrawPath.call_stroke__1;
 
-    pub fn call_drawFocusIfNeeded__1(instance: *runtime.Instance, path: *runtime.Instance, element: *runtime.Instance) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_drawFocusIfNeeded__1")) {
-            return try CanvasRenderingContext2DImpl.call_drawFocusIfNeeded__1(instance, path, element);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_drawFocusIfNeeded__1 = mixins.CanvasUserInterface.call_drawFocusIfNeeded__1;
 
-    pub fn call_isPointInPath__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_isPointInPath__1")) {
-            return try CanvasRenderingContext2DImpl.call_isPointInPath__1(instance, path, x, y, fillRule);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_isPointInPath__1 = mixins.CanvasDrawPath.call_isPointInPath__1;
 
-    pub fn call_putImageData__1(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32, dirtyX: i32, dirtyY: i32, dirtyWidth: i32, dirtyHeight: i32) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_putImageData__1")) {
-            // [EnforceRange] on dx
-            if (!runtime.isInRange(i32, dx)) return error.TypeError;
-            // [EnforceRange] on dy
-            if (!runtime.isInRange(i32, dy)) return error.TypeError;
-            // [EnforceRange] on dirtyX
-            if (!runtime.isInRange(i32, dirtyX)) return error.TypeError;
-            // [EnforceRange] on dirtyY
-            if (!runtime.isInRange(i32, dirtyY)) return error.TypeError;
-            // [EnforceRange] on dirtyWidth
-            if (!runtime.isInRange(i32, dirtyWidth)) return error.TypeError;
-            // [EnforceRange] on dirtyHeight
-            if (!runtime.isInRange(i32, dirtyHeight)) return error.TypeError;
+    pub const call_putImageData__1 = mixins.CanvasImageData.call_putImageData__1;
 
-            return try CanvasRenderingContext2DImpl.call_putImageData__1(instance, imageData, dx, dy, dirtyX, dirtyY, dirtyWidth, dirtyHeight);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_drawImage__1 = mixins.CanvasDrawImage.call_drawImage__1;
 
-    pub fn call_drawImage__1(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_drawImage__1")) {
-            return try CanvasRenderingContext2DImpl.call_drawImage__1(instance, image, dx, dy, dw, dh);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_drawImage__2 = mixins.CanvasDrawImage.call_drawImage__2;
 
-    pub fn call_drawImage__2(instance: *runtime.Instance, image: CanvasImageSource, sx: f64, sy: f64, sw: f64, sh: f64, dx: f64, dy: f64, dw: f64, dh: f64) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_drawImage__2")) {
-            return try CanvasRenderingContext2DImpl.call_drawImage__2(instance, image, sx, sy, sw, sh, dx, dy, dw, dh);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_setTransform__1 = mixins.CanvasTransform.call_setTransform__1;
 
-    pub fn call_setTransform__1(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_setTransform__1")) {
-            return try CanvasRenderingContext2DImpl.call_setTransform__1(instance, transform);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_fill__1 = mixins.CanvasDrawPath.call_fill__1;
 
-    pub fn call_fill__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_fill__1")) {
-            return try CanvasRenderingContext2DImpl.call_fill__1(instance, path, fillRule);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_isPointInStroke__1 = mixins.CanvasDrawPath.call_isPointInStroke__1;
 
-    pub fn call_isPointInStroke__1(instance: *runtime.Instance, path: *runtime.Instance, x: f64, y: f64) anyerror!bool {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_isPointInStroke__1")) {
-            return try CanvasRenderingContext2DImpl.call_isPointInStroke__1(instance, path, x, y);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_clip__1(instance: *runtime.Instance, path: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        if (comptime @hasDecl(CanvasRenderingContext2DImpl, "call_clip__1")) {
-            return try CanvasRenderingContext2DImpl.call_clip__1(instance, path, fillRule);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_clip__1 = mixins.CanvasDrawPath.call_clip__1;
 
     /// WebIDL overload sets: every overload of each overloaded operation,
     /// in IDL order, for the overload resolution algorithm
@@ -960,44 +702,44 @@ pub const CanvasRenderingContext2D = struct {
     pub const overloads = .{
         .{ "createImageData", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_createImageData", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
-            .{ .function = "call_createImageData__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_createImageData__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }} },
+            .{ .function = "call_createImageData__1", .implemented = @hasDecl(mixins.CanvasImageData.impl, "call_createImageData__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }} },
         } },
         .{ "stroke", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_stroke", .args = &.{} },
-            .{ .function = "call_stroke__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_stroke__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }} },
+            .{ .function = "call_stroke__1", .implemented = @hasDecl(mixins.CanvasDrawPath.impl, "call_stroke__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }} },
         } },
         .{ "drawFocusIfNeeded", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_drawFocusIfNeeded", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)} }} },
-            .{ .function = "call_drawFocusIfNeeded__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_drawFocusIfNeeded__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)} } } },
+            .{ .function = "call_drawFocusIfNeeded__1", .implemented = @hasDecl(mixins.CanvasUserInterface.impl, "call_drawFocusIfNeeded__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)} } } },
         } },
         .{ "isPointInPath", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_isPointInPath", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
-            .{ .function = "call_isPointInPath__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_isPointInPath__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_isPointInPath__1", .implemented = @hasDecl(mixins.CanvasDrawPath.impl, "call_isPointInPath__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
         .{ "putImageData", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_putImageData", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_putImageData__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_putImageData__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_putImageData__1", .implemented = @hasDecl(mixins.CanvasImageData.impl, "call_putImageData__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "drawImage", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_drawImage", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_drawImage__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_drawImage__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_drawImage__2", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_drawImage__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__1", .implemented = @hasDecl(mixins.CanvasDrawImage.impl, "call_drawImage__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_drawImage__2", .implemented = @hasDecl(mixins.CanvasDrawImage.impl, "call_drawImage__2"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "setTransform", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_setTransform", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_setTransform__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_setTransform__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_setTransform__1", .implemented = @hasDecl(mixins.CanvasTransform.impl, "call_setTransform__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
         } },
         .{ "fill", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_fill", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
-            .{ .function = "call_fill__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_fill__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_fill__1", .implemented = @hasDecl(mixins.CanvasDrawPath.impl, "call_fill__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
         .{ "isPointInStroke", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_isPointInStroke", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_isPointInStroke__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_isPointInStroke__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_isPointInStroke__1", .implemented = @hasDecl(mixins.CanvasDrawPath.impl, "call_isPointInStroke__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "clip", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_clip", .args = &.{.{ .kinds = &.{.string}, .optionality = .optional }} },
-            .{ .function = "call_clip__1", .implemented = @hasDecl(CanvasRenderingContext2DImpl, "call_clip__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
+            .{ .function = "call_clip__1", .implemented = @hasDecl(mixins.CanvasDrawPath.impl, "call_clip__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
     };
 

@@ -912,9 +912,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try NavigatorImpl.get_locks(instance);
-    }
+    pub const get_locks = mixins.NavigatorLocks.get_locks;
 
     /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -923,18 +921,14 @@ pub const Navigator = struct {
         if (state.own.cached_gpu) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_gpu(instance);
+        const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
         return value;
     }
 
-    pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_globalPrivacyControl(instance);
-    }
+    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
-    pub fn get_webdriver(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_webdriver(instance);
-    }
+    pub const get_webdriver = mixins.NavigatorAutomationInformation.get_webdriver;
 
     /// Extended attributes: [SameObject]
     pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -943,7 +937,7 @@ pub const Navigator = struct {
         if (state.own.cached_connection) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_connection(instance);
+        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
         return value;
     }
@@ -955,14 +949,12 @@ pub const Navigator = struct {
         if (state.own.cached_ml) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_ml(instance);
+        const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
         return value;
     }
 
-    pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
-        return try NavigatorImpl.get_deviceMemory(instance);
-    }
+    pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     /// Extended attributes: [SameObject]
     pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -983,7 +975,7 @@ pub const Navigator = struct {
         if (state.own.cached_storageBuckets) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_storageBuckets(instance);
+        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
         return value;
     }
@@ -1055,7 +1047,7 @@ pub const Navigator = struct {
         if (state.own.cached_plugins) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_plugins(instance);
+        const value = try mixins.NavigatorPlugins.get_plugins(instance);
         state.own.cached_plugins = value;
         return value;
     }
@@ -1067,23 +1059,19 @@ pub const Navigator = struct {
         if (state.own.cached_mimeTypes) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_mimeTypes(instance);
+        const value = try mixins.NavigatorPlugins.get_mimeTypes(instance);
         state.own.cached_mimeTypes = value;
         return value;
     }
 
-    pub fn get_pdfViewerEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_pdfViewerEnabled(instance);
-    }
+    pub const get_pdfViewerEnabled = mixins.NavigatorPlugins.get_pdfViewerEnabled;
 
     pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
         return try NavigatorImpl.get_hardwareConcurrency(instance);
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try NavigatorImpl.get_userAgentData(instance);
-    }
+    pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
 
     pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
@@ -1094,9 +1082,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
     }
 
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_clearAppBadge(instance);
-    }
+    pub const call_clearAppBadge = mixins.NavigatorBadge.call_clearAppBadge;
 
     /// Extended attributes: [SecureContext]
     pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!bool {
@@ -1129,18 +1115,13 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_runAdAuction(instance, config);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
-        return try NavigatorImpl.call_registerProtocolHandler(instance, scheme, url);
-    }
+    pub const call_registerProtocolHandler = mixins.NavigatorContentUtils.call_registerProtocolHandler;
 
     pub fn call_vibrate(instance: *runtime.Instance, pattern: VibratePattern) anyerror!bool {
         return try NavigatorImpl.call_vibrate(instance, pattern);
     }
 
-    pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_javaEnabled(instance);
-    }
+    pub const call_javaEnabled = mixins.NavigatorPlugins.call_javaEnabled;
 
     pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
         return try NavigatorImpl.call_sendBeacon(instance, url, data);
@@ -1174,10 +1155,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_updateAdInterestGroups(instance);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
-        return try NavigatorImpl.call_unregisterProtocolHandler(instance, scheme, url);
-    }
+    pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
 
     pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
         return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
@@ -1197,12 +1175,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_getBattery(instance);
     }
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
-        // [EnforceRange] on contents
-        if (!runtime.isInRange(u64, contents)) return error.TypeError;
-
-        return try NavigatorImpl.call_setAppBadge(instance, contents);
-    }
+    pub const call_setAppBadge = mixins.NavigatorBadge.call_setAppBadge;
 
     pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);

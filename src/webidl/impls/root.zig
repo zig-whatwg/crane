@@ -904,6 +904,7 @@ pub const SVGFESpotLightElement = @import("SVGFESpotLightElement.zig");
 pub const SVGFETileElement = @import("SVGFETileElement.zig");
 pub const SVGFETurbulenceElement = @import("SVGFETurbulenceElement.zig");
 pub const SVGFilterElement = @import("SVGFilterElement.zig");
+pub const SVGFilterPrimitiveStandardAttributes = @import("SVGFilterPrimitiveStandardAttributes.zig");
 pub const SVGFitToViewBox = @import("SVGFitToViewBox.zig");
 pub const SVGForeignObjectElement = @import("SVGForeignObjectElement.zig");
 pub const SVGGElement = @import("SVGGElement.zig");

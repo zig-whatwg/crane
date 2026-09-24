@@ -122,13 +122,8 @@ pub const GPUQuerySet = struct {
         return try GPUQuerySetImpl.get_count(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUQuerySetImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUQuerySetImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try GPUQuerySetImpl.call_destroy(instance);

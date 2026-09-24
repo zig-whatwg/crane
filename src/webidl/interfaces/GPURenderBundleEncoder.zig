@@ -156,69 +156,36 @@ pub const GPURenderBundleEncoder = struct {
         GPURenderBundleEncoderImpl.deinit(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPURenderBundleEncoderImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPURenderBundleEncoderImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPURenderBundleDescriptor)) anyerror!*runtime.Instance {
         return try GPURenderBundleEncoderImpl.call_finish(instance, descriptor);
     }
 
-    pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
-    }
+    pub const call_setVertexBuffer = mixins.GPURenderCommandsMixin.call_setVertexBuffer;
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
-    }
+    pub const call_setBindGroup = mixins.GPUBindingCommandsMixin.call_setBindGroup;
 
-    pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
-    }
+    pub const call_setIndexBuffer = mixins.GPURenderCommandsMixin.call_setIndexBuffer;
 
-    pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_drawIndexedIndirect(instance, indirectBuffer, indirectOffset);
-    }
+    pub const call_drawIndexedIndirect = mixins.GPURenderCommandsMixin.call_drawIndexedIndirect;
 
-    pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstVertex: webidl.Opt(GPUSize32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
-    }
+    pub const call_draw = mixins.GPURenderCommandsMixin.call_draw;
 
-    pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstIndex: webidl.Opt(GPUSize32), baseVertex: webidl.Opt(GPUSignedOffset32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
-    }
+    pub const call_drawIndexed = mixins.GPURenderCommandsMixin.call_drawIndexed;
 
-    pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_insertDebugMarker(instance, markerLabel);
-    }
+    pub const call_insertDebugMarker = mixins.GPUDebugCommandsMixin.call_insertDebugMarker;
 
-    pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_pushDebugGroup(instance, groupLabel);
-    }
+    pub const call_pushDebugGroup = mixins.GPUDebugCommandsMixin.call_pushDebugGroup;
 
-    pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_setPipeline(instance, pipeline);
-    }
+    pub const call_setPipeline = mixins.GPURenderCommandsMixin.call_setPipeline;
 
-    pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_popDebugGroup(instance);
-    }
+    pub const call_popDebugGroup = mixins.GPUDebugCommandsMixin.call_popDebugGroup;
 
-    pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
-        return try GPURenderBundleEncoderImpl.call_drawIndirect(instance, indirectBuffer, indirectOffset);
-    }
+    pub const call_drawIndirect = mixins.GPURenderCommandsMixin.call_drawIndirect;
 
-    pub fn call_setBindGroup__1(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsetsData: runtime.JSValue, dynamicOffsetsDataStart: GPUSize64, dynamicOffsetsDataLength: GPUSize32) anyerror!void {
-        if (comptime @hasDecl(GPURenderBundleEncoderImpl, "call_setBindGroup__1")) {
-            return try GPURenderBundleEncoderImpl.call_setBindGroup__1(instance, index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const call_setBindGroup__1 = mixins.GPUBindingCommandsMixin.call_setBindGroup__1;
 
     /// WebIDL overload sets: every overload of each overloaded operation,
     /// in IDL order, for the overload resolution algorithm
@@ -227,7 +194,7 @@ pub const GPURenderBundleEncoder = struct {
     pub const overloads = .{
         .{ "setBindGroup", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_setBindGroup", .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
-            .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(GPURenderBundleEncoderImpl, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
+            .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(mixins.GPUBindingCommandsMixin.impl, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
         } },
     };
 };

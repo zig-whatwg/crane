@@ -1781,9 +1781,7 @@ pub const Window = struct {
         return try WindowImpl.get_portalHost(instance);
     }
 
-    pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WindowImpl.get_pushManager(instance);
-    }
+    pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
     pub const get_onabort = mixins.GlobalEventHandlers.get_onabort;
     pub const set_onabort = mixins.GlobalEventHandlers.set_onabort;

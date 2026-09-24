@@ -175,7 +175,7 @@ pub const NetworkInformation = struct {
         if (state.own.cached_saveData) |cached| {
             return cached;
         }
-        const value = try NetworkInformationImpl.get_saveData(instance);
+        const value = try mixins.NetworkInformationSaveData.get_saveData(instance);
         state.own.cached_saveData = value;
         return value;
     }

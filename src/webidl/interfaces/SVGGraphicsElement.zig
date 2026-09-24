@@ -289,7 +289,7 @@ pub const SVGGraphicsElement = struct {
         if (state.own.cached_requiredExtensions) |cached| {
             return cached;
         }
-        const value = try SVGGraphicsElementImpl.get_requiredExtensions(instance);
+        const value = try mixins.SVGTests.get_requiredExtensions(instance);
         state.own.cached_requiredExtensions = value;
         return value;
     }
@@ -301,7 +301,7 @@ pub const SVGGraphicsElement = struct {
         if (state.own.cached_systemLanguage) |cached| {
             return cached;
         }
-        const value = try SVGGraphicsElementImpl.get_systemLanguage(instance);
+        const value = try mixins.SVGTests.get_systemLanguage(instance);
         state.own.cached_systemLanguage = value;
         return value;
     }

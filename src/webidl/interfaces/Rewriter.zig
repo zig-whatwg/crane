@@ -192,9 +192,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_measureInputUsage(instance, input, options);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try RewriterImpl.call_destroy(instance);
-    }
+    pub const call_destroy = mixins.DestroyableModel.call_destroy;
 
     pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!runtime.JSValue {
         return try RewriterImpl.call_static_create(instance, options);

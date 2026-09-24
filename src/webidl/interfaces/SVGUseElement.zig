@@ -361,7 +361,7 @@ pub const SVGUseElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGUseElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }

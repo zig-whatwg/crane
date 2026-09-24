@@ -81,12 +81,6 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
     return error.NotImplemented;
 }
 
-/// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: translateStreaming
 pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*runtime.Instance {
     _ = instance;

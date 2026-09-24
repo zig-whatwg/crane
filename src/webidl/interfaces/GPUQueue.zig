@@ -125,13 +125,8 @@ pub const GPUQueue = struct {
         GPUQueueImpl.deinit(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUQueueImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUQueueImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GPUQueueImpl.call_onSubmittedWorkDone(instance);

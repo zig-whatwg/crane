@@ -111,12 +111,6 @@ pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options
     return error.NotImplemented;
 }
 
-/// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: writeStreaming
 pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) anyerror!*runtime.Instance {
     _ = instance;

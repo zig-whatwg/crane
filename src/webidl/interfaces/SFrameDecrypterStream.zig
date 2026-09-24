@@ -148,15 +148,8 @@ pub const SFrameDecrypterStream = struct {
         return try SFrameDecrypterStreamImpl.get_writable(instance);
     }
 
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SFrameDecrypterStreamImpl.get_onerror(instance);
-    }
+    pub const get_onerror = mixins.SFrameKeyManagement.get_onerror;
+    pub const set_onerror = mixins.SFrameKeyManagement.set_onerror;
 
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SFrameDecrypterStreamImpl.set_onerror(instance, value);
-    }
-
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
-        return try SFrameDecrypterStreamImpl.call_setEncryptionKey(instance, key, keyID);
-    }
+    pub const call_setEncryptionKey = mixins.SFrameKeyManagement.call_setEncryptionKey;
 };

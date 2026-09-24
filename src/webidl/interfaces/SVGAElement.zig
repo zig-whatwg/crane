@@ -441,138 +441,46 @@ pub const SVGAElement = struct {
         if (state.own.cached_href) |cached| {
             return cached;
         }
-        const value = try SVGAElementImpl.get_href(instance);
+        const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
         return value;
     }
 
-    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_origin(instance);
-    }
+    pub const get_origin = mixins.HTMLHyperlinkElementUtils.get_origin;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_protocol(instance);
-    }
+    pub const get_protocol = mixins.HTMLHyperlinkElementUtils.get_protocol;
+    pub const set_protocol = mixins.HTMLHyperlinkElementUtils.set_protocol;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_protocol(instance, value);
-    }
+    pub const get_username = mixins.HTMLHyperlinkElementUtils.get_username;
+    pub const set_username = mixins.HTMLHyperlinkElementUtils.set_username;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_username(instance);
-    }
+    pub const get_password = mixins.HTMLHyperlinkElementUtils.get_password;
+    pub const set_password = mixins.HTMLHyperlinkElementUtils.set_password;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_username(instance, value);
-    }
+    pub const get_host = mixins.HTMLHyperlinkElementUtils.get_host;
+    pub const set_host = mixins.HTMLHyperlinkElementUtils.set_host;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_password(instance);
-    }
+    pub const get_hostname = mixins.HTMLHyperlinkElementUtils.get_hostname;
+    pub const set_hostname = mixins.HTMLHyperlinkElementUtils.set_hostname;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_password(instance, value);
-    }
+    pub const get_port = mixins.HTMLHyperlinkElementUtils.get_port;
+    pub const set_port = mixins.HTMLHyperlinkElementUtils.set_port;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_host(instance);
-    }
+    pub const get_pathname = mixins.HTMLHyperlinkElementUtils.get_pathname;
+    pub const set_pathname = mixins.HTMLHyperlinkElementUtils.set_pathname;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_host(instance, value);
-    }
+    pub const get_search = mixins.HTMLHyperlinkElementUtils.get_search;
+    pub const set_search = mixins.HTMLHyperlinkElementUtils.set_search;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_hostname(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_hostname(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_port(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_port(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_pathname(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_pathname(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_search(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_search(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_hash(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try SVGAElementImpl.set_hash(instance, value);
-    }
+    pub const get_hash = mixins.HTMLHyperlinkElementUtils.get_hash;
+    pub const set_hash = mixins.HTMLHyperlinkElementUtils.set_hash;
 };

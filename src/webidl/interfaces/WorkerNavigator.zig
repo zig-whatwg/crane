@@ -358,9 +358,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerNavigatorImpl.get_locks(instance);
-    }
+    pub const get_locks = mixins.NavigatorLocks.get_locks;
 
     /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -369,14 +367,12 @@ pub const WorkerNavigator = struct {
         if (state.own.cached_gpu) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_gpu(instance);
+        const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
         return value;
     }
 
-    pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
-        return try WorkerNavigatorImpl.get_globalPrivacyControl(instance);
-    }
+    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
     /// Extended attributes: [SameObject]
     pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -385,7 +381,7 @@ pub const WorkerNavigator = struct {
         if (state.own.cached_connection) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_connection(instance);
+        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
         return value;
     }
@@ -397,14 +393,12 @@ pub const WorkerNavigator = struct {
         if (state.own.cached_ml) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_ml(instance);
+        const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
         return value;
     }
 
-    pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
-        return try WorkerNavigatorImpl.get_deviceMemory(instance);
-    }
+    pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     /// Extended attributes: [SameObject]
     pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -425,7 +419,7 @@ pub const WorkerNavigator = struct {
         if (state.own.cached_storageBuckets) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_storageBuckets(instance);
+        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
         return value;
     }
@@ -491,20 +485,11 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerNavigatorImpl.get_userAgentData(instance);
-    }
+    pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
 
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try WorkerNavigatorImpl.call_clearAppBadge(instance);
-    }
+    pub const call_clearAppBadge = mixins.NavigatorBadge.call_clearAppBadge;
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
-        // [EnforceRange] on contents
-        if (!runtime.isInRange(u64, contents)) return error.TypeError;
-
-        return try WorkerNavigatorImpl.call_setAppBadge(instance, contents);
-    }
+    pub const call_setAppBadge = mixins.NavigatorBadge.call_setAppBadge;
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {

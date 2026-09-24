@@ -128,11 +128,7 @@ pub const FederatedCredential = struct {
         return try FederatedCredentialImpl.get_protocol(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try FederatedCredentialImpl.get_name(instance);
-    }
+    pub const get_name = mixins.CredentialUserData.get_name;
 
-    pub fn get_iconURL(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try FederatedCredentialImpl.get_iconURL(instance);
-    }
+    pub const get_iconURL = mixins.CredentialUserData.get_iconURL;
 };

@@ -181,53 +181,23 @@ pub const BluetoothDevice = struct {
         return try BluetoothDeviceImpl.get_watchingAdvertisements(instance);
     }
 
-    pub fn get_onadvertisementreceived(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_onadvertisementreceived(instance);
-    }
+    pub const get_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.get_onadvertisementreceived;
+    pub const set_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.set_onadvertisementreceived;
 
-    pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_onadvertisementreceived(instance, value);
-    }
+    pub const get_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.get_ongattserverdisconnected;
+    pub const set_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.set_ongattserverdisconnected;
 
-    pub fn get_ongattserverdisconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_ongattserverdisconnected(instance);
-    }
+    pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
+    pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
-    pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_ongattserverdisconnected(instance, value);
-    }
+    pub const get_onserviceadded = mixins.ServiceEventHandlers.get_onserviceadded;
+    pub const set_onserviceadded = mixins.ServiceEventHandlers.set_onserviceadded;
 
-    pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_oncharacteristicvaluechanged(instance);
-    }
+    pub const get_onservicechanged = mixins.ServiceEventHandlers.get_onservicechanged;
+    pub const set_onservicechanged = mixins.ServiceEventHandlers.set_onservicechanged;
 
-    pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_oncharacteristicvaluechanged(instance, value);
-    }
-
-    pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_onserviceadded(instance);
-    }
-
-    pub fn set_onserviceadded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_onserviceadded(instance, value);
-    }
-
-    pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_onservicechanged(instance);
-    }
-
-    pub fn set_onservicechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_onservicechanged(instance, value);
-    }
-
-    pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceImpl.get_onserviceremoved(instance);
-    }
-
-    pub fn set_onserviceremoved(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceImpl.set_onserviceremoved(instance, value);
-    }
+    pub const get_onserviceremoved = mixins.ServiceEventHandlers.get_onserviceremoved;
+    pub const set_onserviceremoved = mixins.ServiceEventHandlers.set_onserviceremoved;
 
     pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothDeviceImpl.call_forget(instance);

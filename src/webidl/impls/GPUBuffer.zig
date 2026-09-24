@@ -58,19 +58,6 @@ pub fn get_mapState(instance: *runtime.Instance) anyerror!enums.GPUBufferMapStat
     return error.NotImplemented;
 }
 
-/// Getter for label
-pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: unmap
 pub fn call_unmap(instance: *runtime.Instance) anyerror!void {
     _ = instance;

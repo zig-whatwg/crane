@@ -397,23 +397,13 @@ pub const SVGFEConvolveMatrixElement = struct {
         return try SVGFEConvolveMatrixElementImpl.get_preserveAlpha(instance);
     }
 
-    pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEConvolveMatrixElementImpl.get_x(instance);
-    }
+    pub const get_x = mixins.SVGFilterPrimitiveStandardAttributes.get_x;
 
-    pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEConvolveMatrixElementImpl.get_y(instance);
-    }
+    pub const get_y = mixins.SVGFilterPrimitiveStandardAttributes.get_y;
 
-    pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEConvolveMatrixElementImpl.get_width(instance);
-    }
+    pub const get_width = mixins.SVGFilterPrimitiveStandardAttributes.get_width;
 
-    pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEConvolveMatrixElementImpl.get_height(instance);
-    }
+    pub const get_height = mixins.SVGFilterPrimitiveStandardAttributes.get_height;
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SVGFEConvolveMatrixElementImpl.get_result(instance);
-    }
+    pub const get_result = mixins.SVGFilterPrimitiveStandardAttributes.get_result;
 };

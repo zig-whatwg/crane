@@ -190,13 +190,8 @@ pub const GPUTexture = struct {
         return try GPUTextureImpl.get_textureBindingViewDimension(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try GPUTextureImpl.get_label(instance);
-    }
-
-    pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try GPUTextureImpl.set_label(instance, value);
-    }
+    pub const get_label = mixins.GPUObjectBase.get_label;
+    pub const set_label = mixins.GPUObjectBase.set_label;
 
     pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(GPUTextureViewDescriptor)) anyerror!*runtime.Instance {
         return try GPUTextureImpl.call_createView(instance, descriptor);

@@ -69,18 +69,6 @@ pub fn get_isFirstPersonObserver(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: requestViewportScale
 pub fn call_requestViewportScale(instance: *runtime.Instance, scale: ?f64) anyerror!void {
     _ = instance;

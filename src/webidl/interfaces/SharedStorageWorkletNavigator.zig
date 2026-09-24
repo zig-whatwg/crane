@@ -92,7 +92,5 @@ pub const SharedStorageWorkletNavigator = struct {
         SharedStorageWorkletNavigatorImpl.deinit(instance);
     }
 
-    pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SharedStorageWorkletNavigatorImpl.get_locks(instance);
-    }
+    pub const get_locks = mixins.NavigatorLocks.get_locks;
 };

@@ -183,13 +183,8 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_value(instance);
     }
 
-    pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothRemoteGATTCharacteristicImpl.get_oncharacteristicvaluechanged(instance);
-    }
-
-    pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothRemoteGATTCharacteristicImpl.set_oncharacteristicvaluechanged(instance, value);
-    }
+    pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
+    pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
     pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.call_stopNotifications(instance);
