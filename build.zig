@@ -2001,6 +2001,9 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
+    // A navigation's URL string is parsed and serialized before it is fetched.
+    browser_mod.addImport("basic_parser", url_basic_parser_mod);
+    browser_mod.addImport("url_serializer", url_serializer_mod);
 
     // WebDriver module - W3C WebDriver protocol implementation for wptrunner
     const webdriver_mod = b.addModule("webdriver", .{

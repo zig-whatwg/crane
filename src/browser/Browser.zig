@@ -430,13 +430,20 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
         }
 
+        // The URL to navigate to is the parsed URL, serialized: a space in a
+        // query - `?timeout set to expiring value` - is percent-encoded
+        // there, where curl refuses it raw and the load failed with
+        // NetworkError. A string that does not parse is used as given.
+        const serialized = serializedUrl(self.allocator, url);
+        defer if (serialized) |s| self.allocator.free(s);
+
         // Create new context
         // Pass used_snapshot flag so Context knows whether to skip initializeBindings
         const ctx = try Context.init(
             self.allocator,
             isolate,
             self.storage,
-            url,
+            serialized orelse url,
             self.event_loop,
             context_type,
             self.used_snapshot,
@@ -454,6 +461,14 @@ pub const Browser = struct {
                 .script_loader = options.script_loader,
             });
         }
+    }
+
+    /// `url` parsed with the basic URL parser and serialized; null when it
+    /// does not parse. Owned by `allocator`.
+    fn serializedUrl(allocator: std.mem.Allocator, url: []const u8) ?[]u8 {
+        var record = @import("basic_parser").parse(allocator, url, null) catch return null;
+        defer record.deinit();
+        return @constCast(@import("url_serializer").serialize(allocator, &record, false) catch return null);
     }
 
     /// Reload the current page
