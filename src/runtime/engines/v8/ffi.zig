@@ -2200,6 +2200,11 @@ pub extern fn v8_Isolate_EnqueueMicrotask(
 /// Runs all pending microtasks to completion.
 pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 
+/// Run one foreground task V8 has posted to the platform for `isolate`, if
+/// one is due. Returns whether a task ran. Never blocks; call with `isolate`
+/// entered.
+pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
+
 /// Set the microtasks policy for the isolate
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 

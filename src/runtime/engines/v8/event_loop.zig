@@ -117,6 +117,26 @@ const Task = event_loop_mod.Task;
 /// - isFrozen(): Check if currently frozen
 ///
 /// When frozen, runOnce() returns immediately without processing any work.
+/// At most this many platform tasks run per turn. V8 can post a task from a
+/// task, and a turn has to end for the caller to check its deadline, as
+/// `runQueuedTasks` bounds the embedder's own queue.
+const platform_task_budget = 64;
+
+/// Run the foreground tasks V8 has posted to the platform for `isolate` - an
+/// asynchronous WebAssembly compile's result, FinalizationRegistry cleanup -
+/// each followed by a microtask checkpoint, since it may have settled a
+/// promise. d8's `ProcessMessages` does the same after every task. Call with
+/// `isolate` entered. Returns whether any task ran.
+pub fn pumpPlatformTasks(isolate: *v8_ffi.Isolate) bool {
+    var ran = false;
+    var budget: usize = platform_task_budget;
+    while (budget > 0 and v8_ffi.v8_Platform_PumpMessageLoop(isolate)) : (budget -= 1) {
+        ran = true;
+        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    }
+    return ran;
+}
+
 pub const V8EventLoop = struct {
     /// V8 isolate this event loop is bound to
     isolate: *v8_ffi.Isolate,
@@ -372,6 +392,9 @@ pub const V8EventLoop = struct {
 
         // Step 2: Run the tasks queued before this turn began.
         if (self.runQueuedTasks()) did_work = true;
+
+        // Step 2b: Run the tasks V8 itself has posted to the platform.
+        if (pumpPlatformTasks(self.isolate)) did_work = true;
 
         // Step 3: Calculate optimal wait time
         // We want to wake up when the next timer fires OR when max_wait_ms expires

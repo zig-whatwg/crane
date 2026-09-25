@@ -346,6 +346,7 @@ pub fn finishTaskIn(isolate: *v8.ffi.Isolate) void {
     current_worker_context = wctx;
     defer current_worker_context = prev_context;
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    _ = v8.pumpPlatformTasks(isolate);
     DedicatedWorker.flushPendingMessages();
     scheduleMessageDispatch(wctx);
 }
@@ -437,6 +438,12 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // Run microtasks after callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(ctx.isolate);
+
+    // Then the tasks V8 has posted to the platform for this isolate - the
+    // page's event loop pumps only the page's isolate. TODO: a worker with no
+    // timer of its own still waits for its next task before a posted one runs
+    // (an async WebAssembly compile in an otherwise idle worker).
+    _ = v8.pumpPlatformTasks(ctx.isolate);
 
     // CRITICAL: Flush pending messages to the port queue
     // Messages posted by the timer callback (via postMessage) are buffered in

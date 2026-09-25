@@ -89,6 +89,7 @@ pub const external_references = @import("external_references.zig");
 /// V8 Event Loop Integration
 pub const event_loop_mod = @import("event_loop.zig");
 pub const V8EventLoop = event_loop_mod.V8EventLoop;
+pub const pumpPlatformTasks = event_loop_mod.pumpPlatformTasks;
 
 /// V8 Promise Integration (Phase 2: Runtime Infrastructure)
 pub const promise_mod = @import("promise.zig");

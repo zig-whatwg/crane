@@ -2369,6 +2369,17 @@ void v8_Platform_Initialize() {
     }
 }
 
+/// Run one foreground task V8 has posted to the platform for |isolate|, if
+/// one is due, and report whether one ran. V8 finishes an asynchronous
+/// WebAssembly compile, and runs FinalizationRegistry cleanup, through such
+/// tasks; an embedder that never pumps never sees them. Never blocks. Call
+/// with |isolate| entered, as d8's ProcessMessages does.
+bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
+    if (!g_platform || !isolate) return false;
+    return platform::PumpMessageLoop(g_platform.get(), isolate,
+                                     platform::MessageLoopBehavior::kDoNotWait);
+}
+
 void v8_Platform_Dispose() {
     if (v8_initialized) {
         V8::Dispose();

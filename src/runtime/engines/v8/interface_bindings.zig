@@ -79,6 +79,30 @@ pub const interface_skip_list = .{
     "XRVisibilityMaskChangeEvent", // TypedArray issues
 };
 
+/// Namespaces the JavaScript engine defines itself, which the bindings must
+/// leave alone.
+///
+/// The WebAssembly JavaScript Interface (wasm-js-api.idl) is part of the
+/// engine, as ECMAScript is: V8 installs `WebAssembly`, and every constructor
+/// its IDL puts in that namespace, on each context it creates. Blink binds none
+/// of it - its only WebAssembly code is the streaming hook V8 asks the embedder
+/// for. Registering the generated namespace over V8's replaced a working API
+/// with stubs.
+pub const engine_provided_namespaces = .{
+    "WebAssembly",
+};
+
+/// Does the engine define namespace `name`? False unless listed: a namespace
+/// answered true is never bound, so the default must be "ours".
+pub fn namespaceIsEngineProvided(comptime name: []const u8) bool {
+    return comptime blk: {
+        for (engine_provided_namespaces) |provided| {
+            if (std.mem.eql(u8, name, provided)) break :blk true;
+        }
+        break :blk false;
+    };
+}
+
 /// Check if an interface name should be skipped
 pub fn shouldSkipInterface(comptime name: []const u8) bool {
     // Using a simple array lookup since this is called at comptime
@@ -995,8 +1019,12 @@ pub fn registerNamespacesGeneric(
     inline for (ns_decls) |decl| {
         const NamespaceType = @field(namespaces_mod, decl.name);
 
-        // Only bind types that have Meta (actual namespaces)
-        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+        // Only bind types that have Meta (actual namespaces), and never one the
+        // engine already defines - that would shadow it, and its
+        // [LegacyNamespace] interfaces with it.
+        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta") and
+            comptime !namespaceIsEngineProvided(decl.name))
+        {
             // Use V8Namespace to create object with all methods bound
             const NamespaceBinding = V8Namespace(NamespaceType);
             NamespaceBinding.registerGlobal(isolate, context, decl.name);
