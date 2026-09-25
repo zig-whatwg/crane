@@ -568,6 +568,10 @@ pub const WorkerV8Context = struct {
     /// The timer that runs the next teardown step, while one is armed.
     teardown_timer: ?MessageDispatchTimer = null,
 
+    /// The timer that pumps V8's posted tasks while nothing else would
+    /// (`armPlatformPump`), while one is armed.
+    platform_pump: ?MessageDispatchTimer = null,
+
     /// The owner has let go (`destroy`). The memory goes once this is set and
     /// the isolate is disposed, whichever comes last.
     owner_released: bool = false,
@@ -719,14 +723,65 @@ pub const WorkerV8Context = struct {
     /// The end of a task that ran script in this worker: a microtask
     /// checkpoint, the tasks V8 has posted to the platform for its isolate,
     /// and whatever the worker posted leaving for the page. Call with the
-    /// isolate entered. TODO: a worker with no task of its own still waits for
-    /// its next one before a posted task runs (an asynchronous WebAssembly
-    /// compile in an otherwise idle worker).
+    /// isolate entered.
     fn endTask(self: *Self) void {
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
         _ = v8.pumpPlatformTasks(self.isolate);
         DedicatedWorker.flushPendingMessages();
         scheduleMessageDispatch(self);
+        self.armPlatformPump(false);
+    }
+
+    /// How often an otherwise idle worker pumps while V8 has background work
+    /// for it.
+    const platform_pump_interval_ms = 1;
+
+    /// Keep V8's posted tasks running while nothing else would.
+    ///
+    /// A worker's tasks run as timers on the page's loop, and each ends by
+    /// pumping its isolate (`endTask`). But V8 posts some tasks from a
+    /// background thread when its work there is done - an asynchronous
+    /// WebAssembly compile settles its promise that way - and a worker with no
+    /// timer due and no message arriving never pumped again, so the promise
+    /// never settled. While V8 reports background work for the isolate, a pump
+    /// stays armed: d8 keeps its message loop waiting on the same test
+    /// (Shell::CompleteMessageLoop). `again` re-arms regardless - a pump that
+    /// ran a task may have more to run.
+    fn armPlatformPump(self: *Self, again: bool) void {
+        if (self.platform_pump != null or !self.runsTasks()) return;
+        if (!again and !v8.ffi.v8_Isolate_HasPendingBackgroundTasks(self.isolate)) return;
+        const timer = getTimerInterface() orelse return;
+        const id = timer.setTimeout(platform_pump_interval_ms, platformPumpCallback, self);
+        if (id == 0) return;
+        self.platform_pump = .{ .timer = timer, .id = id };
+    }
+
+    /// The pump: a task that runs what V8 has posted, then ends as every
+    /// worker task does.
+    fn platformPumpCallback(context_ptr: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
+        self.platform_pump = null;
+        if (!self.runsTasks()) return;
+
+        const prev_context = current_worker_context;
+        current_worker_context = self;
+        defer current_worker_context = prev_context;
+
+        self.enter();
+        defer self.exit();
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        // Read before pumping: background work that ends between the two
+        // posts its task after the pump looked, and a pending answer taken
+        // first means one more round to find it.
+        const pending = v8.ffi.v8_Isolate_HasPendingBackgroundTasks(self.isolate);
+        const ran = v8.pumpPlatformTasks(self.isolate);
+        if (ran) {
+            DedicatedWorker.flushPendingMessages();
+            scheduleMessageDispatch(self);
+        }
+        if (pending or ran) self.armPlatformPump(true);
     }
 
     /// Stop one armed timer of ours, if any.
@@ -750,6 +805,7 @@ pub const WorkerV8Context = struct {
         if (self.phase == .realm_gone or self.phase == .disposed) return;
         self.phase = .closing;
         cancelWorkerTimers(self);
+        disarm(&self.platform_pump);
         disarm(&self.message_dispatch);
         if (self.dedicated_worker) |dw| {
             emptyPortQueue(dw.port_pair.outside_port);
@@ -771,6 +827,7 @@ pub const WorkerV8Context = struct {
         if (self.dedicated_worker) |dw| dw.close();
         self.phase = .closing;
         cancelWorkerTimers(self);
+        disarm(&self.platform_pump);
         self.scheduleTeardown();
     }
 
@@ -809,6 +866,7 @@ pub const WorkerV8Context = struct {
         self.phase = .realm_gone;
         removeLive(self);
         cancelWorkerTimers(self);
+        disarm(&self.platform_pump);
 
         {
             self.enter();
@@ -901,6 +959,7 @@ pub const WorkerV8Context = struct {
         if (self.phase == .running or self.phase == .closing) {
             self.phase = .closing;
             cancelWorkerTimers(self);
+            disarm(&self.platform_pump);
             self.scheduleTeardown();
         }
     }
@@ -921,6 +980,7 @@ pub const WorkerV8Context = struct {
     fn free(self: *Self) void {
         removeLive(self);
         disarm(&self.teardown_timer);
+        disarm(&self.platform_pump);
         disarm(&self.message_dispatch);
         self.allocator.free(self.script_url);
         self.allocator.free(self.effective_url);
@@ -1459,6 +1519,11 @@ pub const WorkerV8Context = struct {
         if (process_messages) {
             self.processIncomingMessagesInternal();
         }
+
+        // What V8 posted while the script ran; and if it left background work
+        // (an asynchronous compile), a pump to finish it.
+        _ = v8.pumpPlatformTasks(self.isolate);
+        self.armPlatformPump(false);
 
         return result;
     }
@@ -2339,6 +2404,11 @@ pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
         defer current_worker_context = prev_context;
 
         worker_ctx.processIncomingMessagesInternal();
+
+        // The end of the task: V8's posted tasks, and a pump if background
+        // work is left.
+        _ = v8.pumpPlatformTasks(worker_ctx.isolate);
+        worker_ctx.armPlatformPump(false);
     }
     // Block exits here, so we're now outside the worker isolate
 
