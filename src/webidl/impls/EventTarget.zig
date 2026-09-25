@@ -87,9 +87,10 @@ pub const InternalState = struct {
     /// EventHandler, OnErrorEventHandler and OnBeforeUnloadEventHandler share
     /// the map. The keys are the IDL attributes' literal event types.
     ///
-    /// The Globals are not disposed here, as none of the per-interface maps
-    /// this replaces disposed them. TODO(handles): dispose a replaced value and
-    /// the rest at teardown, measured with `leaks --atExit`.
+    /// The map owns each value: the binding hands the setter's argument over
+    /// as it is, and `setEventHandler` disposes a value it replaces or clears,
+    /// `deinitEx` the rest. A value is a handle to a function in some page,
+    /// and one never released kept that page alive for the process.
     event_handler_map: ?*std.StringHashMapUnmanaged(usize) = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
@@ -124,13 +125,18 @@ pub const InternalState = struct {
                 // correctly for addEventListener/removeEventListener, but the underlying
                 // corruption during browser shutdown needs further investigation.
                 // For now, we leak these handles during cleanup to avoid crashes.
-                _ = cleanup_v8_resources;
+                // (callback_registry releases them when their context goes.)
                 _ = listener.callback;
             }
             list.deinit();
             self.allocator.destroy(list);
         }
         if (self.event_handler_map) |map| {
+            // Without an isolate there is nothing to dispose into.
+            if (cleanup_v8_resources) {
+                var values = map.valueIterator();
+                while (values.next()) |address| disposeHandlerValue(address.*);
+            }
             map.deinit(self.allocator);
             self.allocator.destroy(map);
             self.event_handler_map = null;
@@ -561,7 +567,9 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     // Step 3: "If the given value is null, then deactivate an event handler
     // given eventTarget and name."
     const handler = value orelse {
-        if (internal.event_handler_map) |map| _ = map.remove(event_type);
+        if (internal.event_handler_map) |map| {
+            if (map.fetchRemove(event_type)) |old| disposeHandlerValue(old.value);
+        }
         deactivateEventHandler(target, event_type);
         return;
     };
@@ -574,8 +582,19 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     };
     var address: usize = undefined;
     @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
-    try map.put(internal.allocator, event_type, address);
+    if (try map.fetchPut(internal.allocator, event_type, address)) |old| disposeHandlerValue(old.value);
     try activateEventHandler(target, event_type);
+}
+
+/// Release a value the event handler map owned: the tagged Global the binding
+/// made of the setter's argument. A running handler holds a clone of its own
+/// (invokeIdlEventHandler), so `this.onclick = null` inside one is safe.
+fn disposeHandlerValue(address: usize) void {
+    const v8_engine = @import("v8");
+    const raw: ?*anyopaque = @ptrFromInt(address);
+    const untagged = v8_engine.pointer_tag.untagPointer(raw orelse return);
+    if (untagged.tag != .global_handle) return;
+    v8_engine.ffi.v8_Global_Dispose(@ptrCast(@alignCast(untagged.ptr)));
 }
 
 /// The tagged address `eventHandler` reads, for dispatch.
@@ -1271,8 +1290,12 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
     defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
 
-    // Wrap the GlobalHandle
-    const global_handle = global_handles.GlobalHandle{ .ptr = @ptrCast(untagged.ptr) };
+    // Run a handle of our own: the handler can replace or clear its own
+    // attribute, which disposes the map's value, and the exception report
+    // after the call still needs the function.
+    const handler_copy = v8_engine.ffi.v8_Global_Clone(@ptrCast(@alignCast(untagged.ptr))) orelse return;
+    defer v8_engine.ffi.v8_Global_Dispose(handler_copy);
+    const global_handle = global_handles.GlobalHandle{ .ptr = @ptrCast(handler_copy) };
 
     // Verify the global handle contains a function.
     // v8_Value_IsFunction expects a Global<Value>* - pass the GlobalHandle directly.
