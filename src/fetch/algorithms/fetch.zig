@@ -14,149 +14,52 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
-const InternalResponse = internal_response.InternalResponse;
 const internal_request = @import("../internal/request.zig");
 const InternalRequest = internal_request.InternalRequest;
-const fetch_params_mod = @import("../internal/fetch_params.zig");
-const FetchParams = fetch_params_mod.FetchParams;
-const fetch_controller_mod = @import("../internal/fetch_controller.zig");
-const FetchController = fetch_controller_mod.FetchController;
-const fetch_timing = @import("../internal/fetch_timing.zig");
-const FetchTimingInfo = fetch_timing.FetchTimingInfo;
-const main_fetch = @import("main_fetch.zig");
-const scheme_fetch = @import("scheme_fetch.zig");
-const http_fetch = @import("http_fetch.zig");
-const clock = @import("clock");
+const InternalResponse = internal_response.InternalResponse;
+const network = @import("../network/root.zig");
+const NetworkResponse = network.NetworkResponse;
+const NetworkError = network.NetworkError;
+const LibcurlBackend = network.LibcurlBackend;
+const fetch_job = @import("fetch_job.zig");
+const FetchJob = fetch_job.FetchJob;
 
-/// Error types for fetch.
-pub const FetchError = error{
-    OutOfMemory,
-    NetworkError,
-    AbortError,
-};
+pub const FetchError = fetch_job.FetchError;
+pub const FetchResult = fetch_job.FetchResult;
+pub const ProcessResponseCallback = fetch_job.ProcessResponseCallback;
+pub const FetchOptions = fetch_job.FetchOptions;
 
-/// Fetch result containing the response and timing info.
-pub const FetchResult = struct {
-    response: *InternalResponse,
-    timing_info: FetchTimingInfo,
-
-    pub fn deinit(self: *FetchResult) void {
-        self.response.deinit();
-        self.timing_info.deinit();
-    }
-};
-
-/// Callback type for process response.
-pub const ProcessResponseCallback = *const fn (response: *InternalResponse) void;
-
-/// Options for the fetch operation.
-pub const FetchOptions = struct {
-    /// Process response callback
-    process_response: ?ProcessResponseCallback = null,
-    /// Use CORS mode
-    use_cors: bool = false,
-    /// Cross-origin isolated capability
-    cross_origin_isolated_capability: bool = false,
-};
-
-/// Execute the top-level fetch algorithm.
+/// Execute the top-level fetch algorithm, waiting for the network.
 ///
-/// Per Fetch spec §4:
-/// 1. Let request be the request argument
-/// 2. If request's client is non-null and is not a secure context...
-/// 3. Let taskDestination be null
-/// 4. Let crossOriginIsolatedCapability be false
-/// 5. If useParallelQueue is true, set taskDestination to parallel queue
-/// 6. Let timingInfo be a new fetch timing info
-/// 7. Let fetchParams be a new fetch params
-/// 8. Set fetchParams's items
-/// 9. If request's body is a byte sequence, convert to Body
-/// 10. If request's window is "client", set to current global object
-/// 11. If request's origin is "client", set to current origin
-/// 12. If all requests are local, set local-URLs-only
-/// 13. If response is null, main fetch
-/// 14. Return response
+/// Every request HTTP-network fetch sends is performed there and then, so
+/// this returns with the response - and nothing else on the thread runs until
+/// it does. That is what navigation and synchronous XHR need; `fetch()`, the
+/// method, runs the same algorithm on the event loop instead (see
+/// `async_fetch.zig`). `request` is borrowed.
 pub fn fetch(
     allocator: Allocator,
     request: *InternalRequest,
     options: FetchOptions,
 ) FetchError!FetchResult {
-    // Step 6: Let timingInfo be a new fetch timing info
-    var timing_info = FetchTimingInfo.init(allocator);
-    errdefer timing_info.deinit();
+    const job = try FetchJob.create(allocator, request, false, options);
+    defer job.destroy();
 
-    // Record start time
-    const now = getCurrentTimeMs();
-    timing_info.start_time = now;
-
-    // Step 7-8: Create fetch controller and params
-    const controller = FetchController.init(allocator) catch {
-        return FetchError.OutOfMemory;
+    var step = try job.start();
+    while (true) switch (step) {
+        .done => return job.takeResult(),
+        .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
     };
-    errdefer controller.deinit();
+}
 
-    const params = FetchParams.init(allocator, request, controller, &timing_info) catch {
-        return FetchError.OutOfMemory;
+/// Perform HTTP-network fetch's request now, blocking until it is answered.
+fn sendBlocking(allocator: Allocator, needed: FetchJob.NetworkStep) NetworkError!NetworkResponse {
+    const backend_impl = LibcurlBackend.initWithOptions(allocator, .{ .enable_cookies = needed.cookies }) catch {
+        // A backend that cannot be made is a network error, not a lack of
+        // memory the caller could act on.
+        return NetworkError.Unknown;
     };
-    errdefer params.deinit();
-
-    // Set options
-    params.cross_origin_isolated_capability = options.cross_origin_isolated_capability;
-    if (options.process_response) |callback| {
-        params.process_response = callback;
-    }
-
-    // Step 13: Dispatch based on URL scheme
-    const url_str = request.currentUrl();
-    const url_scheme = extractScheme(url_str);
-
-    var response: *InternalResponse = undefined;
-
-    if (scheme_fetch.isLocalScheme(url_scheme)) {
-        // Handle local schemes (about, blob, data) directly
-        const result = scheme_fetch.schemeFetch(allocator, url_scheme, url_str) catch {
-            return FetchError.OutOfMemory;
-        };
-
-        response = switch (result) {
-            .response => |r| r,
-            .network_error => blk: {
-                break :blk internal_response.networkError(allocator) catch {
-                    return FetchError.OutOfMemory;
-                };
-            },
-        };
-    } else if (scheme_fetch.isHttpScheme(url_scheme)) {
-        // HTTP(S) requests go through main fetch -> HTTP fetch
-        response = main_fetch.mainFetch(allocator, params, false) catch |err| switch (err) {
-            main_fetch.MainFetchError.OutOfMemory => return FetchError.OutOfMemory,
-            main_fetch.MainFetchError.NetworkError => internal_response.networkError(allocator) catch {
-                return FetchError.OutOfMemory;
-            },
-        };
-    } else {
-        // Unsupported scheme
-        response = internal_response.networkError(allocator) catch {
-            return FetchError.OutOfMemory;
-        };
-    }
-
-    // Record end time
-    timing_info.end_time = getCurrentTimeMs();
-
-    // Call process response callback if set
-    if (options.process_response) |callback| {
-        callback(response);
-    }
-
-    // Clean up params (we keep timing_info for result)
-    params.deinit();
-    controller.deinit();
-
-    return FetchResult{
-        .response = response,
-        .timing_info = timing_info,
-    };
+    defer backend_impl.deinit();
+    return backend_impl.getBackend().send(allocator, needed.request);
 }
 
 /// Simplified fetch that just returns the response.
@@ -186,20 +89,6 @@ pub fn fetchWithAbort(
 ) FetchError!FetchResult {
     _ = abort_signal; // TODO: Implement abort signal integration
     return fetch(allocator, request, options);
-}
-
-/// Extract scheme from URL string.
-fn extractScheme(url_str: []const u8) []const u8 {
-    const colon_pos = std.mem.indexOf(u8, url_str, ":");
-    if (colon_pos) |pos| {
-        return url_str[0..pos];
-    }
-    return "";
-}
-
-/// Get current time in milliseconds.
-fn getCurrentTimeMs() f64 {
-    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 
 // =============================================================================
@@ -255,6 +144,7 @@ test "fetchSimple - about:blank" {
 }
 
 test "extractScheme" {
+    const extractScheme = fetch_job.extractScheme;
     try std.testing.expectEqualStrings("https", extractScheme("https://example.com"));
     try std.testing.expectEqualStrings("http", extractScheme("http://example.com"));
     try std.testing.expectEqualStrings("data", extractScheme("data:text/plain,Hello"));
