@@ -270,7 +270,15 @@ progress = [
 
   [[infra.items]]
   name = "A worker with no timer of its own still runs V8's posted tasks"
-  status = "todo"
+  status = "doing"
+
+  [[infra.items]]
+  name = "The worker global is a WorkerGlobalScope platform object with its mixin operations bound (not natives), so worker fetch() is the async one"
+  status = "doing"
+
+  [[infra.items]]
+  name = "A terminated worker removes its context and disposes its isolate"
+  status = "doing"
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"
@@ -334,6 +342,14 @@ owner = "agent"
 status = "doing"
 branch = "lane/networking"
 paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
+
+[[lane]]
+name = "Workers as first-class realms"
+infra = "event-loop"
+owner = "agent"
+status = "doing"
+branch = "lane/workers"
+paths = ["src/html/workers/", "src/html/worker_v8_context.zig", "src/webidl/impls/{WorkerGlobalScope,DedicatedWorkerGlobalScope,Worker,AbstractWorker,WorkerLocation,WorkerNavigator}.zig", "installForScope in interface_bindings.zig", "the worker-global guard in template_registry.zig's cache hit", "tests/html/workers/", "tests/wpt/crane/wk-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
