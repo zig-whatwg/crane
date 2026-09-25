@@ -120,6 +120,20 @@ pub const Record = struct {
     ownership_checks: usize = 0,
     ownership_violations: usize = 0,
 
+    /// V8's used heap, in KiB, when the file finished - the page still alive.
+    ///
+    /// A shard runs ~1,000 files in one process, and a page that leaves
+    /// anything reachable raises the floor for every file after it. When the
+    /// heap hits V8's limit the process dies of FatalProcessOutOfMemory,
+    /// charged to whichever file happened to be loading. The trend across a
+    /// shard's records names the files that raise the floor; the one that
+    /// crashed usually did not. No forced collection, so it includes garbage:
+    /// read the floor, not a single value.
+    ///
+    /// Zero in journals written before this field existed, and for a file the
+    /// supervisor recorded after its child died.
+    heap_used_kb: u64 = 0,
+
     message: ?[]const u8 = null,
 };
 
@@ -158,11 +172,11 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
     try w.print(
         ",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d}" ++
             ",\"duration_ms\":{d},\"nav_ms\":{d},\"load_ms\":{d},\"wall_ms\":{d}" ++
-            ",\"ownership_checks\":{d},\"ownership_violations\":{d}",
+            ",\"ownership_checks\":{d},\"ownership_violations\":{d},\"heap_used_kb\":{d}",
         .{
-            rec.passed,           rec.failed,               rec.timed_out, rec.notrun,
-            rec.duration_ms,      rec.nav_ms,               rec.load_ms,   rec.wall_ms,
-            rec.ownership_checks, rec.ownership_violations,
+            rec.passed,           rec.failed,               rec.timed_out,    rec.notrun,
+            rec.duration_ms,      rec.nav_ms,               rec.load_ms,      rec.wall_ms,
+            rec.ownership_checks, rec.ownership_violations, rec.heap_used_kb,
         },
     );
     if (rec.message) |msg| {
@@ -367,6 +381,7 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .wall_ms = jsonUint(obj, "wall_ms"),
             .ownership_checks = jsonUint(obj, "ownership_checks"),
             .ownership_violations = jsonUint(obj, "ownership_violations"),
+            .heap_used_kb = jsonUint(obj, "heap_used_kb"),
             .message = message,
         });
     }
@@ -416,6 +431,7 @@ fn expectRoundTrip(rec: Record) !void {
     try std.testing.expectEqual(rec.nav_ms, got.nav_ms);
     try std.testing.expectEqual(rec.load_ms, got.load_ms);
     try std.testing.expectEqual(rec.wall_ms, got.wall_ms);
+    try std.testing.expectEqual(rec.heap_used_kb, got.heap_used_kb);
     if (rec.message) |want| {
         try std.testing.expectEqualStrings(want, got.message.?);
     } else {
@@ -692,6 +708,26 @@ test "ownership counters survive a round trip" {
         .ownership_checks = 37,
         .ownership_violations = 0,
     });
+}
+
+test "heap usage survives a round trip" {
+    try expectRoundTrip(.{
+        .index = 7,
+        .path = "dom/nodes/Node-appendChild.html",
+        .status = .ok,
+        .passed = 12,
+        .heap_used_kb = 812_345,
+    });
+}
+
+test "a record written before heap usage existed reads it as zero" {
+    const allocator = std.testing.allocator;
+    var log = try parseLines(allocator,
+        \\{"index":0,"path":"a.html","status":"OK","passed":1}
+        \\
+    );
+    defer log.deinit();
+    try std.testing.expectEqual(@as(u64, 0), log.records[0].heap_used_kb);
 }
 
 test "summarize adds up ownership across shards" {

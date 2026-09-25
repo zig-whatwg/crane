@@ -1475,7 +1475,7 @@ pub const Context = struct {
             ,
         };
 
-        _ = self.evaluateScript(setup_script) catch |err| {
+        self.runScript(setup_script) catch |err| {
             log.debug("ERROR: Failed to set up global aliases: {}\n", .{err});
             return err;
         };
@@ -1802,6 +1802,14 @@ pub const Context = struct {
     }
 
     /// Evaluate JavaScript in this context
+    /// Evaluate `script` for its effects, releasing the completion value.
+    pub fn runScript(self: *Context, script: []const u8) !void {
+        if (try self.evaluateScript(script)) |value| v8.ffi.v8_Value_Dispose(value);
+    }
+
+    /// Evaluate `script` and return its completion value, an owned handle the
+    /// caller releases with `v8_Value_Dispose` - a leaked one that holds an
+    /// object keeps the page alive. Use `runScript` to discard it.
     pub fn evaluateScript(self: *Context, script: []const u8) !?*v8.ffi.Value {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
@@ -1812,6 +1820,7 @@ pub const Context = struct {
         const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse {
             return error.StringCreateFailed;
         };
+        defer v8.ffi.v8_String_Dispose(source_str);
 
         // Compile script
         const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse {
@@ -1828,6 +1837,11 @@ pub const Context = struct {
             }
             return error.CompileError;
         };
+
+        // A bound script keeps its context alive, and the WPT runner evaluates
+        // one per harness poll - hundreds a page - so leaking it kept every
+        // page the runner ever loaded.
+        defer v8.ffi.v8_Script_Dispose(compiled);
 
         // Run script using safe variant that properly captures exceptions
         const run_result = v8.ffi.v8_Script_Run_Safe(v8_ctx, compiled);
@@ -2269,11 +2283,17 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
     info.setReturnValue(return_undefined);
 
-    // Get V8 context
+    // Get V8 context. Owned: once the listener's wrapper exists it owns the
+    // handle (its `callback_context`, also the runtime wrapper's `engine_ctx`)
+    // and releases it when the listener goes; until then every path releases
+    // it here. Each one leaked kept the page's whole native context alive.
     const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    var listener_keeps_ctx = false;
+    defer if (!listener_keeps_ctx) v8.ffi.v8_Context_Dispose(v8_ctx);
 
     // Get global object (which has the window instance)
     const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
+    defer v8.ffi.v8_Object_Dispose(global);
 
     // Get window instance from internal field 0
     const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
@@ -2292,7 +2312,10 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
 
     // Get callback argument (second arg)
     const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
-    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) return;
+    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) {
+        v8.ffi.v8_Global_Dispose(@ptrCast(callback_arg));
+        return;
+    }
 
     // Create V8 CallbackWrapper from the callback value
     const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(
@@ -2302,6 +2325,8 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         @ptrCast(callback_arg),
         "handleEvent",
     ) catch return orelse return;
+    v8_wrapper.owns_callback_context = true;
+    listener_keeps_ctx = true;
 
     // Create runtime.CallbackWrapper that wraps the V8 callback
     // (per conversions.zig pattern for proper engine interface setup)
@@ -2377,11 +2402,14 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
     const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
     info.setReturnValue(return_undefined);
 
-    // Get V8 context
+    // Get V8 context. Owned, and nothing keeps it: the wrapper built below
+    // exists only to compare against, and removeEventListener frees it.
     const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Context_Dispose(v8_ctx);
 
     // Get global object (which has the window instance)
     const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
+    defer v8.ffi.v8_Object_Dispose(global);
 
     // Get window instance from internal field 0
     const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
@@ -2400,7 +2428,10 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
 
     // Get callback argument (second arg)
     const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
-    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) return;
+    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) {
+        v8.ffi.v8_Global_Dispose(@ptrCast(callback_arg));
+        return;
+    }
 
     // Create V8 CallbackWrapper from the callback value for comparison
     const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(

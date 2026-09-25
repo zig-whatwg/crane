@@ -3685,23 +3685,32 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No current V8 context");
                 return;
             };
+            // Released unless converting a constructor argument makes the engine
+            // keep the context (`new MutationObserver(callback)`) - the same
+            // allowlist gate as MethodCallback's. The first parameter is the
+            // runtime context, not an argument.
+            const ctor_params_retain = comptime blk: {
+                const fi = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn";
+                for (fi.params[1..]) |prm| {
+                    const P = prm.type orelse break :blk true;
+                    if (typeRetainsContext(P)) break :blk true;
+                }
+                break :blk false;
+            };
+            defer if (comptime !ctor_params_retain) v8.v8_Context_Dispose(current_context);
 
             // Implementation of GetFunctionRealm algorithm for constructor realm
             // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
             // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
             const constructor_v8_fn = info.getFunction();
-            // NOT disposed, despite being owned in both branches. `constructor_context`
-            // below is handed to `ctx_mgr.getOrCreateWithIsolate`, which on its CREATE
-            // path stores it as `ContextEntry.engine_ctx` and hands it to
-            // `WrapperCache.init` - both outliving this callback. Disposing here frees
-            // a handle the context manager still holds.
-            //
-            // This leaks one handle per constructor call on realms already registered,
-            // which is the common case. Fixing it properly means giving the context
-            // manager a way to say "I took ownership", and that is a wider change than
-            // a defer. An earlier version of this code DID dispose here; it was a
-            // use-after-free that only hid because the create path is rarely taken.
+            defer if (constructor_v8_fn) |f| v8.v8_Value_Dispose(@ptrCast(f));
+            // Owned in both branches, and released: `ctx_mgr.getOrCreateWithIsolate`
+            // keeps its own copy of the handle when it creates an entry, so the
+            // caller's is always the caller's. (Before it did, this leaked one
+            // Global<Context> per constructor call - each one keeping its page's
+            // whole native context alive.)
             const constructor_v8_context = if (constructor_v8_fn) |f| getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
+            defer if (constructor_v8_context) |c| v8.v8_Context_Dispose(c);
             const constructor_context = constructor_v8_context orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)
@@ -4521,11 +4530,11 @@ pub fn V8Interface(comptime Interface: type) type {
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
 
-            // Get current context from isolate
-            const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No current context");
-                return .kYes;
-            };
+            // The current context is acquired only where a conversion needs it:
+            // this interceptor runs on EVERY property set on the object, and a
+            // context taken up here leaked on each early return below - an owned
+            // Global<Context> apiece, which keeps the page's whole native context
+            // alive.
 
             // Check if property is a string (not a symbol)
             // Symbol properties should not trigger lazy property interceptor
@@ -4588,6 +4597,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         {
 
                             // Get number value from V8
+                            const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                                conv.throwError(isolate, "No current context");
+                                return .kYes;
+                            };
+                            defer v8.v8_Context_Dispose(context);
                             const num_value = v8.v8_Value_NumberValue(value, context);
 
                             // Convert to Zig type
@@ -4631,6 +4645,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                             // For cross-realm: get context from this_obj's prototype
                             if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
+                                defer v8.v8_Context_Dispose(creation_ctx);
                                 conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
                                 return .kNo;
                             }
@@ -4651,9 +4666,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
                             // Get the prototype's creation context for cross-realm TypeError
                             if (info.getHolder()) |holder| {
+                                defer v8.v8_Object_Dispose(holder);
                                 if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                                    defer v8.v8_Context_Dispose(creation_ctx);
                                     conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
                                 } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                                    defer v8.v8_Context_Dispose(creation_ctx);
                                     conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
                                 } else {
                                     conv.throwTypeError(isolate, "Illegal invocation");
@@ -4679,6 +4697,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         // Get the parameter type (second parameter after instance)
                         const ValueType = params[1].type.?;
+
+                        // Released unless converting the value makes the engine
+                        // keep the context - a callback-typed setter (an event
+                        // handler) stores it. `typeRetainsContext` is the same
+                        // allowlist MethodCallback consults; its default is
+                        // "retains".
+                        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                            conv.throwError(isolate, "No current context");
+                            return .kYes;
+                        };
+                        defer if (comptime !typeRetainsContext(ValueType)) v8.v8_Context_Dispose(context);
 
                         // Convert V8 value to Zig type
                         const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, context, value) catch {
@@ -8183,7 +8212,11 @@ fn handleNewTargetPrototypeFallback(
     comptime interface_name: []const u8,
 ) void {
     // Get NewTarget - returns null for non-construct calls (already checked)
+    // Every handle below is owned. NewTarget is usually the constructor
+    // itself, so leaking it kept one handle per `new X()` on the page's
+    // interface object - and with it the page.
     const new_target_val = info.getNewTarget() orelse return;
+    defer v8.v8_Value_Dispose(new_target_val);
 
     // Get the "prototype" property of NewTarget
     const prototype_key = v8.v8_String_NewFromUtf8(
@@ -8195,6 +8228,7 @@ fn handleNewTargetPrototypeFallback(
 
     const new_target_obj: *v8.Object = @ptrCast(new_target_val);
     const proto_val = v8.v8_Object_Get(new_target_obj, v8_context, @ptrCast(prototype_key));
+    defer if (proto_val) |pv| v8.v8_Value_Dispose(pv);
 
     // Check if prototype is a valid object
     // If it IS an object, V8 already set the prototype correctly - nothing to do
@@ -8212,11 +8246,14 @@ fn handleNewTargetPrototypeFallback(
     // For bound functions: recurse to [[BoundTargetFunction]]
     // For proxies: recurse to [[ProxyTarget]]
     // Otherwise: function's creation context
-    const target_realm = getFunctionRealm(new_target_val, isolate) orelse v8_context;
+    const target_realm_owned = getFunctionRealm(new_target_val, isolate);
+    defer if (target_realm_owned) |r| v8.v8_Context_Dispose(r);
+    const target_realm = target_realm_owned orelse v8_context;
 
     // Get the interface constructor from the target realm
     // The constructor is available as a property on the global object
     const global = v8.v8_Context_Global(target_realm) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     const ctor_name = v8.v8_String_NewFromUtf8(
         isolate,
@@ -8226,12 +8263,14 @@ fn handleNewTargetPrototypeFallback(
     defer v8.v8_String_Dispose(ctor_name);
 
     const ctor_val = v8.v8_Object_Get(global, target_realm, @ptrCast(ctor_name)) orelse return;
+    defer v8.v8_Value_Dispose(ctor_val);
 
     if (!v8.v8_Value_IsFunction(ctor_val)) return;
 
     // Get the constructor's prototype property
     const ctor_obj: *v8.Object = @ptrCast(ctor_val);
     const interface_proto = v8.v8_Object_Get(ctor_obj, target_realm, @ptrCast(prototype_key)) orelse return;
+    defer v8.v8_Value_Dispose(interface_proto);
 
     if (!v8.v8_Value_IsObject(interface_proto)) return;
 

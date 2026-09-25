@@ -72,6 +72,11 @@ pub const CallbackWrapper = struct {
     /// Unlike Global handle pointers, this is the actual V8 internal context address
     callback_context_raw_addr: ?*anyopaque = null,
 
+    /// Whether `deinit` releases `callback_context`. False by default: most
+    /// callers pass a context handle they go on using, and releasing it here
+    /// would free it under them. A caller that hands the handle over sets this.
+    owns_callback_context: bool = false,
+
     /// Create a wrapper for a JavaScript function callback
     pub fn initFunction(
         allocator: std.mem.Allocator,
@@ -153,6 +158,9 @@ pub const CallbackWrapper = struct {
         }
         if (self.callback_object_global) |handle| {
             handle.dispose();
+        }
+        if (self.owns_callback_context) {
+            if (self.callback_context) |context| v8.v8_Context_Dispose(context);
         }
         self.allocator.destroy(self);
     }

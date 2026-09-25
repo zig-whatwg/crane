@@ -34,6 +34,7 @@
 //! behavior to the production Browser implementation.
 
 const std = @import("std");
+const v8_ffi = @import("v8").ffi;
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
@@ -270,7 +271,7 @@ pub const WptBrowser = struct {
         try self.loadTestHarness(ctx, timeout.explicitTimeout());
 
         // Execute the test script
-        _ = ctx.evaluateScript(test_content) catch |err| {
+        ctx.runScript(test_content) catch |err| {
             return test_harness.TestResult{
                 .status = .@"error",
                 .message = try std.fmt.allocPrint(self.allocator, "Script execution error: {}", .{err}),
@@ -509,14 +510,14 @@ pub const WptBrowser = struct {
 
         // Load testharness.js
         if (self.testharness_js) |js| {
-            _ = try ctx.evaluateScript(js);
+            try ctx.runScript(js);
         } else {
             return error.TestHarnessNotFound;
         }
 
         // Load testharnessreport.js
         if (self.testharnessreport_js) |js| {
-            _ = try ctx.evaluateScript(js);
+            try ctx.runScript(js);
         }
 
         // Turn off the harness's human-facing reporting. It is pure waste in a
@@ -563,7 +564,7 @@ pub const WptBrowser = struct {
         const disable_output =
             \\setup({ output: false });
         ;
-        _ = ctx.evaluateScript(disable_output) catch |err| {
+        ctx.runScript(disable_output) catch |err| {
             // Not fatal: the table is a waste of time, not a correctness
             // requirement, and a result is worth more than the speed-up.
             log.warn("loadTestHarness: could not disable harness output: {}", .{err});
@@ -587,7 +588,7 @@ pub const WptBrowser = struct {
         // its SETUP phase, and there is no reason to do that to the ~90% of
         // files whose budget is already the harness's own.
         if (explicit_timeout) {
-            _ = ctx.evaluateScript("setup({ explicit_timeout: true });") catch |err| {
+            ctx.runScript("setup({ explicit_timeout: true });") catch |err| {
                 // Same reasoning as the output flag: a file running on the
                 // short budget is worth more than no result at all.
                 log.warn("loadTestHarness: could not set an explicit timeout: {}", .{err});
@@ -605,7 +606,7 @@ pub const WptBrowser = struct {
             \\}
             \\'GLOBALS_VERIFIED';
         ;
-        _ = ctx.evaluateScript(verify_script) catch |err| {
+        ctx.runScript(verify_script) catch |err| {
             log.err("testharness.js verification failed: {}", .{err});
             return error.TestHarnessLoadFailed;
         };
@@ -638,7 +639,7 @@ pub const WptBrowser = struct {
             \\  });
             \\})();
         ;
-        _ = try ctx.evaluateScript(setup_script);
+        try ctx.runScript(setup_script);
     }
 
     /// How long `waitForCompletion` waits, past the ceiling, for a harness told
@@ -680,6 +681,7 @@ pub const WptBrowser = struct {
             // Check if test is complete
             const complete_result = ctx.evaluateScript("window.__wpt_complete") catch continue;
             if (complete_result) |val| {
+                defer v8_ffi.v8_Value_Dispose(val);
                 // Check if it's true
                 if (self.isV8True(val)) {
                     // Collect results
@@ -693,11 +695,12 @@ pub const WptBrowser = struct {
         // spent: it completes, reporting every subtest that ran and the rest
         // as TIMEOUT or NOTRUN. A file on the harness's own timer ignores the
         // call. The grace is for completion callbacks queued behind it.
-        _ = ctx.evaluateScript("if (typeof timeout === 'function') timeout();") catch {};
+        ctx.runScript("if (typeof timeout === 'function') timeout();") catch {};
         const grace_deadline = clock.monotonicMillis() + timeout_grace_ms;
         while (true) {
             const complete_result = ctx.evaluateScript("window.__wpt_complete") catch null;
             if (complete_result) |val| {
+                defer v8_ffi.v8_Value_Dispose(val);
                 if (self.isV8True(val)) return try self.collectResults(ctx, start_time, test_path);
             }
             const now = clock.monotonicMillis();

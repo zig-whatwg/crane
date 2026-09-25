@@ -3458,3 +3458,32 @@ Then start a server that outlives any one runner: `python3 wpt.py serve --config
 **Fix**: Blink's design (`HTMLConstructionSite::pending_text_` / `FlushPendingText`). The tree builder marks the text node pending and tells the adapter once: before any other notification, before a script runs, and when `parse()` returns. Nothing script can observe changes. `tests/html/tree_builder_text_batching_test.zig` pins it, using non-ASCII text so that it takes the per-character path. One file: 30.6 s -> 6.1 s. A/B over 993 parser-heavy files: blocking 128 -> 118.
 
 **Takeaway**: **When a file is slow, sample it before blaming the network or the test.** A 1-second server sleep does not take 30 seconds of CPU.
+
+---
+
+### Debugging: Find what keeps a page alive with a heap snapshot, then attribute the handles by site
+
+**Date**: 2026-09-25
+**Lesson**: `wpt_runner` journals `heap_used_kb` for every file. `CRANE_HEAP_GC=1` runs a full collection before each reading. `CRANE_HEAP_SNAPSHOT=<path>` writes a DevTools heap snapshot after each file. Together they separate a leak from uncollected garbage, and they show who holds it.
+
+**What Happened**: 11 of the 18 crashes in a full sweep were V8 `FatalProcessOutOfMemory`. With forced GC the heap still climbed about 2.5 MB per file, one whole page. The snapshot showed every old NativeContext reachable directly from "(Global handles)", held by 34 context handles on average. Grouping the "(Global handles)" children by target type turned up more retainers of other kinds: 740 `WindowProperties` holders, 152 global proxies, 1,029 closures, bound `Script`s. Any single one keeps its page.
+
+**Fix**: attribute live handles by creation site. That was a scratch patch that recorded `__builtin_return_address(0)` in an always-inline `trackHandle`, erased the entry at every `delete`, dumped the survivors, and resolved them with `atos -l <image base>`. The top sites were `GetCurrentContext` taken before early returns in interceptors, `v8_Context_Global` and `getHolder()` results never disposed, `evaluateScript`'s bound script (the runner evaluates one per harness poll), realm intrinsics nobody released, and the NewTarget fallback. Two traps along the way:
+
+* **Ownership belongs to the conversion.** `conv.toV8Value(JSValue, ...)` hands back the wrapper cache's own handle for an element. Disposing it freed the cache's entry and crashed the next named access. Release only what you can prove is a copy.
+* **An owner whose `deinit` never runs owns nothing.** EventTarget's teardown deliberately skips disposing listener callbacks (its comment blames old handle corruption), so every page with a listener stays alive regardless of the fixes above. The heap does not drop until the LAST retainer per page is gone.
+
+**Takeaway**: **A leaked page is held by its least-cared-for handle.** Counting handles says little; the snapshot's retaining path says which, and the heap reading says whether the last one is gone.
+
+---
+
+### Workflow: Never overwrite a binary macOS has already run; remove it first
+
+**Date**: 2026-09-25
+**Lesson**: `cp zig-out/bin/wpt_runner tmp/bin/x` over an existing `tmp/bin/x` that has been executed makes the next launch die with exit 137 (SIGKILL) and no output at all.
+
+**Why**: the kernel caches a binary's code signature per inode. Overwriting the file in place leaves new bytes under the old cached signature, so the loader kills the process.
+
+**Fix**: `rm -f tmp/bin/x && cp zig-out/bin/wpt_runner tmp/bin/x`. A sweep or A/B that "produced no journal" with exit 137 is this.
+
+**Takeaway**: **Exit 137 before the first line of output is code signing, not the engine.**

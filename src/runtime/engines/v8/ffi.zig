@@ -2209,6 +2209,10 @@ pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
 /// the agent it hosts. V8's default is true.
 pub extern fn v8_Isolate_SetAllowAtomicsWait(isolate: *Isolate, allow: bool) void;
 
+/// Write a heap snapshot of `isolate` to `path` as DevTools JSON. Diagnosis
+/// only: it walks the whole heap.
+pub extern fn v8_Debug_WriteHeapSnapshot(isolate: *Isolate, path: [*:0]const u8) bool;
+
 /// Set the microtasks policy for the isolate
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 

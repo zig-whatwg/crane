@@ -119,7 +119,7 @@ pub const Session = struct {
             \\window.__webdriver_async_complete = false;
             \\window.__webdriver_async_result = null;
         ;
-        _ = ctx.evaluateScript(init_script) catch {};
+        ctx.runScript(init_script) catch {};
 
         // Wrap script with async callback mechanism
         // The callback is provided as the last argument to the script
@@ -141,7 +141,7 @@ pub const Session = struct {
         defer allocator.free(wrapped);
 
         // Execute the script (non-blocking, sets up callbacks)
-        _ = ctx.evaluateScript(wrapped) catch |err| {
+        ctx.runScript(wrapped) catch |err| {
             std.log.err("Async script execution error: {}", .{err});
             return error.JavascriptError;
         };

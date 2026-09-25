@@ -136,6 +136,7 @@ pub fn populateIntrinsics(realm: *Realm) bool {
 
     // Get the global object to access built-in constructors
     const global = v8.v8_Context_Global(context) orelse return false;
+    defer v8.v8_Object_Dispose(global);
 
     var intrinsics = realm.getIntrinsicsMut();
 
@@ -163,10 +164,22 @@ pub fn populateIntrinsics(realm: *Realm) bool {
     // Get Function.prototype
     const function_ctor = getGlobalProperty(isolate, context, global, "Function");
     if (function_ctor) |fn_ctor| {
+        defer v8.v8_Value_Dispose(@ptrCast(@alignCast(fn_ctor)));
         intrinsics.function_prototype = getObjectProperty(isolate, context, @ptrCast(fn_ctor), "prototype");
     }
 
     return intrinsics.isPopulated();
+}
+
+/// Release the handles `populateIntrinsics` took. Each points into the realm's
+/// context, so until they go the whole context stays alive - `Realm.deinit`
+/// only nulls them, leaving the V8 side to whoever tears the realm down.
+pub fn disposeIntrinsics(realm: *Realm) void {
+    const intrinsics = realm.getIntrinsicsMut();
+    inline for (.{ "type_error", "range_error", "syntax_error", "object", "object_prototype", "array", "array_prototype", "function_prototype" }) |field| {
+        if (@field(intrinsics, field)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+        @field(intrinsics, field) = null;
+    }
 }
 
 // ============================================================================
@@ -181,6 +194,7 @@ fn getGlobalProperty(
     name: []const u8,
 ) ?*anyopaque {
     const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer v8.v8_String_Dispose(key);
     const value = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return null;
     return @ptrCast(value);
 }
@@ -193,6 +207,7 @@ fn getObjectProperty(
     name: []const u8,
 ) ?*anyopaque {
     const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer v8.v8_String_Dispose(key);
     const value = v8.v8_Object_Get(object, context, @ptrCast(key)) orelse return null;
     return @ptrCast(value);
 }

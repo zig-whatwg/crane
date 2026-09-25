@@ -269,9 +269,14 @@ fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.I
         const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
         defer v8.v8_Context_Dispose(context);
         const global = v8.v8_Context_Global(context) orelse return null;
+        defer v8.v8_Object_Dispose(global);
         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
         return @ptrCast(@alignCast(global_ptr));
     };
+    // Owned, like every handle the FFI returns - and a handle to this object
+    // keeps its page alive, so one leaked per named-property lookup kept every
+    // page that ever did one.
+    defer v8.v8_Object_Dispose(holder);
     // An empty field means the Window was discarded (detachWindow): answer
     // nothing. Falling back to the CURRENT context's window here would answer
     // `iframe.contentWindow.x` from the parent's document.
@@ -320,6 +325,8 @@ fn clearIfWindow(obj: *v8.Object, window_instance: *runtime.Instance) void {
 }
 
 /// Get the current context for WindowProperties operations
+/// The current context, as an owned `Global<Context>`: the caller disposes
+/// it. A leaked one keeps its page's whole native context alive.
 fn getContextFromHolder(info: *const v8.PropertyCallbackInfo) ?*v8.Context {
     const isolate = info.getIsolate();
     return v8.v8_Isolate_GetCurrentContext(isolate);
@@ -337,13 +344,18 @@ fn namedPropertyGetter(
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-    const context = getContextFromHolder(info) orelse return .kNo;
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
     if (result) |js_val| {
+        // Acquired only on this path: every early return above would leak it.
+        const context = getContextFromHolder(info) orelse return .kNo;
+        defer v8.v8_Context_Dispose(context);
+        // NOT released: for an element `toV8Value` hands back the wrapper
+        // cache's own handle, not a copy - ownership is the conversion's, not
+        // the type's - and releasing it freed the cache's entry under it.
         const value = conv.toV8Value(runtime.JSValue, isolate, context, js_val) catch return .kNo;
         info.setReturnValue(value);
         return .kYes;
@@ -379,7 +391,9 @@ fn namedPropertyQuery(
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     if (WindowImpl.hasNamedProperty(window, name)) {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 2))); // DontEnum
+        const attributes = v8.v8_Integer_New(isolate, 2); // DontEnum
+        defer v8.v8_Value_Dispose(@ptrCast(attributes));
+        info.setReturnValue(@ptrCast(attributes));
         return .kYes;
     }
     return .kNo;
@@ -438,6 +452,9 @@ fn namedPropertyEnumerator(
     // The named properties are NOT own properties - they're accessed via interceptors
     // but don't appear in [[OwnPropertyKeys]].
     const arr = v8.v8_Array_New(isolate, 0);
+    // Created in the current context: a leaked handle to it would keep the
+    // whole page alive.
+    defer v8.v8_Array_Dispose(arr);
     info.setReturnValue(@ptrCast(arr));
 }
 
@@ -448,23 +465,37 @@ fn namedPropertyDescriptor(
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-    const context = getContextFromHolder(info) orelse return .kNo;
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
     if (result) |js_val| {
+        const context = getContextFromHolder(info) orelse return .kNo;
+        defer v8.v8_Context_Dispose(context);
+        // Not released - see namedPropertyGetter.
         const val = conv.toV8Value(runtime.JSValue, isolate, context, js_val) catch return .kNo;
         const desc = v8.v8_Object_New(isolate) orelse return .kNo;
-        _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "value", 5)), val);
-        _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "writable", 8)), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-        _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "enumerable", 10)), @ptrCast(v8.v8_Boolean_New(isolate, false)));
-        _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "configurable", 12)), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+        defer v8.v8_Object_Dispose(desc);
+        setDescriptorField(isolate, context, desc, "value", val);
+        const yes: *v8.Value = @ptrCast(v8.v8_Boolean_New(isolate, true) orelse return .kNo);
+        defer v8.v8_Value_Dispose(yes);
+        const no: *v8.Value = @ptrCast(v8.v8_Boolean_New(isolate, false) orelse return .kNo);
+        defer v8.v8_Value_Dispose(no);
+        setDescriptorField(isolate, context, desc, "writable", yes);
+        setDescriptorField(isolate, context, desc, "enumerable", no);
+        setDescriptorField(isolate, context, desc, "configurable", yes);
         info.setReturnValue(@ptrCast(desc));
         return .kYes;
     }
     return .kNo;
+}
+
+/// `desc[key] = value`, releasing the key handle it makes.
+fn setDescriptorField(isolate: *v8.Isolate, context: *v8.Context, desc: *v8.Object, comptime key: []const u8, value: *v8.Value) void {
+    const key_str = v8.v8_String_NewFromUtf8(isolate, key.ptr, key.len) orelse return;
+    defer v8.v8_String_Dispose(key_str);
+    _ = v8.v8_Object_Set(desc, context, @ptrCast(key_str), value);
 }
 
 /// Register WindowProperties callbacks as external references for V8 snapshots

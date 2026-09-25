@@ -71,6 +71,7 @@ const host = @import("host");
 /// at the end and writes per-file deltas into the journal, so a sharded run can
 /// be added back up by the supervisor.
 const isolate_ownership = @import("v8").isolate_ownership;
+const v8_ffi = @import("v8").ffi;
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -959,9 +960,34 @@ const FileTally = struct {
             .wall_ms = self.wallMs(),
             .ownership_checks = isolate_ownership.checks() -| self.ownership_checks_at_start,
             .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
+            .heap_used_kb = heapUsedKb(),
         });
     }
 };
+
+/// V8's used heap on the current isolate, in KiB; 0 with no isolate. See
+/// `journal.Record.heap_used_kb` for how to read it.
+///
+/// `CRANE_HEAP_GC=1` runs a full collection first, so the reading is what is
+/// actually retained rather than retained-plus-garbage - the difference
+/// between a leak and a collector that has not run yet. It costs a full GC per
+/// file, so it is for diagnosis, not sweeps.
+fn heapUsedKb() u64 {
+    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return 0;
+    if (heapGcRequested()) v8_ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    // `CRANE_HEAP_SNAPSHOT=<path>` writes a DevTools heap snapshot there after
+    // each file, overwriting the last: what the final file left alive. A
+    // leaked Global shows as a path from "(Global handles)" to its target.
+    if (std.c.getenv("CRANE_HEAP_SNAPSHOT")) |path| _ = v8_ffi.v8_Debug_WriteHeapSnapshot(isolate, path);
+    var used: usize = 0;
+    v8_ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, null);
+    return used / 1024;
+}
+
+fn heapGcRequested() bool {
+    const value = std.c.getenv("CRANE_HEAP_GC") orelse return false;
+    return value[0] != 0 and value[0] != '0';
+}
 
 /// Execute a single test file in a specific context and variant using the shared
 /// BrowserAdapter.

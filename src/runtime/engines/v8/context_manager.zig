@@ -519,6 +519,7 @@ pub fn deinit() void {
                 // Phase: Realm cleanup
                 coordinator.cleanupPhase(.realm);
                 if (entry.realm) |realm| {
+                    @import("realm_v8.zig").disposeIntrinsics(realm);
                     realm.deinit();
                 }
 
@@ -756,6 +757,15 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         return &entry.runtime_ctx;
     }
 
+    // The entry keeps its OWN handle, so the caller's stays the caller's to
+    // release whichever path this takes. Storing the caller's handle made it
+    // the entry's on this path only, so no caller could ever release one: the
+    // constructor binding leaked a Global<Context> per `new X()`, each keeping
+    // its page's whole native context alive.
+    const copy_isolate = isolate orelse (v8.v8_Isolate_GetCurrent() orelse return error.InvalidContext);
+    const entry_ctx: *v8.Context = @ptrCast(v8.v8_Context_GlobalHandle_New(copy_isolate, v8_ctx) orelse return error.InvalidContext);
+    errdefer v8.v8_Context_Dispose(entry_ctx);
+
     // Create V8 event loop with timer support if isolate is provided
     var event_loop_ptr: ?*V8EventLoop = null;
     var timer_interface: ?runtime.TimerInterface = null;
@@ -781,7 +791,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .show_timestamp = false,
         .show_labels = false,
         .engine = &v8_engine.v8_engine_interface, // V8 engine interface for Promises etc.
-        .engine_ctx = @ptrCast(v8_ctx), // Store V8 context as engine context
+        .engine_ctx = @ptrCast(entry_ctx), // Store V8 context as engine context
         .timer = timer_interface,
         .event_loop = event_loop_interface,
     });
@@ -792,7 +802,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     const cache_ptr = try allocator.create(WrapperCache);
     errdefer allocator.destroy(cache_ptr);
 
-    cache_ptr.* = try WrapperCache.init(allocator, v8_ctx);
+    cache_ptr.* = try WrapperCache.init(allocator, entry_ctx);
     errdefer cache_ptr.deinit();
 
     // Store cache in runtime context
@@ -805,7 +815,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     var realm: ?*runtime.Realm = null;
     if (isolate) |iso| {
         realm = try runtime.Realm.init(allocator, .{
-            .v8_context = @ptrCast(v8_ctx),
+            .v8_context = @ptrCast(entry_ctx),
             .isolate = @ptrCast(iso),
             .context_type = .window, // Main context is a window
             .global_object = null, // Set by bindWindowToContext() after Window creation
@@ -824,7 +834,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     if (isolate) |iso| {
         v8_engine.setDynamicImportHandler(iso, .{
             .callback = handleDynamicImport,
-            .context = @ptrCast(v8_ctx),
+            .context = @ptrCast(entry_ctx),
         });
     }
 
@@ -833,7 +843,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     errdefer state.allocator.destroy(entry);
 
     entry.* = ContextEntry{
-        .v8_ctx = v8_ctx,
+        .v8_ctx = entry_ctx,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = event_loop_ptr,
@@ -1189,6 +1199,7 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
 
             // Clean up realm
             if (entry.realm) |realm| {
+                @import("realm_v8.zig").disposeIntrinsics(realm);
                 realm.deinit();
             }
 

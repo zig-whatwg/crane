@@ -12,6 +12,7 @@
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
+#include <v8-profiler.h>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -2367,6 +2368,33 @@ void v8_Platform_Initialize() {
         V8::Initialize();
         v8_initialized = true;
     }
+}
+
+/// Write a V8 heap snapshot of |isolate| to |path| as JSON (the format
+/// Chrome DevTools reads), for finding what retains memory: a leaked Global
+/// shows up as a path from the "(Global handles)" root. Diagnosis only - it
+/// walks the whole heap. Returns whether the file was written.
+bool v8_Debug_WriteHeapSnapshot(Isolate* isolate, const char* path) {
+    if (!isolate || !path) return false;
+    FILE* file = fopen(path, "w");
+    if (!file) return false;
+    class FileStream final : public OutputStream {
+     public:
+        explicit FileStream(FILE* f) : f_(f) {}
+        void EndOfStream() override {}
+        WriteResult WriteAsciiChunk(char* data, int size) override {
+            return fwrite(data, 1, static_cast<size_t>(size), f_) == static_cast<size_t>(size) ? kContinue : kAbort;
+        }
+     private:
+        FILE* f_;
+    };
+    HandleScope scope(isolate);
+    const HeapSnapshot* snapshot = isolate->GetHeapProfiler()->TakeHeapSnapshot();
+    FileStream stream(file);
+    snapshot->Serialize(&stream, HeapSnapshot::kJSON);
+    const_cast<HeapSnapshot*>(snapshot)->Delete();
+    fclose(file);
+    return true;
 }
 
 /// Whether Atomics.wait() may block on |isolate| - HTML's [[CanBlock]] for
