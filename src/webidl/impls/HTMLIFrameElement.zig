@@ -622,6 +622,13 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // pageshow as tasks - the last of which queues the iframe's own load
     // ("completely finish loading"), after everything the page posted.
     dom_module.document_lifecycle.parsingStopped(document_instance);
+    // "The end" step 5: run the list of scripts that will execute when the
+    // document has finished parsing - every `defer` script and every
+    // parser-inserted module script. The frame's parse never did, so no
+    // module script in a frame ever ran.
+    if (scripting_enabled) {
+        html_module.script_execution.executeScriptsWhenParsingFinished(allocator, document_instance);
+    }
     dom_module.document_lifecycle.finishLoading(document_instance);
 
     // Create the V8 wrapper for the Document in the child context.
