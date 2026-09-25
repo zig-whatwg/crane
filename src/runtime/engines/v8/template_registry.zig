@@ -498,7 +498,12 @@ pub fn wrapInstanceAsV8Object(
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
     const final_object = if (isLegacyPlatformObject(interface_name)) blk: {
         const lpo_proxy = @import("legacy_platform_object_proxy.zig");
-        break :blk lpo_proxy.wrapInProxy(v8_object, isolate, context);
+        const proxy = lpo_proxy.wrapInProxy(v8_object, isolate, context);
+        // The proxy holds its target, and nothing below uses the target's own
+        // handle - kept, it was one leaked Global per legacy platform object
+        // (every HTMLCollection, NodeList, ...), each pinning its page.
+        if (proxy != v8_object) v8.v8_Object_Dispose(v8_object);
+        break :blk proxy;
     } else v8_object;
 
     // Note: v8_ObjectTemplate_NewInstance already returns a Global<Object>* handle,
