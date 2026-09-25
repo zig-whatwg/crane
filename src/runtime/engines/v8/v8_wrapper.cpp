@@ -218,6 +218,9 @@ struct WeakCallbackData {
     ZigWeakCallbackFn callback;
     void* user_data;
     Global<Value>* handle;  // Store handle pointer so we can reset it
+    // The isolate the arm belongs to. Disposing an isolate frees only its own
+    // detached records: another isolate's may still have a callback queued.
+    Isolate* isolate;
 };
 
 // ---------------------------------------------------------------------------
@@ -2408,6 +2411,13 @@ void v8_Isolate_SetAllowAtomicsWait(Isolate* isolate, bool allow) {
 /// WebAssembly compile, and runs FinalizationRegistry cleanup, through such
 /// tasks; an embedder that never pumps never sees them. Never blocks. Call
 /// with |isolate| entered, as d8's ProcessMessages does.
+/// Whether V8 has background work under way for |isolate| that will post a
+/// foreground task when it ends - an asynchronous WebAssembly compile, say.
+/// d8 keeps its message loop waiting while this is true (CompleteMessageLoop).
+bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
+    return isolate && isolate->HasPendingBackgroundTasks();
+}
+
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     if (!g_platform || !isolate) return false;
     return platform::PumpMessageLoop(g_platform.get(), isolate,
@@ -2461,12 +2471,26 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         }
         
         // Records that a dispose detached from their Global while V8 still had
-        // their callback queued. Disposing the isolate is the point at which
-        // those callbacks provably will not run, so it is where they are freed.
-        for (WeakCallbackData* data : detachedWeakData()) {
-            freeWeakData(data);
+        // their callback queued. Disposing THIS isolate is the point at which
+        // its callbacks provably will not run, so it is where they are freed.
+        // Only its own: a worker isolate can be disposed from inside the page
+        // isolate's first-pass weak callbacks, while the page's detached
+        // records are still queued in that same pass.
+        for (auto it = detachedWeakData().begin(); it != detachedWeakData().end();) {
+            WeakCallbackData* data = *it;
+            if (data->isolate == isolate) {
+                it = detachedWeakData().erase(it);
+                freeWeakData(data);
+            } else {
+                ++it;
+            }
         }
-        detachedWeakData().clear();
+
+        // DefaultPlatform keeps a foreground task runner per isolate, holding
+        // what V8 posted for it; without this a later isolate at the same
+        // address inherits it and its stale tasks. d8 does this before every
+        // Dispose (Worker::ExecuteInThread).
+        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(g_platform.get(), isolate);
 
         // Dispose the isolate first
         isolate->Dispose();
@@ -8696,7 +8720,7 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
     
     // Create wrapper data that holds callback, user data, AND the handle pointer
     // The handle pointer is needed so the weak callback can reset it (V8 requirement)
-    WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global};
+    WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global, Isolate::GetCurrent()};
     armWeakData(handle, wrapper);
     
     // Make the Global handle weak with our wrapper callback
@@ -8765,7 +8789,7 @@ Global<Value>* v8_Value_ToWeakGlobal(
         // `global`, not a defaulted null: an aggregate initialiser with two
         // members left `handle` null, so the callback skipped V8's mandatory
         // Reset and this Global survived every collection of its own value.
-        WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global};
+        WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global, isolate};
         armWeakData(global, wrapper);
         global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
     }

@@ -2211,6 +2211,9 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 /// one is due. Returns whether a task ran. Never blocks; call with `isolate`
 /// entered.
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
+/// Whether V8 has background work for `isolate` that will post a foreground
+/// task when it ends (d8's CompleteMessageLoop waits on it).
+pub extern fn v8_Isolate_HasPendingBackgroundTasks(isolate: *Isolate) bool;
 
 /// Whether `Atomics.wait()` may block on `isolate` - HTML's [[CanBlock]] for
 /// the agent it hosts. V8's default is true.
