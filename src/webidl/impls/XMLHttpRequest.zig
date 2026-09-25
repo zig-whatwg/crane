@@ -934,6 +934,11 @@ fn invokeIdlHandler(
 
     // Wrap with the event's ACTUAL interface, so a ProgressEvent handler sees
     // `.loaded` and `.total` rather than a bare Event.
+    //
+    // Borrowed: whichever way `wrapInstanceAsV8Object` finds or makes the
+    // wrapper, the handle it returns is the one the wrapper cache (or the
+    // node's bound wrapper) keeps, and the cache releases it when the wrapper
+    // is collected. Disposing it here would free the cache's own entry.
     const interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
     const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
@@ -942,7 +947,11 @@ fn invokeIdlHandler(
         v8_context,
     ) catch return;
 
-    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
+    // Owned: `v8_Undefined` allocates a Global per call, and this runs once
+    // per handler per event - one leaked for every XHR event a handler heard.
+    // Released after the call, which only reads it.
+    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate) orelse return;
+    defer v8_engine.ffi.v8_Value_Dispose(undefined_recv);
     var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_global)};
 
     const result = v8_engine.ffi.v8_Function_Call_Safe(

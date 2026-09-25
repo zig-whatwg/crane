@@ -27,7 +27,6 @@ const InternalRequest = internal_request.InternalRequest;
 const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
-const http_fetch = @import("http_fetch.zig");
 const clock = @import("clock");
 
 /// Bad ports that should be blocked per Fetch spec.
@@ -128,7 +127,22 @@ pub const MainFetchResult = struct {
     timing_end: i64,
 };
 
-/// Execute the main fetch algorithm.
+/// Where main fetch's steps up to its fetch leave it.
+///
+/// Main fetch runs in two halves around the fetch that produces its response,
+/// because that fetch can wait on the network: `mainFetchStart` is steps 1-12
+/// and `mainFetchFinish` is steps 14 onwards, and `fetch_job.zig` runs
+/// whatever lies between - HTTP fetch, which may be a network round trip, or
+/// is itself main fetch again for a redirect.
+pub const MainFetchStart = union(enum) {
+    /// Main fetch's response is already decided - a blocked request's network
+    /// error, or what a non-HTTP(S) scheme fetch returned.
+    response: *InternalResponse,
+    /// Step 12's fetch is HTTP fetch.
+    http_fetch,
+};
+
+/// Main fetch steps 1-12, as far as the fetch that produces its response.
 ///
 /// Per Fetch spec §4.1:
 /// 1. Let request be fetchParams's request
@@ -142,19 +156,18 @@ pub const MainFetchResult = struct {
 /// 9. Set request's referrer
 /// 10. (various preparation steps)
 /// 11-13. Service worker and scheme fetch dispatch
-/// 14-18. Response filtering and callbacks
-pub fn mainFetch(
+pub fn mainFetchStart(
     allocator: Allocator,
     params: *FetchParams,
     recursive: bool,
-) MainFetchError!*InternalResponse {
+) MainFetchError!MainFetchStart {
     const request = params.request;
 
     // Step 3: Check local-URLs-only
     if (request.local_urls_only) {
         const url_str = request.currentUrl();
         if (!isLocalUrlString(url_str)) {
-            return try internal_response.networkError(allocator);
+            return .{ .response = try internal_response.networkError(allocator) };
         }
     }
 
@@ -166,7 +179,7 @@ pub fn mainFetch(
 
     // Step 6: Check bad port
     if (shouldBlockDueToBadPort(request)) {
-        return try internal_response.networkError(allocator);
+        return .{ .response = try internal_response.networkError(allocator) };
     }
 
     // Step 7: Check MIME type blocking (stubbed - requires nosniff implementation)
@@ -195,40 +208,37 @@ pub fn mainFetch(
 
     // Step 12-13: Service worker interception and scheme fetch
     // For now, skip service worker and dispatch based on scheme
-    var response: *InternalResponse = undefined;
 
     // Get scheme from current URL string
     const url_str = request.currentUrl();
     const scheme = extractScheme(url_str);
 
-    // Dispatch based on scheme
-    if (scheme_fetch.isHttpScheme(scheme)) {
-        // HTTP(S) requests go through HTTP fetch
-        response = http_fetch.httpFetch(allocator, params, .{}) catch |err| switch (err) {
-            http_fetch.HttpFetchError.OutOfMemory => return MainFetchError.OutOfMemory,
-            http_fetch.HttpFetchError.NetworkError,
-            http_fetch.HttpFetchError.CorsError,
-            => {
-                return try internal_response.networkError(allocator);
-            },
-        };
-    } else {
-        // Non-HTTP schemes go through scheme fetch
-        const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
-            switch (err) {
-                error.OutOfMemory => return MainFetchError.OutOfMemory,
-            }
-        };
+    // HTTP(S) requests go through HTTP fetch
+    if (scheme_fetch.isHttpScheme(scheme)) return .http_fetch;
 
-        switch (scheme_result) {
-            .response => |resp| {
-                response = resp;
-            },
-            .network_error => {
-                response = try internal_response.networkError(allocator);
-            },
+    // Non-HTTP schemes go through scheme fetch
+    const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
+        switch (err) {
+            error.OutOfMemory => return MainFetchError.OutOfMemory,
         }
-    }
+    };
+
+    return switch (scheme_result) {
+        .response => |resp| .{ .response = resp },
+        .network_error => .{ .response = try internal_response.networkError(allocator) },
+    };
+}
+
+/// Main fetch steps 14 onwards, given the response its fetch produced.
+/// Returns the response main fetch returns.
+///
+/// 14-18. Response filtering and callbacks
+pub fn mainFetchFinish(
+    params: *FetchParams,
+    recursive: bool,
+    response: *InternalResponse,
+) *InternalResponse {
+    const request = params.request;
 
     // Step 14: If recursive, return early
     if (recursive) {

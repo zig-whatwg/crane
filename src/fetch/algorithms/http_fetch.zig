@@ -32,7 +32,6 @@ const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const cors = @import("../cors/root.zig");
 const clock = @import("clock");
 const PreflightCache = cors.PreflightCache;
-const main_fetch = @import("main_fetch.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -67,7 +66,23 @@ pub const HttpFetchOptions = struct {
     preflight_cache: ?*PreflightCache = null,
 };
 
-/// Execute the HTTP fetch algorithm.
+/// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
+pub const HttpFetchNext = union(enum) {
+    /// HTTP fetch returns this response.
+    response: *InternalResponse,
+    /// HTTP-redirect fetch reached its steps 20-22: run main fetch again with
+    /// recursive true, then `httpRedirectFetchFinish` on what it returns -
+    /// which HTTP fetch then returns.
+    recursive_main_fetch,
+};
+
+/// HTTP fetch, from the point HTTP-network-or-cache fetch has returned
+/// `response`, whose ownership passes in.
+///
+/// HTTP fetch runs in two halves around the network: before it is
+/// `httpNetworkOrCacheFetchStart`, and between them `fetch_job.zig` performs
+/// the request, blocking or on the event loop, and hands the result to
+/// `httpNetworkFetchFinish`.
 ///
 /// Per Fetch spec §4.6:
 /// 1. Let request be fetchParams's request
@@ -78,27 +93,19 @@ pub const HttpFetchOptions = struct {
 ///      running HTTP-redirect fetch
 ///    - Otherwise, set response to the result of running HTTP-network-or-cache fetch
 /// 5. If CORS flag is set and response is not a network error, run CORS check
-pub fn httpFetch(
+pub fn httpFetchFinish(
     allocator: Allocator,
     params: *FetchParams,
     options: HttpFetchOptions,
-) HttpFetchError!*InternalResponse {
+    response: *InternalResponse,
+) HttpFetchError!HttpFetchNext {
     const request = params.request;
-
-    // Step 2: Let response be null
-    var response: ?*InternalResponse = null;
+    var final_response = response;
 
     // Step 3: Service worker handling
     // If request's service-workers mode is "all", handle service worker interception
     // TODO: Implement service worker interception when service worker module is available
     // For now, skip service worker and proceed directly to network fetch
-
-    // Step 4: If response is null, run HTTP-network-or-cache fetch
-    if (response == null) {
-        response = try httpNetworkOrCacheFetch(allocator, params, options, false);
-    }
-
-    var final_response = response.?;
 
     // Step 5: If response's status is a redirect status, handle based on redirect mode
     // Per WHATWG Fetch spec: check redirect status AFTER getting response
@@ -107,20 +114,20 @@ pub fn httpFetch(
             .@"error" => {
                 // Return a network error
                 final_response.deinit();
-                return try internal_response.networkError(allocator);
+                return .{ .response = try internal_response.networkError(allocator) };
             },
             .manual => {
                 // Return an opaque-redirect filtered response
                 // For manual mode, we return the redirect response as-is
                 // but mark it as opaque-redirect type
                 final_response.response_type = .opaqueredirect;
-                return final_response;
+                return .{ .response = final_response };
             },
             .follow => {
                 // Step 6.2 "follow": "Set response to the result of running
                 // HTTP-redirect fetch given fetchParams and response." The
                 // response in hand IS the redirect - it is not fetched again.
-                return try httpRedirectFetch(allocator, params, options, final_response);
+                return httpRedirectFetchStart(allocator, params, final_response);
             },
         }
     }
@@ -134,10 +141,10 @@ pub fn httpFetch(
         }
     }
 
-    return final_response;
+    return .{ .response = final_response };
 }
 
-/// HTTP-redirect fetch.
+/// HTTP-redirect fetch, up to its recursive main fetch: steps 1-19.
 ///
 /// Spec: https://fetch.spec.whatwg.org/#http-redirect-fetch
 ///
@@ -147,14 +154,14 @@ pub fn httpFetch(
 /// and then read `response.status` after `response.deinit()` - a use-after-free
 /// that crashed `fetch/api/redirect/redirect-{location,mode,to-dataurl}.any.js`
 /// and `fetch/api/cors/cors-redirect.any.js`.
-pub fn httpRedirectFetch(
+///
+/// `.response` is what HTTP-redirect fetch returns without fetching again;
+/// `.recursive_main_fetch` means steps 20-22 are next.
+pub fn httpRedirectFetchStart(
     allocator: Allocator,
     params: *FetchParams,
-    options: HttpFetchOptions,
     response: *InternalResponse,
-) HttpFetchError!*InternalResponse {
-    _ = options;
-
+) HttpFetchError!HttpFetchNext {
     // Step 1: Let request be fetchParams's request.
     const request = params.request;
 
@@ -168,12 +175,12 @@ pub fn httpRedirectFetch(
         return switch (err) {
             error.OutOfMemory => HttpFetchError.OutOfMemory,
             // Step 5: If locationURL is failure, return a network error.
-            error.InvalidLocation => try internal_response.networkError(allocator),
+            error.InvalidLocation => .{ .response = try internal_response.networkError(allocator) },
         };
     };
 
     // Step 4: If locationURL is null, then return response.
-    const location_url = location orelse return response;
+    const location_url = location orelse return .{ .response = response };
     defer allocator.free(location_url);
 
     // Everything below needs only the status, so read it before letting the
@@ -184,12 +191,12 @@ pub fn httpRedirectFetch(
     // Step 6: If locationURL's scheme is not an HTTP(S) scheme, return a
     // network error.
     if (!std.mem.startsWith(u8, location_url, "http:") and !std.mem.startsWith(u8, location_url, "https:")) {
-        return try internal_response.networkError(allocator);
+        return .{ .response = try internal_response.networkError(allocator) };
     }
 
     // Step 7: If request's redirect count is 20, return a network error.
     if (request.redirect_count >= 20) {
-        return try internal_response.networkError(allocator);
+        return .{ .response = try internal_response.networkError(allocator) };
     }
 
     // Step 8: Increase request's redirect count by 1.
@@ -208,7 +215,7 @@ pub fn httpRedirectFetch(
         if (request.body) |b| switch (b) {
             .bytes => {},
             .body => |body| if (body.source == .none) {
-                return try internal_response.networkError(allocator);
+                return .{ .response = try internal_response.networkError(allocator) };
             },
         };
     }
@@ -255,25 +262,32 @@ pub fn httpRedirectFetch(
     // Steps 20-22: recursive main fetch. Redirect mode "manual" only reaches
     // here for a navigation, which this layer does not do, so recursive stays
     // true.
-    const final_response = main_fetch.mainFetch(allocator, params, true) catch |err| switch (err) {
-        main_fetch.MainFetchError.OutOfMemory => return HttpFetchError.OutOfMemory,
-        main_fetch.MainFetchError.NetworkError => return try internal_response.networkError(allocator),
-    };
+    return .recursive_main_fetch;
+}
+
+/// HTTP-redirect fetch after its recursive main fetch returned `response`,
+/// whose ownership passes in. Returns what HTTP-redirect fetch returns.
+pub fn httpRedirectFetchFinish(
+    allocator: Allocator,
+    params: *FetchParams,
+    response: *InternalResponse,
+) HttpFetchError!*InternalResponse {
+    const request = params.request;
 
     // A response's URL list is the request's: it is what makes `redirected`
     // true and `url` the final URL. Network errors keep theirs empty.
-    if (final_response.response_type != .@"error") {
-        for (final_response.url_list.items) |u| allocator.free(u);
-        final_response.url_list.clearRetainingCapacity();
+    if (response.response_type != .@"error") {
+        for (response.url_list.items) |u| allocator.free(u);
+        response.url_list.clearRetainingCapacity();
         for (request.url_list.items) |u| {
-            final_response.addUrl(u) catch {
-                final_response.deinit();
+            response.addUrl(u) catch {
+                response.deinit();
                 return HttpFetchError.OutOfMemory;
             };
         }
     }
 
-    return final_response;
+    return response;
 }
 
 /// Request-body-header names.
@@ -371,18 +385,25 @@ fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: [
     return @constCast(serialized);
 }
 
-/// HTTP-network-or-cache fetch algorithm.
+/// Where HTTP-network-or-cache fetch's steps before the network leave it.
+pub const HttpNetworkStart = union(enum) {
+    /// Its response is already decided, with no request sent.
+    response: *InternalResponse,
+    /// HTTP-network fetch has built this request; it is the network's to
+    /// answer. Its header list is owned - `freeNetworkRequest` releases it.
+    network: NetworkRequest,
+};
+
+/// HTTP-network-or-cache fetch, up to the request HTTP-network fetch sends.
 ///
 /// Per Fetch spec §4.8:
 /// This algorithm handles both cached and network responses.
 /// For now, we skip caching and go directly to network fetch.
-pub fn httpNetworkOrCacheFetch(
+pub fn httpNetworkOrCacheFetchStart(
     allocator: Allocator,
     params: *FetchParams,
     options: HttpFetchOptions,
-    is_new_connection_fetch: bool,
-) HttpFetchError!*InternalResponse {
-    _ = is_new_connection_fetch;
+) HttpFetchError!HttpNetworkStart {
     const request = params.request;
 
     // TODO: Implement full cache lookup logic per spec
@@ -392,11 +413,15 @@ pub fn httpNetworkOrCacheFetch(
     if (request.cache_mode == .only_if_cached) {
         // Only-if-cached requires a cached response
         // Since we don't have cache yet, return network error
-        return try internal_response.networkError(allocator);
+        return .{ .response = try internal_response.networkError(allocator) };
     }
 
     // CORS preflight per Fetch spec §4.8 step 8
     // If CORS-preflight flag is set, perform preflight before actual request
+    //
+    // Main fetch sets no CORS flags yet, so nothing reaches this. When it
+    // does, the preflight has to become a network step of its own, like the
+    // request below: as it stands it blocks.
     if (options.cors_preflight_flag) {
         const preflight_result = performCorsPreflight(allocator, request, options) catch {
             return HttpFetchError.OutOfMemory;
@@ -413,65 +438,34 @@ pub fn httpNetworkOrCacheFetch(
         }
     }
 
-    // Run HTTP-network fetch
-    return try httpNetworkFetch(allocator, params, options);
-}
-
-/// HTTP-network fetch algorithm.
-///
-/// Per Fetch spec §4.9:
-/// This is where the actual network request happens using LibcurlBackend.
-///
-/// Steps:
-/// 1. Build NetworkRequest from InternalRequest
-/// 2. Create backend and perform network fetch
-/// 3. Convert NetworkResponse to InternalResponse
-/// 4. Record timing information
-///
-/// Note: Cookie handling is automatic via LibcurlBackend's CurlCookieManager.
-/// When credentials mode is not 'omit', libcurl automatically:
-/// - Sends matching cookies in the Cookie header (per Fetch spec §4.9 step 5)
-/// - Stores cookies from Set-Cookie headers (per Fetch spec §4.9 step 11)
-pub fn httpNetworkFetch(
-    allocator: Allocator,
-    params: *FetchParams,
-    options: HttpFetchOptions,
-) HttpFetchError!*InternalResponse {
-    const request = params.request;
-
-    // Step 1: Build NetworkRequest from InternalRequest
+    // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
     const network_request = buildNetworkRequest(allocator, request) catch {
         return HttpFetchError.OutOfMemory;
     };
-    defer freeNetworkRequest(allocator, network_request);
+    return .{ .network = network_request };
+}
 
-    // Step 2: Create backend and perform network fetch
-    // Configure backend with cookie manager if provided
-    const backend_options = LibcurlBackend.Options{
-        .enable_cookies = request.credentials_mode != .omit,
-        .cookie_manager = options.cookie_manager,
-    };
+/// Whether HTTP-network fetch sends and stores cookies for `request`: unless
+/// its credentials mode is "omit". Cookie handling itself is libcurl's, through
+/// CurlCookieManager - it sends the matching cookies (Fetch spec §4.9 step 5)
+/// and stores the `Set-Cookie` ones (step 11).
+pub fn httpNetworkFetchUsesCookies(request: *const InternalRequest) bool {
+    return request.credentials_mode != .omit;
+}
 
-    const backend_impl = LibcurlBackend.initWithOptions(allocator, backend_options) catch {
-        return HttpFetchError.NetworkError;
-    };
-    defer backend_impl.deinit();
-
-    const backend_iface = backend_impl.getBackend();
-
-    // Record start time
-    const start_time = getCurrentTimeMs();
-
-    // Perform the actual network request
-    // Cookies are handled automatically by libcurl via CurlCookieManager
-    var network_response = backend_iface.send(allocator, &network_request) catch |err| {
-        // Map network error to HttpFetchError
-        return switch (err) {
-            NetworkError.OutOfMemory => HttpFetchError.OutOfMemory,
-            else => HttpFetchError.NetworkError,
-        };
-    };
-    defer network_response.deinit();
+/// HTTP-network fetch, once the network has answered with `network_response`
+/// (sent at `start_time`): the response it returns.
+///
+/// Per Fetch spec §4.9:
+/// 3. Convert NetworkResponse to InternalResponse
+/// 4. Record timing information
+pub fn httpNetworkFetchFinish(
+    allocator: Allocator,
+    params: *FetchParams,
+    network_response: *const NetworkResponse,
+    start_time: f64,
+) HttpFetchError!*InternalResponse {
+    const request = params.request;
 
     // Step 3: Convert NetworkResponse to InternalResponse
     const response = InternalResponse.init(allocator) catch {
@@ -557,7 +551,7 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !Network
 }
 
 /// Free allocated NetworkRequest resources.
-fn freeNetworkRequest(allocator: Allocator, request: NetworkRequest) void {
+pub fn freeNetworkRequest(allocator: Allocator, request: NetworkRequest) void {
     allocator.free(request.headers);
 }
 
@@ -621,7 +615,7 @@ fn isNetworkError(response: *InternalResponse) bool {
 }
 
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
-fn getCurrentTimeMs() f64 {
+pub fn getCurrentTimeMs() f64 {
     return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 

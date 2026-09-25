@@ -394,19 +394,153 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 }
 
 /// Operation: fetch
+///
+/// The fetch runs on the event loop (`fetch.algorithms.AsyncFetch`): this
+/// returns p at once, and the fetch task that settles it runs on a later turn.
+/// It used to run the whole fetch inside this call, blocked in
+/// `curl_easy_perform`, and everything on the thread waited with it.
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     const fetch = @import("fetch");
     const fetch_objects = @import("dom").fetch_objects;
+    const v8 = @import("v8");
     const allocator = instance.ctx.allocator;
+
+    // One call's promise, from the moment the fetch starts until a fetch
+    // task settles it: the fetch's client, and the task.
+    const Call = struct {
+        allocator: std.mem.Allocator,
+        /// The relevant realm's runtime context. A page that ends RETIRES its
+        /// context rather than freeing it, and empties it - `engine_ctx`
+        /// becomes null - which is how `alive` tells that the realm is gone.
+        ctx: runtime.Context,
+        isolate: *v8.ffi.Isolate,
+        /// p's resolver, a Global this call owns until p is settled or its
+        /// realm is gone. Keeping it keeps p, and so the realm, alive while
+        /// the fetch is in flight.
+        resolver: *v8.ffi.PromiseResolver,
+        outcome: ?(fetch.algorithms.FetchError!fetch.algorithms.FetchResult) = null,
+
+        const Self = @This();
+
+        fn client(self: *Self) fetch.algorithms.AsyncFetch.Client {
+            return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+        }
+
+        fn alive(context: *anyopaque) bool {
+            const self: *Self = @ptrCast(@alignCast(context));
+            return self.ctx.engine_ctx != null;
+        }
+
+        /// The realm went away with the fetch in flight; the fetch has been
+        /// terminated. Nothing is left to settle.
+        fn gone(context: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.release();
+        }
+
+        /// Fetch has its response: queue the fetch task that runs
+        /// processResponse (step 12) - a global task on the networking task
+        /// source, given relevantRealm's global object. A window's realm has
+        /// an event loop. A worker's has none of its own and runs its tasks
+        /// as timers on the page's, so its task is one; a realm with neither
+        /// is in the event loop's network step already, a task boundary, and
+        /// settles now.
+        fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.outcome = outcome;
+            if (self.ctx.getOptionalEventLoop()) |loop| {
+                loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
+                return;
+            }
+            if (self.ctx.getOptionalTimer()) |timer| {
+                if (timer.setTimeout(0, settle, self) != 0) return;
+            }
+            settle(self);
+        }
+
+        /// The fetch task. It runs from the event loop, not from script, so
+        /// it enters the realm itself.
+        fn settle(context: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            // The realm can end while the task waits in the queue.
+            if (!alive(self)) return self.release();
+
+            const entered = v8.ffi.v8_Isolate_GetCurrent() != self.isolate;
+            if (entered) v8.ffi.v8_Isolate_Enter(self.isolate);
+            defer if (entered) v8.ffi.v8_Isolate_Exit(self.isolate);
+            defer self.release();
+            {
+                const scope = v8.JsScope.init(self.ctx) orelse return;
+                defer scope.deinit();
+                self.processResponse();
+            }
+            // In a worker, the task's end is the worker's to run.
+            @import("html").worker_v8_context.finishTaskIn(self.isolate);
+        }
+
+        /// processResponse, given fetch's outcome.
+        fn processResponse(self: *Self) void {
+            const realm = streams_js.Realm.ofContext(self.ctx) catch return;
+            const outcome = self.outcome orelse return;
+            self.outcome = null;
+            var result = outcome catch return self.rejectTypeError(realm, "Failed to fetch");
+            result.timing_info.deinit();
+            const response = result.response;
+
+            // Step 3: a network error rejects p with a TypeError.
+            if (response.response_type == .@"error") {
+                response.deinit();
+                return self.rejectTypeError(realm, "Failed to fetch");
+            }
+
+            // Step 4: responseObject is the result of creating a Response
+            // object given response, "immutable" and relevantRealm.
+            const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
+                response.deinit();
+                return self.rejectTypeError(realm, "Failed to fetch");
+            };
+            if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
+                response.deinit();
+                return self.rejectTypeError(realm, "Failed to fetch");
+            }
+
+            // Step 5: resolve p with responseObject.
+            const wrapper = realm.wrap(response_object) catch return;
+            _ = v8.ffi.v8_PromiseResolver_Resolve(self.resolver, realm.context, wrapper);
+        }
+
+        fn rejectTypeError(self: *Self, realm: streams_js.Realm, message: []const u8) void {
+            const reason = realm.typeError(message) catch return;
+            defer streams_js.dispose(reason);
+            _ = v8.ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
+        }
+
+        /// A task that will never run: its loop is going.
+        fn drop(context: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.release();
+        }
+
+        fn release(self: *Self) void {
+            if (self.outcome) |outcome| {
+                var result = outcome catch null;
+                if (result) |*r| r.deinit();
+            }
+            v8.ffi.v8_PromiseResolver_Dispose(self.resolver);
+            self.allocator.destroy(self);
+        }
+    };
+
     // Step 8: relevantRealm, this's relevant realm.
     const realm = try streams_js.Realm.of(instance);
 
     // Step 1: Let p be a new promise.
     const p = try streams_js.Deferred.init(realm);
-    // The resolver is ours to release; the promise is made for this call and
-    // kept nowhere, so it is handed to the binding with the result
-    // (returnOwned) - kept, it pinned the page.
-    defer @import("v8").ffi.v8_PromiseResolver_Dispose(p.resolver);
+    // The promise is made for this call and kept nowhere, so it is handed to
+    // the binding with the result (returnOwned) - kept, it pinned the page.
+    // The resolver is released here unless the fetch takes it.
+    var resolver_taken = false;
+    defer if (!resolver_taken) v8.ffi.v8_PromiseResolver_Dispose(p.resolver);
 
     // Step 2: Let requestObject be the result of invoking the initial value
     // of Request as constructor with input and init. If this throws, reject
@@ -441,40 +575,27 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     }
 
     // Steps 5-6: no ServiceWorkerGlobalScope exists here.
-    // Steps 9-11: Crane's fetch runs to completion before it returns, so no
-    // abort can arrive while it is in flight; there are no abort steps to add.
+    // Steps 9-11: the abort steps are not added yet, so aborting requestObject's
+    // signal once the fetch is in flight does not end it. TODO: now that the
+    // fetch outlives this call, they apply.
 
-    // Step 12: fetch request, processResponse being:
-    var result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => {
-            rejectWithTypeError(realm, p, "Failed to fetch");
-            return p.returnOwned();
-        },
+    // Step 12: fetch request. The fetch outlives this call, and requestObject
+    // may not, so it fetches a clone: nothing script can observe tells the
+    // two apart, since the fetch changes only request's current URL.
+    const fetched_request = try request.clone();
+    const call = allocator.create(Call) catch {
+        fetched_request.deinit();
+        return error.OutOfMemory;
     };
-    result.timing_info.deinit();
-    const response = result.response;
-
-    // processResponse step 3: a network error rejects p with a TypeError.
-    if (response.response_type == .@"error") {
-        response.deinit();
+    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .isolate = realm.isolate, .resolver = p.resolver };
+    _ = fetch.algorithms.AsyncFetch.start(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
+        // The fetch owned the request, and freed it.
+        allocator.destroy(call);
         rejectWithTypeError(realm, p, "Failed to fetch");
         return p.returnOwned();
-    }
-
-    // processResponse step 4: responseObject is the result of creating a
-    // Response object given response, "immutable" and relevantRealm.
-    const response_object = interfaces.Response.call_constructor(instance.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch |err| {
-        response.deinit();
-        return err;
     };
-    if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
-        response.deinit();
-        return error.InvalidStateError;
-    }
+    resolver_taken = true;
 
-    // processResponse step 5: resolve p with responseObject.
-    p.resolve(realm, try realm.wrap(response_object));
     // Step 13.
     return p.returnOwned();
 }
