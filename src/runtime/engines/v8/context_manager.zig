@@ -3127,11 +3127,14 @@ pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
 /// global object's internal field.
 fn getWindowFromGlobalInternalField(v8_ctx: *v8.Context) ?*runtime.Instance {
     const global = v8.v8_Context_Global(v8_ctx) orelse return null;
-    const window_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
-    if (window_ptr) |ptr| {
-        return @ptrCast(@alignCast(ptr));
-    }
-    return null;
+    defer v8.v8_Object_Dispose(global);
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+    // Field 0 of a worker's global holds its WorkerGlobalScope; only a Window
+    // answers here. Callers read the result as a Window and removeContext
+    // deinits it as one.
+    if (instance.stateAs(@import("interfaces").Window.State) == null) return null;
+    return instance;
 }
 
 /// Get the V8EventLoop for a V8 context
