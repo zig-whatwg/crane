@@ -49,6 +49,12 @@ test "a TimerHandler-shaped union retains - the case that caused 10 crashes of 1
     // `*runtime.CallbackWrapper`, answered "inert" here, and released a context
     // `setTimeout` goes on to use.
     //
+    // What this pins now is the SHAPE: an arm the predicate does not know (here
+    // `*anyopaque`) makes the union retain. The real TimerHandler's arm is a
+    // callback function, which has since been proven inert (see "callback
+    // functions are inert" below) - that proof, and the timers regression
+    // protocol, are what let its answer change; a guess would not.
+    //
     // Reconstructed locally rather than imported: the `typedefs` module is not in
     // this test target's import set, and what is being asserted is that the
     // predicate rejects the SHAPE - a union with a non-inert arm - rather than
@@ -118,15 +124,38 @@ test "a sequence is as inert as its element" {
 }
 
 test "one member that may keep the context makes the whole dictionary retain" {
-    const UnderlyingSourceShaped = struct {
-        type: ?runtime.DOMString = null,
-        start: ?*const fn () callconv(.c) void = null,
-    };
-    try std.testing.expect(retains(UnderlyingSourceShaped));
-    const WithCallback = struct { a: ?bool = null, cb: ?*runtime.CallbackWrapper = null };
-    try std.testing.expect(retains(WithCallback));
+    const WithUnknown = struct { a: ?bool = null, p: ?*anyopaque = null };
+    try std.testing.expect(retains(WithUnknown));
     const Nested = struct { inner: ?struct { x: u32, h: union(enum) { s: runtime.DOMString, f: *anyopaque } } = null };
     try std.testing.expect(retains(Nested));
+}
+
+test "callbacks are inert: a callback wrapper keeps its own copy of the context" {
+    // conv.fromV8Value makes a CallbackWrapper for a callback interface, and
+    // the wrapper takes a context handle of its own, released with it - the
+    // caller's is never stored. Before, the wrapper kept the caller's pointer
+    // without owning it, so neither the binding nor context teardown could
+    // release it, and every element listener or on* handler pinned its page.
+    try std.testing.expect(!retains(*runtime.CallbackWrapper));
+    try std.testing.expect(!retains(?*runtime.CallbackWrapper));
+    const WithCallback = struct { a: ?bool = null, cb: ?*runtime.CallbackWrapper = null };
+    try std.testing.expect(!retains(WithCallback));
+}
+
+test "callback functions are inert: the conversion tags the value handle, not the context" {
+    // A callback function converts to its own argument handle, tagged as a
+    // Global; the context is not read. An impl that needs a context for a
+    // callback takes it from the instance, never from the binding's handle.
+    const Callback = *const fn () callconv(.c) void;
+    try std.testing.expect(!retains(Callback));
+    try std.testing.expect(!retains(?Callback));
+    const UnderlyingSourceShaped = struct {
+        type: ?runtime.DOMString = null,
+        start: ?Callback = null,
+    };
+    try std.testing.expect(!retains(UnderlyingSourceShaped));
+    const TimerHandlerLike = union(enum) { domstring: runtime.DOMString, function: Callback, trusted_script: *runtime.Instance };
+    try std.testing.expect(!retains(TimerHandlerLike));
 }
 
 test "optionals inherit their payload's answer" {
@@ -145,9 +174,10 @@ test "an unknown type defaults to RETAINS" {
     const AUnion = union(enum) { x: u32, y: *anyopaque };
     try std.testing.expect(retains(AUnion));
 
-    // And any pointer it does not know - to anything but an Instance.
+    // And any pointer it does not know - to anything but an Instance, a
+    // callback wrapper or a callback function.
     try std.testing.expect(retains(*anyopaque));
-    try std.testing.expect(retains(*runtime.CallbackWrapper));
+    try std.testing.expect(retains(*u32));
 }
 
 // ---------------------------------------------------------------------------

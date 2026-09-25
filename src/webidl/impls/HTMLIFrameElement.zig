@@ -1001,6 +1001,10 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             }
             return null;
         };
+        // Owned, and only read below: createChildContext uses the parent
+        // context to find its entry and copy its security token. Leaked, it kept
+        // the page alive.
+        defer v8.ffi.v8_Context_Dispose(current_v8_ctx);
 
         // CRITICAL: Find the correct parent window.
         // For nested iframes (inside another iframe's srcdoc), we need to find the parent

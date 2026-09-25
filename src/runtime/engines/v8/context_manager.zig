@@ -1891,6 +1891,8 @@ fn createWindowForExistingBrowsingContext(
 
     // 2b. Set security token to match parent context (same-origin for iframes)
     if (v8.v8_Context_GetSecurityToken(parent_context)) |parent_token| {
+        // Owned; see createChildContext.
+        defer v8.v8_Value_Dispose(parent_token);
         v8.v8_Context_SetSecurityToken(child_context, parent_token);
     }
 
@@ -2500,6 +2502,10 @@ pub fn createChildContext(
     // The use_opaque_origin flag is used for DOM-level origin tracking, not V8 tokens.
     // This allows `parent.postMessage()` to work while `parent.document` throws.
     if (v8.v8_Context_GetSecurityToken(options.parent_context)) |parent_token| {
+        // Owned, and copied into the child by SetSecurityToken. The token is the
+        // parent's global object by default, so a leaked handle kept the parent
+        // page alive.
+        defer v8.v8_Value_Dispose(parent_token);
         v8.v8_Context_SetSecurityToken(child_context, parent_token);
     }
 

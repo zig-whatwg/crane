@@ -2308,13 +2308,11 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
     info.setReturnValue(return_undefined);
 
-    // Get V8 context. Owned: once the listener's wrapper exists it owns the
-    // handle (its `callback_context`, also the runtime wrapper's `engine_ctx`)
-    // and releases it when the listener goes; until then every path releases
-    // it here. Each one leaked kept the page's whole native context alive.
+    // Get V8 context. Owned, and released on every path: the listener's
+    // wrapper keeps a context handle of its own. Each one leaked kept the
+    // page's whole native context alive.
     const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    var listener_keeps_ctx = false;
-    defer if (!listener_keeps_ctx) v8.ffi.v8_Context_Dispose(v8_ctx);
+    defer v8.ffi.v8_Context_Dispose(v8_ctx);
 
     // Get global object (which has the window instance)
     const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
@@ -2350,8 +2348,6 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         @ptrCast(callback_arg),
         "handleEvent",
     ) catch return orelse return;
-    v8_wrapper.owns_callback_context = true;
-    listener_keeps_ctx = true;
 
     // Create runtime.CallbackWrapper that wraps the V8 callback
     // (per conversions.zig pattern for proper engine interface setup)
@@ -2362,7 +2358,7 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     runtime_wrapper.* = .{
         .engine_handle = v8_wrapper,
         .engine = &v8.v8_engine_interface,
-        .engine_ctx = v8_ctx,
+        .engine_ctx = v8_wrapper.callback_context.?,
         .allocator = allocator,
     };
 
@@ -2475,7 +2471,7 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
     runtime_wrapper.* = .{
         .engine_handle = v8_wrapper,
         .engine = &v8.v8_engine_interface,
-        .engine_ctx = v8_ctx,
+        .engine_ctx = v8_wrapper.callback_context.?,
         .allocator = allocator,
     };
 

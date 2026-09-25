@@ -294,6 +294,13 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         // context.
         if (T == *runtime.Instance) break :blk false;
 
+        // A callback interface converts to a CallbackWrapper, which keeps a
+        // context handle of its own (callback_wrapper.initFunction/initObject);
+        // a callback function converts to its own argument handle, tagged, and
+        // never reads the context. Neither keeps the caller's.
+        if (T == *runtime.CallbackWrapper) break :blk false;
+        if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
+
         // Buffer sources are views over V8 backing stores, made without the
         // context (convertAllowSharedBufferSource ignores it, and body
         // conversion never produces BufferSource's arm at all). Whether the
@@ -7417,6 +7424,16 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "No context available");
                         return;
                     };
+                    // Released unless converting the value may keep it - the
+                    // allowlist every other binding path consults. Before, a
+                    // setter never released it, so each `el.onclick = f` pinned
+                    // its page.
+                    const value_retains = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                        if (fi.params.len < 2) break :blk false;
+                        break :blk typeRetainsContext(fi.params[1].type orelse break :blk true);
+                    };
+                    defer if (comptime !value_retains) v8.v8_Context_Dispose(context);
 
                     // Get function's creation context for cross-realm error throwing
                     // Per WebIDL spec: "Throw a TypeError using the function's realm."

@@ -1644,7 +1644,7 @@ pub fn fromV8Value(
         runtime_wrapper.* = .{
             .engine_handle = v8_wrapper, // V8 CallbackWrapper pointer
             .engine = &engine_mod.v8_engine_interface, // V8 engine interface with invokeCallback
-            .engine_ctx = context, // V8 context for invoking callbacks
+            .engine_ctx = v8_wrapper.callback_context.?, // the wrapper's own context handle
             .allocator = persistent_allocator,
         };
         return runtime_wrapper;
@@ -1674,7 +1674,7 @@ pub fn fromV8Value(
             runtime_wrapper.* = .{
                 .engine_handle = w, // V8 CallbackWrapper pointer
                 .engine = &engine_mod.v8_engine_interface, // V8 engine interface
-                .engine_ctx = context, // V8 context
+                .engine_ctx = w.callback_context.?, // the wrapper's own context handle
                 .allocator = persistent_allocator,
             };
             return runtime_wrapper;

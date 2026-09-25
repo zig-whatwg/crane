@@ -73,9 +73,8 @@ pub const CallbackWrapper = struct {
     /// Unlike Global handle pointers, this is the actual V8 internal context address
     callback_context_raw_addr: ?*anyopaque = null,
 
-    /// Whether `deinit` releases `callback_context`. False by default: most
-    /// callers pass a context handle they go on using, and releasing it here
-    /// would free it under them. A caller that hands the handle over sets this.
+    /// Whether `deinit` releases `callback_context`. The constructors make the
+    /// wrapper a copy of its own and set this.
     owns_callback_context: bool = false,
 
     /// Create a wrapper for a JavaScript function callback
@@ -93,8 +92,12 @@ pub const CallbackWrapper = struct {
         // Instead, we just wrap the existing Global pointer.
         const global = GlobalHandle{ .ptr = @ptrCast(func) };
 
-        // Use the provided context where this callback was created/intended to run
-        const current_ctx = context;
+        // The wrapper keeps a context handle of its OWN, released with it: the
+        // caller's stays the caller's to release. Keeping the caller's pointer
+        // without owning it meant nobody could release it - every element
+        // listener and on* handler pinned its page.
+        const current_ctx: *v8.Context = @ptrCast(v8.v8_Context_GlobalHandle_New(isolate, context) orelse return error.OutOfMemory);
+        errdefer v8.v8_Context_Dispose(current_ctx);
 
         // Get the raw V8 context address for stable identity comparison
         // (Global handle pointers change each time GetCurrentContext is called)
@@ -110,6 +113,7 @@ pub const CallbackWrapper = struct {
             .allocator = allocator,
             .callback_context = current_ctx,
             .callback_context_raw_addr = raw_addr,
+            .owns_callback_context = true,
         };
         callback_registry.register(wrapper);
         return wrapper;
@@ -131,8 +135,9 @@ pub const CallbackWrapper = struct {
         // the handle's own address as a Smi, not the object.
         const global = GlobalHandle{ .ptr = @ptrCast(object) };
 
-        // Use the provided context
-        const current_ctx = context;
+        // Its own context handle, as initFunction explains.
+        const current_ctx: *v8.Context = @ptrCast(v8.v8_Context_GlobalHandle_New(isolate, context) orelse return error.OutOfMemory);
+        errdefer v8.v8_Context_Dispose(current_ctx);
 
         // Get the raw V8 context address for stable identity comparison
         const raw_addr = v8.v8_Context_GetRawAddress(current_ctx);
@@ -147,6 +152,7 @@ pub const CallbackWrapper = struct {
             .allocator = allocator,
             .callback_context = current_ctx,
             .callback_context_raw_addr = raw_addr,
+            .owns_callback_context = true,
         };
         callback_registry.register(wrapper);
         return wrapper;
