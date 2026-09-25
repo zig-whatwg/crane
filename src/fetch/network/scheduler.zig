@@ -234,4 +234,3 @@ pub fn threadScheduler() *NetworkScheduler {
 pub fn existingThreadScheduler() ?*NetworkScheduler {
     return if (thread_scheduler) |*scheduler| scheduler else null;
 }
-
