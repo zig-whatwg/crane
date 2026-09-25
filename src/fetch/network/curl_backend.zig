@@ -350,272 +350,31 @@ pub const LibcurlBackend = struct {
         }
     };
 
-    /// Track request count for debugging
-    var request_counter: usize = 0;
-
     fn sendImpl(ptr: *anyopaque, allocator: Allocator, request: *const NetworkRequest) NetworkError!NetworkResponse {
         const self: *Self = @ptrCast(@alignCast(ptr));
-
-        // Increment and get request number
-        request_counter += 1;
-        const req_num = request_counter;
-
-        log.debug("\n[CURL REQUEST #{}] ========================================\n", .{req_num});
-        log.debug("[CURL REQUEST #{}] URL: {s}\n", .{ req_num, request.url });
-        log.debug("[CURL REQUEST #{}] Method: {s}\n", .{ req_num, request.method });
-        log.debug("[CURL REQUEST #{}] Global share: {?}\n", .{ req_num, getGlobalShare() });
-        log.debug("[CURL REQUEST #{}] Global init count: {}\n", .{ req_num, global_init_count });
 
         // Reset abort flag
         self.aborted.store(false, .seq_cst);
 
-        // Create curl easy handle
-        log.debug("[CURL REQUEST #{}] Creating easy handle...\n", .{req_num});
-        const handle = curl.easy_init() orelse {
-            log.warn("{s} {s}: curl_easy_init failed (out of memory)", .{ request.method, request.url });
-            return NetworkError.OutOfMemory;
-        };
-        log.debug("[CURL REQUEST #{}] Easy handle created: {*}\n", .{ req_num, handle });
-        defer {
-            log.debug("[CURL REQUEST #{}] Cleaning up easy handle: {*}\n", .{ req_num, handle });
-            curl.easy_cleanup(handle);
-        }
-
-        // Attach to global share for connection pooling
-        // This enables connection reuse across easy handles, preventing socket exhaustion
-        if (getGlobalShare()) |share| {
-            log.debug("[CURL REQUEST #{}] Attaching to global share: {*}\n", .{ req_num, share });
-            _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
-        } else {
-            log.debug("[CURL REQUEST #{}] WARNING: No global share available!\n", .{req_num});
-        }
-
-        // Attach cookie manager if available
-        if (self.cookie_manager) |cm| {
-            cm.attachToHandle(handle);
-        }
-
-        // Give curl somewhere to explain itself.
-        //
-        // Without this a transport failure is a bare CURLcode, and
-        // `curl_easy_strerror` only names the category: an mbedTLS entropy
-        // failure and an expired certificate are both "SSL connect error". The
-        // buffer is where "ssl_handshake returned: (-0x0034) CTR_DRBG - The
-        // entropy source failed" comes from.
-        //
-        // It has to outlive the handle, which this frame does - `easy_cleanup`
-        // is deferred above. curl never clears it, so each attempt zeroes the
-        // first byte; see `curl.errorBufferMessage`.
-        var error_buf: [curl.CURL_ERROR_SIZE]u8 = undefined;
-        error_buf[0] = 0;
-        _ = curl.easy_setopt(handle, curl.CURLOPT_ERRORBUFFER, &error_buf);
-
-        // Initialize callback context
-        var ctx = CallbackContext.init(allocator, &self.aborted);
-        defer {
-            // Only cleanup on error - on success, data is transferred to response
-        }
-
-        // Configure request
-        log.debug("[CURL REQUEST #{}] Configuring request...\n", .{req_num});
-        configureRequest(handle, request, &ctx) catch {
-            log.warn("{s} {s}: failed to configure the request (out of memory)", .{ request.method, request.url });
-            ctx.deinit();
-            return NetworkError.OutOfMemory;
-        };
-        log.debug("[CURL REQUEST #{}] Request configured\n", .{req_num});
+        const transfer = try Transfer.create(allocator, request, .{
+            .cookie_manager = self.cookie_manager,
+            .aborted = &self.aborted,
+        });
+        defer transfer.destroy();
 
         // Perform the request with retry for connection failures
         // The WPT server can hit connection limits under load
         var result: curl.CURLcode = undefined;
-        var retry_count: u8 = 0;
-        const max_retries: u8 = 3;
-        log.debug("[CURL REQUEST #{}] Starting perform loop (max {} retries)...\n", .{ req_num, max_retries });
-        while (retry_count < max_retries) : (retry_count += 1) {
-            log.debug("[CURL REQUEST #{}] Attempt {}/{}: calling easy_perform...\n", .{ req_num, retry_count + 1, max_retries });
-            // curl leaves the error buffer alone on success and never clears it,
-            // so a retry that succeeds would otherwise still be carrying the
-            // previous attempt's message.
-            error_buf[0] = 0;
-            result = curl.easy_perform(handle);
-            log.debug("[CURL REQUEST #{}] easy_perform returned: {} (CURLE_OK={})\n", .{ req_num, result, curl.CURLE_OK });
-            if (result == curl.CURLE_OK) break;
-
-            // Only retry on connection failures
-            if (result == curl.CURLE_COULDNT_CONNECT) {
-                log.debug("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
-                // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
-                clock.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
-                continue;
-            }
-            log.debug("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});
-            break; // Non-retriable error
+        var attempt: u8 = 0;
+        while (true) : (attempt += 1) {
+            transfer.prepareAttempt();
+            result = curl.easy_perform(transfer.handle);
+            const backoff_ns = Transfer.retryBackoffNs(result, attempt) orelse break;
+            log.debug("{s} {s}: connection failed, retrying after {d}ms", .{ request.method, request.url, backoff_ns / std.time.ns_per_ms });
+            clock.sleep(backoff_ns);
         }
 
-        // Check for abort
-        if (self.aborted.load(.seq_cst)) {
-            log.debug("[CURL REQUEST #{}] Request was aborted\n", .{req_num});
-            ctx.deinit();
-            return NetworkError.Aborted;
-        }
-
-        // Parse headers from raw header data. This has to happen before the
-        // error check below, which needs the response's framing headers to tell
-        // a finished close-delimited body from a truncated one.
-        parseHeaders(&ctx) catch {
-            ctx.deinit();
-            return NetworkError.OutOfMemory;
-        };
-
-        var status_code: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
-
-        // Check for errors
-        if (result != curl.CURLE_OK) {
-            if (isCloseDelimitedEnd(result, status_code, ctx.response_headers.items)) {
-                log.debug(
-                    "[CURL REQUEST #{}] treating recv error as end of close-delimited body ({d} bytes)\n",
-                    .{ req_num, ctx.response_body.items.len },
-                );
-            } else {
-                // A hard transport failure, at warn: this used to be `log.debug`
-                // and the WPT runner's default level is `.warn`, so a DNS
-                // failure, a refused connection and a TLS handshake error all
-                // printed exactly nothing.
-                const net_err = curl_error.mapCurlError(result);
-                log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
-                    request.method,
-                    request.url,
-                    result,
-                    curl.errorBufferMessage(&error_buf, result),
-                    @errorName(net_err),
-                });
-                ctx.deinit();
-                return net_err;
-            }
-        }
-
-        log.debug("[CURL REQUEST #{}] Request completed successfully\n", .{req_num});
-
-        // Extract response info
-
-        var http_version_raw: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_HTTP_VERSION, &http_version_raw);
-
-        var total_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_TOTAL_TIME, &total_time);
-
-        var starttransfer_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
-
-        var redirect_count: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_COUNT, &redirect_count);
-
-        var primary_ip: [*c]const u8 = null;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRIMARY_IP, &primary_ip);
-
-        var primary_port: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
-
-        var effective_url: [*c]const u8 = null;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
-
-        // Resource Timing API: Extract detailed timing information
-        var namelookup_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
-
-        var connect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
-
-        var appconnect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
-
-        var pretransfer_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
-
-        var redirect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_TIME, &redirect_time);
-
-        // Check if connection was reused (num_connects == 0 means reused)
-        var num_connects: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
-
-        // Debug output for response info
-        log.debug("[CURL REQUEST #{}] Response info:\n", .{req_num});
-        log.debug("[CURL REQUEST #{}]   Status code: {}\n", .{ req_num, status_code });
-        log.debug("[CURL REQUEST #{}]   HTTP version: {}\n", .{ req_num, http_version_raw });
-        log.debug("[CURL REQUEST #{}]   Body size: {} bytes\n", .{ req_num, ctx.response_body.items.len });
-        log.debug("[CURL REQUEST #{}]   Total time: {d:.3}s\n", .{ req_num, total_time });
-        log.debug("[CURL REQUEST #{}]   DNS lookup: {d:.3}s\n", .{ req_num, namelookup_time });
-        log.debug("[CURL REQUEST #{}]   Connect time: {d:.3}s\n", .{ req_num, connect_time });
-        log.debug("[CURL REQUEST #{}]   Num connects: {} (0 = reused)\n", .{ req_num, num_connects });
-        if (primary_ip != null) {
-            log.debug("[CURL REQUEST #{}]   Remote IP: {s}:{}\n", .{ req_num, std.mem.span(primary_ip.?), primary_port });
-        }
-
-        // Build response
-        const http_version: HttpVersion = switch (http_version_raw) {
-            curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
-            curl.CURL_HTTP_VERSION_1_1 => .http_1_1,
-            curl.CURL_HTTP_VERSION_2_0 => .http_2,
-            curl.CURL_HTTP_VERSION_3 => .http_3,
-            else => .http_1_1,
-        };
-
-        // Transfer ownership of collected data
-        const headers = ctx.response_headers.toOwnedSlice(allocator) catch {
-            ctx.deinit();
-            return NetworkError.OutOfMemory;
-        };
-
-        const body = if (ctx.response_body.items.len > 0)
-            ctx.response_body.toOwnedSlice(allocator) catch {
-                allocator.free(headers);
-                ctx.deinit();
-                return NetworkError.OutOfMemory;
-            }
-        else
-            null;
-
-        // Copy strings that need to outlive curl handle
-        const final_url = if (effective_url != null and
-            !std.mem.eql(u8, std.mem.span(effective_url.?), request.url))
-            allocator.dupe(u8, std.mem.span(effective_url.?)) catch null
-        else
-            null;
-
-        const remote_ip = if (primary_ip != null)
-            allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null
-        else
-            null;
-
-        // Clean up remaining context resources (url_z, method_z, header_list, raw_headers)
-        // Note: response_body and response_headers ownership transferred via toOwnedSlice
-        ctx.raw_headers.deinit(allocator);
-        if (ctx.url_z) |url| allocator.free(url);
-        if (ctx.method_z) |method| allocator.free(method);
-        if (ctx.header_list) |list| curl.slist_free_all(list);
-
-        return NetworkResponse{
-            .allocator = allocator,
-            .status = @intCast(status_code),
-            .http_version = http_version,
-            .headers = headers,
-            .body = body,
-            .final_url = final_url,
-            .total_time_ms = @intFromFloat(total_time * 1000),
-            .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
-            .redirect_count = @intCast(redirect_count),
-            .remote_ip = remote_ip,
-            .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
-            // Resource Timing API fields
-            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
-            .connect_time_ms = @intFromFloat(connect_time * 1000),
-            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
-            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
-            .redirect_time_ms = @intFromFloat(redirect_time * 1000),
-            .connection_reused = (num_connects == 0),
-        };
+        return transfer.finish(result);
     }
 
     fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *CallbackContext) !void {
@@ -642,10 +401,15 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
         }
 
-        // Request body
+        // Request body. COPYPOSTFIELDS, so curl holds its own copy: a transfer
+        // driven by the multi handle outlives the call that configured it,
+        // and nothing else would keep the caller's bytes alive that long. The
+        // size has to be set first - it is what makes curl copy `len` bytes
+        // rather than read up to a NUL, and what makes an empty body a POST
+        // of zero bytes instead of no body at all.
         if (request.body) |body| {
-            _ = curl.easy_setopt(handle, curl.CURLOPT_POSTFIELDS, body.ptr);
             _ = curl.easy_setopt(handle, curl.CURLOPT_POSTFIELDSIZE, @as(c_long, @intCast(body.len)));
+            _ = curl.easy_setopt(handle, curl.c.CURLOPT_COPYPOSTFIELDS, body.ptr);
         }
 
         // Headers (slist is stored in ctx and freed via slist_free_all in deinit)
@@ -787,6 +551,317 @@ pub const LibcurlBackend = struct {
     fn deinitImpl(ptr: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         self.deinit();
+    }
+};
+
+// =============================================================================
+// Transfer
+// =============================================================================
+
+/// One HTTP transfer: an easy handle configured for a request, and everything
+/// it receives until it ends.
+///
+/// A blocking `LibcurlBackend.send` and the event loop's `NetworkScheduler`
+/// both run exactly this - `create`, one or more attempts, `finish` - so a
+/// request is configured, and its response built, one way whichever of them
+/// drives the handle. Heap-allocated because curl keeps pointers into it for
+/// the handle's whole life: the callback context, the error buffer and the
+/// abort flag.
+pub const Transfer = struct {
+    allocator: Allocator,
+    handle: *curl.CURL,
+    ctx: LibcurlBackend.CallbackContext,
+    /// Where curl explains a failure; see `create`.
+    error_buf: [curl.CURL_ERROR_SIZE]u8,
+    /// The abort flag the callbacks check, when no backend lends one.
+    own_aborted: std.atomic.Value(bool),
+    /// The request's method and URL, for the diagnostics `finish` writes.
+    method: []u8,
+    url: []u8,
+    /// Set when `create` made the cookie manager, which then goes with the
+    /// transfer. It is released after the handle, which holds its share.
+    owned_cookie_manager: ?*CurlCookieManager,
+
+    pub const Options = struct {
+        /// Cookies go through this manager. Borrowed; it must outlive the
+        /// transfer.
+        cookie_manager: ?*CurlCookieManager = null,
+        /// With no `cookie_manager`, make one for this transfer alone - what
+        /// `LibcurlBackend.initWithOptions` does for the one request it sends.
+        own_cookies: bool = false,
+        /// The flag an abort sets. Null: the transfer's own.
+        aborted: ?*std.atomic.Value(bool) = null,
+    };
+
+    /// Configure a transfer for `request`. Nothing is sent until the handle
+    /// is performed. `request` is not needed afterwards: everything curl reads
+    /// during the transfer is copied into it.
+    pub fn create(allocator: Allocator, request: *const NetworkRequest, options: Options) NetworkError!*Transfer {
+        const self = allocator.create(Transfer) catch return NetworkError.OutOfMemory;
+        errdefer allocator.destroy(self);
+
+        const method = allocator.dupe(u8, request.method) catch return NetworkError.OutOfMemory;
+        errdefer allocator.free(method);
+        const url = allocator.dupe(u8, request.url) catch return NetworkError.OutOfMemory;
+        errdefer allocator.free(url);
+
+        // Before the handle, so that on an error the handle - which holds the
+        // manager's share - is cleaned up first.
+        var cookie_manager = options.cookie_manager;
+        var owned_cookie_manager: ?*CurlCookieManager = null;
+        if (cookie_manager == null and options.own_cookies) {
+            owned_cookie_manager = CurlCookieManager.init(allocator, null) catch return NetworkError.OutOfMemory;
+            cookie_manager = owned_cookie_manager;
+        }
+        errdefer if (owned_cookie_manager) |cm| cm.deinit();
+
+        const handle = curl.easy_init() orelse {
+            log.warn("{s} {s}: curl_easy_init failed (out of memory)", .{ request.method, request.url });
+            return NetworkError.OutOfMemory;
+        };
+        errdefer curl.easy_cleanup(handle);
+
+        self.* = .{
+            .allocator = allocator,
+            .handle = handle,
+            .ctx = undefined,
+            .error_buf = undefined,
+            .own_aborted = std.atomic.Value(bool).init(false),
+            .method = method,
+            .url = url,
+            .owned_cookie_manager = owned_cookie_manager,
+        };
+        self.ctx = LibcurlBackend.CallbackContext.init(allocator, options.aborted orelse &self.own_aborted);
+        errdefer self.ctx.deinit();
+
+        // Attach to global share for connection pooling
+        // This enables connection reuse across easy handles, preventing socket exhaustion
+        if (getGlobalShare()) |share| {
+            _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
+        }
+
+        // Attach cookie manager if available
+        if (cookie_manager) |cm| {
+            cm.attachToHandle(handle);
+        }
+
+        // Give curl somewhere to explain itself.
+        //
+        // Without this a transport failure is a bare CURLcode, and
+        // `curl_easy_strerror` only names the category: an mbedTLS entropy
+        // failure and an expired certificate are both "SSL connect error". The
+        // buffer is where "ssl_handshake returned: (-0x0034) CTR_DRBG - The
+        // entropy source failed" comes from. It lives in the transfer, which
+        // outlives the handle. curl never clears it, so each attempt zeroes the
+        // first byte; see `curl.errorBufferMessage`.
+        self.error_buf[0] = 0;
+        _ = curl.easy_setopt(handle, curl.CURLOPT_ERRORBUFFER, &self.error_buf);
+
+        LibcurlBackend.configureRequest(handle, request, &self.ctx) catch {
+            log.warn("{s} {s}: failed to configure the request (out of memory)", .{ request.method, request.url });
+            return NetworkError.OutOfMemory;
+        };
+
+        return self;
+    }
+
+    /// Release the handle and everything the transfer still holds. A
+    /// response `finish` built is the caller's and is not touched.
+    pub fn destroy(self: *Transfer) void {
+        const allocator = self.allocator;
+        curl.easy_cleanup(self.handle);
+        // After the handle: a share still attached to one cannot be cleaned.
+        if (self.owned_cookie_manager) |cm| cm.deinit();
+        self.ctx.deinit();
+        allocator.free(self.method);
+        allocator.free(self.url);
+        allocator.destroy(self);
+    }
+
+    /// Ready the transfer for an attempt: whatever an earlier attempt that
+    /// failed to connect left behind is discarded, and so is curl's message
+    /// about it, which curl never clears - a retry that succeeds would
+    /// otherwise still carry it.
+    pub fn prepareAttempt(self: *Transfer) void {
+        self.error_buf[0] = 0;
+        self.ctx.response_body.clearRetainingCapacity();
+        for (self.ctx.response_headers.items) |header| {
+            self.allocator.free(header.name);
+            self.allocator.free(header.value);
+        }
+        self.ctx.response_headers.clearRetainingCapacity();
+        self.ctx.raw_headers.clearRetainingCapacity();
+    }
+
+    /// How many attempts a transfer gets when its connection fails.
+    pub const max_attempts: u8 = 3;
+
+    /// How long to wait before attempt `attempt + 1`, after attempt `attempt`
+    /// (from 0) ended with `result` - or null when there is no next attempt.
+    ///
+    /// Only a connection that could not be made is retried: `wpt serve` can
+    /// refuse connections under load, and nothing has been sent on one that
+    /// never opened. Exponential backoff: 100ms, then 200ms.
+    pub fn retryBackoffNs(result: curl.CURLcode, attempt: u8) ?u64 {
+        if (result != curl.CURLE_COULDNT_CONNECT) return null;
+        if (attempt + 1 >= max_attempts) return null;
+        return 100 * std.time.ns_per_ms * std.math.pow(u64, 2, attempt);
+    }
+
+    /// The transfer's outcome, once its last attempt ended with `result`.
+    ///
+    /// On success the response takes the received body and headers; the
+    /// transfer keeps nothing the response needs, so it can be destroyed at
+    /// once.
+    pub fn finish(self: *Transfer, result: curl.CURLcode) NetworkError!NetworkResponse {
+        const allocator = self.allocator;
+        const handle = self.handle;
+        const ctx = &self.ctx;
+
+        // Check for abort
+        if (ctx.aborted.load(.seq_cst)) return NetworkError.Aborted;
+
+        // Parse headers from raw header data. This has to happen before the
+        // error check below, which needs the response's framing headers to tell
+        // a finished close-delimited body from a truncated one.
+        LibcurlBackend.parseHeaders(ctx) catch return NetworkError.OutOfMemory;
+
+        var status_code: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
+
+        // Check for errors
+        if (result != curl.CURLE_OK) {
+            if (isCloseDelimitedEnd(result, status_code, ctx.response_headers.items)) {
+                log.debug("{s} {s}: treating recv error as end of close-delimited body ({d} bytes)", .{
+                    self.method,
+                    self.url,
+                    ctx.response_body.items.len,
+                });
+            } else {
+                // A hard transport failure, at warn: this used to be `log.debug`
+                // and the WPT runner's default level is `.warn`, so a DNS
+                // failure, a refused connection and a TLS handshake error all
+                // printed exactly nothing.
+                const net_err = curl_error.mapCurlError(result);
+                log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
+                    self.method,
+                    self.url,
+                    result,
+                    curl.errorBufferMessage(&self.error_buf, result),
+                    @errorName(net_err),
+                });
+                return net_err;
+            }
+        }
+
+        // Extract response info
+
+        var http_version_raw: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_HTTP_VERSION, &http_version_raw);
+
+        var total_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_TOTAL_TIME, &total_time);
+
+        var starttransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
+
+        var redirect_count: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_COUNT, &redirect_count);
+
+        var primary_ip: [*c]const u8 = null;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRIMARY_IP, &primary_ip);
+
+        var primary_port: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
+
+        var effective_url: [*c]const u8 = null;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
+
+        // Resource Timing API: Extract detailed timing information
+        var namelookup_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
+
+        var connect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
+
+        var appconnect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
+
+        var pretransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+
+        var redirect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_TIME, &redirect_time);
+
+        // Check if connection was reused (num_connects == 0 means reused)
+        var num_connects: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
+
+        log.debug("{s} {s}: {d}, {d} body bytes, {d:.3}s", .{
+            self.method,
+            self.url,
+            status_code,
+            ctx.response_body.items.len,
+            total_time,
+        });
+
+        // Build response
+        const http_version: HttpVersion = switch (http_version_raw) {
+            curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
+            curl.CURL_HTTP_VERSION_1_1 => .http_1_1,
+            curl.CURL_HTTP_VERSION_2_0 => .http_2,
+            curl.CURL_HTTP_VERSION_3 => .http_3,
+            else => .http_1_1,
+        };
+
+        // Transfer ownership of collected data. `toOwnedSlice` leaves each
+        // list empty, so `destroy` has nothing of the response's to free.
+        const headers = ctx.response_headers.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory;
+        errdefer {
+            for (headers) |header| {
+                allocator.free(header.name);
+                allocator.free(header.value);
+            }
+            allocator.free(headers);
+        }
+
+        const body = if (ctx.response_body.items.len > 0)
+            ctx.response_body.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory
+        else
+            null;
+
+        // Copy strings that need to outlive curl handle
+        const final_url = if (effective_url != null and
+            !std.mem.eql(u8, std.mem.span(effective_url.?), self.url))
+            allocator.dupe(u8, std.mem.span(effective_url.?)) catch null
+        else
+            null;
+
+        const remote_ip = if (primary_ip != null)
+            allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null
+        else
+            null;
+
+        return NetworkResponse{
+            .allocator = allocator,
+            .status = @intCast(status_code),
+            .http_version = http_version,
+            .headers = headers,
+            .body = body,
+            .final_url = final_url,
+            .total_time_ms = @intFromFloat(total_time * 1000),
+            .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
+            .redirect_count = @intCast(redirect_count),
+            .remote_ip = remote_ip,
+            .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
+            // Resource Timing API fields
+            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
+            .connect_time_ms = @intFromFloat(connect_time * 1000),
+            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
+            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .redirect_time_ms = @intFromFloat(redirect_time * 1000),
+            .connection_reused = (num_connects == 0),
+        };
     }
 };
 

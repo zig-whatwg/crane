@@ -48,6 +48,7 @@ pub const curl_cookies = @import("curl_cookies.zig");
 pub const cookie_store = @import("cookie_store.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
+pub const scheduler = @import("scheduler.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -67,6 +68,10 @@ pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
 pub const LibcurlBackend = curl_backend.LibcurlBackend;
 pub const globalInit = curl_backend.globalInit;
 pub const globalCleanup = curl_backend.globalCleanup;
+pub const Transfer = curl_backend.Transfer;
+
+// Re-export the event loop's network scheduler
+pub const NetworkScheduler = scheduler.NetworkScheduler;
 
 // Re-export connection pool
 pub const ConnectionPool = connection_pool.ConnectionPool;
