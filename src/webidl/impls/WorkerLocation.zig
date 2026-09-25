@@ -36,8 +36,12 @@ pub const InternalState = struct {
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
+    /// Whether this object owns `internal_location`. A WorkerGlobalScope lends its own:
+    /// the global scope owns it and outlives every object in its realm.
+    owned: bool = true,
+
     pub fn deinit(self: *InternalState) void {
-        self.internal_location.deinit();
+        if (self.owned) self.internal_location.deinit();
     }
 };
 
@@ -91,6 +95,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
+// Every getter returns a copy: the binding frees what a getter returns (with
+// the instance's context allocator), and handing out the internal location's
+// own slices freed them on the first read - a double free on the second.
+
 /// Getter for href
 ///
 /// Spec: HTML Standard § 10.1.2
@@ -99,7 +107,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getHref();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHref());
     }
     return error.NotImplemented;
 }
@@ -112,7 +120,7 @@ pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getOrigin();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getOrigin());
     }
     return error.NotImplemented;
 }
@@ -125,7 +133,7 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getProtocol();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getProtocol());
     }
     return error.NotImplemented;
 }
@@ -138,7 +146,7 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getHost();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHost());
     }
     return error.NotImplemented;
 }
@@ -151,7 +159,7 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getHostname();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHostname());
     }
     return error.NotImplemented;
 }
@@ -164,7 +172,7 @@ pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getPort();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getPort());
     }
     return error.NotImplemented;
 }
@@ -177,7 +185,7 @@ pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getPathname();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getPathname());
     }
     return error.NotImplemented;
 }
@@ -190,7 +198,7 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getSearch();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getSearch());
     }
     return error.NotImplemented;
 }
@@ -203,7 +211,7 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return internal.internal_location.getHash();
+        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHash());
     }
     return error.NotImplemented;
 }

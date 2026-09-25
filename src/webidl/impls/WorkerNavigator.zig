@@ -37,8 +37,12 @@ pub const InternalState = struct {
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
+    /// Whether this object owns `internal_navigator`. A WorkerGlobalScope lends its own:
+    /// the global scope owns it and outlives every object in its realm.
+    owned: bool = true,
+
     pub fn deinit(self: *InternalState) void {
-        self.internal_navigator.deinit();
+        if (self.owned) self.internal_navigator.deinit();
     }
 };
 
