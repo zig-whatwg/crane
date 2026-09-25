@@ -38,6 +38,7 @@ progress = [
   "0100e3e5b - per-context registration releases its handles; callback registry resets a torn-down context's callbacks: live handles after 8 pages 21,469 -> 16,788",
   "f2d429ab5 - legacy platform object wrappers release the proxied target: a simple page no longer retains anything",
   "50d353245 - method results the binding owns are released; promises are handed over",
+  "acc6a45fb - inert dictionaries, unions, sequences and Instance pointers release their context; receiver contexts released: live context handles after 6 pages 50 -> 14",
 ]
 
   [[infra.items]]
@@ -62,6 +63,10 @@ progress = [
 
   [[infra.items]]
   name = "Dictionaries and unions of inert types recognized as not retaining the context (fetch, Headers)"
+  status = "done"
+
+  [[infra.items]]
+  name = "Argument handles released when conversion copied out of them (dictionaries, Instance arguments)"
   status = "todo"
 
   [[infra.items]]
