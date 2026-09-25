@@ -568,7 +568,8 @@ def render_roadmap(roadmap, worklist, records):
             st = 'done' if unpushed == 0 else st
             note = f' <span class="dim">&middot; {unpushed:,} commit{"s" if unpushed != 1 else ""} not on origin</span>'
         par_done += st == 'done'
-        par_rows.append(f'<li class="{st}">{pill(st)} {html.escape(pre["name"])}{note}</li>')
+        how = f'<div class="dim rm-how">{html.escape(pre["how"])}</div>' if pre.get('how') else ''
+        par_rows.append(f'<li class="{st}">{pill(st)} {html.escape(pre["name"])}{note}{how}</li>')
     parallel_ready = par_done == len(roadmap.get('parallel', []))
 
     del_rows = []
@@ -591,6 +592,30 @@ def render_roadmap(roadmap, worklist, records):
         <td class="rm-wait">{pill('done') if is_ready else ''}<span class="dim">{html.escape(why)}</span></td>
       </tr>""")
 
+    lane_rows = []
+    for lane in roadmap.get('lane', []):
+        a = area_stats(next((p.get('areas', []) for p in infra if p['id'] == lane.get('infra')), []),
+                       worklist, records)
+        st = lane.get('status', 'todo')
+        branch = f'<div class="dim rm-paths">{html.escape(lane["branch"])}</div>' if lane.get('branch') else ''
+        lane_rows.append(f"""
+      <tr>
+        <td class="area">{html.escape(lane['name'])}{branch}</td>
+        <td>{html.escape(lane.get('owner', ''))}</td>
+        <td>{pill(st)}</td>
+        <td class="num gate">{a['blocking'] or '&middot;'}</td>
+        <td class="dim rm-paths">{', '.join(html.escape(x) for x in lane.get('paths', []))}</td>
+      </tr>""")
+    lanes_html = ''
+    if lane_rows:
+        lanes_html = f"""
+<h2>Lanes <small class="dim">who owns which paths now</small></h2>
+<table>
+  <thead><tr><th>Lane</th><th>Owner</th><th>Status</th><th>Blocking in its areas</th><th>Claimed paths</th></tr></thead>
+  <tbody>{''.join(lane_rows)}</tbody>
+</table>
+"""
+
     infra_done = sum(1 for v in status_by_id.values() if v == 'done')
     goal = html.escape(roadmap.get('meta', {}).get('goal', ''))
     return f"""
@@ -608,7 +633,7 @@ def render_roadmap(roadmap, worklist, records):
 
 <h2>Prerequisites for parallel work</h2>
 <div class="panel"><ul class="rm-par">{''.join(par_rows)}</ul></div>
-
+{lanes_html}
 <h2>Areas to hand out <small class="dim">once what they need is done</small></h2>
 <table>
   <thead><tr><th>Area</th><th>Subset</th><th>Blocking</th><th>Clean</th><th>Readiness</th></tr></thead>
@@ -1159,6 +1184,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   .rm-par li {{ padding:5px 0; border-bottom:1px solid var(--line) }}
   .rm-par li:last-child {{ border-bottom:0 }}
   .rm-paths {{ font-size:11px }}
+  .rm-how {{ font-size:12px; margin:2px 0 6px 0; line-height:1.4 }}
   td.rm-wait {{ text-align:left; font-size:12.5px }}
   .pill {{ display:inline-block; font-size:10.5px; font-weight:650; letter-spacing:.03em;
     text-transform:uppercase; padding:1px 7px; border-radius:9px; margin-right:6px;

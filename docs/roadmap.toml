@@ -272,33 +272,59 @@ progress = [
 # ---------------------------------------------------------------------------
 
 [[parallel]]
-name = "main pushed to origin, so other machines can see the work"
-status = "todo"
-metric = "unpushed"
+name = "Heavy builds and WPT runs on chat.local, one mirror per lane"
+status = "done"
+how = """Each lane's worktree is copied one way to chat:~/crane-work/<lane>/ and \
+built there; every mirror shares one zig cache and one wpt serve. At most three \
+heavy jobs run on chat at once. Agents stay on this machine."""
 
 [[parallel]]
 name = "Per-area worklists"
-status = "todo"
+status = "done"
+how = "A prefix filter of tests/wpt_0_1_worklist.txt, run with --from-file."
 
 [[parallel]]
-name = "A lint that fails when an agent edits outside its area"
-status = "todo"
+name = "Every lane claims its paths, and the claim is checked at merge"
+status = "done"
+how = """The integrator compares `git diff --name-only main...<branch>` with the \
+lane's claim before merging, and rejects a change outside it."""
 
 [[parallel]]
-name = "AGENTS.md lessons as one file per lesson"
-status = "todo"
+name = "Shared files have one owner, the integrator"
+status = "done"
+how = """AGENTS.md, docs/roadmap.toml, the lint baselines, wpt-results/, build.zig, \
+interface.zig, conversions.zig, v8_wrapper.cpp and context_manager.zig. A lane \
+that needs one changed asks, and reports its lessons instead of writing them."""
 
 [[parallel]]
-name = "Lint baselines updated by the integrator only"
-status = "todo"
+name = "Journals filed by the integrator, in merge order"
+status = "done"
+how = "The report orders results by journal mtime, so only merges file journals."
 
 [[parallel]]
-name = "Progress report ordered by commit, not journal mtime"
-status = "todo"
+name = "A lane's result is confirmed serially before it merges"
+status = "done"
+how = """Parallel runs manufacture results under load; every file a lane says it \
+moved is re-run at --parallel=1 against the same HEAD without the change."""
 
-[[parallel]]
-name = "Results stable under load (pinned timings or a serial re-check)"
-status = "todo"
+# ---------------------------------------------------------------------------
+# Lanes: who is working on what, and which paths each one owns
+# ---------------------------------------------------------------------------
+
+[[lane]]
+name = "Object lifetime and V8 handle ownership"
+infra = "lifetime"
+owner = "integrator"
+status = "doing"
+paths = ["src/runtime/engines/v8/", "src/browser/", "src/webidl/impls/ (event handlers, timers)"]
+
+[[lane]]
+name = "Asynchronous networking"
+infra = "networking"
+owner = "agent"
+status = "doing"
+branch = "lane/networking"
+paths = ["src/fetch/", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/wpt/crane/net-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
