@@ -402,11 +402,17 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     const fetch = @import("fetch");
     const fetch_objects = @import("dom").fetch_objects;
+    const abort_algorithms = @import("dom").abort_algorithms;
     const v8 = @import("v8");
     const allocator = instance.ctx.allocator;
 
     // One call's promise, from the moment the fetch starts until a fetch
-    // task settles it: the fetch's client, and the task.
+    // task settles it: the fetch's client, the task, and the abort steps on
+    // requestObject's signal.
+    //
+    // Who releases it: while the fetch is in flight, the fetch's `gone`, or
+    // the abort steps (which end the fetch); once `done` has queued the
+    // task, the task (or its `drop`).
     const Call = struct {
         allocator: std.mem.Allocator,
         /// The relevant realm's runtime context. A page that ends RETIRES its
@@ -419,6 +425,16 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// the fetch is in flight.
         resolver: *v8.ffi.PromiseResolver,
         outcome: ?(fetch.algorithms.FetchError!fetch.algorithms.FetchResult) = null,
+        /// The fetch, from start until it ends (`done` or `gone`) or is
+        /// aborted.
+        in_flight: ?*fetch.algorithms.AsyncFetch = null,
+        /// requestObject's signal while this call's abort steps are on it -
+        /// held as (address, slab generation), since nothing here keeps the
+        /// signal alive and a collected signal's slot can be reissued.
+        signal: ?*runtime.Instance = null,
+        signal_generation: u64 = 0,
+        /// Step 9's locallyAborted.
+        locally_aborted: bool = false,
 
         const Self = @This();
 
@@ -435,6 +451,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// terminated. Nothing is left to settle.
         fn gone(context: *anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context));
+            self.in_flight = null;
             self.release();
         }
 
@@ -447,6 +464,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// settles now.
         fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
             const self: *Self = @ptrCast(@alignCast(context));
+            self.in_flight = null;
             self.outcome = outcome;
             if (self.ctx.getOptionalEventLoop()) |loop| {
                 loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
@@ -462,8 +480,10 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// it enters the realm itself.
         fn settle(context: ?*anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
-            // The realm can end while the task waits in the queue.
-            if (!alive(self)) return self.release();
+            // The realm can end while the task waits in the queue. And
+            // processResponse step 1: if locallyAborted is true, abort these
+            // steps - the abort steps settled p already.
+            if (!alive(self) or self.locally_aborted) return self.release();
 
             const entered = v8.ffi.v8_Isolate_GetCurrent() != self.isolate;
             if (entered) v8.ffi.v8_Isolate_Enter(self.isolate);
@@ -515,6 +535,55 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             _ = v8.ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
         }
 
+        /// Step 11's abort steps, run when requestObject's signal is
+        /// aborted - from script (`controller.abort()`), or from a task
+        /// (`AbortSignal.timeout()`), either way inside the realm.
+        fn aborted(context: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            const signal = self.liveSignal();
+            // The signal empties its abort algorithms as it runs them, so
+            // there is nothing to remove from it any more.
+            self.signal = null;
+
+            // Step 11.1: Set locallyAborted to true.
+            self.locally_aborted = true;
+
+            // Step 11.3: Abort controller - the fetch ends here, its transfer
+            // cancelled, and its client hears nothing more.
+            const was_in_flight = self.in_flight != null;
+            if (self.in_flight) |f| {
+                self.in_flight = null;
+                f.terminate();
+            }
+
+            // Step 11.4: Abort the fetch() call with p, request,
+            // responseObject and the signal's abort reason. responseObject is
+            // made by the task, which has not run, so it is null: reject p.
+            // Deviation: request's body is bytes, not a stream, so there is
+            // nothing to cancel; and once responseObject exists this call is
+            // released and its abort steps removed, so a later abort does not
+            // error the response's body - that needs a streamed body.
+            if (signal) |s| self.rejectWithAbortReason(s);
+
+            // In flight, the fetch was this call's owner; now nothing is. A
+            // task already queued owns it, and releases it when it runs.
+            if (was_in_flight) self.release();
+        }
+
+        fn rejectWithAbortReason(self: *Self, signal: *runtime.Instance) void {
+            const realm = streams_js.Realm.ofContext(self.ctx) catch return;
+            const reason_value = interfaces.AbortSignal.get_reason(signal) catch return;
+            const reason = realm.fromRuntime(reason_value) catch return;
+            defer streams_js.dispose(reason);
+            _ = v8.ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
+        }
+
+        fn liveSignal(self: *const Self) ?*runtime.Instance {
+            const signal = self.signal orelse return null;
+            if (runtime.SlabAllocator.generationOf(signal) != self.signal_generation) return null;
+            return signal;
+        }
+
         /// A task that will never run: its loop is going.
         fn drop(context: ?*anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
@@ -522,6 +591,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         }
 
         fn release(self: *Self) void {
+            if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
             if (self.outcome) |outcome| {
                 var result = outcome catch null;
                 if (result) |*r| r.deinit();
@@ -575,9 +645,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     }
 
     // Steps 5-6: no ServiceWorkerGlobalScope exists here.
-    // Steps 9-11: the abort steps are not added yet, so aborting requestObject's
-    // signal once the fetch is in flight does not end it. TODO: now that the
-    // fetch outlives this call, they apply.
+    // Steps 9-11 are added to requestObject's signal below, once the fetch -
+    // step 12's controller - exists for them to abort. Nothing can run in
+    // between.
 
     // Step 12: fetch request. The fetch outlives this call, and requestObject
     // may not, so it fetches a clone: nothing script can observe tells the
@@ -588,13 +658,22 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         return error.OutOfMemory;
     };
     call.* = .{ .allocator = allocator, .ctx = instance.ctx, .isolate = realm.isolate, .resolver = p.resolver };
-    _ = fetch.algorithms.AsyncFetch.start(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
+    call.in_flight = fetch.algorithms.AsyncFetch.start(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
         // The fetch owned the request, and freed it.
         allocator.destroy(call);
         rejectWithTypeError(realm, p, "Failed to fetch");
         return p.returnOwned();
     };
     resolver_taken = true;
+
+    // Step 11: Add the abort steps to requestObject's signal. Without them
+    // the call still settles; it just cannot be aborted.
+    if (abort_algorithms.add(signal, .{ .ctx = call, .run = Call.aborted })) {
+        call.signal = signal;
+        call.signal_generation = runtime.SlabAllocator.generationOf(signal);
+    } else |err| {
+        std.log.scoped(.fetch).warn("fetch(): abort steps not added: {s}", .{@errorName(err)});
+    }
 
     // Step 13.
     return p.returnOwned();
