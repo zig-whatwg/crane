@@ -890,6 +890,9 @@ const FileTally = struct {
     load_ms: u64 = 0,
     /// How many (global, variant) pairs reported into this tally.
     runs: usize = 0,
+    /// The harness's message for the run that set the file's status - why it
+    /// is an ERROR or TIMEOUT, in the journal where triage can group by it.
+    message: journal.MessageSlot = .{},
     /// Wall clock across everything this file cost, started at the top of the
     /// loop so loading and parsing are inside it. `duration_ms` cannot serve
     /// this purpose: it only covers the wait for `__wpt_complete`, and a page
@@ -933,6 +936,11 @@ const FileTally = struct {
             .timeout => .timeout,
             else => .@"error",
         };
+        if (status != .ok) {
+            if (result.message) |msg| {
+                if (status.severity() > self.status.severity()) self.message.set(msg) else self.message.setIfEmpty(msg);
+            }
+        }
         if (status.severity() > self.status.severity()) self.status = status;
 
         for (result.subtests.items) |sub| {
@@ -963,6 +971,7 @@ const FileTally = struct {
             .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
             .heap_used_kb = heap.used_kb,
             .native_contexts = heap.native_contexts,
+            .message = self.message.get(),
         });
     }
 };

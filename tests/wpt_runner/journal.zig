@@ -146,6 +146,37 @@ pub const Record = struct {
     message: ?[]const u8 = null,
 };
 
+/// The message a file's record carries: the harness's own words for why a run
+/// went wrong ("Error: Illegal invocation", "Test timed out"), without which
+/// an ERROR row says nothing about its cause. Fixed capacity, so a tally can
+/// hold one without an allocator; truncated on a UTF-8 boundary.
+pub const MessageSlot = struct {
+    pub const capacity = 240;
+
+    buf: [capacity]u8 = undefined,
+    len: usize = 0,
+    set_once: bool = false,
+
+    pub fn set(self: *MessageSlot, msg: []const u8) void {
+        var n = @min(msg.len, capacity);
+        // Back off any continuation bytes so the cut never splits a character.
+        if (n < msg.len) {
+            while (n > 0 and (msg[n] & 0xC0) == 0x80) n -= 1;
+        }
+        @memcpy(self.buf[0..n], msg[0..n]);
+        self.len = n;
+        self.set_once = true;
+    }
+
+    pub fn setIfEmpty(self: *MessageSlot, msg: []const u8) void {
+        if (!self.set_once) self.set(msg);
+    }
+
+    pub fn get(self: *const MessageSlot) ?[]const u8 {
+        return if (self.set_once) self.buf[0..self.len] else null;
+    }
+};
+
 /// Escape a string for JSON output.
 ///
 /// Deliberately a copy of `result_reporter.writeJsonString` rather than an
@@ -730,6 +761,33 @@ test "heap usage survives a round trip" {
         .passed = 12,
         .heap_used_kb = 812_345,
     });
+}
+
+test "a message slot keeps short messages whole" {
+    var slot: MessageSlot = .{};
+    try std.testing.expect(slot.get() == null);
+    slot.set("Error: Illegal invocation");
+    try std.testing.expectEqualStrings("Error: Illegal invocation", slot.get().?);
+}
+
+test "a message slot truncates on a UTF-8 boundary" {
+    var slot: MessageSlot = .{};
+    // 'é' is two bytes; put its first byte exactly at the limit.
+    var long: [MessageSlot.capacity + 8]u8 = undefined;
+    @memset(&long, 'a');
+    long[MessageSlot.capacity - 1] = 0xC3;
+    long[MessageSlot.capacity] = 0xA9;
+    slot.set(&long);
+    const got = slot.get().?;
+    try std.testing.expectEqual(MessageSlot.capacity - 1, got.len);
+    try std.testing.expect(std.unicode.utf8ValidateSlice(got));
+}
+
+test "a message slot keeps the first message it is given" {
+    var slot: MessageSlot = .{};
+    slot.set("first");
+    slot.setIfEmpty("second");
+    try std.testing.expectEqualStrings("first", slot.get().?);
 }
 
 test "live native contexts survive a round trip" {
