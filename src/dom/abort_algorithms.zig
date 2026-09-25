@@ -9,10 +9,14 @@
 //!
 //! AbortSignal installs the implementation when the first signal is created,
 //! which is necessarily before anyone holds a signal to add an algorithm to.
+//! Creating a dependent signal is the exception: `fetch(url)` asks for one
+//! from « » (the Request constructor's step 30) before the page may have made
+//! any signal, so `createDependent` makes the first one itself.
 //!
 //! lint-impls: hook for AbortSignal
 
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 
 /// An abort algorithm: `run(ctx)` once, when the signal is aborted. `ctx`
 /// identifies it for removal.
@@ -45,11 +49,20 @@ pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
 
 /// DOM § 3.3 "create a dependent abort signal" from `signals`, using
 /// AbortSignal, in `ctx`'s realm - as Fetch's Request constructor and
-/// clone() do. Every signal in `signals` exists, so AbortSignal has
-/// installed its implementation.
+/// clone() do.
 pub fn createDependent(ctx: runtime.Context, signals: []const *runtime.Instance) !*runtime.Instance {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation orelse try installByCreatingSignal(ctx);
     return impl.create_dependent(ctx, signals);
+}
+
+/// No signal exists on this thread yet, so `signals` is empty - and a page's
+/// first `fetch(url)` still needs one. AbortSignal installs its implementation
+/// whenever it makes a signal, so make one through its interface and let it
+/// go: nothing wrapped it, so nothing else can hold it.
+fn installByCreatingSignal(ctx: runtime.Context) !Implementation {
+    const signal = try interfaces.AbortSignal.init(ctx.allocator, ctx);
+    signal.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(signal));
+    return implementation orelse error.NotSupported;
 }
 
 /// "Remove an algorithm from an AbortSignal": every algorithm whose `ctx`
