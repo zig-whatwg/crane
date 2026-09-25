@@ -399,6 +399,12 @@ pub const Deferred = struct {
         return toReturn(self.promise);
     }
 
+    /// The promise as the call's result, handed over (`toReturnOwned`): for a
+    /// Deferred made for this call and kept nowhere once it returns.
+    pub fn returnOwned(self: Deferred) runtime.JSValue {
+        return toReturnOwned(self.promise);
+    }
+
     pub fn deinit(self: Deferred) void {
         ffi.v8_PromiseResolver_Dispose(self.resolver);
         dispose(self.promise);
@@ -424,12 +430,19 @@ pub fn disposeOptional(value: *?Value) void {
     value.* = null;
 }
 
-/// A value as an impl return. The binding reads the handle synchronously and
-/// never disposes it, so a handle the impl keeps (a stored promise) costs
-/// nothing, and one made only to be returned is leaked by the binding - the
-/// same contract as every `JSValue.fromPromise` return in the tree.
+/// A value as an impl return that the impl may still hold: the binding reads
+/// the handle and leaves it alone. Right for a stored promise; a handle made
+/// only to be returned leaks this way, so use `toReturnOwned` for that.
 pub fn toReturn(value: Value) runtime.JSValue {
     return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = false, .handle_scope = .global } };
+}
+
+/// A value made only to be returned, handed over: the binding releases the
+/// handle once it is the call's result. Only for a handle the impl keeps
+/// nowhere - a stored promise (a writer's [[closeRequest]], say) must use
+/// `toReturn`, or the binding frees it under its holder.
+pub fn toReturnOwned(value: Value) runtime.JSValue {
+    return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
 }
 
 pub fn isUndefined(value: Value) bool {

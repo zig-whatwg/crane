@@ -2612,6 +2612,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "v8", .module = v8_mod },
+            .{ .name = "webidl", .module = webidl_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -2672,6 +2673,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "webidl", .module = webidl_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});

@@ -287,9 +287,44 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
             break :blk typeRetainsContextDepth(@FieldType(T, "value"), depth + 1);
         }
 
-        // Everything else - callbacks, JSValue, Instance pointers, unions
-        // like TimerHandler, dictionaries, slices of any of them - is
-        // assumed to retain.
+        // A wrapped platform object: conversion checks the wrapper, reads its
+        // internal fields and returns the pointer, keeping nothing of the
+        // context.
+        if (T == *runtime.Instance) break :blk false;
+
+        // Buffer sources are views over V8 backing stores, made without the
+        // context (convertAllowSharedBufferSource ignores it, and body
+        // conversion never produces BufferSource's arm at all). Whether the
+        // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
+        if (T == webidl.BufferSource or T == webidl.AllowSharedBufferSource) break :blk false;
+
+        // A self-referential dictionary would recurse without end; past this
+        // depth, give the safe answer.
+        if (depth >= 8) break :blk true;
+
+        // A sequence converts element by element (fromV8Sequence), a dictionary
+        // member by member, and a union by trying its arms - each with these
+        // same rules, the context used only while it does. So each is inert
+        // exactly when every part is: one callback member, function pointer or
+        // unknown pointer anywhere makes the whole type retain.
+        if (info == .pointer and info.pointer.size == .slice) {
+            break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
+        }
+        if (info == .@"struct") {
+            for (info.@"struct".fields) |field| {
+                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            }
+            break :blk false;
+        }
+        if (info == .@"union") {
+            for (info.@"union".fields) |field| {
+                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            }
+            break :blk false;
+        }
+
+        // Everything else - callbacks, function pointers, unknown pointers -
+        // is assumed to retain.
         break :blk true;
     };
 }
@@ -2034,6 +2069,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // Check if this_obj is a global object from any context
                                             // by checking if it equals its own context's global
                                             if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                                defer v8.v8_Context_Dispose(this_ctx);
                                                 if (v8.v8_Context_Global(this_ctx)) |this_global| {
                                                     // Owned: v8_Context_Global allocates where V8's Context::Global()
                                                     // returns a borrowed Local. Everything below only compares it or
@@ -2661,6 +2697,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const instance = blk: {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
+                                defer v8.v8_Context_Dispose(method_ctx);
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
                                     // Owned: v8_Context_Global allocates where V8's Context::Global()
                                     // returns a borrowed Local. Everything below only compares it or
@@ -2693,6 +2730,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     } else {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                            defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
                                                 // Owned: v8_Context_Global allocates where V8's Context::Global()
                                                 // returns a borrowed Local. Everything below only compares it or
@@ -2762,6 +2800,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             //
                             // Check if `this` IS a global object and use it as implicit this.
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |ctx| {
+                                defer v8.v8_Context_Dispose(ctx);
                                 if (v8.v8_Context_Global(ctx)) |context_global| {
                                     // Owned: v8_Context_Global allocates where V8's Context::Global()
                                     // returns a borrowed Local. Everything below only compares it or
@@ -4301,6 +4340,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 } else if (maybe_holder) |holder| {
                     if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                        defer v8.v8_Context_Dispose(creation_ctx);
                         conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
                         return .kNo;
                     }
@@ -4318,6 +4358,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 } else if (maybe_holder) |holder| {
                     if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                        defer v8.v8_Context_Dispose(creation_ctx);
                         conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
                         return .kNo;
                     }
@@ -7391,6 +7432,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     } else {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                            defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
                                                 // Owned: v8_Context_Global allocates where V8's Context::Global()
                                                 // returns a borrowed Local. Everything below only compares it or

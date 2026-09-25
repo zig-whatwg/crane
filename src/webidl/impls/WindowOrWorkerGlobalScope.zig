@@ -403,8 +403,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // Step 1: Let p be a new promise.
     const p = try streams_js.Deferred.init(realm);
-    // The binding reads the promise and disposes nothing; the resolver is
-    // ours, and the promise handle goes with the call (streams_js.toReturn).
+    // The resolver is ours to release; the promise is made for this call and
+    // kept nowhere, so it is handed to the binding with the result
+    // (returnOwned) - kept, it pinned the page.
     defer @import("v8").ffi.v8_PromiseResolver_Dispose(p.resolver);
 
     // Step 2: Let requestObject be the result of invoking the initial value
@@ -418,7 +419,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         error.OutOfMemory => return err,
         else => {
             rejectWithTypeError(realm, p, "Failed to execute 'fetch': the Request could not be constructed.");
-            return p.returnValue();
+            return p.returnOwned();
         },
     };
     // Nothing script can see holds requestObject, unless its signal's
@@ -436,7 +437,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         const reason = try realm.fromRuntime(try interfaces.AbortSignal.get_reason(signal));
         defer streams_js.dispose(reason);
         p.reject(realm, reason);
-        return p.returnValue();
+        return p.returnOwned();
     }
 
     // Steps 5-6: no ServiceWorkerGlobalScope exists here.
@@ -448,7 +449,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         error.OutOfMemory => return error.OutOfMemory,
         else => {
             rejectWithTypeError(realm, p, "Failed to fetch");
-            return p.returnValue();
+            return p.returnOwned();
         },
     };
     result.timing_info.deinit();
@@ -458,7 +459,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     if (response.response_type == .@"error") {
         response.deinit();
         rejectWithTypeError(realm, p, "Failed to fetch");
-        return p.returnValue();
+        return p.returnOwned();
     }
 
     // processResponse step 4: responseObject is the result of creating a
@@ -475,7 +476,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // processResponse step 5: resolve p with responseObject.
     p.resolve(realm, try realm.wrap(response_object));
     // Step 13.
-    return p.returnValue();
+    return p.returnOwned();
 }
 
 fn rejectWithTypeError(realm: streams_js.Realm, p: streams_js.Deferred, message: []const u8) void {

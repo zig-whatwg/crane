@@ -72,9 +72,61 @@ test "JSValue does NOT retain the CONTEXT, though it carries a value handle" {
     try std.testing.expect(!retains(runtime.JSValue));
 }
 
-test "Instance pointers retain" {
-    try std.testing.expect(retains(*runtime.Instance));
-    try std.testing.expect(retains(?*runtime.Instance));
+test "Instance pointers are inert - the conversion reads the wrapper and keeps nothing" {
+    // conv.fromV8Value's `*runtime.Instance` branch checks the object, reads its
+    // WrapperTypeInfo and internal field 0, and returns the pointer; the
+    // context is never stored. This was pinned "retains" as a precaution, which
+    // kept every fetch(request) and new Headers(init) leaking its context - each
+    // one pinning the page. (The use-after-frees in this predicate's history
+    // came from a union's callback arm, not from Instance pointers.)
+    try std.testing.expect(!retains(*runtime.Instance));
+    try std.testing.expect(!retains(?*runtime.Instance));
+}
+
+test "a dictionary of inert members is inert" {
+    // Dictionary conversion converts member by member with the same rules, and
+    // the context is used only while it does.
+    const RequestInitShaped = struct {
+        method: ?[]const u8 = null,
+        headers: ?union(enum) { pairs: []const []const []const u8, record: []const runtime.DOMString } = null,
+        signal: ?*runtime.Instance = null,
+        window: ?runtime.JSValue = null,
+        keepalive: ?bool = null,
+    };
+    try std.testing.expect(!retains(RequestInitShaped));
+}
+
+test "buffer sources are inert - views made without the context" {
+    const webidl = @import("webidl");
+    try std.testing.expect(!retains(webidl.BufferSource));
+    try std.testing.expect(!retains(webidl.AllowSharedBufferSource));
+    const BodyInitShaped = union(enum) { stream: *runtime.Instance, bytes: webidl.BufferSource, text: runtime.DOMString };
+    try std.testing.expect(!retains(BodyInitShaped));
+}
+
+test "a union of inert arms is inert" {
+    const RequestInfoShaped = union(enum) { request: *runtime.Instance, url: runtime.DOMString };
+    try std.testing.expect(!retains(RequestInfoShaped));
+}
+
+test "a sequence is as inert as its element" {
+    // fromV8Sequence converts each element with the element's own rules.
+    try std.testing.expect(!retains([]const runtime.DOMString));
+    try std.testing.expect(!retains([]const []const u8));
+    try std.testing.expect(!retains([]runtime.JSValue));
+    try std.testing.expect(retains([]const *anyopaque));
+}
+
+test "one member that may keep the context makes the whole dictionary retain" {
+    const UnderlyingSourceShaped = struct {
+        type: ?runtime.DOMString = null,
+        start: ?*const fn () callconv(.c) void = null,
+    };
+    try std.testing.expect(retains(UnderlyingSourceShaped));
+    const WithCallback = struct { a: ?bool = null, cb: ?*runtime.CallbackWrapper = null };
+    try std.testing.expect(retains(WithCallback));
+    const Nested = struct { inner: ?struct { x: u32, h: union(enum) { s: runtime.DOMString, f: *anyopaque } } = null };
+    try std.testing.expect(retains(Nested));
 }
 
 test "optionals inherit their payload's answer" {
@@ -93,9 +145,9 @@ test "an unknown type defaults to RETAINS" {
     const AUnion = union(enum) { x: u32, y: *anyopaque };
     try std.testing.expect(retains(AUnion));
 
-    // Including slices: conversion allocates, and the element type is not the
-    // whole story.
-    try std.testing.expect(retains([]runtime.JSValue));
+    // And any pointer it does not know - to anything but an Instance.
+    try std.testing.expect(retains(*anyopaque));
+    try std.testing.expect(retains(*runtime.CallbackWrapper));
 }
 
 // ---------------------------------------------------------------------------
