@@ -893,6 +893,16 @@ pub const WorkerV8Context = struct {
             // Fetches still in flight for this realm release their promises
             // now, while the isolate those belong to is alive.
             _ = async_fetch.sweep();
+
+            // v8_wrapper.cpp caches ONE isolate's async iterator template at
+            // a time, and resets the cached one whenever another isolate asks.
+            // Left holding this isolate's, the page's next `for await` over a
+            // stream reset a handle of the disposed isolate: V8_Fatal in
+            // GlobalHandles::NodeSpace::Release. Cleared now, while this
+            // isolate lives. If it held another isolate's template, that one
+            // is rebuilt on its next use - as it is every time the cache
+            // changes isolate.
+            v8.ffi.v8_ClearAsyncIteratorTemplateCache();
         }
 
         // MessagePort objects made in the realm used this, and went with the
