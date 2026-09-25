@@ -2281,13 +2281,20 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 /// Deviation, stated: `_self`, `_parent` and `_top` return this window without
 /// navigating it - navigating the page a test runs in is not supported - so
 /// only a new or named navigable is navigated.
-pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
+pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
+    if ((getInternal(this) orelse return error.InvalidStateError).closed) return null;
+
+    // The window open steps never read `this`: every step works from the
+    // ENTRY global - the window whose script is running. For
+    // `frame.contentWindow.open(url)` called by the page that is the page,
+    // not the frame: the page is the opener, `url` resolves against the
+    // page's document, and the popup lives, and goes, with the page.
+    const instance = entryWindow() orelse this;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.closed) return null;
     const allocator = internal.allocator;
 
     // Step 2: "Let sourceDocument be the entry global object's associated
-    // Document" - this window's, whose script called open().
+    // Document".
     const source_document = try get_document(instance);
 
     // Steps 3-4: "Set urlRecord to the result of encoding-parsing a URL given
@@ -2313,16 +2320,23 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
         return if (noopener) null else getWindowProxy(instance);
     }
 
-    // A name one of this window's open popups carries is that popup.
+    // A name an open popup carries is that popup - any popup of the pages
+    // related to this one: the root of the opener chain and every popup
+    // opened from it, however deep. A popup's own script calling
+    // `opener.open(url, name)` has the popup as the entry global, and the
+    // name is one its opener gave.
     if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
-        for (internal.auxiliary_navigables.items) |existing| {
-            const bc = existing.browsing_context orelse continue;
-            if (bc.is_closed or !std.mem.eql(u8, bc.target_name, target_str)) continue;
-            const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+        var root = instance;
+        var hops: usize = 0;
+        while (hops < 16) : (hops += 1) {
+            const root_internal = getInternal(root) orelse break;
+            root = root_internal.opener orelse break;
+        }
+        if (namedPopup(root, target_str, 0)) |found| {
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord".
-            if (url_record) |u| queuePopupNavigation(existing, window, u);
-            return if (noopener) null else window;
+            if (url_record) |u| queuePopupNavigation(found.integration, found.window, u);
+            return if (noopener) null else found.window;
         }
     }
 
@@ -2361,6 +2375,36 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
     // Steps 17-18: "If noopener is true or windowType is "new with no
     // opener", then return null. Return targetNavigable's active WindowProxy."
     return if (noopener) null else created.window;
+}
+
+const NamedPopup = struct { integration: *html_core.IFrameIntegration, window: *runtime.Instance };
+
+/// An open popup named `name` that `window` opened, or that one of its
+/// popups did, depth first. A popup's page is torn down by its opener's, so
+/// every window reached here is live.
+fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedPopup {
+    if (depth > 16) return null;
+    const internal = getInternal(window) orelse return null;
+    for (internal.auxiliary_navigables.items) |integration| {
+        const bc = integration.browsing_context orelse continue;
+        if (bc.is_closed) continue;
+        const popup: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+        if (std.mem.eql(u8, bc.target_name, name)) return .{ .integration = integration, .window = popup };
+        if (namedPopup(popup, name, depth + 1)) |found| return found;
+    }
+    return null;
+}
+
+/// The entry global object, when it is a window: the window of the context
+/// V8 entered to run the current script.
+fn entryWindow() ?*runtime.Instance {
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
+    const context = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
+    defer v8.ffi.v8_Context_Dispose(context);
+    const window = v8.context_manager.getWindowForContext(context) orelse return null;
+    if (window.stateAs(State) == null) return null;
+    return window;
 }
 
 /// `url` parsed against `document`'s base URL, serialized; owned. Failure is

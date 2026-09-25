@@ -1247,9 +1247,10 @@ fn createAuxiliaryNavigable(
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    // open() runs in the opener's script: its context is the new context's
-    // parent, so the opener's page takes the popup down with it.
-    const opener_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    // The opener is the entry global, whose script called open(): its
+    // context is the new context's parent, so the page that keeps the popup
+    // (Window.auxiliary_navigables) is the page that takes it down.
+    const opener_v8_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
 
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
