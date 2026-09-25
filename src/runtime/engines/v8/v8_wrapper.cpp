@@ -2559,6 +2559,17 @@ void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
     if (external) *external = stats.external_memory();
 }
 
+// Native contexts alive in the heap - one per window, frame, worker and
+// ShadowRealm still reachable - and how many of them V8 counts as detached
+// (their global proxy was detached, yet something still retains them).
+void v8_Isolate_GetContextCounts(Isolate* isolate, size_t* native_contexts,
+                                 size_t* detached_contexts) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    if (native_contexts) *native_contexts = stats.number_of_native_contexts();
+    if (detached_contexts) *detached_contexts = stats.number_of_detached_contexts();
+}
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
@@ -6087,14 +6098,6 @@ void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* i
 
     Isolate* isolate = info->GetIsolate();
     Local<Value> val = value->Get(isolate);
-
-    // Debug: Print identity hash to trace object identity
-    if (val->IsObject()) {
-        Local<Object> obj = val.As<Object>();
-        int hash = obj->GetIdentityHash();
-        fprintf(stderr, "[FunctionSetReturnValue] Global=%p IdentityHash=%d\n", value, hash);
-    }
-
     info->GetReturnValue().Set(val);
 }
 

@@ -475,6 +475,7 @@ def heap_trend(min_files=30):
         if base == 'journal.jsonl' and glob.glob(os.path.join(os.path.dirname(fn), 'journal.shard*.jsonl')):
             continue
         ys = []
+        contexts = []
         last_index = -1
         one_process = True
         for line in open(fn, errors='replace'):
@@ -489,10 +490,19 @@ def heap_trend(min_files=30):
             last_index = idx
             if rec.get('heap_used_kb'):
                 ys.append(rec['heap_used_kb'])
+            # Live V8 native contexts after the file (journals from 2026-09-25
+            # on): exact where the heap is noisy - a page that leaves its
+            # windows or frames alive adds one per realm.
+            if rec.get('native_contexts'):
+                contexts.append(rec['native_contexts'])
         if one_process and len(ys) >= min_files:
-            return {'kb_per_file': _slope(ys), 'files': len(ys), 'first_mb': ys[0] / 1024,
-                    'last_mb': ys[-1] / 1024,
-                    'journal': os.path.relpath(fn, RESULTS)}
+            trend = {'kb_per_file': _slope(ys), 'files': len(ys), 'first_mb': ys[0] / 1024,
+                     'last_mb': ys[-1] / 1024,
+                     'journal': os.path.relpath(fn, RESULTS)}
+            if len(contexts) >= min_files:
+                trend.update(contexts_per_file=_slope(contexts), first_contexts=contexts[0],
+                             last_contexts=contexts[-1])
+            return trend
     return None
 
 
@@ -545,6 +555,10 @@ def render_roadmap(roadmap, worklist, records):
                             f'over {heap["files"]:,} files ({heap["first_mb"]:.0f} &rarr; '
                             f'{heap["last_mb"]:.0f} MB) in <code>{html.escape(heap["journal"])}</code>. '
                             f'Flat is the goal.')
+                if 'contexts_per_file' in heap:
+                    live.append(f'Live V8 contexts: <b>{heap["contexts_per_file"]:+.2f} per file</b> '
+                                f'({heap["first_contexts"]:,} &rarr; {heap["last_contexts"]:,}). '
+                                f'A finished page should leave none of its realms behind.')
             else:
                 live.append('Retained heap: no journal with <code>heap_used_kb</code> yet.')
         prog = ''.join(f'<li>{html.escape(x)}</li>' for x in piece.get('progress', []))

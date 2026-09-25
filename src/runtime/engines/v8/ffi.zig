@@ -704,6 +704,13 @@ pub extern fn v8_Isolate_GetHeapUsage(
     total: ?*usize,
     external: ?*usize,
 ) void;
+/// Native contexts alive in the heap, and how many of those V8 counts as
+/// detached. A page whose contexts outlive it shows here exactly.
+pub extern fn v8_Isolate_GetContextCounts(
+    isolate: *Isolate,
+    native_contexts: ?*usize,
+    detached_contexts: ?*usize,
+) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
 
 // Isolate embedder data (for storing per-isolate state)

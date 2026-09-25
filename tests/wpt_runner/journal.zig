@@ -134,6 +134,15 @@ pub const Record = struct {
     /// supervisor recorded after its child died.
     heap_used_kb: u64 = 0,
 
+    /// V8 native contexts alive in the heap after the file: one per window,
+    /// frame and worker realm still reachable. A finished page should leave
+    /// none of its own behind, so across a shard this should stay flat; a
+    /// count that climbs by a page's frame count per file is a page whose
+    /// contexts something still holds. Exact where `heap_used_kb` is noisy -
+    /// read it with CRANE_HEAP_GC=1, or it includes contexts the collector
+    /// has not reached yet. Zero in journals written before it existed.
+    native_contexts: u64 = 0,
+
     message: ?[]const u8 = null,
 };
 
@@ -172,11 +181,12 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
     try w.print(
         ",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d}" ++
             ",\"duration_ms\":{d},\"nav_ms\":{d},\"load_ms\":{d},\"wall_ms\":{d}" ++
-            ",\"ownership_checks\":{d},\"ownership_violations\":{d},\"heap_used_kb\":{d}",
+            ",\"ownership_checks\":{d},\"ownership_violations\":{d},\"heap_used_kb\":{d}" ++
+            ",\"native_contexts\":{d}",
         .{
             rec.passed,           rec.failed,               rec.timed_out,    rec.notrun,
             rec.duration_ms,      rec.nav_ms,               rec.load_ms,      rec.wall_ms,
-            rec.ownership_checks, rec.ownership_violations, rec.heap_used_kb,
+            rec.ownership_checks, rec.ownership_violations, rec.heap_used_kb, rec.native_contexts,
         },
     );
     if (rec.message) |msg| {
@@ -382,6 +392,7 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .ownership_checks = jsonUint(obj, "ownership_checks"),
             .ownership_violations = jsonUint(obj, "ownership_violations"),
             .heap_used_kb = jsonUint(obj, "heap_used_kb"),
+            .native_contexts = jsonUint(obj, "native_contexts"),
             .message = message,
         });
     }
@@ -432,6 +443,7 @@ fn expectRoundTrip(rec: Record) !void {
     try std.testing.expectEqual(rec.load_ms, got.load_ms);
     try std.testing.expectEqual(rec.wall_ms, got.wall_ms);
     try std.testing.expectEqual(rec.heap_used_kb, got.heap_used_kb);
+    try std.testing.expectEqual(rec.native_contexts, got.native_contexts);
     if (rec.message) |want| {
         try std.testing.expectEqualStrings(want, got.message.?);
     } else {
@@ -718,6 +730,27 @@ test "heap usage survives a round trip" {
         .passed = 12,
         .heap_used_kb = 812_345,
     });
+}
+
+test "live native contexts survive a round trip" {
+    try expectRoundTrip(.{
+        .index = 9,
+        .path = "html/browsers/windows/nested-browsing-contexts/frameElement.sub.html",
+        .status = .ok,
+        .passed = 3,
+        .heap_used_kb = 9_280,
+        .native_contexts = 4,
+    });
+}
+
+test "a record written before native contexts were counted reads zero" {
+    const allocator = std.testing.allocator;
+    var log = try parseLines(allocator,
+        \\{"index":0,"path":"a.html","status":"OK","passed":1,"heap_used_kb":9000}
+        \\
+    );
+    defer log.deinit();
+    try std.testing.expectEqual(@as(u64, 0), log.records[0].native_contexts);
 }
 
 test "a record written before heap usage existed reads it as zero" {

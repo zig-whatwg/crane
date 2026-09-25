@@ -946,6 +946,7 @@ const FileTally = struct {
     }
 
     fn record(self: *const FileTally, j: *journal.Journal, path: []const u8) !void {
+        const heap = readHeap();
         try j.record(.{
             .index = self.index,
             .path = path,
@@ -960,20 +961,24 @@ const FileTally = struct {
             .wall_ms = self.wallMs(),
             .ownership_checks = isolate_ownership.checks() -| self.ownership_checks_at_start,
             .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
-            .heap_used_kb = heapUsedKb(),
+            .heap_used_kb = heap.used_kb,
+            .native_contexts = heap.native_contexts,
         });
     }
 };
 
-/// V8's used heap on the current isolate, in KiB; 0 with no isolate. See
-/// `journal.Record.heap_used_kb` for how to read it.
+const HeapReading = struct { used_kb: u64 = 0, native_contexts: u64 = 0 };
+
+/// V8's used heap on the current isolate, in KiB, and the native contexts
+/// alive in it; zeros with no isolate. See `journal.Record.heap_used_kb` and
+/// `native_contexts` for how to read them.
 ///
 /// `CRANE_HEAP_GC=1` runs a full collection first, so the reading is what is
 /// actually retained rather than retained-plus-garbage - the difference
 /// between a leak and a collector that has not run yet. It costs a full GC per
 /// file, so it is for diagnosis, not sweeps.
-fn heapUsedKb() u64 {
-    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return 0;
+fn readHeap() HeapReading {
+    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return .{};
     if (heapGcRequested()) v8_ffi.v8_Isolate_RequestGarbageCollection(isolate);
     // `CRANE_HEAP_SNAPSHOT=<path>` writes a DevTools heap snapshot there after
     // each file, overwriting the last: what the final file left alive. A
@@ -981,7 +986,9 @@ fn heapUsedKb() u64 {
     if (std.c.getenv("CRANE_HEAP_SNAPSHOT")) |path| _ = v8_ffi.v8_Debug_WriteHeapSnapshot(isolate, path);
     var used: usize = 0;
     v8_ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, null);
-    return used / 1024;
+    var contexts: usize = 0;
+    v8_ffi.v8_Isolate_GetContextCounts(isolate, &contexts, null);
+    return .{ .used_kb = used / 1024, .native_contexts = contexts };
 }
 
 fn heapGcRequested() bool {
