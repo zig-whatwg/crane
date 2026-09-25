@@ -33,26 +33,11 @@ const log = std.log.scoped(.xhr);
 
 const same_object = @import("same_object.zig");
 
-/// The parent interface's generated State. `xhr.onload` and friends are
-/// declared on XMLHttpRequestEventTarget, so the fields live here for BOTH an
-/// XMLHttpRequest and an XMLHttpRequestUpload; `instance.getState` of this type
-/// reaches them on either, because `FlattenedState` puts `base` first.
-///
-/// This reads the generated INTERFACE's State, not the sibling impl - the same
-/// thing every impl does when it touches `state.base.own.*`.
-const EventTargetState = interfaces.XMLHttpRequestEventTarget.State;
-
-comptime {
-    // The aliasing above is load-bearing and silent if it ever stops holding:
-    // a wrong offset would read some other field as a function pointer and
-    // call it. Pin it here rather than discover it in a crash.
-    std.debug.assert(@offsetOf(XMLHttpRequest.State, "base") == 0);
-    std.debug.assert(@offsetOf(interfaces.XMLHttpRequestUpload.State, "base") == 0);
-    std.debug.assert(@offsetOf(EventTargetState, "base") == 0);
-}
-
-// Import pointer_tag for V8 pointer untagging (via v8 module)
-const pointer_tag = @import("v8").pointer_tag;
+/// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
+/// its event handlers, `onreadystatechange` among them, live in EventTarget's
+/// event handler map, and its events are dispatched there.
+const XMLHttpRequestEventTargetImpl = @import("XMLHttpRequestEventTarget.zig");
+const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = XMLHttpRequest.State;
 
@@ -70,16 +55,6 @@ pub const ImplError = error{
 pub const InternalState = struct {
     xhr_state: XMLHttpRequestState,
     allocator: std.mem.Allocator,
-
-    /// Event handler stored as V8 Global handle.
-    ///
-    /// This MUST be a Global handle (not raw pointer) because:
-    /// 1. The JavaScript callback needs to survive past the setter's HandleScope
-    /// 2. Local handles become invalid when the HandleScope that created them is destroyed
-    /// 3. Without Global handles, invoking the handler would crash due to dangling pointers
-    ///
-    /// See: src/runtime/engines/v8/global_handles.zig for Global handle management.
-    onreadystatechange: v8_engine.OptionalGlobalHandle,
 
     /// V8 isolate for creating/disposing Global handles
     isolate: ?*v8_engine.ffi.Isolate,
@@ -104,7 +79,6 @@ pub const InternalState = struct {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
-            .onreadystatechange = null,
             .isolate = null,
             .send_token = null,
             .upload_pin = .{},
@@ -129,8 +103,6 @@ pub const InternalState = struct {
     }
 
     pub fn deinitState(self: *InternalState) void {
-        // Dispose V8 Global handle to prevent memory leaks
-        v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_pin.release();
         // Before anything else: a task queued by an async send() is about to
@@ -148,8 +120,8 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    const instance = try XMLHttpRequestEventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer XMLHttpRequestEventTargetImpl.deinit(instance);
 
     // Create internal state
     const internal = try allocator.create(InternalState);
@@ -170,7 +142,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinitState();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    // The event handlers and listeners go with EventTarget's state.
+    XMLHttpRequestEventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit here - GC layer handles it
 }
 
@@ -184,7 +159,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store V8 isolate for Global handle management.
+    // The isolate this XHR's script runs in.
     //
     // NOT `ctx.getEngineContextAs(Isolate)`: `engine_ctx` is a
     // `Global<Context>*`, and that call just reinterprets it, so `internal
@@ -216,15 +191,8 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// Getter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance);
-    const isolate = internal.isolate orelse return null;
-    if (internal.onreadystatechange) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "readystatechange");
 }
 
 /// Getter for readyState
@@ -454,24 +422,8 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// Setter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance);
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onreadystatechange);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    if (value) |handler| {
-        const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(handler));
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            internal.onreadystatechange = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        } else {
-            internal.onreadystatechange = null;
-        }
-    } else {
-        internal.onreadystatechange = null;
-    }
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "readystatechange", value);
 }
 
 /// Setter for timeout
@@ -704,16 +656,10 @@ fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
 //
 // `src/xhr/` cannot reach JavaScript - it has no `runtime` import and no V8
 // link. It fires events through an `EventSink`, a two-field vtable, and this is
-// the implementation of it. Each event goes to both places a listener can be:
-//
-//   1. the event listener list, via `EventTarget.dispatchEvent` - this is what
-//      `xhr.addEventListener("load", f)` registers into;
-//   2. the event handler IDL attribute (`xhr.onload = f`), which Crane keeps in
-//      a separate field rather than as a listener.
-//
-// `EventTarget.invokeIdlEventHandler` does (2) for HTMLElement and Window only,
-// by looking in those two impls' own maps, so an XHR handler is invisible to
-// it. Hence the second half here.
+// the implementation of it: dispatch at the XHR or its upload object. The
+// event listener list holds both kinds of listener - `addEventListener`'s and
+// the event handlers' (`xhr.onload = f`), in activation order - so dispatch
+// alone reaches every one.
 // =============================================================================
 
 /// Install the sink so the algorithms in `src/xhr/` can fire at this object.
@@ -739,7 +685,7 @@ fn fireFromAlgorithms(
         .upload => uploadObjectIfCreated(instance) orelse return,
     };
 
-    fireAt(target_instance, instance, event_type, progress);
+    fireAt(target_instance, event_type, progress);
 }
 
 /// This's upload object, but only if it already exists.
@@ -752,13 +698,12 @@ fn uploadObjectIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
     return state.own.cached_upload;
 }
 
-/// Build the event object and deliver it to both kinds of listener.
+/// Build the event object and dispatch it at `target`.
 ///
 /// The event instance is released when - and only when - nothing wrapped it.
 /// See `releaseEventIfUnwrapped`.
 fn fireAt(
     target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
     event_type: XHREventType,
     progress: ?ProgressEventData,
 ) void {
@@ -801,13 +746,10 @@ fn fireAt(
         webidl.Opt(bool).passed(false),
     ) catch return;
 
-    // (1) the event listener list.
+    // Every listener, the event handlers among them.
     _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
     };
-
-    // (2) the event handler IDL attribute.
-    invokeIdlHandler(target, xhr_instance, event, event_type);
 
     releaseEventIfUnwrapped(event, progress != null);
 }
@@ -851,122 +793,9 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, is_progress_event: bool) vo
     }
 }
 
-/// The raw, still-tagged handler pointer for `event_type` on `target`.
-///
-/// `readystatechange` is XMLHttpRequest's own attribute and is stored as a
-/// Global handle on the impl's internal state; the other seven come from
-/// XMLHttpRequestEventTarget and are stored in the generated State as
-/// `typedefs.EventHandler` - a `*const fn` that is really a TAGGED V8 Global
-/// handle pointer, because that is what the conversion layer produces for a
-/// callback function.
-fn rawIdlHandler(
-    target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
-    event_type: XHREventType,
-) ?*anyopaque {
-    if (event_type == .readystatechange) {
-        // Only the XHR itself has onreadystatechange.
-        if (target != xhr_instance) return null;
-        const internal = getInternal(xhr_instance);
-        const global = internal.onreadystatechange orelse return null;
-        return @ptrCast(global.ptr);
-    }
-
-    const state = target.getState(EventTargetState);
-    const handler: typedefs.EventHandler = switch (event_type) {
-        .loadstart => state.own.onloadstart,
-        .progress => state.own.onprogress,
-        .abort => state.own.onabort,
-        .@"error" => state.own.onerror,
-        .load => state.own.onload,
-        .timeout => state.own.ontimeout,
-        .loadend => state.own.onloadend,
-        .readystatechange => unreachable,
-    };
-
-    // Read the bits WITHOUT materialising the pointer. The stored address has
-    // tag bits in its low two bits, so it is deliberately misaligned, and
-    // @ptrCast/@alignCast on it panics with "incorrect alignment" in a safe
-    // build. A byte copy has no alignment check. Same approach as
-    // `MessagePort.zig` and `HTMLElement.getEventHandler`.
-    const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
-    const addr: usize = @bitCast(bytes);
-    if (addr == 0) return null;
-    // `*anyopaque` has alignment 1, so the tag bits survive the round trip and
-    // `untagPointer` can still read them.
-    return @ptrFromInt(addr);
-}
-
-/// Call `xhr.onload = f` and friends with the event.
-///
-/// The previous version of this - `fireReadyStateChangeEvent` - crashed:
-///
-///     panic: load of misaligned address ...
-///     v8_Value_IsFunction -> PersistentBase<Value>::Get(isolate)
-///
-/// It did `global.get(isolate)` to get a LOCAL and passed that to
-/// `v8_Value_IsFunction`, which takes a `Global<Value>*` and calls `Get` on it.
-/// A Local reinterpreted as a Global is read at the wrong offset. Pass the
-/// Global straight through, as `EventTarget.invokeIdlEventHandler` does.
-fn invokeIdlHandler(
-    target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
-    event: *runtime.Instance,
-    event_type: XHREventType,
-) void {
-    const raw = rawIdlHandler(target, xhr_instance, event_type) orelse return;
-
-    const untagged = pointer_tag.untagPointer(raw);
-    if (untagged.tag != .global_handle and untagged.tag != .untagged) return;
-
-    const callback_global: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
-
-    const engine_ctx = target.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // A Local handle is only valid inside a HandleScope, and wrapping the event
-    // creates several.
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
-
-    // Wrap with the event's ACTUAL interface, so a ProgressEvent handler sees
-    // `.loaded` and `.total` rather than a bare Event.
-    //
-    // Borrowed: whichever way `wrapInstanceAsV8Object` finds or makes the
-    // wrapper, the handle it returns is the one the wrapper cache (or the
-    // node's bound wrapper) keeps, and the cache releases it when the wrapper
-    // is collected. Disposing it here would free the cache's own entry.
-    const interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
-    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-        event,
-        interface_name,
-        v8_isolate,
-        v8_context,
-    ) catch return;
-
-    // Owned: `v8_Undefined` allocates a Global per call, and this runs once
-    // per handler per event - one leaked for every XHR event a handler heard.
-    // Released after the call, which only reads it.
-    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_Value_Dispose(undefined_recv);
-    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_global)};
-
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        callback_global,
-        v8_context,
-        @ptrCast(undefined_recv),
-        1,
-        @ptrCast(&args),
-    );
-    v8_engine.ffi.v8_FreeFunctionCallResult(result);
-}
-
 /// Fire readystatechange at this XHR.
 fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
-    fireAt(instance, instance, .readystatechange, null);
+    fireAt(instance, .readystatechange, null);
 }
 
 /// Operation: abort
@@ -1181,29 +1010,15 @@ fn runSendTask(context: ?*anyopaque) void {
 }
 
 /// Step 5: "If one or more event listeners are registered on this's upload
-/// object, then set this's upload listener flag."
-///
-/// KNOWN GAP: this sees the event handler IDL attributes
-/// (`xhr.upload.onprogress = f`) but NOT `xhr.upload.addEventListener(...)`,
-/// because the event listener list lives in EventTarget's private registry and
-/// no interface exposes "does this target have listeners". The flag only
-/// affects whether upload progress events fire and whether a CORS preflight is
-/// forced, so the failure mode is missing upload events, not wrong ones.
+/// object, then set this's upload listener flag." An event handler's listener
+/// is one of them, so `xhr.upload.onprogress = f` and
+/// `xhr.upload.addEventListener("progress", f)` both count - the second used
+/// not to, when the handlers lived outside the listener list.
 fn uploadHasListeners(instance: *runtime.Instance) bool {
     const upload = uploadObjectIfCreated(instance) orelse return false;
-    const state = upload.getState(EventTargetState);
-    inline for (.{
-        state.own.onloadstart,
-        state.own.onprogress,
-        state.own.onabort,
-        state.own.onerror,
-        state.own.onload,
-        state.own.ontimeout,
-        state.own.onloadend,
-    }) |handler| {
-        const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
-        const addr: usize = @bitCast(bytes);
-        if (addr != 0) return true;
+    // Every listener, whether `addEventListener` or an event handler added it.
+    for (EventTargetImpl.getEventListenersForType(upload, "")) |listener| {
+        if (!listener.removed) return true;
     }
     return false;
 }
