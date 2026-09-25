@@ -23,6 +23,14 @@ const DedicatedWorker = workers.DedicatedWorker;
 // Import structured clone for message passing
 const structured_clone = html_core.structured_clone;
 
+// Ancestors: a DedicatedWorkerGlobalScope IS a WorkerGlobalScope and an
+// EventTarget, and reaches their state through their impls.
+const WorkerGlobalScopeImpl = @import("WorkerGlobalScope.zig");
+const EventTargetImpl = @import("EventTarget.zig");
+
+/// The worker host: the side of "run a worker" that owns this scope's agent.
+const worker_host = @import("html").worker_v8_context;
+
 pub const State = DedicatedWorkerGlobalScope.State;
 
 pub const ImplError = error{
@@ -38,26 +46,42 @@ pub const InternalState = struct {
     /// Reference to the dedicated worker (not owned)
     dedicated_worker: ?*DedicatedWorker = null,
 
-    /// Worker name
+    /// Worker name. Owned when `owns_name`.
     name: []const u8 = "",
+    owns_name: bool = false,
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
         // We don't own the dedicated_worker, so don't deinit it
-        _ = self;
+        if (self.owns_name) self.allocator.free(self.name);
     }
 };
 
 /// Initialize instance (creates the instance)
+///
+/// Chains to WorkerGlobalScope, and so to EventTarget. When `ctx` is the realm
+/// of a worker the host is running, the scope takes that worker's name ("run a
+/// worker" step 9: the global scope's name is the options' name).
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try WorkerGlobalScopeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer WorkerGlobalScopeImpl.deinit(instance);
+    if (worker_host.scopeSettings(ctx)) |settings| {
+        const internal_state = try allocator.create(InternalState);
+        errdefer allocator.destroy(internal_state);
+        internal_state.* = .{
+            .name = try allocator.dupe(u8, settings.name),
+            .owns_name = true,
+            .allocator = allocator,
+        };
+        instance.getState(State).own._internal = internal_state;
+    }
     return instance;
 }
 
@@ -93,7 +117,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    WorkerGlobalScopeImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -110,63 +136,61 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
+// Event handler IDL attributes (HTML §8.1.8.1): their values live in
+// EventTarget's event handler map, where dispatching a MessageEvent at this
+// scope finds them.
+
 /// Getter for onrtctransform
 pub fn get_onrtctransform(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onrtctransform;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "rtctransform");
 }
 
 /// Getter for onmessage
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessage;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
 }
 
 /// Getter for onmessageerror
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessageerror;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
 }
 
 /// Setter for onrtctransform
 pub fn set_onrtctransform(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onrtctransform = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "rtctransform", value);
 }
 
 /// Setter for onmessage
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessage = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
 }
 
 /// Setter for onmessageerror
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessageerror = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
 }
 
 /// Operation: requestAnimationFrame
 ///
-/// Spec: HTML Standard § 10.10.3
-/// Request animation frame in worker context (for OffscreenCanvas).
-/// Returns a handle that can be used with cancelAnimationFrame.
+/// Spec: HTML Standard § 8.10 AnimationFrameProvider, step 1: "If this is
+/// not supported, then throw a NotSupportedError DOMException." A dedicated
+/// worker's scope is supported only with frame timing its owner provides,
+/// which Crane does not have. Accepting the callback and never running it
+/// turned a feature check into a hang.
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
     _ = instance;
     _ = callback;
-    // Animation frames in workers require OffscreenCanvas support
-    // For now, return a dummy handle
-    return 0;
+    return error.NotSupportedError;
 }
 
 /// Operation: cancelAnimationFrame
 ///
-/// Spec: HTML Standard § 10.10.3
-/// Cancel a previously requested animation frame.
+/// Spec: HTML Standard § 8.10 AnimationFrameProvider, step 1: not supported,
+/// as for requestAnimationFrame.
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
     _ = instance;
     _ = handle;
-    // Animation frames in workers require OffscreenCanvas support
+    return error.NotSupportedError;
 }
 
 /// Operation: close
@@ -175,13 +199,10 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyer
 /// "The close() method, when invoked, must run these steps:
 /// 1. Discard any tasks that have been added to this's relevant agent's event loop's task queues.
 /// 2. Set this's closing flag to true."
+///
+/// The worker host keeps the agent's event loop, so it runs both steps.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.dedicated_worker) |worker| {
-            worker.close();
-        }
-    }
+    worker_host.closeScope(instance.ctx);
 }
 
 /// Operation: postMessage

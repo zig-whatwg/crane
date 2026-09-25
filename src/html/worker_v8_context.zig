@@ -47,24 +47,16 @@ const V8Interface = v8.V8Interface;
 // Interface bindings for automatic [Exposed] attribute handling
 const interface_bindings = v8.interface_bindings;
 
-// WebIDL helpers for GlobalScope enum
-const webidl = @import("webidl");
-
 // Interfaces needed in worker context
 const interfaces = @import("interfaces");
 
-// Fetch API support
-const fetch = @import("fetch");
-const impls = @import("impls");
+// A realm's fetches in flight, released when the realm goes.
+const async_fetch = @import("fetch").algorithms.async_fetch;
 
 // Worker types from html_core
 const html_core = @import("html_core");
 const workers = html_core.workers;
 const WorkerContext = workers.WorkerContext;
-
-// Structured clone types for MessagePort transfer
-const structured_clone = html_core.structured_clone;
-const TransferredPortData = structured_clone.types.TransferredPortData;
 
 // MessagePort impl for creating wrappers in worker context
 const MessagePortImpl = @import("impls").MessagePort;
@@ -81,14 +73,6 @@ threadlocal var current_worker_context: ?*WorkerV8Context = null;
 
 // Thread-local storage for timer interface (set by caller before worker operations)
 threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
-
-// Thread-local storage for allocator (used by V8 callbacks like fetch)
-threadlocal var current_worker_allocator: ?Allocator = null;
-
-/// Get the current allocator (for internal use by V8 callbacks)
-fn getWorkerAllocator() ?Allocator {
-    return current_worker_allocator;
-}
 
 /// Set the current worker context (for use by external code before invoking worker callbacks)
 ///
@@ -119,8 +103,6 @@ const WorkerTimerContext = struct {
     callback_global: *v8.ffi.Value,
     /// The isolate this timer belongs to
     isolate: *v8.ffi.Isolate,
-    /// The context for execution
-    context: *v8.ffi.Context,
     /// Current timer ID (may change on reschedule for intervals)
     current_timer_id: runtime.TimerId,
     /// Whether this is an interval (repeating) timer
@@ -141,7 +123,8 @@ const WorkerTimerContext = struct {
     /// the only thing allowed to free it; freeing underneath it disposes the V8
     /// Global the callback is still using.
     executing: bool = false,
-    /// Pointer to the WorkerV8Context for setting current_worker_context
+    /// The worker that armed the timer. Its context is the one the callback
+    /// runs in, and it outlives the timer: teardown frees every timer first.
     worker_v8_context: *WorkerV8Context,
 };
 
@@ -155,24 +138,36 @@ fn initWorkerTimerStorage(allocator: Allocator) void {
     }
 }
 
-/// Clean up all worker timer contexts
-fn cleanupWorkerTimerContexts() void {
-    if (worker_timer_contexts) |*map| {
-        var iter = map.iterator();
-        while (iter.next()) |entry| {
-            const ctx = entry.value_ptr.*;
-            // Cancel the timer at the libuv level.
-            // Result discarded: this is teardown, so everything must be freed here
-            // or leak - there is no later callback to hand ownership to.
-            if (WorkerV8Context.getTimerInterface()) |timer| {
-                _ = timer.clearTimeout(ctx.current_timer_id);
-            }
-            // Dispose the V8 Global handle
-            v8.ffi.v8_Global_Dispose(ctx.callback_global);
-            ctx.allocator.destroy(ctx);
-        }
-        map.deinit();
-        worker_timer_contexts = null;
+/// Release a timer context and the callback Global it owns.
+fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
+    v8.ffi.v8_Global_Dispose(ctx.callback_global);
+    ctx.allocator.destroy(ctx);
+}
+
+/// Cancel and free every timer `owner` armed: HTML "terminate a worker" step 2
+/// and close() step 1 discard the worker's tasks, and a timer is one.
+///
+/// The map is shared by every worker on this thread. This used to clear all of
+/// it whenever ANY worker was torn down, so one worker's end silently dropped
+/// every other worker's timers. A timer whose callback is on the stack is only
+/// marked: its trampoline owns it until the callback returns, and frees it.
+fn cancelWorkerTimers(owner: *WorkerV8Context) void {
+    const map = if (worker_timer_contexts) |*m| m else return;
+    var ids: std.ArrayListUnmanaged(runtime.TimerId) = .empty;
+    defer ids.deinit(owner.allocator);
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        if (entry.value_ptr.*.worker_v8_context == owner) ids.append(owner.allocator, entry.key_ptr.*) catch {};
+    }
+    for (ids.items) |id| {
+        const ctx = map.get(id) orelse continue;
+        ctx.cancelled = true;
+        if (ctx.executing) continue;
+        // Not armed any more, or armed and now cancelled: either way the
+        // timer manager will not hand it back, so it is ours to free.
+        if (WorkerV8Context.getTimerInterface()) |timer| _ = timer.clearTimeout(id);
+        _ = map.remove(id);
+        freeWorkerTimer(ctx);
     }
 }
 
@@ -183,107 +178,25 @@ fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContex
     }
 }
 
-/// Unregister a timer context (marks as cancelled, cleanup happens in callback)
+/// clearTimeout() / clearInterval(): cancel the timer and free it, unless its
+/// callback is on the stack - the running trampoline then frees it on return.
+///
+/// This used to fetchRemove, dispose the Global and destroy the ctx
+/// unconditionally. If the timer was still armed it then fired into
+/// workerTimerTrampoline, which read ctx.cancelled from freed memory and went on
+/// to use a disposed Global - surfacing as UBSan trapping inside
+/// v8_Global_Dispose (v8_wrapper.cpp:8434, `Reset()` on a non-null dangling
+/// pointer). In ReleaseSafe that is a bare SIGTRAP with no message. clearTimeout
+/// removes an armed timer from the manager, and a fired one-shot is already out
+/// of the map, so a context found here and not executing is never handed back.
 fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
-    if (worker_timer_contexts) |*map| {
-        // Free ONLY when the timer is confirmed dead and no callback is running.
-        //
-        // This used to fetchRemove, dispose the Global and destroy the ctx
-        // unconditionally. If the libuv timer was still armed it then fired into
-        // workerTimerTrampoline, which read ctx.cancelled from freed memory and went
-        // on to use a disposed Global - surfacing as UBSan trapping inside
-        // v8_Global_Dispose (v8_wrapper.cpp:8434, `Reset()` on a non-null dangling
-        // pointer). In ReleaseSafe that is a bare SIGTRAP with no message.
-        //
-        // Ownership rule, matching the window path in src/browser/Context.zig:
-        //   confirmed cancel + not executing -> free here
-        //   otherwise                        -> leave it registered and marked
-        //                                       cancelled; the trampoline frees it.
-        // The trampoline's cancelled branch MUST free, or this leaks - that omission
-        // is why the first attempt at this was reverted.
-        var confirmed = false;
-        var executing = false;
-        if (map.get(timer_id)) |ctx| {
-            ctx.cancelled = true;
-            executing = ctx.executing;
-            if (WorkerV8Context.getTimerInterface()) |timer| {
-                confirmed = timer.clearTimeout(timer_id);
-            }
-        }
-        if (confirmed and !executing) {
-            if (map.fetchRemove(timer_id)) |kv| {
-                const ctx = kv.value;
-                v8.ffi.v8_Global_Dispose(ctx.callback_global);
-                ctx.allocator.destroy(ctx);
-            }
-        }
-    }
-}
-
-// ============================================================================
-// Worker Microtask Support (queueMicrotask)
-// ============================================================================
-
-/// Context for worker microtasks queued via queueMicrotask()
-const WorkerMicrotaskContext = struct {
-    /// V8 Global handle to the callback function
-    callback_global: *v8.ffi.Value,
-    /// The isolate this microtask belongs to
-    isolate: *v8.ffi.Isolate,
-    /// The context for execution
-    context: *v8.ffi.Context,
-    /// Allocator for cleanup
-    allocator: Allocator,
-    /// Pointer to the WorkerV8Context for setting current_worker_context
-    worker_v8_context: *WorkerV8Context,
-};
-
-/// Microtask trampoline - invoked by V8's microtask queue during PerformMicrotaskCheckpoint
-fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
-    const ctx: *WorkerMicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    defer ctx.allocator.destroy(ctx);
-
-    // CRITICAL: Set current_worker_context so that callbacks like postMessage
-    // can access the correct worker context. Save and restore the previous context.
-    const prev_context = current_worker_context;
-    current_worker_context = ctx.worker_v8_context;
-    defer current_worker_context = prev_context;
-
-    // Phase 5 instrumentation - see worker.timerTrampoline above.
-    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.microtaskTrampoline");
-
-    // Create HandleScope for V8 operations
-    const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get the callback function from the Global handle
-    const callback_fn = v8.ffi.v8_Global_Get(ctx.isolate, ctx.callback_global) orelse {
-        v8.ffi.v8_Global_Dispose(ctx.callback_global);
-        return;
-    };
-    defer v8.ffi.v8_Global_Dispose(ctx.callback_global);
-
-    // Get global object for 'this'
-    const global_obj = v8.ffi.v8_Context_Global(ctx.context) orelse return;
-
-    // Call the callback function with no arguments
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(
-        @ptrCast(callback_fn),
-        ctx.context,
-        @ptrCast(global_obj),
-        0,
-        &empty_args,
-    );
-
-    // CRITICAL: Flush pending messages to the port queue
-    // Messages posted by the microtask callback (via postMessage) are buffered in
-    // threadlocal pending_messages. Without this flush, they never reach the
-    // outside port's message_queue and the main thread never receives them.
-    DedicatedWorker.flushPendingMessages();
-
-    // Schedule message dispatch if there are messages in the outside port queue
-    scheduleMessageDispatch(ctx.worker_v8_context);
+    const map = if (worker_timer_contexts) |*m| m else return;
+    const ctx = map.get(timer_id) orelse return;
+    ctx.cancelled = true;
+    if (ctx.executing) return;
+    if (WorkerV8Context.getTimerInterface()) |timer| _ = timer.clearTimeout(timer_id);
+    _ = map.remove(timer_id);
+    freeWorkerTimer(ctx);
 }
 
 // ============================================================================
@@ -329,8 +242,18 @@ fn scheduleMessageDispatch(wctx: *WorkerV8Context) void {
     wctx.message_dispatch = .{ .timer = timer, .id = id };
 }
 
-/// Every worker context not yet deinitialized, for `finishTaskIn`.
+/// Every worker whose realm is still there, for `finishTaskIn` and
+/// `scopeSettings`.
 threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerV8Context) = .empty;
+
+fn removeLive(wctx: *WorkerV8Context) void {
+    for (live_contexts.items, 0..) |live, i| {
+        if (live == wctx) {
+            _ = live_contexts.swapRemove(i);
+            return;
+        }
+    }
+}
 
 /// The end of a task that ran script in `isolate` from outside the worker's
 /// own timers - AbortSignal.timeout()'s, say - if `isolate` is a worker's:
@@ -345,10 +268,54 @@ pub fn finishTaskIn(isolate: *v8.ffi.Isolate) void {
     const prev_context = current_worker_context;
     current_worker_context = wctx;
     defer current_worker_context = prev_context;
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-    _ = v8.pumpPlatformTasks(isolate);
-    DedicatedWorker.flushPendingMessages();
-    scheduleMessageDispatch(wctx);
+    wctx.endTask();
+}
+
+/// What a worker's global scope takes from the worker that runs it: "run a
+/// worker" steps 7-9 set the global scope's type, URL and name before its
+/// script runs. The slices are the worker's, valid while its realm is.
+pub const ScopeSettings = struct {
+    url: []const u8,
+    worker_type: WorkerType,
+    name: []const u8,
+};
+
+/// The settings for a global scope created in the realm whose runtime
+/// context is `ctx`, if that is a worker this host runs.
+pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
+    const wctx = forScope(ctx) orelse return null;
+    return .{
+        .url = wctx.effective_url,
+        .worker_type = wctx.worker_type,
+        .name = if (wctx.dedicated_worker) |dw| dw.getName() else "",
+    };
+}
+
+/// DedicatedWorkerGlobalScope close() for the global scope whose realm's
+/// runtime context is `ctx`.
+pub fn closeScope(ctx: runtime.Context) void {
+    const wctx = forScope(ctx) orelse return;
+    wctx.closeFromScript();
+}
+
+fn forScope(ctx: runtime.Context) ?*WorkerV8Context {
+    for (live_contexts.items) |live| {
+        if (live.scope_ctx == ctx) return live;
+    }
+    return null;
+}
+
+/// Worker isolates disposed on this thread so far. A worker that ends and
+/// never gets here keeps its whole heap for the life of the process.
+threadlocal var disposed_isolates: usize = 0;
+
+pub fn disposedIsolateCount() usize {
+    return disposed_isolates;
+}
+
+/// Workers on this thread whose realm has not been torn down.
+pub fn liveWorkerCount() usize {
+    return live_contexts.items.len;
 }
 
 /// Callback to dispatch worker messages in the main thread context.
@@ -369,16 +336,14 @@ fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
 /// Timer callback trampoline - invoked by the timer manager
 fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
+    const wctx = ctx.worker_v8_context;
 
-    // Cancelled while armed: unregisterWorkerTimerContext could not confirm the
-    // cancellation, so it left ownership to us. Free here - this is the last time the
-    // timer system will reference this context.
-    if (ctx.cancelled) {
-        if (worker_timer_contexts) |*map| {
-            _ = map.remove(ctx.current_timer_id);
-        }
-        v8.ffi.v8_Global_Dispose(ctx.callback_global);
-        ctx.allocator.destroy(ctx);
+    // Cancelled while armed, or its worker has closed: a discarded task (HTML
+    // close() step 1, "terminate a worker" step 2). Free it - this is the last
+    // time the timer system will reference this context.
+    if (ctx.cancelled or !wctx.runsTasks()) {
+        if (worker_timer_contexts) |*map| _ = map.remove(ctx.current_timer_id);
+        freeWorkerTimer(ctx);
         return;
     }
 
@@ -386,77 +351,11 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // clearTimeout from inside it defers the free to us rather than pulling the
     // Global out from under the running callback.
     ctx.executing = true;
-    defer ctx.executing = false;
-
-    // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
-    // so a setTimeout called from inside it nests one deeper. Restored afterwards
-    // because the same thread goes on to run other tasks.
-    const saved_nesting = native_timer.nesting_level;
-    native_timer.nesting_level = ctx.nesting_level;
-    defer native_timer.nesting_level = saved_nesting;
-
-    // CRITICAL: Set current_worker_context so that callbacks like postMessage
-    // can access the correct worker context. Save and restore the previous context.
-    const prev_context = current_worker_context;
-    current_worker_context = ctx.worker_v8_context;
-    defer current_worker_context = prev_context;
-
-    // Enter the worker's isolate and context
-    v8.ffi.v8_Isolate_Enter(ctx.isolate);
-
-    // Phase 5 instrumentation, placed AFTER the Enter above on purpose: this
-    // trampoline enters the isolate itself, so asserting beforehand just reports
-    // that it has not happened yet. Workers spawn threads
-    // (worker_threading.zig:406), so what is worth checking is whether the Enter
-    // actually took effect on THIS thread.
-    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.timerTrampoline");
-    v8.ffi.v8_Context_Enter(ctx.context);
-    defer {
-        v8.ffi.v8_Context_Exit(ctx.context);
-        v8.ffi.v8_Isolate_Exit(ctx.isolate);
-    }
-
-    // Create HandleScope for V8 operations
-    const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get the callback function from the Global handle
-    const callback_fn = v8.ffi.v8_Global_Get(ctx.isolate, ctx.callback_global) orelse return;
-
-    // Get global object for 'this'
-    const global_obj = v8.ffi.v8_Context_Global(ctx.context) orelse return;
-
-    // Call the callback function
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(
-        @ptrCast(callback_fn),
-        ctx.context,
-        @ptrCast(global_obj),
-        0,
-        &empty_args,
-    );
-
-    // Run microtasks after callback
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(ctx.isolate);
-
-    // Then the tasks V8 has posted to the platform for this isolate - the
-    // page's event loop pumps only the page's isolate. TODO: a worker with no
-    // timer of its own still waits for its next task before a posted one runs
-    // (an async WebAssembly compile in an otherwise idle worker).
-    _ = v8.pumpPlatformTasks(ctx.isolate);
-
-    // CRITICAL: Flush pending messages to the port queue
-    // Messages posted by the timer callback (via postMessage) are buffered in
-    // threadlocal pending_messages. Without this flush, they never reach the
-    // outside port's message_queue and the main thread never receives them.
-    DedicatedWorker.flushPendingMessages();
-
-    // Schedule message dispatch if there are messages in the outside port queue
-    // This ensures the main thread's event loop processes the messages
-    scheduleMessageDispatch(ctx.worker_v8_context);
+    runWorkerTimerCallback(ctx);
+    ctx.executing = false;
 
     // For intervals, reschedule the timer
-    if (ctx.is_interval and !ctx.cancelled) {
+    if (ctx.is_interval and !ctx.cancelled and wctx.runsTasks()) {
         if (WorkerV8Context.getTimerInterface()) |timer| {
             // Unregister the old timer ID from tracking
             if (worker_timer_contexts) |*map| {
@@ -480,76 +379,75 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
                 ctx.current_timer_id = new_timer_id;
                 // Re-register with the new timer ID
                 registerWorkerTimerContext(new_timer_id, ctx);
-            } else {
-                // Reschedule failed. The ctx was just removed from the map above, so
-                // without this it is neither tracked nor freed - a leak of both the
-                // context and its V8 Global.
-                v8.ffi.v8_Global_Dispose(ctx.callback_global);
-                ctx.allocator.destroy(ctx);
+                return;
             }
+            // Reschedule failed: it is neither armed nor tracked now, so free it.
+            freeWorkerTimer(ctx);
+            return;
         }
-    } else {
-        // For one-shot timers, clean up after execution
-        unregisterWorkerTimerContext(ctx.current_timer_id);
     }
+
+    // A one-shot that has run, or a repeat that was cancelled: the timer
+    // manager has already dropped it, so nothing will hand it back. It used to
+    // go through unregisterWorkerTimerContext here, which found it still
+    // executing and left it - every one-shot worker timer leaked its context
+    // and its callback's Global.
+    if (worker_timer_contexts) |*map| _ = map.remove(ctx.current_timer_id);
+    freeWorkerTimer(ctx);
 }
 
-/// Check if a URL indicates a secure context for worker
-/// Per WPT convention, tests with .https. or .h2. in the filename should be treated
-/// as secure contexts. Plain HTTP localhost is NOT considered secure for WPT tests
-/// to allow testing non-secure context behavior.
-fn isSecureUrlForWorker(url: []const u8) bool {
-    // Check for secure schemes first
-    if (std.mem.startsWith(u8, url, "https://") or
-        std.mem.startsWith(u8, url, "wss://"))
-    {
-        return true;
-    }
+/// The timer task's steps: run the callback in the worker's context, then the
+/// end of the task - a microtask checkpoint, V8's posted tasks, and the
+/// messages the callback posted leaving for the page.
+fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
+    const wctx = ctx.worker_v8_context;
 
-    // WPT convention: .https. in filename indicates secure context test
-    if (std.mem.indexOf(u8, url, ".https.") != null) {
-        return true;
-    }
+    // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
+    // so a setTimeout called from inside it nests one deeper. Restored afterwards
+    // because the same thread goes on to run other tasks.
+    const saved_nesting = native_timer.nesting_level;
+    native_timer.nesting_level = ctx.nesting_level;
+    defer native_timer.nesting_level = saved_nesting;
 
-    // Also check for .h2. (HTTP/2 tests which require secure context)
-    if (std.mem.indexOf(u8, url, ".h2.") != null) {
-        return true;
-    }
+    // CRITICAL: Set current_worker_context so that callbacks like postMessage
+    // can access the correct worker context. Save and restore the previous context.
+    const prev_context = current_worker_context;
+    current_worker_context = wctx;
+    defer current_worker_context = prev_context;
 
-    return false;
-}
+    // Enter the worker's isolate and context
+    wctx.enter();
+    defer wctx.exit();
 
-/// Escape a string for use within a JavaScript string literal.
-/// Escapes backslashes and double quotes.
-fn escapeJsString(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
-    // Count how many characters need escaping
-    var extra_chars: usize = 0;
-    for (s) |c| {
-        if (c == '"' or c == '\\') {
-            extra_chars += 1;
-        }
-    }
+    // Phase 5 instrumentation, placed AFTER the Enter above on purpose: this
+    // trampoline enters the isolate itself, so asserting beforehand just reports
+    // that it has not happened yet. Workers spawn threads
+    // (worker_threading.zig:406), so what is worth checking is whether the Enter
+    // actually took effect on THIS thread.
+    v8.isolate_ownership.assertOwned(ctx.isolate, "worker.timerTrampoline");
 
-    if (extra_chars == 0) {
-        // No escaping needed, return a copy
-        return try allocator.dupe(u8, s);
-    }
+    // Create HandleScope for V8 operations
+    const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
-    // Allocate buffer for escaped string
-    var result = try allocator.alloc(u8, s.len + extra_chars);
-    errdefer allocator.free(result);
+    // Get the callback function from the Global handle
+    const callback_fn = v8.ffi.v8_Global_Get(ctx.isolate, ctx.callback_global) orelse return;
 
-    var i: usize = 0;
-    for (s) |c| {
-        if (c == '"' or c == '\\') {
-            result[i] = '\\';
-            i += 1;
-        }
-        result[i] = c;
-        i += 1;
-    }
+    // Get global object for 'this'
+    const global_obj = v8.ffi.v8_Context_Global(wctx.context) orelse return;
+    defer v8.ffi.v8_Object_Dispose(global_obj);
 
-    return result;
+    // Call the callback function
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    if (v8.ffi.v8_Function_Call(
+        @ptrCast(callback_fn),
+        wctx.context,
+        @ptrCast(global_obj),
+        0,
+        &empty_args,
+    )) |result| v8.ffi.v8_Value_Dispose(result);
+
+    wctx.endTask();
 }
 
 /// Get the effective URL for a worker, applying WPT URL rewriting rules.
@@ -580,16 +478,35 @@ fn getEffectiveWorkerUrl(allocator: std.mem.Allocator, url: []const u8) ![]const
     return try allocator.dupe(u8, url);
 }
 
-/// V8 Context for Worker execution
-///
-/// Creates and manages a V8 isolate and context for a worker.
-/// Each worker gets its own isolate for complete memory isolation.
-/// One armed owner-side message dispatch: the manager it was armed on, and its id.
+/// One armed timer on the owner's loop: the manager it was armed on, and its id.
 const MessageDispatchTimer = struct {
     timer: runtime.TimerInterface,
     id: runtime.TimerId,
 };
 
+/// Where a worker is in its life, as its host sees it.
+///
+/// HTML "run a worker" runs the worker's event loop until its global scope's
+/// closing flag is set; then the realm goes, and with it the agent. Here the
+/// "event loop" is the worker's timers on the page's loop, so the host tracks
+/// the steps itself.
+const Phase = enum {
+    /// Running tasks.
+    running,
+    /// close() or "terminate a worker" set the closing flag: no further task
+    /// runs. The realm is still there, and teardown is armed.
+    closing,
+    /// The realm is gone: its context was removed and released. The isolate
+    /// goes one timer later (`disposeIsolateLater`).
+    realm_gone,
+    /// The isolate is disposed.
+    disposed,
+};
+
+/// V8 Context for Worker execution
+///
+/// Creates and manages a V8 isolate and context for a worker.
+/// Each worker gets its own isolate for complete memory isolation.
 pub const WorkerV8Context = struct {
     /// V8 Isolate for this worker (separate from main thread)
     isolate: *v8.ffi.Isolate,
@@ -600,13 +517,18 @@ pub const WorkerV8Context = struct {
     /// Script URL for error messages and import.meta.url
     script_url: []const u8,
 
+    /// The URL the global scope reports as its own: the script's final URL,
+    /// with WPT's https rewrite applied (`getEffectiveWorkerUrl`). Owned.
+    effective_url: []const u8,
+
     /// Worker type (classic or module)
     worker_type: WorkerType,
 
     /// Allocator
     allocator: Allocator,
 
-    /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope)
+    /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope).
+    /// Cleared when the owner lets go (`deinit`): it is freed right after.
     dedicated_worker: ?*DedicatedWorker = null,
 
     /// The owner-side timer armed by `scheduleMessageDispatch`, while it is
@@ -614,12 +536,41 @@ pub const WorkerV8Context = struct {
     /// right after this context is deinitialized.
     message_dispatch: ?MessageDispatchTimer = null,
 
-    /// Flag to prevent double-deinit (deinit can be called from Worker.deinit and disposeContextCallback)
+    /// Set by the owner's first `deinit` (Worker.deinit, or the agent's
+    /// WorkerContext through disposeContextCallback); the second does nothing.
     is_deinitialized: bool = false,
 
     /// Runtime context for WebIDL operations (MessagePort, etc.)
     /// This is heap-allocated because Context = *ContextData
     runtime_ctx_data: ?*runtime.ContextData = null,
+
+    /// The realm's runtime context: the context manager's entry for `context`.
+    /// Every Instance created in the realm points here - the global scope's
+    /// first - and `scopeSettings` finds this worker by it.
+    scope_ctx: ?runtime.Context = null,
+
+    /// The global object's platform object: the realm's
+    /// DedicatedWorkerGlobalScope. The realm's wrapper cache owns it, and
+    /// frees it when the realm is removed.
+    global_scope: ?*runtime.Instance = null,
+
+    /// A function made in the realm that fires a MessageEvent at the global
+    /// object (`makeMessageDispatcher`). Owned Global; released with the realm.
+    message_dispatcher: ?*v8.ffi.Value = null,
+
+    /// How deep this host has entered the isolate on the current stack. While
+    /// it is above zero the worker's script may be running, and the realm must
+    /// not be torn down under it.
+    entered: u32 = 0,
+
+    phase: Phase = .running,
+
+    /// The timer that runs the next teardown step, while one is armed.
+    teardown_timer: ?MessageDispatchTimer = null,
+
+    /// The owner has let go (`destroy`). The memory goes once this is set and
+    /// the isolate is disposed, whichever comes last.
+    owner_released: bool = false,
 
     const Self = @This();
 
@@ -646,7 +597,8 @@ pub const WorkerV8Context = struct {
     ///
     /// This creates:
     /// 1. A new V8 isolate (separate from main thread)
-    /// 2. A V8 context within that isolate
+    /// 2. A V8 context within that isolate, whose global object is a
+    ///    DedicatedWorkerGlobalScope platform object
     /// 3. Sets up basic global scope
     pub fn init(
         allocator: Allocator,
@@ -659,6 +611,8 @@ pub const WorkerV8Context = struct {
         // Copy script URL
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
+        const effective_url = try getEffectiveWorkerUrl(allocator, script_url);
+        errdefer allocator.free(effective_url);
 
         // Initialize V8 platform if not already done
         // NOTE: The main browser context should have already called
@@ -673,17 +627,32 @@ pub const WorkerV8Context = struct {
         };
         errdefer v8.ffi.v8_Isolate_Dispose(isolate);
 
-        // Enter the isolate temporarily to create the context
+        // Enter the isolate temporarily to create the context. Exited before
+        // returning - we re-enter when executing scripts - so the main isolate
+        // stays current during Worker construction.
         v8.ffi.v8_Isolate_Enter(isolate);
+        defer v8.ffi.v8_Isolate_Exit(isolate);
 
-        // Create V8 Context within the isolate
-        const context = v8.ffi.v8_Context_New(isolate) orelse {
-            v8.ffi.v8_Isolate_Exit(isolate);
+        // V8 requires any API call that creates a Local to be inside a
+        // HandleScope ("Cannot create a handle without a HandleScope").
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        // HTML "run a worker" step 6: the realm's global object is a new
+        // DedicatedWorkerGlobalScope. So the context is created from that
+        // interface's template, which makes the global object one of its
+        // platform objects, with its internal fields - Blink's
+        // WorkerOrWorkletScriptController::Initialize does the same with the
+        // interface template's InstanceTemplate(). A plain Context::New made a
+        // bare object that faked `instanceof` with Symbol.hasInstance.
+        const context = v8.ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(isolate)) orelse {
             return error.V8ContextCreationFailed;
         };
+        errdefer v8.ffi.v8_Context_Dispose(context);
 
         // Enter the context for setup
         v8.ffi.v8_Context_Enter(context);
+        defer v8.ffi.v8_Context_Exit(context);
 
         // Create runtime context for WebIDL operations
         const runtime_ctx_data = try allocator.create(runtime.ContextData);
@@ -699,17 +668,11 @@ pub const WorkerV8Context = struct {
             .isolate = isolate,
             .context = context,
             .script_url = url_copy,
+            .effective_url = effective_url,
             .worker_type = worker_type,
             .allocator = allocator,
             .runtime_ctx_data = runtime_ctx_data,
         };
-
-        // CRITICAL: Create HandleScope for V8 handle allocation during setup
-        // V8 requires any API calls that create Local handles to be within a HandleScope.
-        // setupWorkerGlobals() calls v8_String_NewFromUtf8 which creates Local<String>.
-        // Without this, those calls will crash with "Cannot create a handle without a HandleScope".
-        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
-        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
@@ -718,99 +681,262 @@ pub const WorkerV8Context = struct {
         // This is a minimal subset needed for WPT tests
         self.registerWorkerInterfaces();
 
-        // Exit worker context/isolate after setup - we'll re-enter when executing scripts
-        // This allows the main isolate to remain active during Worker construction
-        v8.ffi.v8_Context_Exit(context);
-        v8.ffi.v8_Isolate_Exit(isolate);
-
         live_contexts.append(std.heap.page_allocator, self) catch {};
         return self;
     }
 
-    /// Clean up V8 isolate and context
-    ///
-    /// Note: This can be called from two paths:
-    /// 1. Worker.deinit() -> v8_context.deinit()
-    /// 2. WorkerContext.deinit() -> disposeContextCallback() -> deinit()
-    ///
-    /// The is_deinitialized flag prevents double-free.
-    pub fn deinit(self: *Self) void {
-        // Prevent double-deinit
-        if (self.is_deinitialized) {
+    /// The DedicatedWorkerGlobalScope interface template in `isolate`, which
+    /// must be entered. Templates belong to one isolate, and the registry is
+    /// where every later lookup - the interface object installForScope puts on
+    /// the global, a subclass's Inherit() - finds this one, so the global
+    /// object and `DedicatedWorkerGlobalScope.prototype` share a template.
+    fn globalScopeTemplate(isolate: *v8.ffi.Isolate) *v8.ffi.FunctionTemplate {
+        const name = interfaces.DedicatedWorkerGlobalScope.Meta.name;
+        if (v8.template_registry.getTemplateForIsolate(name, isolate)) |template| return template;
+        const template = V8Interface(interfaces.DedicatedWorkerGlobalScope).createTemplate(isolate);
+        v8.template_registry.register(name, template, isolate);
+        return template;
+    }
+
+    /// Whether the worker runs tasks: not once its closing flag is set.
+    pub fn runsTasks(self: *const Self) bool {
+        return self.phase == .running;
+    }
+
+    /// Enter this worker's isolate and context, counting the entry.
+    fn enter(self: *Self) void {
+        self.entered += 1;
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        v8.ffi.v8_Context_Enter(self.context);
+    }
+
+    fn exit(self: *Self) void {
+        v8.ffi.v8_Context_Exit(self.context);
+        v8.ffi.v8_Isolate_Exit(self.isolate);
+        self.entered -= 1;
+    }
+
+    /// The end of a task that ran script in this worker: a microtask
+    /// checkpoint, the tasks V8 has posted to the platform for its isolate,
+    /// and whatever the worker posted leaving for the page. Call with the
+    /// isolate entered. TODO: a worker with no task of its own still waits for
+    /// its next one before a posted task runs (an asynchronous WebAssembly
+    /// compile in an otherwise idle worker).
+    fn endTask(self: *Self) void {
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        _ = v8.pumpPlatformTasks(self.isolate);
+        DedicatedWorker.flushPendingMessages();
+        scheduleMessageDispatch(self);
+    }
+
+    /// Stop one armed timer of ours, if any.
+    fn disarm(slot: *?MessageDispatchTimer) void {
+        if (slot.*) |armed| _ = armed.timer.clearTimeout(armed.id);
+        slot.* = null;
+    }
+
+    // ------------------------------------------------------------------
+    // The end of a worker
+    // ------------------------------------------------------------------
+
+    /// HTML "terminate a worker", from the owner's side (worker.terminate()):
+    /// 1. set the closing flag, 2. discard the worker's tasks, 3. abort its
+    /// script, 4. empty the port message queue of the port its implicit port
+    /// is entangled with - the page's side, so nothing the worker posted is
+    /// delivered from now on. The realm and the isolate then go, from later
+    /// tasks (`scheduleTeardown`). Step 3 has nothing to abort: the owner's
+    /// script runs on this thread, so the worker's cannot be running.
+    pub fn terminate(self: *Self) void {
+        if (self.phase == .realm_gone or self.phase == .disposed) return;
+        self.phase = .closing;
+        cancelWorkerTimers(self);
+        disarm(&self.message_dispatch);
+        if (self.dedicated_worker) |dw| {
+            emptyPortQueue(dw.port_pair.outside_port);
+            emptyPortQueue(dw.port_pair.inside_port);
+        }
+        self.scheduleTeardown();
+    }
+
+    /// DedicatedWorkerGlobalScope close(), from the worker's own script:
+    /// 1. discard the tasks queued for the worker's agent, 2. set the closing
+    /// flag. The task that called it runs to its end, and what it posts is
+    /// delivered (workers/interfaces/WorkerGlobalScope/close/sending-messages);
+    /// then the realm goes.
+    fn closeFromScript(self: *Self) void {
+        if (self.phase != .running) return;
+        // What the task posted so far joins the port's queue; its end posts
+        // the rest.
+        DedicatedWorker.flushPendingMessages();
+        if (self.dedicated_worker) |dw| dw.close();
+        self.phase = .closing;
+        cancelWorkerTimers(self);
+        self.scheduleTeardown();
+    }
+
+    /// Arm the next teardown step. Every step runs from a timer on the page's
+    /// loop, never from the call that ended the worker: that call may be the
+    /// worker's own script (close()), a Worker collected inside a page GC's
+    /// weak callbacks, or the page's own teardown. With no loop to run it on,
+    /// the realm and isolate stay until the process ends, as they always did.
+    fn scheduleTeardown(self: *Self) void {
+        if (self.teardown_timer != null or self.phase == .realm_gone or self.phase == .disposed) return;
+        const timer = getTimerInterface() orelse return;
+        const id = timer.setTimeout(0, teardownCallback, self);
+        if (id == 0) return;
+        self.teardown_timer = .{ .timer = timer, .id = id };
+    }
+
+    fn teardownCallback(context_ptr: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
+        self.teardown_timer = null;
+        // The worker's script is on the stack - a nested loop inside one of
+        // its tasks: after that task, then.
+        if (self.entered > 0 or v8.ffi.v8_Isolate_GetCurrent() == self.isolate) {
+            self.scheduleTeardown();
             return;
         }
-        self.is_deinitialized = true;
-        for (live_contexts.items, 0..) |live, i| {
-            if (live == self) {
-                _ = live_contexts.swapRemove(i);
-                break;
-            }
+        self.teardownRealm();
+        self.disposeIsolateLater();
+    }
+
+    /// The realm's end: what "run a worker" does once the event loop exits -
+    /// clear the active timers, disentangle the ports - and what Blink's
+    /// WorkerOrWorkletScriptController::DisposeContextIfNeeded does on the V8
+    /// side: clear the global's native info, then release the per-context
+    /// data. Nothing runs in the realm again.
+    fn teardownRealm(self: *Self) void {
+        self.phase = .realm_gone;
+        removeLive(self);
+        cancelWorkerTimers(self);
+
+        {
+            self.enter();
+            defer self.exit();
+            const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+            defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+            if (self.message_dispatcher) |dispatcher| v8.ffi.v8_Global_Dispose(dispatcher);
+            self.message_dispatcher = null;
+
+            // The global scope is freed with the realm's wrapper cache just
+            // below; the global object must not point at it after.
+            if (self.global_scope != null) self.bindGlobalFields(null);
+
+            // The realm's per-context data: the callbacks its script
+            // registered, its wrapper cache and every Instance in it - the
+            // global scope first - and its realm. The entry is retired, so
+            // `engine_ctx` reads null from here on: that is how anything
+            // holding the realm across turns (a fetch) learns it has gone.
+            context_manager.removeContext(self.context);
+            self.global_scope = null;
+            self.scope_ctx = null;
+
+            // Fetches still in flight for this realm release their promises
+            // now, while the isolate those belong to is alive.
+            _ = async_fetch.sweep();
         }
+
+        // MessagePort objects made in the realm used this, and went with the
+        // wrapper cache above.
+        if (self.runtime_ctx_data) |ctx_data| {
+            ctx_data.deinit();
+            self.allocator.destroy(ctx_data);
+            self.runtime_ctx_data = null;
+        }
+
+        v8.ffi.v8_Context_Dispose(self.context);
+
+        // What the process keeps per isolate: its templates in the registry
+        // (disposed here - Globals of this isolate), its template storage and
+        // its allocator in the isolate's data slots.
+        v8.template_registry.clearForIsolate(self.isolate);
+        v8.cleanupTemplateStorage(self.isolate, self.allocator);
+        v8.isolate_allocator.deinitIsolateAllocator(self.isolate);
+    }
+
+    /// Dispose the isolate one timer after the realm is gone.
+    ///
+    /// A fetch whose response arrived before the realm ended has its settle
+    /// task armed as a 0 ms timer on the page's loop
+    /// (WindowOrWorkerGlobalScope.call_fetch). It has left the fetch list, so
+    /// `async_fetch.sweep()` cannot reach it, and when it runs it finds the
+    /// realm gone and releases its promise resolver - a Global in THIS
+    /// isolate. Every such timer was armed before this one, so it runs first.
+    /// And never from inside a page collection: v8_Isolate_Dispose frees every
+    /// detached weak-callback record in the process, including the page's,
+    /// whose callbacks V8 would then run on freed records.
+    fn disposeIsolateLater(self: *Self) void {
+        const timer = getTimerInterface() orelse return;
+        const id = timer.setTimeout(0, disposeIsolateCallback, self);
+        if (id == 0) return;
+        self.teardown_timer = .{ .timer = timer, .id = id };
+    }
+
+    fn disposeIsolateCallback(context_ptr: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
+        self.teardown_timer = null;
+        v8.ffi.v8_Isolate_Dispose(self.isolate);
+        self.phase = .disposed;
+        disposed_isolates += 1;
+        if (self.owner_released) self.free();
+    }
+
+    /// The owner is done with the worker: the Worker object is going away, or
+    /// the agent's WorkerContext is (both reach here; the second call does
+    /// nothing). The DedicatedWorker this points at is freed right after, so
+    /// nothing may reach it again. A worker still running is terminated.
+    pub fn deinit(self: *Self) void {
+        if (self.is_deinitialized) return;
+        self.is_deinitialized = true;
 
         // Disarm the pending message dispatch before the DedicatedWorker it
         // reaches is freed. The callback clears this record the moment it
         // fires, so a record still here is a timer that has not fired, and
         // clearTimeout removes it from the manager - `poll` re-checks each due
         // id before firing, so it cannot still run.
-        if (self.message_dispatch) |dispatch| {
-            _ = dispatch.timer.clearTimeout(dispatch.id);
-            self.message_dispatch = null;
+        disarm(&self.message_dispatch);
+        self.dedicated_worker = null;
+
+        if (self.phase == .running or self.phase == .closing) {
+            self.phase = .closing;
+            cancelWorkerTimers(self);
+            self.scheduleTeardown();
         }
-
-        // Clean up worker timer contexts (cancels pending timers, frees memory)
-        cleanupWorkerTimerContexts();
-
-        // TODO: Proper cleanup of worker isolate/context
-        // Currently we skip V8 cleanup because:
-        // 1. Worker isolates are separate from main isolate
-        // 2. During test cleanup, main isolate may already be disposed
-        // 3. Trying to dispose worker context after main is gone causes segfault
-        //
-        // For proper cleanup, we need to:
-        // - Track worker isolates separately from main isolate
-        // - Dispose worker isolates BEFORE main isolate
-        // - Or run workers in actual separate threads with their own cleanup
-
-        // Clean up runtime context
-        if (self.runtime_ctx_data) |ctx_data| {
-            ctx_data.deinit();
-            self.allocator.destroy(ctx_data);
-        }
-
-        // NOTE: the object itself is deliberately NOT freed here - see destroy().
     }
 
-    /// Release the WorkerV8Context's own storage. Call exactly once, and only
-    /// after every teardown path that might still call deinit() has run.
+    /// The owner lets go of this object. Its memory goes once the owner has
+    /// let go and the isolate is disposed, whichever comes last; a worker with
+    /// no teardown ahead of it (no loop to run one on) goes now, leaving its
+    /// realm and isolate to the process, as they always were.
     ///
-    /// deinit() used to end in `allocator.destroy(self)`. That made its
-    /// `is_deinitialized` guard useless, because the guard lives INSIDE the object
-    /// it protects: the second of the two documented teardown paths
-    /// (Worker.deinit, and WorkerContext.deinit -> disposeContextCallback) read the
-    /// flag out of freed memory and destroyed the object again. Clearing each
-    /// owner's pointer could not fix it either - the two owners are independent and
-    /// both hold the same context.
-    ///
-    /// Splitting the two makes deinit genuinely idempotent (the flag is read from
-    /// live memory no matter how many paths call it) and gives the free a single
-    /// caller.
+    /// deinit() used to end in `allocator.destroy(self)`, which made its
+    /// `is_deinitialized` guard read freed memory on the second of its two
+    /// teardown paths. Splitting the release out gave the free one caller.
     pub fn destroy(self: *Self) void {
+        self.owner_released = true;
+        if (self.phase == .disposed or self.teardown_timer == null) self.free();
+    }
+
+    fn free(self: *Self) void {
+        removeLive(self);
+        disarm(&self.teardown_timer);
+        disarm(&self.message_dispatch);
         self.allocator.free(self.script_url);
+        self.allocator.free(self.effective_url);
         self.allocator.destroy(self);
     }
 
     /// Exit the worker's V8 isolate and context
     /// Call this after script execution to return control to main isolate
     pub fn exitIsolate(self: *Self) void {
-        v8.ffi.v8_Context_Exit(self.context);
-        v8.ffi.v8_Isolate_Exit(self.isolate);
+        self.exit();
     }
 
     /// Re-enter the worker's V8 isolate and context
     /// Call this before executing more scripts in the worker
     pub fn enterIsolate(self: *Self) void {
-        v8.ffi.v8_Isolate_Enter(self.isolate);
-        v8.ffi.v8_Context_Enter(self.context);
+        self.enter();
     }
 
     /// Set up basic worker global scope (called during init)
@@ -822,18 +948,16 @@ pub const WorkerV8Context = struct {
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };
+        defer v8.ffi.v8_Object_Dispose(global_obj);
 
-        // Set up 'self' as reference to global object
+        // `self` as a data property equal to the global object, as the window
+        // does: testharness.js runs `(function(global_scope){...})(self)` and
+        // needs `self === globalThis`.
         const self_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4) orelse {
             return error.StringCreationFailed;
         };
+        defer v8.ffi.v8_String_Dispose(self_key);
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(self_key), @ptrCast(global_obj));
-
-        // Set up 'globalThis' as reference to global object
-        const global_this_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "globalThis", 10) orelse {
-            return error.StringCreationFailed;
-        };
-        _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(global_this_key), @ptrCast(global_obj));
     }
 
     /// Register essential WebIDL interfaces needed in worker context
@@ -908,18 +1032,127 @@ pub const WorkerV8Context = struct {
         Blob.registerGlobal(self.isolate, self.context, "Blob");
     }
 
+    /// The other half of "run a worker" step 6: the platform object behind
+    /// the global object, and what V8 does not set up for a global made from
+    /// an interface template.
+    ///
+    /// - The DedicatedWorkerGlobalScope Instance, created through its
+    ///   interface in the realm's own runtime context, goes in internal field
+    ///   0 of the global proxy - which the bindings read for every [Global]
+    ///   member and every receiver check - and of the global object behind it
+    ///   (Blink's SetNativeInfoForGlobal does both).
+    /// - The realm's wrapper cache maps it to the global proxy, so handing
+    ///   the scope to script (`self`, an event's currentTarget) returns the
+    ///   global itself - as createWindowBoundToGlobal does for a Window.
+    /// - The prototype chain: global -> DedicatedWorkerGlobalScope.prototype
+    ///   -> WorkerGlobalScope.prototype -> EventTarget.prototype.
+    /// - DedicatedWorkerGlobalScope's own members as own properties of the
+    ///   global: WebIDL puts a [Global] interface's members on the object.
+    fn bindGlobalScope(self: *Self, scope_ctx: runtime.Context) !void {
+        const instance = try interfaces.DedicatedWorkerGlobalScope.init(self.allocator, scope_ctx);
+        self.global_scope = instance;
+        self.bindGlobalFields(instance);
+
+        // The cache takes this Global.
+        const global = v8.ffi.v8_Context_Global(self.context) orelse return error.NoGlobalObject;
+        const cache_storage = scope_ctx.getV8WrapperCacheStorage() orelse {
+            v8.ffi.v8_Object_Dispose(global);
+            return error.NoWrapperCache;
+        };
+        const cache: *v8.WrapperCache = @ptrCast(@alignCast(cache_storage));
+        try cache.set(instance, global, self.isolate);
+
+        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse return error.NoGlobalObject;
+        defer v8.ffi.v8_Object_Dispose(global_obj);
+        self.linkGlobalPrototype(global_obj);
+
+        const Binding = V8Interface(interfaces.DedicatedWorkerGlobalScope);
+        Binding.registerPropertiesAsOwnOnObject(self.isolate, self.context, global_obj);
+        Binding.registerMethodsAsOwnOnObject(self.isolate, self.context, global_obj);
+    }
+
+    /// Point internal field 0 of the global proxy, and of the global object
+    /// behind it, at `instance` - or at nothing, before the instance is freed.
+    fn bindGlobalFields(self: *Self, instance: ?*runtime.Instance) void {
+        const global = v8.ffi.v8_Context_Global(self.context) orelse return;
+        defer v8.ffi.v8_Object_Dispose(global);
+        v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
+        // The V1 GetPrototype on a global proxy is V8's from_javascript=false
+        // path: it returns the hidden JSGlobalObject, not what script sees.
+        const inner_val = v8.ffi.v8_Object_GetPrototype(global) orelse return;
+        defer v8.ffi.v8_Value_Dispose(inner_val);
+        const inner = v8.helpers.asObject(inner_val) orelse return;
+        v8.ffi.v8_Object_SetAlignedPointerInInternalField(inner, 0, @ptrCast(instance));
+    }
+
+    /// Make DedicatedWorkerGlobalScope.prototype the global object's
+    /// prototype, as script sees it.
+    ///
+    /// A [Global] object has an immutable prototype (WebIDL), so the global
+    /// object's [[Prototype]] is fixed when the context is created - and V8
+    /// fixes it to a placeholder: for a global made from a template, it
+    /// builds the global object's constructor function itself, and that
+    /// function's prototype is a fresh object on Object.prototype, holding
+    /// only `constructor`. The placeholder is an ordinary object, so it is
+    /// what gets linked, exactly as window_properties.zig does for a Window:
+    ///   global -> placeholder -> DedicatedWorkerGlobalScope.prototype -> ...
+    /// Its `constructor` goes, so `self.constructor` is the interface object.
+    /// Only the V2 prototype calls: the V1 ones reach the hidden global object.
+    fn linkGlobalPrototype(self: *Self, global: *v8.ffi.Object) void {
+        const name = interfaces.DedicatedWorkerGlobalScope.Meta.name;
+        const name_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, name.ptr, name.len) orelse return;
+        defer v8.ffi.v8_String_Dispose(name_key);
+        const interface_val = v8.ffi.v8_Object_Get(global, self.context, @ptrCast(name_key)) orelse return;
+        defer v8.ffi.v8_Value_Dispose(interface_val);
+        const interface_obj = v8.helpers.asObject(interface_val) orelse return;
+        const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9) orelse return;
+        defer v8.ffi.v8_String_Dispose(proto_key);
+        const proto = v8.ffi.v8_Object_Get(interface_obj, self.context, @ptrCast(proto_key)) orelse return;
+        defer v8.ffi.v8_Value_Dispose(proto);
+
+        if (v8.ffi.v8_Object_SetPrototypeV2(global, self.context, proto)) return;
+        const placeholder_val = v8.ffi.v8_Object_GetPrototypeV2(global) orelse return;
+        defer v8.ffi.v8_Value_Dispose(placeholder_val);
+        if (v8.ffi.v8_Value_StrictEquals(placeholder_val, proto)) return;
+        const placeholder = v8.helpers.asObject(placeholder_val) orelse return;
+        if (!v8.ffi.v8_Object_SetPrototypeV2(placeholder, self.context, proto)) return;
+        const ctor_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "constructor", 11) orelse return;
+        defer v8.ffi.v8_String_Dispose(ctor_key);
+        _ = v8.ffi.v8_Object_Delete(placeholder, self.context, @ptrCast(ctor_key));
+    }
+
+    /// The function that fires a message event at this worker's global
+    /// object: HTML's message port post message steps end in firing
+    /// `message` at the port's owner, and a dedicated worker's implicit port
+    /// belongs to its global scope - so the onmessage handler and every
+    /// listener hear it. Made once, in the realm, with the realm's own
+    /// MessageEvent and dispatchEvent, so script replacing either on the
+    /// global changes nothing. `isTrusted` is false: a deviation, for want of
+    /// an entry point that fires a trusted event (see AGENTS.md).
+    fn makeMessageDispatcher(self: *Self) !void {
+        const source =
+            \\(function (MessageEvent, dispatchEvent, global) {
+            \\  return function (data, ports) {
+            \\    dispatchEvent.call(global, new MessageEvent("message", { data: data, ports: ports || [] }));
+            \\  };
+            \\})(MessageEvent, EventTarget.prototype.dispatchEvent, globalThis)
+        ;
+        const result = try self.executeScriptInternal(source);
+        self.message_dispatcher = @ptrCast(@alignCast(result orelse return error.ExecutionFailed));
+    }
+
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
     ///
     /// Spec: HTML Standard § 10.2.4 DedicatedWorkerGlobalScope
     /// https://html.spec.whatwg.org/#dedicatedworkerglobalscope
     ///
-    /// This sets up:
-    /// - self.GLOBAL (WPT test harness requirement)
-    /// - postMessage() - send messages to main thread
-    /// - close() - terminate the worker
-    /// - importScripts() - load scripts synchronously
-    /// - console object (no-op for workers)
-    /// - name property (worker name)
+    /// The global object's members come from the generated bindings: the
+    /// DedicatedWorkerGlobalScope Instance behind it, and the interfaces on its
+    /// prototype chain - WorkerGlobalScope's, which include every
+    /// WindowOrWorkerGlobalScope member, and EventTarget's. Natives remain only
+    /// where they are the one working implementation: postMessage (the bound
+    /// operation does not serialize), importScripts (the bound one fetches and
+    /// does not run), and the timers (the mixin's return NotImplemented).
     pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: *DedicatedWorker) !void {
         log.debug("[setupWorkerGlobalScope] self={*}, dedicated_worker={*}, agent={*}, agent.closing={}, agent.termination_state={s}", .{
             self,
@@ -932,12 +1165,8 @@ pub const WorkerV8Context = struct {
         self.dedicated_worker = dedicated_worker;
 
         // Enter worker's isolate and context for setup
-        v8.ffi.v8_Isolate_Enter(self.isolate);
-        v8.ffi.v8_Context_Enter(self.context);
-        defer {
-            v8.ffi.v8_Context_Exit(self.context);
-            v8.ffi.v8_Isolate_Exit(self.isolate);
-        }
+        self.enter();
+        defer self.exit();
 
         // Create HandleScope for V8 operations (required for context manager registration)
         const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
@@ -955,14 +1184,15 @@ pub const WorkerV8Context = struct {
         // This enables nested Workers to find the parent worker's context with timer support
         // when their constructor calls getOrCreateWithIsolate().
         // Per HTML Standard § 10.2.3: Workers can create other Workers (nested workers)
-        _ = v8.context_manager.getOrCreateWithExternalEventLoop(
+        //
+        // The entry's runtime context is the realm's: the global scope and
+        // every Instance the bindings create here point at it.
+        self.scope_ctx = try v8.context_manager.getOrCreateWithExternalEventLoop(
             self.context,
             timer_interface,
             null, // Event loop not needed - workers use thread-local timers
             self.allocator,
-        ) catch |err| {
-            std.log.warn("Failed to register worker context with context manager: {}", .{err});
-        };
+        );
 
         // Record the worker's script URL as this context's document URL.
         //
@@ -980,9 +1210,22 @@ pub const WorkerV8Context = struct {
             std.log.warn("Failed to set worker document URL: {}", .{err});
         };
 
+        // Every interface exposed in a DedicatedWorker scope, per WebIDL's
+        // [Exposed]: Request, Response, Headers, TextEncoder, TextDecoder,
+        // Blob, File, FileReader, the global scope interfaces themselves...
+        interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
+
+        // The platform object behind the global, its prototype chain and its
+        // own members - after the interface objects, whose prototypes it links.
+        try self.bindGlobalScope(self.scope_ctx.?);
+
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };
+        defer v8.ffi.v8_Object_Dispose(global_obj);
+
+        // Set thread-local reference for callbacks to access this context
+        current_worker_context = self;
 
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
@@ -993,11 +1236,7 @@ pub const WorkerV8Context = struct {
             \\  isShadowRealm: function() { return false; },
             \\};
         ;
-        _ = try self.executeScriptNoMessages(global_script);
-
-        // NOTE: DedicatedWorkerGlobalScope and WorkerGlobalScope constructors are set up
-        // AFTER installForScope() is called, so that Symbol.hasInstance can be added
-        // to the real WebIDL interface constructors. See the worker_scope_script below.
+        _ = try self.executeScriptInternal(global_script);
 
         // Set up console object (no-op implementation for workers)
         const console_script =
@@ -1025,478 +1264,139 @@ pub const WorkerV8Context = struct {
             \\  };
             \\})();
         ;
-        _ = try self.executeScriptNoMessages(console_script);
+        _ = try self.executeScriptInternal(console_script);
 
-        // Set thread-local reference for callbacks to access this context
-        current_worker_context = self;
-
-        // Register postMessage() - sends message to main thread
-        // CRITICAL: Pass `self` as callback data so the callback always uses the
-        // correct worker context, even for nested workers where the thread-local
-        // current_worker_context might point to a different worker.
+        // Natives, where they are the one working implementation. Each is an
+        // own data property of the global, shadowing the bound operation
+        // further up the chain.
+        //
+        // postMessage() carries `self` as callback data so the callback always
+        // uses the correct worker context, even for nested workers where the
+        // thread-local current_worker_context might point to a different worker.
         {
-            // Store self pointer in a V8 External value to pass to the callback
             const external = v8.ffi.v8_External_New(self.isolate, @ptrCast(self)) orelse {
                 return error.ExternalCreationFailed;
             };
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPostMessageCallback, @ptrCast(external)) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "postMessage", 11) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+            try self.installNative(global_obj, "postMessage", workerPostMessageCallback, @ptrCast(external), 1);
         }
+        try self.installNative(global_obj, "importScripts", importScriptsCallback, null, 0);
+        try self.installNative(global_obj, "setTimeout", workerSetTimeoutCallback, null, 1);
+        try self.installNative(global_obj, "clearTimeout", workerClearTimeoutCallback, null, 0);
+        try self.installNative(global_obj, "setInterval", workerSetIntervalCallback, null, 1);
+        try self.installNative(global_obj, "clearInterval", workerClearTimeoutCallback, null, 0);
+        // done() for the WPT harness: testharness.js defines its own, which
+        // replaces this one when it loads.
+        try self.installNative(global_obj, "done", workerDoneCallback, null, 0);
 
-        // Register close() - terminates the worker
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerCloseCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "close", 5) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register importScripts() - loads and executes scripts synchronously
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, importScriptsCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "importScripts", 13) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register setTimeout() - schedules a one-shot timer
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetTimeoutCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register clearTimeout() - cancels a one-shot timer
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register setInterval() - schedules a repeating timer
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetIntervalCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register clearInterval() - cancels a repeating timer
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register done() for WPT test harness - signals test completion
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerDoneCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "done", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register queueMicrotask() - queues a microtask callback
-        // Per HTML Standard § 8.1.7 - Integration with the JavaScript job queue
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerQueueMicrotaskCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "queueMicrotask", 14) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register structuredClone() - creates a deep copy of a value using structured clone algorithm
-        // Per HTML Standard § 2.7.8: StructuredClone method
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerStructuredCloneCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "structuredClone", 15) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // atob() and btoa() - WindowOrWorkerGlobalScope, HTML §8.3.
-        inline for (.{ .{ "atob", &workerAtobCallback }, .{ "btoa", &workerBtoaCallback } }) |native| {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, native[1], null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, native[0], native[0].len) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Set up worker 'name' property
-        const name = dedicated_worker.getName();
-        if (name.len > 0) {
-            const name_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, name.ptr, @intCast(name.len)) orelse {
-                return error.StringCreationFailed;
-            };
-            const name_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "name", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
-        } else {
-            // Empty string for unnamed workers
-            const name_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, "", 0) orelse {
-                return error.StringCreationFailed;
-            };
-            const name_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "name", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
-        }
-
-        // Set up isSecureContext property
-        // Per HTML Standard, isSecureContext indicates if the context is secure
-        // For WPT tests, this depends on the URL - .https. or .h2. in filename means secure
-        {
-            const is_secure = isSecureUrlForWorker(self.script_url);
-            const is_secure_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "isSecureContext", 15) orelse {
-                return error.StringCreationFailed;
-            };
-            if (v8.ffi.v8_Boolean_New(self.isolate, is_secure)) |is_secure_value| {
-                _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(is_secure_key), is_secure_value);
-            }
-        }
-
-        // Set up location object using WorkerLocation interface
-        // Per HTML Standard, WorkerGlobalScope has a location attribute
-        // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
-        {
-            const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
-            defer self.allocator.free(effective_url);
-
-            // Escape the URL for use in JavaScript string (escape quotes and backslashes)
-            const escaped_url = try escapeJsString(self.allocator, effective_url);
-            defer self.allocator.free(escaped_url);
-
-            const location_script = try std.fmt.allocPrint(self.allocator,
-                \\(function() {{
-                \\  // Create WorkerLocation-like object
-                \\  var url = new URL("{s}");
-                \\  globalThis.location = {{
-                \\    href: url.href,
-                \\    protocol: url.protocol,
-                \\    host: url.host,
-                \\    hostname: url.hostname,
-                \\    port: url.port,
-                \\    pathname: url.pathname,
-                \\    search: url.search,
-                \\    hash: url.hash,
-                \\    origin: url.origin,
-                \\    toString: function() {{ return this.href; }}
-                \\  }};
-                \\}})();
-            , .{escaped_url});
-            defer self.allocator.free(location_script);
-            _ = try self.executeScriptInternal(location_script);
-        }
-
-        // Set up origin property
-        // Per HTML Standard, WorkerGlobalScope has an origin attribute
-        // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
-        {
-            const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
-            defer self.allocator.free(effective_url);
-
-            // Extract origin from effective URL (scheme://host:port)
-            const origin_str = blk: {
-                if (std.mem.startsWith(u8, effective_url, "http://") or std.mem.startsWith(u8, effective_url, "https://")) {
-                    const scheme_end = std.mem.indexOf(u8, effective_url, "://") orelse break :blk "null";
-                    const after_scheme = effective_url[scheme_end + 3 ..];
-                    const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
-                    break :blk effective_url[0 .. scheme_end + 3 + path_start];
-                }
-                break :blk "null";
-            };
-            const origin_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, origin_str.ptr, @intCast(origin_str.len)) orelse {
-                return error.StringCreationFailed;
-            };
-            const origin_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "origin", 6) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(origin_key), @ptrCast(origin_value));
-        }
-
-        // Set up navigator object (WorkerNavigator)
-        // Per HTML Standard § 10.2.6 WorkerNavigator
-        // Includes NavigatorID, NavigatorLanguage, NavigatorOnLine, NavigatorConcurrentHardware
-        {
-            const navigator_script =
-                \\(function() {
-                \\  globalThis.navigator = {
-                \\    // NavigatorID mixin
-                \\    userAgent: 'Crane/1.0',
-                \\    appCodeName: 'Mozilla',
-                \\    appName: 'Netscape',
-                \\    appVersion: '5.0',
-                \\    platform: 'Zig',
-                \\    product: 'Gecko',
-                \\    productSub: '20030107',
-                \\    vendor: '',
-                \\    vendorSub: '',
-                \\    // NavigatorLanguage mixin
-                \\    language: 'en-US',
-                \\    languages: ['en-US', 'en'],
-                \\    // NavigatorOnLine mixin
-                \\    onLine: true,
-                \\    // NavigatorConcurrentHardware mixin
-                \\    hardwareConcurrency: 1
-                \\  };
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(navigator_script);
-        }
-
-        // ====================================================================
-        // Register ALL interfaces exposed to DedicatedWorker scope
-        // Per WebIDL [Exposed] attribute filtering
-        // This automatically includes: Request, Response, Headers, TextEncoder,
-        // TextDecoder, Blob, File, FileReader, FileReaderSync, Crypto, SubtleCrypto,
-        // and all other [Exposed=Worker] or [Exposed=*] interfaces
-        // ====================================================================
-        interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
-
-        // ====================================================================
-        // Set up WorkerGlobalScope and DedicatedWorkerGlobalScope for instanceof
-        // Per HTML spec, the global object in a worker should be an instance of
-        // DedicatedWorkerGlobalScope. We use Symbol.hasInstance to make this work:
-        // - self instanceof DedicatedWorkerGlobalScope === true
-        // - self instanceof WorkerGlobalScope === true
+        // Polyfills for WindowOrWorkerGlobalScope attributes whose bound
+        // getters have nothing to return yet (NotImplemented): crypto,
+        // performance and indexedDB. They are defined as OWN data properties -
+        // assigning would reach the getter-only accessors on
+        // WorkerGlobalScope.prototype and, in sloppy mode, silently do nothing.
         //
-        // This MUST run AFTER installForScope() because installForScope registers
-        // the real WebIDL constructors, and we need to add Symbol.hasInstance to them.
-        // If the constructors don't exist yet, we create them.
-        // ====================================================================
-        {
-            const worker_scope_script =
-                \\(function() {
-                \\  // Helper to add Symbol.hasInstance to an existing or new constructor
-                \\  function setupGlobalScopeConstructor(name) {
-                \\    var ctor = globalThis[name];
-                \\    if (typeof ctor !== 'function') {
-                \\      // Create a new constructor if it doesn't exist
-                \\      ctor = function() {};
-                \\      globalThis[name] = ctor;
-                \\    }
-                \\    // Add Symbol.hasInstance to make instanceof work with globalThis/self
-                \\    Object.defineProperty(ctor, Symbol.hasInstance, {
-                \\      value: function(obj) { return obj === globalThis || obj === self; },
-                \\      writable: false,
-                \\      configurable: true
-                \\    });
-                \\  }
-                \\
-                \\  // Set up both WorkerGlobalScope and DedicatedWorkerGlobalScope
-                \\  setupGlobalScopeConstructor('WorkerGlobalScope');
-                \\  setupGlobalScopeConstructor('DedicatedWorkerGlobalScope');
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(worker_scope_script);
-        }
+        // Crypto API - Per Web Crypto spec: https://w3c.github.io/webcrypto/
+        // (not cryptographically secure - Math.random).
+        const crypto_script =
+            \\(function() {
+            \\  function define(name, value) {
+            \\    Object.defineProperty(globalThis, name, { value: value, writable: true, enumerable: true, configurable: true });
+            \\  }
+            \\  // SubtleCrypto placeholder for crypto.subtle
+            \\  var subtle = {
+            \\    encrypt: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    decrypt: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    sign: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    verify: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    digest: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    generateKey: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    deriveKey: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    deriveBits: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    importKey: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    exportKey: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    wrapKey: function() { return Promise.reject(new Error('Not implemented')); },
+            \\    unwrapKey: function() { return Promise.reject(new Error('Not implemented')); }
+            \\  };
+            \\  define('crypto', {
+            \\    subtle: subtle,
+            \\    getRandomValues: function(array) {
+            \\      if (!(array instanceof Int8Array || array instanceof Uint8Array ||
+            \\            array instanceof Int16Array || array instanceof Uint16Array ||
+            \\            array instanceof Int32Array || array instanceof Uint32Array ||
+            \\            array instanceof Uint8ClampedArray || array instanceof BigInt64Array ||
+            \\            array instanceof BigUint64Array)) {
+            \\        throw new TypeError('Argument must be an integer typed array');
+            \\      }
+            \\      for (var i = 0; i < array.length; i++) {
+            \\        array[i] = Math.floor(Math.random() * 256);
+            \\      }
+            \\      return array;
+            \\    },
+            \\    randomUUID: function() {
+            \\      // RFC 4122 version 4 UUID
+            \\      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            \\        var r = Math.random() * 16 | 0;
+            \\        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+            \\        return v.toString(16);
+            \\      });
+            \\    }
+            \\  });
+            \\
+            \\  // Performance API - https://w3c.github.io/hr-time/
+            \\  var timeOrigin = Date.now();
+            \\  define('performance', {
+            \\    timeOrigin: timeOrigin,
+            \\    now: function() { return Date.now() - timeOrigin; },
+            \\    toJSON: function() { return { timeOrigin: this.timeOrigin }; }
+            \\  });
+            \\
+            \\  // IndexedDB - https://w3c.github.io/IndexedDB/ (a stub).
+            \\  function IDBFactory() {}
+            \\  IDBFactory.prototype.open = function(name, version) {
+            \\    return Promise.reject(new Error('IndexedDB not implemented'));
+            \\  };
+            \\  IDBFactory.prototype.deleteDatabase = function(name) {
+            \\    return Promise.reject(new Error('IndexedDB not implemented'));
+            \\  };
+            \\  IDBFactory.prototype.databases = function() {
+            \\    return Promise.resolve([]);
+            \\  };
+            \\  IDBFactory.prototype.cmp = function(a, b) {
+            \\    if (a < b) return -1;
+            \\    if (a > b) return 1;
+            \\    return 0;
+            \\  };
+            \\  globalThis.IDBFactory = IDBFactory;
+            \\  define('indexedDB', new IDBFactory());
+            \\})();
+        ;
+        _ = try self.executeScriptInternal(crypto_script);
 
-        // ====================================================================
-        // Worker-specific fetch() callback
-        // The fetch() function needs a worker-specific callback to access the
-        // worker context for proper request/response handling
-        // Per Fetch spec: https://fetch.spec.whatwg.org/
-        // ====================================================================
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerFetchCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
+        try self.makeMessageDispatcher();
+    }
 
-        // ====================================================================
-        // Crypto API - crypto object (WindowOrWorkerGlobalScope)
-        // Per Web Crypto spec: https://w3c.github.io/webcrypto/
-        // Part of WindowOrWorkerGlobalScope mixin
-        // Note: This is a polyfill until native Zig crypto is fully implemented
-        // ====================================================================
-        {
-            const crypto_script =
-                \\(function() {
-                \\  // SubtleCrypto placeholder for crypto.subtle
-                \\  var subtle = {
-                \\    encrypt: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    decrypt: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    sign: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    verify: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    digest: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    generateKey: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    deriveKey: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    deriveBits: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    importKey: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    exportKey: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    wrapKey: function() { return Promise.reject(new Error('Not implemented')); },
-                \\    unwrapKey: function() { return Promise.reject(new Error('Not implemented')); }
-                \\  };
-                \\
-                \\  // Crypto object with getRandomValues and randomUUID
-                \\  globalThis.crypto = {
-                \\    subtle: subtle,
-                \\    getRandomValues: function(array) {
-                \\      // Simple PRNG for testing (not cryptographically secure)
-                \\      // Production should use native crypto
-                \\      if (!(array instanceof Int8Array || array instanceof Uint8Array ||
-                \\            array instanceof Int16Array || array instanceof Uint16Array ||
-                \\            array instanceof Int32Array || array instanceof Uint32Array ||
-                \\            array instanceof Uint8ClampedArray || array instanceof BigInt64Array ||
-                \\            array instanceof BigUint64Array)) {
-                \\        throw new TypeError('Argument must be an integer typed array');
-                \\      }
-                \\      for (var i = 0; i < array.length; i++) {
-                \\        array[i] = Math.floor(Math.random() * 256);
-                \\      }
-                \\      return array;
-                \\    },
-                \\    randomUUID: function() {
-                \\      // RFC 4122 version 4 UUID
-                \\      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                \\        var r = Math.random() * 16 | 0;
-                \\        var v = c === 'x' ? r : (r & 0x3 | 0x8);
-                \\        return v.toString(16);
-                \\      });
-                \\    }
-                \\  };
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(crypto_script);
-        }
-
-        // ====================================================================
-        // Performance API - performance object (WindowOrWorkerGlobalScope)
-        // Per High Resolution Time spec: https://w3c.github.io/hr-time/
-        // Part of WindowOrWorkerGlobalScope mixin
-        // ====================================================================
-        {
-            const performance_script =
-                \\(function() {
-                \\  var timeOrigin = Date.now();
-                \\  globalThis.performance = {
-                \\    timeOrigin: timeOrigin,
-                \\    now: function() {
-                \\      return Date.now() - timeOrigin;
-                \\    },
-                \\    toJSON: function() {
-                \\      return { timeOrigin: this.timeOrigin };
-                \\    }
-                \\  };
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(performance_script);
-        }
-
-        // ====================================================================
-        // IndexedDB API - indexedDB object (WindowOrWorkerGlobalScope)
-        // Per IndexedDB spec: https://w3c.github.io/IndexedDB/
-        // Part of WindowOrWorkerGlobalScope mixin
-        // Note: This is a polyfill stub until native IndexedDB is implemented
-        // ====================================================================
-        {
-            const indexeddb_script =
-                \\(function() {
-                \\  // IDBFactory stub - the indexedDB global is an instance of this
-                \\  function IDBFactory() {}
-                \\  IDBFactory.prototype.open = function(name, version) {
-                \\    return Promise.reject(new Error('IndexedDB not implemented'));
-                \\  };
-                \\  IDBFactory.prototype.deleteDatabase = function(name) {
-                \\    return Promise.reject(new Error('IndexedDB not implemented'));
-                \\  };
-                \\  IDBFactory.prototype.databases = function() {
-                \\    return Promise.resolve([]);
-                \\  };
-                \\  IDBFactory.prototype.cmp = function(a, b) {
-                \\    if (a < b) return -1;
-                \\    if (a > b) return 1;
-                \\    return 0;
-                \\  };
-                \\  globalThis.IDBFactory = IDBFactory;
-                \\
-                \\  // Create the indexedDB global instance
-                \\  globalThis.indexedDB = new IDBFactory();
-                \\})();
-            ;
-            _ = try self.executeScriptInternal(indexeddb_script);
-        }
+    /// Install `callback` as the own data property `name` of the global.
+    fn installNative(
+        self: *Self,
+        global_obj: *v8.ffi.Object,
+        comptime name: []const u8,
+        callback: v8.ffi.FunctionCallback,
+        data: ?*v8.ffi.Value,
+        length: c_int,
+    ) !void {
+        const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, callback, data) orelse {
+            return error.FunctionTemplateCreateFailed;
+        };
+        defer v8.ffi.v8_FunctionTemplate_Dispose(template);
+        v8.ffi.v8_FunctionTemplate_SetLength(template, length);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+            return error.FunctionCreateFailed;
+        };
+        defer v8.ffi.v8_Function_Dispose(func);
+        const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, name.ptr, name.len) orelse {
+            return error.StringCreationFailed;
+        };
+        defer v8.ffi.v8_String_Dispose(key);
+        _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -1532,18 +1432,12 @@ pub const WorkerV8Context = struct {
     /// For setup scripts (global scope initialization), pass process_messages=false
     /// since the onmessage handler isn't set up yet.
     fn executeScriptEx(self: *Self, source: []const u8, process_messages: bool) !?*anyopaque {
-        log.debug("[executeScriptEx] ENTRY source_len={d} process_messages={} self={*}", .{ source.len, process_messages, self });
-        log.debug("[executeScriptEx] isolate={*} context={*}", .{ self.isolate, self.context });
+        // A worker whose closing flag is set runs no further task.
+        if (!self.runsTasks()) return error.WorkerClosed;
 
         // Enter worker's isolate and context for script execution
-        log.debug("[executeScriptEx] About to enter isolate...", .{});
-        v8.ffi.v8_Isolate_Enter(self.isolate);
-        log.debug("[executeScriptEx] Isolate entered", .{});
-        v8.ffi.v8_Context_Enter(self.context);
-        defer {
-            v8.ffi.v8_Context_Exit(self.context);
-            v8.ffi.v8_Isolate_Exit(self.isolate);
-        }
+        self.enter();
+        defer self.exit();
 
         // CRITICAL: Create HandleScope for V8 handle allocation
         // V8 requires any API calls that create Local handles to be within a HandleScope.
@@ -1559,31 +1453,6 @@ pub const WorkerV8Context = struct {
         defer current_worker_context = prev_context;
 
         const result = try self.executeScriptInternal(source);
-        log.debug("[executeScriptEx] Script executed", .{});
-
-        // Verify onmessage was set (we're still inside the isolate/context)
-        const global_obj = v8.ffi.v8_Context_Global(self.context);
-        if (global_obj) |g| {
-            const onmessage_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onmessage", 9);
-            if (onmessage_key) |k| {
-                const onmessage_val = v8.ffi.v8_Object_Get(g, self.context, @ptrCast(k));
-                if (onmessage_val) |val| {
-                    // CRITICAL: Use v8_Value_IsFunction (for Global handles), NOT v8_Value_IsFunction_Local
-                    // v8_Object_Get returns Global<Value>*, so we must use the Global handle version
-                    if (v8.ffi.v8_Value_IsFunction(val)) {
-                        log.debug("[executeScriptEx] onmessage IS a function!", .{});
-                    } else {
-                        log.debug("[executeScriptEx] onmessage NOT a function", .{});
-                    }
-                } else {
-                    log.debug("[executeScriptEx] onmessage_val is null", .{});
-                }
-            } else {
-                log.debug("[executeScriptEx] onmessage_key is null", .{});
-            }
-        } else {
-            log.debug("[executeScriptEx] global_obj is null", .{});
-        }
 
         // Process any incoming messages from the main thread (only if requested)
         // This allows the worker's onmessage handler (set up by the script) to run
@@ -1599,17 +1468,7 @@ pub const WorkerV8Context = struct {
     /// This also processes any pending incoming messages after script execution,
     /// allowing the worker's onmessage handler to be invoked.
     pub fn executeScript(self: *Self, source: []const u8) !?*anyopaque {
-        log.debug("=== EXECUTE_SCRIPT source_len={d} CALLING executeScriptEx ===", .{source.len});
-        log.debug("=== EXECUTE_SCRIPT self={*} ===", .{self});
-        // Call executeScriptEx directly - inline call to avoid any vtable issues
-        const result_or_err = executeScriptEx(self, source, true);
-        if (result_or_err) |result| {
-            log.debug("=== EXECUTE_SCRIPT DONE result={*} ===", .{result});
-            return result;
-        } else |err| {
-            log.debug("=== EXECUTE_SCRIPT executeScriptEx returned error: {} ===", .{err});
-            return err;
-        }
+        return self.executeScriptEx(source, true);
     }
 
     /// Execute a script without processing messages (for setup scripts)
@@ -1625,23 +1484,17 @@ pub const WorkerV8Context = struct {
         const dedicated_worker = self.dedicated_worker orelse return;
         const inside_port = dedicated_worker.port_pair.inside_port;
 
-        const queue_len = inside_port.message_queue.items.len;
-        if (queue_len > 0) {
-            std.log.debug("[processIncomingMessagesInternal] {d} messages in inside_port queue", .{queue_len});
-        }
-
         while (inside_port.message_queue.items.len > 0) {
             const msg = inside_port.message_queue.orderedRemove(0);
-            std.log.debug("[processIncomingMessagesInternal] Dispatching message type={s}", .{@tagName(msg.data.type)});
-            dispatchMessageToWorkerInternal(self, msg);
+            // A closing worker's tasks are discarded, the message's among them.
+            if (self.runsTasks()) dispatchMessageToWorkerInternal(self, msg);
             msg.deinit();
         }
     }
 
-    /// Dispatch message to worker's onmessage - internal version (already in isolate context)
-    ///
-    /// This function calls self.onmessage(event) entirely via JavaScript to avoid
-    /// V8 FFI handle type mismatches between Global and Local handles.
+    /// Deliver one message the page posted: fire a MessageEvent at the global
+    /// object with the message's data (`fireMessageEvent`). Call with the
+    /// context entered.
     ///
     /// For v8_serialized messages (from cross-isolate ArrayBuffer transfers), we use
     /// V8's ValueDeserializer to reconstruct the ArrayBuffer in this isolate.
@@ -1654,11 +1507,13 @@ pub const WorkerV8Context = struct {
             return;
         }
 
-        // Deserialize message data to JSON string for other types
+        // Worker.postMessage sends a message without a transfer list as the
+        // JSON of its value; parse it back in this realm. A string that is not
+        // JSON is its own data.
         const json_str: []const u8 = switch (serialized.type) {
             .primitive => switch (serialized.data.primitive) {
                 .string => |s| s,
-                .undefined => "undefined",
+                .undefined => "null",
                 .null => "null",
                 .boolean => |b| if (b) "true" else "false",
                 .number => "0", // TODO: Proper number serialization
@@ -1668,33 +1523,33 @@ pub const WorkerV8Context = struct {
             else => return, // Can't convert complex types to simple string
         };
 
-        // Build JavaScript code that calls self.onmessage with the data
-        // This avoids FFI handle type issues by doing everything in JavaScript
-        var script_buf: [4096]u8 = undefined;
-        const script = std.fmt.bufPrint(&script_buf,
-            \\(function() {{
-            \\  if (typeof self.onmessage === 'function') {{
-            \\    var data = {s};
-            \\    var event = {{ data: data, type: 'message', target: self, currentTarget: self }};
-            \\    self.onmessage(event);
-            \\    return true;
-            \\  }}
-            \\  return false;
-            \\}})()
-        , .{json_str}) catch return;
+        // The parse hands back a Local in the caller's scope; the call below
+        // takes Globals.
+        const data: *v8.ffi.Value = if (v8.ffi.v8_JSON_Parse_FromBuffer(self.context, json_str.ptr, @intCast(json_str.len))) |parsed|
+            v8.ffi.v8_Value_ToGlobal(self.isolate, @ptrCast(parsed)) orelse return
+        else
+            @ptrCast(v8.ffi.v8_String_NewFromUtf8(self.isolate, json_str.ptr, @intCast(json_str.len)) orelse return);
+        defer v8.ffi.v8_Value_Dispose(data);
+        self.fireMessageEvent(data, null);
+    }
 
-        // Compile and run the script
-        const src = v8.ffi.v8_String_NewFromUtf8(self.isolate, script.ptr, @intCast(script.len)) orelse return;
-
-        const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, src);
-        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
-
-        if (compile_result.script == null) return;
-
-        const run_result = v8.ffi.v8_Script_Run_Safe(self.context, compile_result.script.?);
-        defer v8.ffi.v8_FreeScriptRunResult(run_result);
-
-        // Run microtasks after handler
+    /// Fire a MessageEvent carrying `data` (and `ports`, an array) at the
+    /// global object, through the realm's dispatcher, then run the microtask
+    /// checkpoint that ends the task. Call with the context entered.
+    fn fireMessageEvent(self: *Self, data: *v8.ffi.Value, ports: ?*v8.ffi.Value) void {
+        const dispatcher = self.message_dispatcher orelse return;
+        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse return;
+        defer v8.ffi.v8_Object_Dispose(global_obj);
+        const no_ports: ?*v8.ffi.Value = if (ports == null) @ptrCast(v8.ffi.v8_Array_New(self.isolate, 0)) else null;
+        defer if (no_ports) |empty| v8.ffi.v8_Value_Dispose(empty);
+        var args = [_]*v8.ffi.Value{ data, ports orelse no_ports.? };
+        if (v8.ffi.v8_Function_Call(
+            @ptrCast(dispatcher),
+            self.context,
+            @ptrCast(global_obj),
+            2,
+            &args,
+        )) |result| v8.ffi.v8_Value_Dispose(result);
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 
@@ -1732,34 +1587,15 @@ pub const WorkerV8Context = struct {
             return;
         }
 
-        // Get global object for calling onmessage
-        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
-            std.log.warn("[Worker] dispatchV8SerializedMessage: no global object", .{});
-            return;
-        };
-
-        // Get self.onmessage property
-        const onmessage_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onmessage", 9) orelse return;
-        const onmessage_val = v8.ffi.v8_Object_Get(global_obj, self.context, @ptrCast(onmessage_key)) orelse return;
-
-        // Check if onmessage is a function
-        // NOTE: v8_Object_Get returns Global<Value>*, so use non-Local type check
-        const onmessage_val_ptr: *v8.ffi.Value = @ptrCast(onmessage_val);
-        if (!v8.ffi.v8_Value_IsFunction(onmessage_val_ptr)) {
-            return;
-        }
-
         // Create ports array from transferred MessagePorts
         // Per HTML Standard § 9.4.4: create new MessagePort wrappers in destination realm
         const port_count = v8_data.transferred_ports.len;
-        std.log.info("[Worker] dispatchV8SerializedMessage: transferred_ports.len = {}", .{port_count});
 
         const ports_array: *v8.ffi.Value = if (port_count > 0) blk: {
             // Create V8 array for ports
             const arr = v8.ffi.v8_Array_New(self.isolate, @intCast(port_count));
 
             for (v8_data.transferred_ports, 0..) |port_data, i| {
-                std.log.info("[Worker] Creating MessagePort wrapper for port {}", .{i});
                 // Get the worker's runtime context
                 const runtime_ctx = self.runtime_ctx_data orelse {
                     std.log.warn("[Worker] No runtime context for MessagePort creation", .{});
@@ -1797,50 +1633,10 @@ pub const WorkerV8Context = struct {
 
             break :blk @ptrCast(arr);
         } else @ptrCast(v8.ffi.v8_Array_New(self.isolate, 0));
+        defer v8.ffi.v8_Value_Dispose(ports_array);
+        defer v8.ffi.v8_Value_Dispose(v8_value.?);
 
-        // Create a simple event object with 'data' and 'ports' properties using JavaScript
-        // The deserialized v8_value is the data we need to pass as event.data
-        const event_script =
-            \\(function(data, ports) {
-            \\  return { data: data, type: 'message', target: self, currentTarget: self, ports: ports };
-            \\})
-        ;
-        const event_source = v8.ffi.v8_String_NewFromUtf8(self.isolate, event_script.ptr, @intCast(event_script.len)) orelse return;
-        const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, event_source);
-        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
-
-        if (compile_result.script == null) return;
-
-        const run_result = v8.ffi.v8_Script_Run_Safe(self.context, compile_result.script.?);
-        defer v8.ffi.v8_FreeScriptRunResult(run_result);
-
-        const event_factory = run_result.value orelse return;
-
-        // Call the factory function with deserialized data and ports array
-        var factory_args = [_]*v8.ffi.Value{ v8_value.?, ports_array };
-        const event_obj = v8.ffi.v8_Function_Call(
-            @ptrCast(event_factory),
-            self.context,
-            @ptrCast(global_obj),
-            2,
-            &factory_args,
-        ) orelse {
-            std.log.warn("[Worker] dispatchV8SerializedMessage: failed to create event object", .{});
-            return;
-        };
-
-        // Call onmessage(event)
-        var args = [_]*v8.ffi.Value{event_obj};
-        _ = v8.ffi.v8_Function_Call(
-            @ptrCast(onmessage_val),
-            self.context,
-            @ptrCast(global_obj),
-            1,
-            &args,
-        );
-
-        // Run microtasks after handler
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        self.fireMessageEvent(v8_value.?, ports_array);
     }
 
     /// Dispatch error to self.onerror handler (OnErrorEventHandler)
@@ -2081,7 +1877,10 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 /// V8 callback for setTimeout() - schedules a one-shot timer
 fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Owned, and needed only to convert the delay: the timer runs in its
+    // worker's own context.
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Context_Dispose(v8_context);
 
     // Get the callback function (first argument)
     if (info.v8_FunctionCallbackInfo_Length() < 1) {
@@ -2144,7 +1943,6 @@ fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     timer_ctx.* = .{
         .callback_global = callback_global,
         .isolate = isolate,
-        .context = v8_context,
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = false,
         .interval_delay_ms = 0,
@@ -2190,7 +1988,10 @@ fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
 /// V8 callback for setInterval() - schedules a repeating timer
 fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Owned, and needed only to convert the delay: the timer runs in its
+    // worker's own context.
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.ffi.v8_Context_Dispose(v8_context);
 
     // Get the callback function (first argument)
     if (info.v8_FunctionCallbackInfo_Length() < 1) {
@@ -2259,7 +2060,6 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     timer_ctx.* = .{
         .callback_global = callback_global,
         .isolate = isolate,
-        .context = v8_context,
         .current_timer_id = 0, // Will be updated after scheduling
         .is_interval = true,
         .nesting_level = native_timer.nesting_level +| 1,
@@ -2397,9 +2197,12 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     const preview_len = @min(json_str.len, 50);
     log.debug("[workerPostMessageCallback] json_str len={d}, preview={s}, worker_ctx={*}, closing={}, terminated={}", .{ json_str.len, json_str[0..preview_len], worker_ctx, dedicated_worker.agent.isClosing(), dedicated_worker.agent.isTerminated() });
 
-    // Check agent state
-    if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
-        log.debug("[workerPostMessageCallback] Agent is closing/terminated, returning", .{});
+    // A terminated worker's messages are never delivered ("terminate a
+    // worker" step 4). A closing one's are: the task that called close() runs
+    // to its end, and what it posts goes out
+    // (workers/interfaces/WorkerGlobalScope/close/sending-messages).
+    if (dedicated_worker.agent.isTerminated() or worker_ctx.phase == .realm_gone) {
+        log.debug("[workerPostMessageCallback] Agent is terminated, returning", .{});
         return;
     }
 
@@ -2425,216 +2228,6 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         msg.deinit();
         return;
     };
-}
-
-// ============================================================================
-// Worker Fetch API Support
-// ============================================================================
-
-/// Helper to throw TypeError in worker context
-fn workerThrowTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-}
-
-/// Helper to reject a promise with TypeError in worker context
-fn workerRejectWithTypeError(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, resolver: *v8.ffi.PromiseResolver, msg: []const u8) void {
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_ctx, error_val);
-}
-
-/// Worker fetch callback - implements the global fetch() function for workers
-/// Per Fetch spec: https://fetch.spec.whatwg.org/#fetch-method
-fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        workerThrowTypeError(isolate, info, "No context available");
-        return;
-    };
-
-    // Get allocator from worker context
-    const worker_ctx = current_worker_context orelse {
-        workerThrowTypeError(isolate, info, "No worker context available");
-        return;
-    };
-    const allocator = worker_ctx.allocator;
-
-    // Create a Promise to return
-    const resolver = v8.ffi.v8_PromiseResolver_New(v8_ctx) orelse {
-        workerThrowTypeError(isolate, info, "Failed to create promise");
-        return;
-    };
-    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
-        workerThrowTypeError(isolate, info, "Failed to get promise");
-        return;
-    };
-
-    // Return the promise early - we'll resolve/reject it after fetch completes
-    info.setReturnValue(@ptrCast(promise));
-
-    // Check for URL argument
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': 1 argument required, but only 0 present.");
-        return;
-    }
-
-    // Get URL from first argument
-    const url_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsString(url_value)) {
-        // TODO: Handle Request object input
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': URL must be a string");
-        return;
-    }
-
-    // Convert V8 string to Zig string
-    const url_str = v8.ffi.v8_Value_ToString(url_value, v8_ctx) orelse {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to convert URL to string");
-        return;
-    };
-    const url_len = v8.ffi.v8_String_Utf8Length(url_str);
-    if (url_len <= 0 or url_len > 65536) {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Invalid URL length");
-        return;
-    }
-
-    const url_buffer = allocator.alloc(u8, @intCast(url_len)) catch {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Out of memory");
-        return;
-    };
-    defer allocator.free(url_buffer);
-
-    const written = v8.ffi.v8_String_WriteUtf8(url_str, url_buffer.ptr, @intCast(url_len));
-    if (written <= 0) {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to read URL string");
-        return;
-    }
-    const url_slice = url_buffer[0..@intCast(written)];
-
-    // Resolve relative URLs against the document URL
-    var resolved_url: []const u8 = url_slice;
-    var resolved_url_owned = false;
-    defer if (resolved_url_owned) allocator.free(resolved_url);
-
-    if (std.mem.indexOf(u8, url_slice, "://") == null) {
-        // Relative URL - resolve against document URL
-        if (context_manager.getDocumentUrl(v8_ctx)) |doc_url| {
-            // Find the last slash to get the base directory
-            if (std.mem.lastIndexOf(u8, doc_url, "/")) |last_slash| {
-                // Special handling for root-relative URLs
-                if (url_slice.len > 0 and url_slice[0] == '/') {
-                    // Extract origin (scheme + host) from document URL
-                    if (std.mem.indexOf(u8, doc_url, "://")) |scheme_end| {
-                        const after_scheme = doc_url[scheme_end + 3 ..];
-                        if (std.mem.indexOf(u8, after_scheme, "/")) |host_end| {
-                            const origin = doc_url[0 .. scheme_end + 3 + host_end];
-                            resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ origin, url_slice }) catch {
-                                workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
-                                return;
-                            };
-                            resolved_url_owned = true;
-                        }
-                    }
-                } else {
-                    // Relative path - append to base directory
-                    const base_dir = doc_url[0 .. last_slash + 1];
-                    resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ base_dir, url_slice }) catch {
-                        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
-                        return;
-                    };
-                    resolved_url_owned = true;
-                }
-            }
-        }
-    }
-
-    // Create internal request
-    const internal_request = fetch.internal.InternalRequest.init(allocator, resolved_url) catch {
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create request");
-        return;
-    };
-    defer internal_request.deinit();
-
-    // Execute fetch algorithm (synchronous for now)
-    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
-        const err_msg = switch (err) {
-            fetch.algorithms.FetchError.NetworkError => "NetworkError: Failed to fetch",
-            fetch.algorithms.FetchError.AbortError => "AbortError: Fetch aborted",
-            fetch.algorithms.FetchError.OutOfMemory => "OutOfMemory",
-        };
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, err_msg);
-        return;
-    };
-    defer fetch_result.timing_info.deinit();
-
-    // Get the runtime context from context_manager (properly managed, tied to V8 context)
-    // This ensures the context lives as long as the V8 context and has engine support
-    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_ctx, isolate, allocator) catch {
-        fetch_result.response.deinit();
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to get runtime context");
-        return;
-    };
-
-    // Create Response WebIDL wrapper from internal response
-    const ResponseImpl = impls.Response;
-    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, runtime_ctx) catch {
-        fetch_result.response.deinit();
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
-        return;
-    };
-    // Note: response_instance now owns fetch_result.response, don't deinit it separately
-
-    // Wrap the Response instance for V8
-    const response_js = v8.conversions.instanceToV8(isolate, response_instance);
-
-    // Resolve the promise with the Response
-    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_ctx, response_js);
-}
-
-/// V8 callback for close() - terminates the worker
-///
-/// Spec: HTML Standard § 10.2.4.1 close()
-/// https://html.spec.whatwg.org/#dom-dedicatedworkerglobalscope-close
-///
-/// Per the spec, close() sets the closing flag which prevents new tasks from being
-/// added. However, messages already posted BEFORE close() (via postMessage) should
-/// still be delivered. This is achieved by:
-/// 1. Flushing pending messages to the port queue BEFORE setting the closing flag
-/// 2. Scheduling a message dispatch callback to ensure delivery
-fn workerCloseCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    _ = info;
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse return;
-
-    // Get the DedicatedWorker to close
-    const dedicated_worker = self.dedicated_worker orelse return;
-
-    // CRITICAL: Flush any pending messages BEFORE closing
-    // Messages posted before close() (e.g., "before" in Phase 16.1 test) are stored
-    // in the threadlocal pending_messages queue. We must move them to the port's
-    // message_queue before close() stops the event loop, otherwise they'll never
-    // be delivered.
-    DedicatedWorker.flushPendingMessages();
-
-    // Note: We don't schedule a timer for message dispatch here.
-    // Messages will be dispatched synchronously by executeWorkerScriptCallback
-    // after the worker script finishes executing. This avoids timer delays
-    // that were causing test timeouts (test 16.1).
-
-    // Now close the worker - this sets the closing flag and stops the event loop
-    dedicated_worker.close();
 }
 
 /// V8 callback for importScripts(...urls) - loads and executes scripts synchronously
@@ -2694,8 +2287,11 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         };
         defer fetched_script.deinit();
 
-        // Execute the script synchronously
-        _ = self.executeScript(fetched_script.source) catch |err| {
+        // Execute the script synchronously. Not executeScript(): that also
+        // delivers the page's queued messages when the script ends, which
+        // would run the worker's message handlers in the middle of the
+        // importScripts() call.
+        _ = self.executeScriptNoMessages(fetched_script.source) catch |err| {
             std.log.warn("importScripts: failed to execute '{s}': {}", .{ url, err });
             continue;
         };
@@ -2713,301 +2309,25 @@ fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // so the worker script can call it.
 }
 
-/// V8 callback for queueMicrotask() in worker global scope
-/// Per HTML Standard § 8.1.7 - Integration with the JavaScript job queue
-fn workerQueueMicrotaskCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-
-    // Get the callback function (first argument)
-    // Per spec, queueMicrotask requires exactly one argument that must be callable
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        // Throw TypeError: callback is required
-        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "queueMicrotask requires a callback function", 44) orelse return;
-        const exc = v8.ffi.v8_Exception_TypeError(@ptrCast(msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, exc);
-        return;
-    }
-
-    const callback_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        // Throw TypeError: argument is not a function
-        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "queueMicrotask argument must be a function", 42) orelse return;
-        const exc = v8.ffi.v8_Exception_TypeError(@ptrCast(msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, exc);
-        return;
-    }
-
-    // Get the worker context
-    const worker_ctx = current_worker_context orelse return;
-
-    // Create Global handle for the callback function
-    const callback_global = v8.ffi.v8_Value_ToGlobal(isolate, callback_value) orelse return;
-
-    // Allocate microtask context
-    const ctx = worker_ctx.allocator.create(WorkerMicrotaskContext) catch {
-        v8.ffi.v8_Global_Dispose(callback_global);
-        return;
-    };
-
-    ctx.* = .{
-        .callback_global = callback_global,
-        .isolate = isolate,
-        .context = v8_context,
-        .allocator = worker_ctx.allocator,
-        .worker_v8_context = worker_ctx,
-    };
-
-    // Enqueue the microtask with V8
-    // V8 will invoke workerMicrotaskTrampoline during the next PerformMicrotaskCheckpoint
-    const callback_fn: ?*const anyopaque = @ptrCast(&workerMicrotaskTrampoline);
-    v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
-}
-
-/// V8 callback for structuredClone() - creates a deep copy using the structured clone algorithm
-///
-/// Spec: HTML Standard § 2.7.8: StructuredClone method
-/// https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
-///
-/// Creates and returns a deep copy of a given value using the structured clone algorithm.
-/// Primitives are returned as-is. Objects are serialized and deserialized to create
-/// independent copies. Functions and Symbols throw DataCloneError.
-fn workerStructuredCloneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // structuredClone requires at least 1 argument (the value to clone)
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        // Per spec, undefined is a valid argument, but we need at least one arg syntactically
-        // Clone undefined and return
-        const undef = v8.ffi.v8_Undefined(isolate) orelse return;
-        info.setReturnValue(@ptrCast(undef));
-        return;
-    }
-
-    // Get the value to clone
-    const value = info.get(0);
-
-    // Check for unclonable types
-    if (v8.ffi.v8_Value_IsFunction(value) or v8.ffi.v8_Value_IsSymbol(value)) {
-        // Functions and Symbols cannot be cloned - throw DataCloneError
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Use V8's built-in structured clone for objects
-    // This handles circular references, typed arrays, dates, etc.
-    const cloned = v8.ffi.v8_Value_StructuredClone(value) orelse {
-        // Clone failed - likely contains unclonable data
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-
-    info.setReturnValue(cloned);
-}
-
-fn workerAtobCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerBase64(info, "atob", html_core.base64_utility.atob);
-}
-
-fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerBase64(info, "btoa", html_core.base64_utility.btoa);
-}
-
-/// The binding of `DOMString atob(DOMString data)` and of btoa: convert the
-/// argument, run the steps, and return the string or throw what they throw.
-fn workerBase64(
-    info: *const v8.ffi.FunctionCallbackInfo,
-    comptime name: []const u8,
-    steps: *const fn (Allocator, []const u8) html_core.base64_utility.Error![]u8,
-) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const allocator = getWorkerAllocator() orelse std.heap.page_allocator;
-
-    // `data` is required.
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        v8.conversions.throwTypeErrorFromContext(isolate, context, "Failed to execute '" ++ name ++ "': 1 argument required, but only 0 present.");
-        return;
-    }
-    const arg = info.get(0);
-    defer v8.ffi.v8_Global_Dispose(arg);
-    var data = v8.conversions.fromV8Value(runtime.DOMString, allocator, isolate, context, arg) catch return;
-    defer data.deinit(allocator);
-
-    const result = steps(allocator, data.asSlice()) catch |err| {
-        v8.conversions.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
-        return;
-    };
-    defer allocator.free(result);
-    // Owned: v8_String_NewFromUtf8 returns a Global the caller disposes;
-    // setReturnValue reads it into a Local.
-    const str = v8.ffi.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse return;
-    defer v8.ffi.v8_String_Dispose(str);
-    info.setReturnValue(@ptrCast(str));
-}
-
-/// Dispatch a MessageEvent to the worker's self.onmessage handler
-///
-/// This is called when processing messages from the main thread (inside_port).
-/// It deserializes the message data and calls the JavaScript onmessage handler.
-///
-/// The function must be called from within the worker's V8 isolate context.
-pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.message_channel.QueuedMessage) void {
-    log.debug("[dispatchMessageToWorker] ENTRY", .{});
-
-    const isolate = worker_ctx.isolate;
-    const context = worker_ctx.context;
-
-    // Create HandleScope for V8 operations
-    const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get global object
-    const global_obj = v8.ffi.v8_Context_Global(context) orelse {
-        log.debug("[dispatchMessageToWorker] No global object", .{});
-        return;
-    };
-
-    // Get self.onmessage property
-    const onmessage_key = v8.ffi.v8_String_NewFromUtf8(isolate, "onmessage", 9) orelse {
-        log.debug("[dispatchMessageToWorker] Failed to create onmessage key", .{});
-        return;
-    };
-    const onmessage_val = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(onmessage_key)) orelse {
-        log.debug("[dispatchMessageToWorker] Failed to get onmessage property", .{});
-        return;
-    };
-
-    // Check if onmessage is a function
-    // CRITICAL: Use v8_Value_IsFunction (for Global handles), NOT v8_Value_IsFunction_Local
-    // v8_Object_Get returns Global<Value>*, so we must use the Global handle version
-    if (!v8.ffi.v8_Value_IsFunction(onmessage_val)) {
-        log.debug("[dispatchMessageToWorker] onmessage is NOT a function", .{});
-        return;
-    }
-    log.debug("[dispatchMessageToWorker] onmessage IS a function", .{});
-
-    // Deserialize message data to JSON string
-    const serialized = msg.data;
-    const json_str = switch (serialized.type) {
-        .primitive => switch (serialized.data.primitive) {
-            .string => |s| s,
-            .undefined => "undefined",
-            .null => "null",
-            .boolean => |b| if (b) "true" else "false",
-            .number => "0", // TODO: Proper number serialization
-            .bigint => "0", // TODO: Proper bigint serialization
-        },
-        .string_object => serialized.data.string_object,
-        else => {
-            log.debug("[dispatchMessageToWorker] Unsupported message type", .{});
-            return;
-        },
-    };
-
-    log.debug("[dispatchMessageToWorker] json_str: {s}", .{json_str});
-
-    // Create the message data as a V8 value by parsing the JSON
-    const data_value = blk: {
-        // Try to parse as JSON first using the buffer API
-        const parsed = v8.ffi.v8_JSON_Parse_FromBuffer(context, json_str.ptr, @intCast(json_str.len));
-        if (parsed != null) {
-            log.debug("[dispatchMessageToWorker] JSON parsed successfully", .{});
-            break :blk parsed;
-        }
-        log.debug("[dispatchMessageToWorker] JSON parse failed, creating as string", .{});
-        // If not valid JSON, create as string literal
-        const json_v8_str = v8.ffi.v8_String_NewFromUtf8(isolate, json_str.ptr, @intCast(json_str.len)) orelse break :blk null;
-        break :blk @as(?*v8.ffi.Value, @ptrCast(json_v8_str));
-    } orelse {
-        log.debug("[dispatchMessageToWorker] Failed to create data value", .{});
-        return;
-    };
-
-    // Create a simple event object with 'data' property
-    // For now, use a plain object instead of full MessageEvent
-    const event_script =
-        \\(function(data) {
-        \\  return { data: data, type: 'message', target: self, currentTarget: self };
-        \\})
-    ;
-    const event_source = v8.ffi.v8_String_NewFromUtf8(isolate, event_script.ptr, @intCast(event_script.len)) orelse {
-        log.debug("[dispatchMessageToWorker] Failed to create event_source string", .{});
-        return;
-    };
-    const compile_result = v8.ffi.v8_Script_Compile_Safe(context, event_source);
-    defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
-
-    if (compile_result.script == null) {
-        log.debug("[dispatchMessageToWorker] Event script compilation failed", .{});
-        return;
-    }
-
-    const run_result = v8.ffi.v8_Script_Run_Safe(context, compile_result.script.?);
-    defer v8.ffi.v8_FreeScriptRunResult(run_result);
-
-    const event_factory = run_result.value orelse {
-        log.debug("[dispatchMessageToWorker] Event factory run failed", .{});
-        return;
-    };
-
-    // Call the factory function with data to create event object
-    var factory_args = [_]*v8.ffi.Value{data_value};
-    const event_obj = v8.ffi.v8_Function_Call(
-        @ptrCast(event_factory),
-        context,
-        @ptrCast(global_obj),
-        1,
-        &factory_args,
-    ) orelse {
-        log.debug("[dispatchMessageToWorker] Event factory call failed", .{});
-        return;
-    };
-    log.debug("[dispatchMessageToWorker] Event object created", .{});
-
-    // Call onmessage(event)
-    log.debug("[dispatchMessageToWorker] Calling onmessage handler...", .{});
-    var args = [_]*v8.ffi.Value{event_obj};
-    _ = v8.ffi.v8_Function_Call(
-        @ptrCast(onmessage_val),
-        context,
-        @ptrCast(global_obj),
-        1,
-        &args,
-    );
-    log.debug("[dispatchMessageToWorker] onmessage handler returned", .{});
-
-    // Run microtasks after handler
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-    log.debug("[dispatchMessageToWorker] DONE", .{});
-}
-
 /// Process incoming messages from the main thread
 ///
 /// This should be called from within the worker's V8 context after
 /// the worker script has set up its onmessage handler.
 pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
-    log.debug("[processIncomingMessages] ENTRY", .{});
-    const dedicated_worker = worker_ctx.dedicated_worker orelse {
-        log.debug("[processIncomingMessages] No dedicated_worker, returning", .{});
+    const dedicated_worker = worker_ctx.dedicated_worker orelse return;
+
+    // A closing worker runs no further task; its messages are discarded
+    // (close() step 1, "terminate a worker" step 2), and once its realm is
+    // gone there is nothing to deliver them to.
+    if (!worker_ctx.runsTasks()) {
+        emptyPortQueue(dedicated_worker.port_pair.inside_port);
         return;
-    };
+    }
 
     // Process messages inside worker isolate context
     {
-        // Enter the worker's isolate and context
-        v8.ffi.v8_Isolate_Enter(worker_ctx.isolate);
-        v8.ffi.v8_Context_Enter(worker_ctx.context);
-        defer {
-            v8.ffi.v8_Context_Exit(worker_ctx.context);
-            v8.ffi.v8_Isolate_Exit(worker_ctx.isolate);
-        }
+        worker_ctx.enter();
+        defer worker_ctx.exit();
 
         // Create HandleScope for V8 operations (required for string creation in dispatchMessageToWorkerInternal)
         const handle_scope = v8.ffi.v8_HandleScope_New(worker_ctx.isolate);
@@ -3018,18 +2338,7 @@ pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
         current_worker_context = worker_ctx;
         defer current_worker_context = prev_context;
 
-        // Process messages - directly iterate over the queue
-        const inside_port = dedicated_worker.port_pair.inside_port;
-        const queue_len = inside_port.message_queue.items.len;
-        log.debug("[processIncomingMessages] inside_port has {d} messages", .{queue_len});
-
-        while (inside_port.message_queue.items.len > 0) {
-            const msg = inside_port.message_queue.orderedRemove(0);
-            log.debug("[processIncomingMessages] Dispatching message via JS", .{});
-            // Use the internal method which dispatches via JavaScript - cleaner and avoids FFI handle issues
-            worker_ctx.dispatchMessageToWorkerInternal(msg);
-            msg.deinit();
-        }
+        worker_ctx.processIncomingMessagesInternal();
     }
     // Block exits here, so we're now outside the worker isolate
 
@@ -3038,9 +2347,14 @@ pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
     // in pending_messages (not directly to outside_port) to avoid HandleScope issues.
     // Now that we've exited the worker isolate, flush them to the actual port.
     workers.dedicated_worker.DedicatedWorker.flushPendingMessages();
-    log.debug("[processIncomingMessages] Flushed pending messages", .{});
+}
 
-    log.debug("[processIncomingMessages] Done processing", .{});
+/// Drop every message queued on `port`.
+fn emptyPortQueue(port: anytype) void {
+    while (port.message_queue.items.len > 0) {
+        const msg = port.message_queue.orderedRemove(0);
+        msg.deinit();
+    }
 }
 
 // ============================================================================

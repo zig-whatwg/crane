@@ -1483,6 +1483,10 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
             log.debug("[Worker.call_terminate] worker={*}, agent={*}", .{ worker, worker.agent });
             worker.terminate();
         }
+        // The host's half: discard the worker's tasks, empty the port queue
+        // its implicit port is entangled with, and let its realm and isolate
+        // go (HTML "terminate a worker").
+        if (internal.v8_context) |v8_ctx| v8_ctx.terminate();
     }
 }
 

@@ -22,7 +22,12 @@ const InternalWorkerLocation = workers.WorkerLocation;
 const InternalWorkerNavigator = workers.WorkerNavigator;
 const WorkerType = workers.WorkerType;
 
-// Import structured clone
+// A global scope is an EventTarget: it chains to EventTarget's state, and its
+// event handler IDL attributes live in EventTarget's event handler map.
+const EventTargetImpl = @import("EventTarget.zig");
+const WorkerLocationImpl = @import("WorkerLocation.zig");
+const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
+const same_object = @import("same_object.zig");
 
 // Import event loop for timer support
 const event_loop_mod = html_core.event_loop;
@@ -45,17 +50,23 @@ pub const ImplError = error{
 /// Contains cached WorkerLocation and WorkerNavigator objects,
 /// as well as worker type information and event loop reference.
 pub const InternalState = struct {
-    /// Internal WorkerLocation (from src/html/workers/)
+    /// Internal WorkerLocation (from src/html/workers/). Owned: the
+    /// WorkerLocation object borrows it.
     internal_location: ?*InternalWorkerLocation = null,
 
-    /// Internal WorkerNavigator (from src/html/workers/)
+    /// Internal WorkerNavigator (from src/html/workers/). Owned: the
+    /// WorkerNavigator object borrows it.
     internal_navigator: ?*InternalWorkerNavigator = null,
 
-    /// Cached WebIDL WorkerLocation interface instance
+    /// The WorkerLocation object, [SameObject]. Its wrapper is pinned while
+    /// this global scope lives (same_object.zig): nothing else holds it, and a
+    /// collection would otherwise free it under this pointer.
     location_instance: ?*runtime.Instance = null,
+    location_pin: same_object.Pin = .{},
 
-    /// Cached WebIDL WorkerNavigator interface instance
+    /// The WorkerNavigator object, [SameObject], pinned the same way.
     navigator_instance: ?*runtime.Instance = null,
+    navigator_pin: same_object.Pin = .{},
 
     /// Reference to the worker's event loop (for timer APIs)
     /// This is set when the worker is fully initialized with an event loop.
@@ -84,14 +95,10 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up WebIDL interface instances
-        if (self.location_instance) |loc_inst| {
-            runtime.Instance.deinit(loc_inst);
-        }
-        if (self.navigator_instance) |nav_inst| {
-            runtime.Instance.deinit(nav_inst);
-        }
-        // Clean up internal implementations
+        // The WorkerLocation and WorkerNavigator objects are the wrapper
+        // cache's: they are freed with it, not here. Only the pins are ours.
+        self.location_pin.release();
+        self.navigator_pin.release();
         if (self.internal_location) |loc| {
             loc.deinit();
         }
@@ -122,6 +129,11 @@ pub const InternalState = struct {
 };
 
 /// Initialize instance (creates the instance)
+///
+/// A WorkerGlobalScope is an EventTarget, so this chains to EventTarget's
+/// init. When `ctx` is the realm of a worker the host is running, the scope
+/// takes that worker's type and URL ("run a worker" steps 7-9 set them on the
+/// global scope before its script runs).
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -129,14 +141,22 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // The WindowOrWorkerGlobalScope mixin reads a worker's settings here.
+    installSettings();
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
+    if (@import("html").worker_v8_context.scopeSettings(ctx)) |settings| {
+        try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
+    }
+    return instance;
+}
+
+fn installSettings() void {
     @import("dom").global_settings.install(.{
         .owns = &isWorkerGlobalScope,
         .origin = &settingsOrigin,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
     });
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
 }
 
 // ============================================================================
@@ -178,9 +198,16 @@ pub fn initWithUrl(
     url: []const u8,
     worker_type: WorkerType,
 ) !*runtime.Instance {
+    installSettings();
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
+    try setUpFromUrl(instance, allocator, url, worker_type);
+    return instance;
+}
 
+/// Give `instance` its worker's URL and type, and what follows from the URL:
+/// its location, its origin and whether it is a secure context.
+fn setUpFromUrl(instance: *runtime.Instance, allocator: std.mem.Allocator, url: []const u8, worker_type: WorkerType) !void {
     // Create internal state
     const internal_state = try allocator.create(InternalState);
     errdefer allocator.destroy(internal_state);
@@ -201,7 +228,7 @@ pub fn initWithUrl(
     internal_state.* = .{
         .internal_location = location,
         .internal_navigator = navigator,
-        .url = url,
+        .url = location.getHref(),
         .worker_type = worker_type,
         .origin = location.getOrigin(),
         .is_secure_context = is_secure,
@@ -211,8 +238,6 @@ pub fn initWithUrl(
     // Store internal state
     var state = instance.getState(State);
     state.own._internal = internal_state;
-
-    return instance;
 }
 
 /// Deinitialize instance
@@ -221,7 +246,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -299,40 +326,21 @@ pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// the WorkerGlobalScope object when the worker was created."
 pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // Return cached instance if already created
-        if (internal.location_instance) |loc_inst| {
-            return loc_inst;
-        }
+    const internal = state.own._internal orelse return error.NotImplemented;
+    if (internal.location_instance) |loc_inst| return loc_inst;
+    const loc = internal.internal_location orelse return error.NotImplemented;
 
-        // Create WorkerLocation interface instance
-        if (internal.internal_location) |loc| {
-            // Create a new runtime.Instance wrapping the internal location
-            const loc_instance = WorkerLocation.init(internal.allocator, instance.ctx) catch {
-                return error.OutOfMemory;
-            };
+    const loc_instance = try WorkerLocation.init(internal.allocator, instance.ctx);
+    const loc_internal = internal.allocator.create(WorkerLocationImpl.InternalState) catch {
+        runtime.Instance.deinit(loc_instance);
+        return error.OutOfMemory;
+    };
+    loc_internal.* = .{ .internal_location = loc, .allocator = internal.allocator, .owned = false };
+    loc_instance.getState(WorkerLocation.State).own._internal = loc_internal;
 
-            // Get the location state and wire it to the internal location
-            const loc_state = loc_instance.getState(WorkerLocation.State);
-
-            // Create WorkerLocation's internal state
-            const WorkerLocationImpl = @import("WorkerLocation.zig");
-            const loc_internal = internal.allocator.create(WorkerLocationImpl.InternalState) catch {
-                runtime.Instance.deinit(loc_instance);
-                return error.OutOfMemory;
-            };
-            loc_internal.* = .{
-                .internal_location = loc,
-                .allocator = internal.allocator,
-            };
-            loc_state.own._internal = loc_internal;
-
-            // Cache and return
-            internal.location_instance = loc_instance;
-            return loc_instance;
-        }
-    }
-    return error.NotImplemented;
+    internal.location_instance = loc_instance;
+    internal.location_pin.hold(loc_instance);
+    return loc_instance;
 }
 
 /// Getter for navigator
@@ -342,76 +350,62 @@ pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// the WorkerGlobalScope object when the worker was created."
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // Return cached instance if already created
-        if (internal.navigator_instance) |nav_inst| {
-            return nav_inst;
-        }
+    const internal = state.own._internal orelse return error.NotImplemented;
+    if (internal.navigator_instance) |nav_inst| return nav_inst;
+    const nav = internal.internal_navigator orelse return error.NotImplemented;
 
-        // Create WorkerNavigator interface instance
-        if (internal.internal_navigator) |nav| {
-            // Create a new runtime.Instance wrapping the internal navigator
-            const nav_instance = WorkerNavigator.init(internal.allocator, instance.ctx) catch {
-                return error.OutOfMemory;
-            };
+    const nav_instance = try WorkerNavigator.init(internal.allocator, instance.ctx);
+    const nav_internal = internal.allocator.create(WorkerNavigatorImpl.InternalState) catch {
+        runtime.Instance.deinit(nav_instance);
+        return error.OutOfMemory;
+    };
+    nav_internal.* = .{ .internal_navigator = nav, .allocator = internal.allocator, .owned = false };
+    nav_instance.getState(WorkerNavigator.State).own._internal = nav_internal;
 
-            // Get the navigator state and wire it to the internal navigator
-            const nav_state = nav_instance.getState(WorkerNavigator.State);
+    internal.navigator_instance = nav_instance;
+    internal.navigator_pin.hold(nav_instance);
+    return nav_instance;
+}
 
-            // Create WorkerNavigator's internal state
-            const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
-            const nav_internal = internal.allocator.create(WorkerNavigatorImpl.InternalState) catch {
-                runtime.Instance.deinit(nav_instance);
-                return error.OutOfMemory;
-            };
-            nav_internal.* = .{
-                .internal_navigator = nav,
-                .allocator = internal.allocator,
-            };
-            nav_state.own._internal = nav_internal;
+// Event handler IDL attributes (HTML §8.1.8.1). Every one keeps its value in
+// EventTarget's event handler map, which is also where dispatch finds it.
 
-            // Cache and return
-            internal.navigator_instance = nav_instance;
-            return nav_instance;
-        }
-    }
-    return error.NotImplemented;
+fn handler(comptime Handler: type, instance: *runtime.Instance, comptime event_type: []const u8) Handler {
+    return EventTargetImpl.eventHandler(Handler, instance, event_type);
+}
+
+fn setHandler(comptime Handler: type, instance: *runtime.Instance, comptime event_type: []const u8, value: Handler) !void {
+    try EventTargetImpl.setEventHandler(Handler, instance, event_type, value);
 }
 
 /// Getter for onerror
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.OnErrorEventHandler {
-    const state = instance.getState(State);
-    return state.own.onerror;
+    return handler(typedefs.OnErrorEventHandler, instance, "error");
 }
 
 /// Getter for onlanguagechange
 pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onlanguagechange;
+    return handler(typedefs.EventHandler, instance, "languagechange");
 }
 
 /// Getter for onoffline
 pub fn get_onoffline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onoffline;
+    return handler(typedefs.EventHandler, instance, "offline");
 }
 
 /// Getter for ononline
 pub fn get_ononline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.ononline;
+    return handler(typedefs.EventHandler, instance, "online");
 }
 
 /// Getter for onrejectionhandled
 pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onrejectionhandled;
+    return handler(typedefs.EventHandler, instance, "rejectionhandled");
 }
 
 /// Getter for onunhandledrejection
 pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onunhandledrejection;
+    return handler(typedefs.EventHandler, instance, "unhandledrejection");
 }
 
 /// Getter for fonts
@@ -423,44 +417,32 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.OnErrorEventHandler, instance, "error", value);
 }
 
 /// Setter for onlanguagechange
 pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.EventHandler, instance, "languagechange", value);
 }
 
 /// Setter for onoffline
 pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.EventHandler, instance, "offline", value);
 }
 
 /// Setter for ononline
 pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.EventHandler, instance, "online", value);
 }
 
 /// Setter for onrejectionhandled
 pub fn set_onrejectionhandled(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.EventHandler, instance, "rejectionhandled", value);
 }
 
 /// Setter for onunhandledrejection
 pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setHandler(typedefs.EventHandler, instance, "unhandledrejection", value);
 }
 
 /// Operation: importScripts
