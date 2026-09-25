@@ -1097,6 +1097,10 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
         // destroyed below (they go with the slab) and their `ctx` points into
         // this entry. See ManagerState.retired.
         defer retireEntry(state, entry);
+        // The callbacks this context's script registered hold handles into it
+        // - one listener is enough to keep the whole page alive - and nothing
+        // else releases them, since its EventTargets are never torn down.
+        @import("callback_registry.zig").cleanupForContext(raw_addr);
         if (entry.owns_context) {
             // A pointer, not a copy - `clearV8WrapperCacheStorage` below has to
             // land on the entry's own ContextData, which is what every Instance
@@ -2798,6 +2802,9 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     // stack, or finished and retired - owns it.
     if (entry.destroying) return;
     entry.destroying = true;
+
+    // A frame's callbacks hold handles into its context; see removeContext.
+    @import("callback_registry.zig").cleanupForContext(v8.v8_Context_GetRawAddress(entry.v8_ctx));
 
     // 0b. Check if already removed (guard against double-cleanup)
     const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);

@@ -131,7 +131,9 @@ pub fn create(
 
     // Set Symbol.toStringTag per WebIDL §3.7.4
     if (v8.v8_Symbol_GetToStringTag(isolate)) |tag_symbol| {
+        defer v8.v8_Value_Dispose(@ptrCast(tag_symbol));
         const tag_val = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
+        defer if (tag_val) |t| v8.v8_String_Dispose(t);
         _ = v8.v8_Object_DefineProperty(instance, context, @ptrCast(tag_symbol), @ptrCast(tag_val), false, false, true);
     }
 
@@ -154,14 +156,21 @@ pub fn insertIntoPrototypeChain(
     context: *v8.Context,
     window_instance_opt: ?*runtime.Instance,
 ) bool {
-    // Get Window.prototype from the chain
+    // Get Window.prototype from the chain. Every handle below is owned and
+    // released on the way out: each points into `context`, and one leaked per
+    // context kept every page and frame alive.
     const global = v8.v8_Context_Global(context) orelse return false;
+    defer v8.v8_Object_Dispose(global);
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return false;
+    defer v8.v8_String_Dispose(window_key);
     const window_ctor_val = v8.v8_Object_Get(global, context, @ptrCast(window_key)) orelse return false;
+    defer v8.v8_Value_Dispose(window_ctor_val);
     const window_ctor: *v8.Object = helpers.asObject(window_ctor_val) orelse return false;
 
     const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return false;
+    defer v8.v8_String_Dispose(proto_key);
     const window_proto_val = v8.v8_Object_Get(window_ctor, context, @ptrCast(proto_key)) orelse return false;
+    defer v8.v8_Value_Dispose(window_proto_val);
     const window_proto = helpers.asObject(window_proto_val) orelse return false;
 
     // WindowProperties' [[Prototype]] is EventTarget.prototype (HTML 7.3.3) - the
@@ -170,16 +179,24 @@ pub fn insertIntoPrototypeChain(
     // placeholder object rather than it, so it is only the fallback.
     const et_key = v8.v8_String_NewFromUtf8(isolate, "EventTarget", 11) orelse return false;
     defer v8.v8_String_Dispose(et_key);
+    // The prototype handle is taken inside the block and used after it, so its
+    // release is recorded here rather than deferred in there.
+    var event_target_proto_owned: ?*v8.Value = null;
+    defer if (event_target_proto_owned) |v| v8.v8_Value_Dispose(v);
     const event_target_proto: *v8.Object = blk: {
         if (v8.v8_Object_Get(global, context, @ptrCast(et_key))) |et_ctor_val| {
             defer v8.v8_Value_Dispose(et_ctor_val);
             if (helpers.asObject(et_ctor_val)) |et_ctor| {
                 if (v8.v8_Object_Get(et_ctor, context, @ptrCast(proto_key))) |et_proto_val| {
+                    event_target_proto_owned = et_proto_val;
                     if (helpers.asObject(et_proto_val)) |et_proto| break :blk et_proto;
                 }
             }
         }
+        if (event_target_proto_owned) |v| v8.v8_Value_Dispose(v);
+        event_target_proto_owned = null;
         const current_proto_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
+        event_target_proto_owned = current_proto_val;
         break :blk helpers.asObject(current_proto_val) orelse return false;
     };
 
@@ -191,6 +208,7 @@ pub fn insertIntoPrototypeChain(
 
     // Create a new WindowProperties instance with the Window reference
     const wp = create(isolate, context, event_target_proto, window_instance) orelse return false;
+    defer v8.v8_Object_Dispose(wp);
 
     // WindowProperties -> EventTarget.prototype. The instance's own
     // [[Prototype]] is immutable (WebIDL), so the link goes on the template's

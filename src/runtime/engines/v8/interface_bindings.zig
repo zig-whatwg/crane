@@ -1029,11 +1029,16 @@ pub fn registerNamespacesGeneric(
             const NamespaceBinding = V8Namespace(NamespaceType);
             NamespaceBinding.registerGlobal(isolate, context, decl.name);
 
-            // Get the namespace object we just created
+            // Get the namespace object we just created. Every handle here is
+            // owned and released: each points into `context`, and one leaked
+            // per namespace kept every context alive.
             const global_obj = v8.v8_Context_Global(context);
+            defer if (global_obj) |g| v8.v8_Object_Dispose(g);
             // Note: This should always succeed for valid comptime string literals
             const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len)).?;
+            defer v8.v8_String_Dispose(ns_key_str);
             const ns_obj_value = v8.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
+            defer if (ns_obj_value) |v| v8.v8_Value_Dispose(v);
             const ns_obj: ?*v8.Object = @ptrCast(ns_obj_value);
 
             // Attach interfaces with [LegacyNamespace=<this namespace>] as properties
@@ -1068,10 +1073,12 @@ pub fn registerNamespacesGeneric(
                         const InterfaceBinding = V8Interface(InterfaceType);
                         const template = InterfaceBinding.createTemplate(isolate);
                         const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
+                        defer if (constructor) |c| v8.v8_Function_Dispose(c);
 
                         // Attach as property: WebAssembly.Instance = constructor
                         // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
                         const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
+                        defer if (iface_key) |k| v8.v8_String_Dispose(k);
                         _ = v8.v8_Object_DefineProperty(
                             @ptrCast(ns_obj),
                             context,

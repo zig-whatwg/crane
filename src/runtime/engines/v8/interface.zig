@@ -1134,6 +1134,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     prop_name.ptr,
                     @intCast(prop_name.len),
                 ).?;
+                defer v8.v8_String_Dispose(prop_name_str);
 
                 // Use PropertyGetterCallback to generate the getter callback
                 const getter_cb: v8.FunctionCallback = PropertyGetterCallback(interface_name, getter_name).callback;
@@ -1213,7 +1214,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     null,
                 );
 
+                // Every handle here is owned and released once the property is
+                // set. The function lives in `context`, so one leaked handle
+                // per method kept every context this ran for alive - every
+                // page and every frame.
                 if (method_tmpl) |tmpl| {
+                    defer v8.v8_FunctionTemplate_Dispose(tmpl);
                     // Get Function from template
                     const method_fn = v8.v8_FunctionTemplate_GetFunction(
                         tmpl,
@@ -1221,6 +1227,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     );
 
                     if (method_fn) |func| {
+                        defer v8.v8_Function_Dispose(func);
                         // Create string for method name
                         const name_str = v8.v8_String_NewFromUtf8(
                             isolate,
@@ -1229,6 +1236,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         );
 
                         if (name_str) |name_v8_str| {
+                            defer v8.v8_String_Dispose(name_v8_str);
                             // Set as own property on target object
                             // v8_Object_Set creates a writable, enumerable, configurable property
                             // Per WebIDL, methods should be writable and configurable, but NOT enumerable

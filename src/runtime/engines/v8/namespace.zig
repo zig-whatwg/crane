@@ -157,14 +157,20 @@ pub fn V8Namespace(comptime Namespace: type) type {
             context: *v8.Context,
             name: []const u8,
         ) void {
+            // Owned handles, released once the property is defined: the
+            // namespace object and the global live in `context`, so a leaked
+            // handle to either kept the whole context alive.
             const ns_object = createObject(isolate, context);
+            defer if (ns_object) |o| v8.v8_Object_Dispose(o);
             const global = v8.v8_Context_Global(context) orelse return;
+            defer v8.v8_Object_Dispose(global);
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,
                 name.ptr,
                 @intCast(name.len),
             ) orelse return;
+            defer v8.v8_String_Dispose(key_str);
 
             // Per WebIDL spec, namespaces on global object must be:
             // - writable: true
@@ -209,12 +215,16 @@ pub fn V8Namespace(comptime Namespace: type) type {
             // Create V8 function template for this method
             const callback = comptime generateCallback(method);
             const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
+            defer v8.v8_FunctionTemplate_Dispose(fn_template);
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
+            // Released once set: the function lives in the context, and one
+            // leaked per method kept every context alive.
             const fn_obj = v8.v8_FunctionTemplate_GetFunction(
                 fn_template,
                 context,
             ) orelse return;
+            defer v8.v8_Function_Dispose(fn_obj);
 
             // Add function to object
             const name_str = v8.v8_String_NewFromUtf8(
@@ -222,6 +232,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                 method.name.ptr,
                 @intCast(method.name.len),
             ) orelse return;
+            defer v8.v8_String_Dispose(name_str);
 
             _ = v8.v8_Object_Set(
                 object,

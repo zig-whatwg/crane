@@ -1144,10 +1144,13 @@ pub const Context = struct {
         // Get __internal object for storing singleton values
         // The accessor properties defined in setupGlobalAliases() read from __internal
         const internal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__internal", 10) orelse return error.StringCreateFailed;
+        defer v8.ffi.v8_String_Dispose(internal_key);
         const internal_obj = v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(internal_key)) orelse {
             log.debug("Warning: __internal object not found on global\n", .{});
             return error.ObjectNotFound;
         };
+        // Owned, and it lives in this context: leaked, it kept the page alive.
+        defer v8.ffi.v8_Value_Dispose(internal_obj);
 
         // Register Document singleton (stored in __internal.document)
         {
@@ -1176,6 +1179,8 @@ pub const Context = struct {
             };
 
             const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
+
+            defer v8.ffi.v8_String_Dispose(doc_key);
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(doc_key), @ptrCast(v8_document));
         }
 
@@ -1207,6 +1212,8 @@ pub const Context = struct {
             };
 
             const nav_key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
+
+            defer v8.ffi.v8_String_Dispose(nav_key);
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(nav_key), @ptrCast(v8_navigator));
         }
 
@@ -1242,6 +1249,8 @@ pub const Context = struct {
             };
 
             const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
+
+            defer v8.ffi.v8_String_Dispose(loc_key);
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(loc_key), @ptrCast(v8_location));
         }
 
@@ -1273,6 +1282,8 @@ pub const Context = struct {
             };
 
             const hist_key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
+
+            defer v8.ffi.v8_String_Dispose(hist_key);
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(hist_key), @ptrCast(v8_history));
         }
 
@@ -1304,6 +1315,8 @@ pub const Context = struct {
             };
 
             const perf_key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
+
+            defer v8.ffi.v8_String_Dispose(perf_key);
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(perf_key), @ptrCast(v8_performance));
         }
 
@@ -1311,9 +1324,12 @@ pub const Context = struct {
         // Per HTML spec, HTMLDocument is a historical alias that maps to Document
         {
             const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Document", 8) orelse return error.StringCreateFailed;
+            defer v8.ffi.v8_String_Dispose(doc_key);
             const doc_ctor = v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(doc_key));
+            defer if (doc_ctor) |c| v8.ffi.v8_Value_Dispose(c);
             if (doc_ctor) |ctor| {
                 const html_doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "HTMLDocument", 12) orelse return error.StringCreateFailed;
+                defer v8.ffi.v8_String_Dispose(html_doc_key);
                 _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(html_doc_key), ctor);
             }
         }
@@ -1367,27 +1383,36 @@ pub const Context = struct {
         // addEventListener
         {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
             v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            defer v8.ffi.v8_Function_Dispose(func);
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "addEventListener", 16) orelse return error.StringCreateFailed;
+            defer v8.ffi.v8_String_Dispose(key);
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
         // removeEventListener
         {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, removeEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
             v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            defer v8.ffi.v8_Function_Dispose(func);
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "removeEventListener", 19) orelse return error.StringCreateFailed;
+            defer v8.ffi.v8_String_Dispose(key);
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
         // dispatchEvent
         {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, dispatchEventCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
             v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            defer v8.ffi.v8_Function_Dispose(func);
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
+            defer v8.ffi.v8_String_Dispose(key);
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 

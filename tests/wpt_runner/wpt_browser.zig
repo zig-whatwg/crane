@@ -498,6 +498,7 @@ pub const WptBrowser = struct {
             return err;
         };
         if (leak_result) |val| {
+            defer v8_ffi.v8_Value_Dispose(val);
             const leak_str = self.v8StringToZig(val) catch null;
             if (leak_str) |s| {
                 defer self.allocator.free(s);
@@ -747,6 +748,7 @@ pub const WptBrowser = struct {
         };
 
         if (json_result) |val| {
+            defer v8_ffi.v8_Value_Dispose(val);
             // Convert V8 string to Zig string
             const json_str = self.v8StringToZig(val) catch {
                 var result = try test_harness.TestResult.init(self.allocator, test_path);

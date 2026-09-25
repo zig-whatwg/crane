@@ -35,6 +35,7 @@
 //! HandleScope that created them.
 
 const std = @import("std");
+const callback_registry = @import("callback_registry.zig");
 const v8 = @import("ffi.zig");
 const global_handles = @import("global_handles.zig");
 const GlobalHandle = global_handles.GlobalHandle;
@@ -110,6 +111,7 @@ pub const CallbackWrapper = struct {
             .callback_context = current_ctx,
             .callback_context_raw_addr = raw_addr,
         };
+        callback_registry.register(wrapper);
         return wrapper;
     }
 
@@ -146,23 +148,45 @@ pub const CallbackWrapper = struct {
             .callback_context = current_ctx,
             .callback_context_raw_addr = raw_addr,
         };
+        callback_registry.register(wrapper);
         return wrapper;
     }
 
     /// Clean up the callback wrapper and dispose Global handles
     pub fn deinit(self: *CallbackWrapper) void {
+        callback_registry.unregister(self);
+        self.releaseHandles();
+        self.allocator.destroy(self);
+    }
+
+    /// Whether `releaseHandles` has emptied this wrapper: it has no callback
+    /// left, and its context may already be gone, so calling it does nothing.
+    pub fn isReleased(self: *const CallbackWrapper) bool {
+        return self.callback_function_global == null and self.callback_object_global == null;
+    }
+
+    /// Release every V8 handle this wrapper holds and leave it empty: an
+    /// invocation then finds no function and does nothing. `deinit` does this
+    /// before freeing; `callback_registry.cleanupForContext` does it alone,
+    /// when the context the callback belongs to is torn down while something
+    /// may still hold the wrapper.
+    pub fn releaseHandles(self: *CallbackWrapper) void {
         // Dispose Global handles to allow V8 GC to collect the underlying values
         // Safety checks are now in GlobalHandle.dispose()
         if (self.callback_function_global) |handle| {
             handle.dispose();
+            self.callback_function_global = null;
         }
         if (self.callback_object_global) |handle| {
             handle.dispose();
+            self.callback_object_global = null;
         }
         if (self.owns_callback_context) {
             if (self.callback_context) |context| v8.v8_Context_Dispose(context);
+            self.owns_callback_context = false;
         }
-        self.allocator.destroy(self);
+        // Borrowed or released, the handle is not ours to use any more.
+        self.callback_context = null;
     }
 
     /// Get the callback function as a Local pointer for invocation
@@ -236,6 +260,7 @@ pub const CallbackWrapper = struct {
     /// uses `v8_Object_Get`, which has no TryCatch, so a throwing getter could
     /// not be caught anyway - giving that path a catching Get is its own change.
     pub fn callNCatching(self: *CallbackWrapper, context: *v8.Context, this_arg: ?*v8.Value, args: []const *v8.Value) Completion {
+        if (self.isReleased()) return .{ .thrown = null };
         if (!self.is_function) {
             const name = self.method_name orelse return .{ .thrown = null };
             return self.callMethodCatching(context, std.mem.span(name), args);
@@ -273,6 +298,7 @@ pub const CallbackWrapper = struct {
     /// so a caller that knows its interface - NodeFilter's "acceptNode" -
     /// names it here.
     pub fn callOperationCatching(self: *CallbackWrapper, context: *v8.Context, op_name: []const u8, this_arg: ?*v8.Value, args: []const *v8.Value) Completion {
+        if (self.isReleased()) return .{ .thrown = null };
         if (self.is_function) return self.callNCatching(context, this_arg, args);
         return self.callMethodCatching(context, op_name, args);
     }
@@ -334,6 +360,8 @@ pub const CallbackWrapper = struct {
     /// the active HandleScope context (e.g., wrapping a MessageEvent), we need to
     /// convert them to Global handles first.
     pub fn callN(self: *CallbackWrapper, context: *v8.Context, args: []const *v8.Value) ?*v8.Value {
+        // Before anything touches a context: a released wrapper's may be gone.
+        if (self.isReleased()) return null;
         // Check isolate and context consistency
         const current_ctx = v8.v8_Isolate_GetCurrentContext(self.isolate);
 
