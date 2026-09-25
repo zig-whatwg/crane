@@ -311,6 +311,9 @@ pub const Browser = struct {
             self.allocator.destroy(ctx);
             self.current_context = null;
         }
+        // The page's fetches still in flight release what they hold - a
+        // promise, and through it the realm - while the isolate lives.
+        _ = @import("fetch").algorithms.async_fetch.sweep();
 
         // Flush and cleanup storage
         self.storage.flush() catch {};
@@ -416,6 +419,9 @@ pub const Browser = struct {
             old_ctx.deinit();
             self.allocator.destroy(old_ctx);
             self.current_context = null;
+            // Fetch's "terminate a fetch group" for the page that ended, now
+            // rather than at the next turn's pump.
+            _ = @import("fetch").algorithms.async_fetch.sweep();
 
             // Drain all pending timer close callbacks first
             // When timers are cancelled in Context.deinit(), libuv schedules close callbacks.
