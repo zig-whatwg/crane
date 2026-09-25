@@ -40,6 +40,7 @@ progress = [
   "50d353245 - method results the binding owns are released; promises are handed over",
   "acc6a45fb - inert dictionaries, unions, sequences and Instance pointers release their context; receiver contexts released: live context handles after 6 pages 50 -> 14",
   "bb4a19e46 - argument, dictionary-member and promise-resolver handles released once copied",
+  "ef7e6e2fa - callback wrappers own their context; setter, contentWindow and security-token leaks fixed: retained memory falls for the first time",
 ]
 
   [[infra.items]]
@@ -72,6 +73,10 @@ progress = [
 
   [[infra.items]]
   name = "Callback wrappers own a copy of their context, so the binding releases its own (EventTarget.addEventListener, on* setters)"
+  status = "done"
+
+  [[infra.items]]
+  name = "A retired frame's context handle held weakly, so a torn-down frame releases its page"
   status = "todo"
 
   [[infra.items]]
