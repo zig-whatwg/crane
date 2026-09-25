@@ -3443,3 +3443,18 @@ Then start a server that outlives any one runner: `python3 wpt.py serve --config
 **Fix**: `interface_bindings.namespaceIsEngineProvided` is the list of namespaces the bindings leave alone, and it defaults to "ours". `pumpPlatformTasks` runs in each event loop turn and at the end of each worker turn: pump, then a microtask checkpoint after every task that ran, as d8's `ProcessMessages` does. Pinned by `tests/v8/engine_provided_namespace_test.zig` and `tests/v8/platform_task_pump_test.zig`.
 
 **Takeaway**: **An IDL file for a JavaScript-engine API is documentation, not something to bind.** And an engine that posts tasks to its platform is waiting on its embedder: if a promise never settles and no Zig code is involved, check that someone pumps.
+
+---
+
+### Architecture: The parser mirrored every character into the DOM, and a run of text cost O(N^2)
+
+**Date**: 2026-09-25
+**Lesson**: `TreeBuilder.insertCharacter` notified the DOM adapter after every character. The adapter answers a notification with `CharacterData.set_data`, which copies the whole string, so a run of N characters cost O(N^2).
+
+**Why**: The tokenizer batches ASCII into `text_run` tokens only for static input. Every real page parses through an InputStreamManager, where batching is off. So every character of every page took the per-character path, and it was invisible on ordinary pages.
+
+**What Happened**: `moving-between-documents/` frames hold two 100,000-character runs. One file spent 32 s of CPU in `CharacterData.replaceData`, and 40 of the 52 files ran past their 60 s ceiling. `sample` on the running process named it in one run.
+
+**Fix**: Blink's design (`HTMLConstructionSite::pending_text_` / `FlushPendingText`). The tree builder marks the text node pending and tells the adapter once: before any other notification, before a script runs, and when `parse()` returns. Nothing script can observe changes. `tests/html/tree_builder_text_batching_test.zig` pins it, using non-ASCII text so that it takes the per-character path. One file: 30.6 s -> 6.1 s. A/B over 993 parser-heavy files: blocking 128 -> 118.
+
+**Takeaway**: **When a file is slow, sample it before blaming the network or the test.** A 1-second server sleep does not take 30 seconds of CPU.

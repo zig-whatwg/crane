@@ -502,6 +502,9 @@ pub const TreeBuilder = struct {
     dom_adapter_on_node_created: ?*const fn (*TreeNode, ?*anyopaque) void,
     dom_adapter_on_child_appended: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void,
     dom_adapter_on_text_content_changed: ?*const fn (*TreeNode, ?*anyopaque) void,
+    /// The text node the parser has been appending to without telling the DOM
+    /// adapter yet - see `flushPendingText`.
+    pending_text: ?*TreeNode = null,
 
     /// Input stream manager for document.write() support.
     ///
@@ -724,6 +727,8 @@ pub const TreeBuilder = struct {
 
     /// Parse the entire document.
     pub fn parse(self: *TreeBuilder) !void {
+        // Whatever stops the loop, the adapter hears the last run of text.
+        defer self.flushPendingText();
         while (true) {
             const token = try self.tokenizer.nextToken();
             if (token == null) {
@@ -976,6 +981,7 @@ pub const TreeBuilder = struct {
                     }
 
                     // Notify DOM adapter of element creation
+                    self.flushPendingText();
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(element, self.dom_adapter_context);
                     }
@@ -1025,6 +1031,7 @@ pub const TreeBuilder = struct {
                     // HTML Standard: SVG script elements follow a similar execution model
                     if (self.scripting_enabled) {
                         if (script_element) |script| {
+                            self.flushPendingText();
                             if (self.script_execution_callback) |callback| {
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
@@ -1298,9 +1305,11 @@ pub const TreeBuilder = struct {
         self.document.appendChild(doctype_node);
 
         // Notify DOM adapter of doctype creation and parent-child relationship
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(doctype_node, self.dom_adapter_context);
         }
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(self.document, doctype_node, self.dom_adapter_context);
         }
@@ -1411,6 +1420,7 @@ pub const TreeBuilder = struct {
                     self.document.appendChild(html);
 
                     // Notify DOM adapter of parent-child relationship
+                    self.flushPendingText();
                     if (self.dom_adapter_on_child_appended) |callback| {
                         callback(self.document, html, self.dom_adapter_context);
                     }
@@ -1453,6 +1463,7 @@ pub const TreeBuilder = struct {
         const html = try TreeNode.initElement(self.allocator, "html", .html);
 
         // Notify DOM adapter of element creation
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(html, self.dom_adapter_context);
         }
@@ -1460,6 +1471,7 @@ pub const TreeBuilder = struct {
         self.document.appendChild(html);
 
         // Notify DOM adapter of parent-child relationship
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(self.document, html, self.dom_adapter_context);
         }
@@ -1526,6 +1538,7 @@ pub const TreeBuilder = struct {
         const head = try TreeNode.initElement(self.allocator, "head", .html);
 
         // Notify DOM adapter of element creation
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(head, self.dom_adapter_context);
         }
@@ -1877,6 +1890,7 @@ pub const TreeBuilder = struct {
         const body = try TreeNode.initElement(self.allocator, "body", .html);
 
         // Notify DOM adapter of element creation
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(body, self.dom_adapter_context);
         }
@@ -2126,6 +2140,7 @@ pub const TreeBuilder = struct {
                     // - Decrement script nesting level
                     if (self.scripting_enabled) {
                         if (script_element) |script| {
+                            self.flushPendingText();
                             if (self.script_execution_callback) |callback| {
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
@@ -2201,6 +2216,7 @@ pub const TreeBuilder = struct {
                     // Insert implicit colgroup
                     const colgroup = try TreeNode.initElement(self.allocator, "colgroup", .html);
                     // Notify DOM adapter of element creation
+                    self.flushPendingText();
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(colgroup, self.dom_adapter_context);
                     }
@@ -2223,6 +2239,7 @@ pub const TreeBuilder = struct {
                     // Insert implicit tbody
                     const tbody = try TreeNode.initElement(self.allocator, "tbody", .html);
                     // Notify DOM adapter of element creation
+                    self.flushPendingText();
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(tbody, self.dom_adapter_context);
                     }
@@ -2563,6 +2580,7 @@ pub const TreeBuilder = struct {
                     // Insert implicit tr
                     const tr = try TreeNode.initElement(self.allocator, "tr", .html);
                     // Notify DOM adapter of element creation
+                    self.flushPendingText();
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(tr, self.dom_adapter_context);
                     }
@@ -3323,6 +3341,7 @@ pub const TreeBuilder = struct {
         }
 
         // Notify DOM adapter of element creation (for incremental DOM conversion)
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(element, self.dom_adapter_context);
         }
@@ -3345,6 +3364,7 @@ pub const TreeBuilder = struct {
         parent.appendChild(node);
 
         // Notify DOM adapter of parent-child relationship (for incremental DOM conversion)
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(parent, node, self.dom_adapter_context);
         }
@@ -3358,10 +3378,7 @@ pub const TreeBuilder = struct {
         if (parent.last_child) |last| {
             if (last.node_type == .text) {
                 try last.appendChar(char);
-                // Notify DOM adapter of text content change
-                if (self.dom_adapter_on_text_content_changed) |callback| {
-                    callback(last, self.dom_adapter_context);
-                }
+                self.markTextPending(last);
                 return;
             }
         }
@@ -3372,9 +3389,11 @@ pub const TreeBuilder = struct {
         parent.appendChild(text);
 
         // Notify DOM adapter of new text node creation and parent-child relationship
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(text, self.dom_adapter_context);
         }
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(parent, text, self.dom_adapter_context);
         }
@@ -3392,10 +3411,7 @@ pub const TreeBuilder = struct {
             if (last.node_type == .text) {
                 // Append entire slice at once (much faster than per-character)
                 try last.text_content.appendSlice(data);
-                // Notify DOM adapter of text content change
-                if (self.dom_adapter_on_text_content_changed) |callback| {
-                    callback(last, self.dom_adapter_context);
-                }
+                self.markTextPending(last);
                 return;
             }
         }
@@ -3406,11 +3422,41 @@ pub const TreeBuilder = struct {
         parent.appendChild(text);
 
         // Notify DOM adapter of new text node creation and parent-child relationship
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(text, self.dom_adapter_context);
         }
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(parent, text, self.dom_adapter_context);
+        }
+    }
+
+    /// Note that `node`'s text has grown without telling the DOM adapter.
+    ///
+    /// The adapter mirrors a notification into the DOM with
+    /// `CharacterData.set_data`, which copies the whole string, so notifying
+    /// per character made a run of N characters cost O(N^2) - 30 seconds of CPU
+    /// for a frame with two 100,000-character runs. Blink's
+    /// HTMLConstructionSite buffers the same way (`pending_text_`, flushed by
+    /// `FlushPendingText`): the adapter hears once per run.
+    fn markTextPending(self: *TreeBuilder, node: *TreeNode) void {
+        if (self.pending_text) |pending| {
+            if (pending == node) return;
+            self.flushPendingText();
+        }
+        self.pending_text = node;
+    }
+
+    /// Tell the DOM adapter about the pending text node, if any. Runs before
+    /// every other adapter notification and before a script runs - so nothing
+    /// script can observe, neither a script nor a node created after the text,
+    /// sees a run cut short - and when parsing stops.
+    fn flushPendingText(self: *TreeBuilder) void {
+        const node = self.pending_text orelse return;
+        self.pending_text = null;
+        if (self.dom_adapter_on_text_content_changed) |callback| {
+            callback(node, self.dom_adapter_context);
         }
     }
 
@@ -3422,9 +3468,11 @@ pub const TreeBuilder = struct {
         parent.appendChild(node);
 
         // Notify DOM adapter of comment creation and parent-child relationship
+        self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(node, self.dom_adapter_context);
         }
+        self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
             callback(parent, node, self.dom_adapter_context);
         }
