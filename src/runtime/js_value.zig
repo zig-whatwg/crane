@@ -211,9 +211,11 @@ pub const JSValue = union(enum) {
     /// return runtime.JSValue.fromPromise(v8_promise);
     /// ```
     pub fn fromPromise(promise_ptr: *anyopaque) JSValue {
-        // V8 Promises are V8 handles and should be treated as global handles
-        // that don't need disposal (V8's GC manages them once returned to JS)
-        return .{ .handle = .{ .ptr = promise_ptr, .needs_disposal = false, .handle_scope = .global } };
+        // The promise's handle is a Global the impl just made and holds nowhere
+        // else, so it is handed over: the binding releases it once the promise
+        // is the call's result. V8's GC cannot reclaim a promise while a
+        // Global to it exists - kept, each one pinned its page's context.
+        return .{ .handle = .{ .ptr = promise_ptr, .needs_disposal = true, .handle_scope = .global } };
     }
 
     /// Create a JSValue from a Zig runtime Instance

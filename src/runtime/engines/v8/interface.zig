@@ -2817,6 +2817,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Call the method with appropriate arguments
                     // CROSS-REALM SUPPORT: Pass method_context for return value object creation
+                    var result_owned = false;
                     const result = callMethodWithArgs(
                         method_fn,
                         params,
@@ -2829,6 +2830,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                         method_context, // Use method's realm for return value
+                        &result_owned,
                     ) catch |err| {
                         // ExceptionPending means an exception was already rethrown during conversion
                         if (err == conv.ConversionError.ExceptionPending) {
@@ -2839,9 +2841,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    // Convert and set return value
+                    // Convert and set return value. setReturnValue copies, so a
+                    // handle the conversion made or the impl handed over is
+                    // released here - kept, a promise or an object pinned its
+                    // whole page.
                     if (result) |v8_result| {
                         info.setReturnValue(v8_result);
+                        if (result_owned) v8.v8_Global_Dispose(v8_result);
                     }
                     // If result is null, V8 will return undefined (correct for void methods)
                 }
@@ -3080,6 +3086,7 @@ pub fn V8Interface(comptime Interface: type) type {
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
             return_context: *v8.Context,
+            result_owned: *bool,
         ) !?*v8.Value {
             const info = ArgView(null_to_empty){ .raw = raw_info, .isolate = isolate };
             const js_arg_count = info.length();
@@ -3423,7 +3430,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Convert return value to V8
             // CROSS-REALM SUPPORT: Use return_context (method's realm) for object creation
-            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, return_context);
+            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, return_context, result_owned);
         }
 
         /// Convert Zig return value to V8 Value
@@ -3433,16 +3440,26 @@ pub fn V8Interface(comptime Interface: type) type {
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
+            owned: *bool,
         ) !?*v8.Value {
             // Suppress unused parameter warning - allocator used only in recursive calls
             _ = allocator;
+
+            // `owned` answers whether the handle returned is the binding's to
+            // release once the caller has set it as the call's result
+            // (setReturnValue copies). True only where this conversion made the
+            // handle, or the impl handed its own over (a JSValue that
+            // `needsDisposal`). A wrapper is the cache's, and a union's arm
+            // cannot be told apart here, so both stay false - a leak at worst,
+            // never a handle freed under its holder.
+            owned.* = false;
 
             const type_info = @typeInfo(ReturnType);
 
             // Handle error union - unwrap it
             if (type_info == .error_union) {
                 const PayloadType = type_info.error_union.payload;
-                return convertReturnValue(PayloadType, result, std.heap.page_allocator, isolate, v8_context);
+                return convertReturnValue(PayloadType, result, std.heap.page_allocator, isolate, v8_context, owned);
             }
 
             // Handle void return
@@ -3454,8 +3471,9 @@ pub fn V8Interface(comptime Interface: type) type {
             if (type_info == .optional) {
                 if (result) |value| {
                     const ChildType = type_info.optional.child;
-                    return convertReturnValue(ChildType, value, std.heap.page_allocator, isolate, v8_context);
+                    return convertReturnValue(ChildType, value, std.heap.page_allocator, isolate, v8_context, owned);
                 } else {
+                    owned.* = true;
                     return @ptrCast(v8.v8_Null(isolate));
                 }
             }
@@ -3482,14 +3500,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Handle primitive types
             if (ReturnType == bool) {
+                owned.* = true;
                 return @ptrCast(v8.v8_Boolean_New(isolate, result));
             }
 
             if (ReturnType == i16 or ReturnType == i32 or ReturnType == i64 or ReturnType == u16 or ReturnType == u32 or ReturnType == u64) {
+                owned.* = true;
                 return @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(result)));
             }
 
             if (ReturnType == f64 or ReturnType == f32) {
+                owned.* = true;
                 return @ptrCast(v8.v8_Number_New(isolate, result));
             }
 
@@ -3499,6 +3520,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
                     return v8.v8_Undefined(isolate);
                 };
+                owned.* = true;
                 return @ptrCast(v8_str);
             }
 
@@ -3507,11 +3529,20 @@ pub fn V8Interface(comptime Interface: type) type {
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
                     return v8.v8_Undefined(isolate);
                 };
+                owned.* = true;
                 return @ptrCast(v8_str);
             }
 
             // Handle runtime.JSValue - engine-agnostic value wrapper
             if (ReturnType == runtime.JSValue) {
+                // Every arm but a borrowed handle and an instance's wrapper
+                // makes a fresh handle; a global handle is the binding's when
+                // the impl handed it over.
+                owned.* = switch (result) {
+                    .handle => |h| h.handle_scope != .global or h.needs_disposal,
+                    .instance => false,
+                    else => true,
+                };
                 return switch (result) {
                     .undefined => v8.v8_Undefined(isolate),
                     .null => @ptrCast(v8.v8_Null(isolate)),
@@ -7851,6 +7882,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Call the static method with appropriate arguments
                     // For indexed callbacks, return_context is same as v8_context (no cross-realm)
+                    var result_owned = false;
                     const result = callMethodWithArgs(
                         method_fn,
                         params,
@@ -7863,6 +7895,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                         v8_context, // return_context: same as caller context for indexed callbacks
+                        &result_owned,
                     ) catch |err| {
                         if (err == conv.ConversionError.ExceptionPending) {
                             return;
@@ -7871,9 +7904,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    // Convert and set return value
+                    // Convert and set return value. setReturnValue copies, so a
+                    // handle the conversion made or the impl handed over is
+                    // released here - kept, a promise or an object pinned its
+                    // whole page.
                     if (result) |v8_result| {
                         info.setReturnValue(v8_result);
+                        if (result_owned) v8.v8_Global_Dispose(v8_result);
                     }
                     // If result is null, V8 will return undefined (correct for void methods)
                 }
