@@ -35,6 +35,7 @@ metric = "heap"
 progress = [
   "26626c087 - bindings release the context handles they take: live Global<Context> after 8 pages 431 -> 101",
   "journal records heap_used_kb; CRANE_HEAP_GC and CRANE_HEAP_SNAPSHOT diagnose retention",
+  "0100e3e5b - per-context registration releases its handles; callback registry resets a torn-down context's callbacks: live handles after 8 pages 21,469 -> 16,788",
 ]
 
   [[infra.items]]
@@ -43,11 +44,11 @@ progress = [
 
   [[infra.items]]
   name = "Per-context registration releases what it installs (methods, namespaces, window globals)"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Callback registry resets a context's callbacks when the context is torn down"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "on* event handler values released when replaced and at teardown"
