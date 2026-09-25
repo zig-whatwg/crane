@@ -558,7 +558,8 @@ pub const InternalRequest = struct {
             .use_url_credentials = self.use_url_credentials,
             .cache_mode = self.cache_mode,
             .redirect_mode = self.redirect_mode,
-            .integrity_metadata = self.integrity_metadata,
+            // Copied below: deinit frees a non-empty one.
+            .integrity_metadata = "",
             .cryptographic_nonce_metadata = self.cryptographic_nonce_metadata,
             .parser_metadata = self.parser_metadata,
             .reload_navigation = self.reload_navigation,
@@ -577,6 +578,12 @@ pub const InternalRequest = struct {
 
         // The referrer, when it is a URL, is owned per request.
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
+
+        // So is non-empty integrity metadata: `deinit` frees it, and a shared
+        // slice was freed twice.
+        if (self.integrity_metadata.len > 0) {
+            new_request.integrity_metadata = try self.allocator.dupe(u8, self.integrity_metadata);
+        }
 
         // Clone URL list
         for (self.url_list.items) |url| {
