@@ -3162,11 +3162,14 @@ pub fn V8Interface(comptime Interface: type) type {
             var result = try allocator_inner.alloc(ElemType, variadic_count);
             errdefer allocator_inner.free(result);
 
-            // Convert each JS argument to the element type
+            // Convert each JS argument to the element type. Each handle is
+            // owned; released when the conversion copied out of it, as for a
+            // fixed argument - a leaked one per `append(...nodes)` argument
+            // kept its page alive.
             var i: usize = 0;
             while (i < variadic_count) : (i += 1) {
                 const v8_arg = info_inner.get(@intCast(start_idx + i));
-                result[i] = try conv.fromV8Value(ElemType, allocator_inner, isolate_inner, context_inner, v8_arg);
+                result[i] = try convertArgReleasing(ElemType, allocator_inner, isolate_inner, context_inner, v8_arg);
             }
 
             return result;
@@ -7678,9 +7681,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         zig_setter(instance, zig_value);
                     }
 
-                    // Setter succeeded - return undefined
+                    // Setter succeeded - return undefined (copied; release ours)
                     if (v8.v8_Undefined(isolate_inner)) |undef| {
                         info.setReturnValue(undef);
+                        v8.v8_Value_Dispose(undef);
                     }
                 }
             }.callback;

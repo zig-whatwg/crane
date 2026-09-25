@@ -920,12 +920,15 @@ pub const Context = struct {
         // accessible as global variables. These are skipped in registerPropertiesAsOwnOnObject
         // because they need to be data properties (not accessors) for object identity.
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
+            defer v8.ffi.v8_String_Dispose(self_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
         }
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
+            defer v8.ffi.v8_String_Dispose(window_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
         }
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
+            defer v8.ffi.v8_String_Dispose(frames_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
         }
 
@@ -1077,12 +1080,15 @@ pub const Context = struct {
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
+            defer v8.ffi.v8_String_Dispose(self_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
         }
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
+            defer v8.ffi.v8_String_Dispose(window_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
         }
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
+            defer v8.ffi.v8_String_Dispose(frames_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
         }
 
@@ -1108,6 +1114,9 @@ pub const Context = struct {
     fn registerBrowserGlobals(self: *Context) !void {
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
         const global_obj = v8.ffi.v8_Context_Global(v8_ctx) orelse return error.NoGlobal;
+        // Owned, and a handle to the global keeps the page alive; nothing
+        // below keeps it.
+        defer v8.ffi.v8_Object_Dispose(global_obj);
 
         // Get runtime context for wrapper caching
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
@@ -2304,9 +2313,11 @@ fn timerInitializationFromCall(info: *const v8.ffi.FunctionCallbackInfo, repeat:
 fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
 
-    // Return undefined by default
+    // Return undefined by default. SetReturnValue copies the value, so the
+    // handle is released at once.
     const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
     info.setReturnValue(return_undefined);
+    v8.ffi.v8_Value_Dispose(return_undefined);
 
     // Get V8 context. Owned, and released on every path: the listener's
     // wrapper keeps a context handle of its own. Each one leaked kept the
@@ -2419,9 +2430,11 @@ fn listenerOptions(info: *const v8.ffi.FunctionCallbackInfo, isolate: *v8.ffi.Is
 fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
 
-    // Return undefined by default
+    // Return undefined by default. SetReturnValue copies the value, so the
+    // handle is released at once.
     const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
     info.setReturnValue(return_undefined);
+    v8.ffi.v8_Value_Dispose(return_undefined);
 
     // Get V8 context. Owned, and nothing keeps it: the wrapper built below
     // exists only to compare against, and removeEventListener frees it.

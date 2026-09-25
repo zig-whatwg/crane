@@ -882,6 +882,7 @@ pub fn fromV8Value(
         // Check for string - extract and allocate copy
         if (v8.v8_Value_IsString(value)) {
             const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            defer v8.v8_String_Dispose(string);
             const length = v8.v8_String_Utf8Length(string);
             if (length < 0) return ConversionError.StringError;
             if (length == 0) {

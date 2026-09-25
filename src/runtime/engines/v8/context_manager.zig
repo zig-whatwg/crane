@@ -95,6 +95,12 @@ pub const ContextEntry = struct {
     /// (and should deinit it when removed)
     owns_context: bool,
 
+    /// Whether `v8_ctx` is this entry's own Global - a copy it took, or a
+    /// context it created - rather than a handle its caller keeps and
+    /// disposes. An owned handle is the last strong root of a destroyed page
+    /// once the rest is released, so retiring the entry disposes it.
+    owns_v8_ctx: bool = false,
+
     /// V8 event loop with timer support (owned if owns_context is true)
     event_loop: ?*V8EventLoop,
 
@@ -844,6 +850,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
     entry.* = ContextEntry{
         .v8_ctx = entry_ctx,
+        .owns_v8_ctx = true,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = event_loop_ptr,
@@ -1719,12 +1726,15 @@ fn createWindowBoundToGlobal(
     // - 'self' references the global object (works in both window and worker contexts)
     // - 'globalThis' is the standard reference to the global object
     const window_key = v8.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreationFailed;
+    defer v8.v8_String_Dispose(window_key);
     _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_key), @ptrCast(global));
 
     const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreationFailed;
+    defer v8.v8_String_Dispose(self_key);
     _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_key), @ptrCast(global));
 
     const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse return error.StringCreationFailed;
+    defer v8.v8_String_Dispose(global_this_key);
     _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(global_this_key), @ptrCast(global));
 
     return window_instance;
@@ -1909,12 +1919,18 @@ fn createWindowForExistingBrowsingContext(
     // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
     // the interface prototype object (Window.prototype for the global).
     const global = v8.v8_Context_Global(child_context) orelse return null;
+    // Every handle here is an owned Global, and the constructor's pins this
+    // context's whole heap: leaked, it kept every frame ever created alive.
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
     if (window_key) |wk| {
+        defer v8.v8_String_Dispose(wk);
         if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            defer v8.v8_Value_Dispose(window_ctor);
             const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
             if (proto_key) |pk| {
+                defer v8.v8_String_Dispose(pk);
                 if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    defer v8.v8_Value_Dispose(window_proto);
                     _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
                 }
             }
@@ -2015,6 +2031,7 @@ fn createWindowForExistingBrowsingContext(
 
     child_entry.* = ContextEntry{
         .v8_ctx = child_context,
+        .owns_v8_ctx = true,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = null,
@@ -2518,12 +2535,21 @@ pub fn createChildContext(
     // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
     // the interface prototype object (Window.prototype for the global).
     const global = v8.v8_Context_Global(child_context) orelse return error.GlobalNotFound;
+    // Owned, and a handle to the global proxy keeps the frame alive: nothing
+    // below keeps it (createWindowBoundToGlobal takes its own).
+    defer v8.v8_Object_Dispose(global);
+    // Every handle here is an owned Global, and the constructor's pins this
+    // context's whole heap: leaked, it kept every frame ever created alive.
     const window_key = v8.v8_String_NewFromUtf8(options.isolate, "Window", 6);
     if (window_key) |wk| {
+        defer v8.v8_String_Dispose(wk);
         if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            defer v8.v8_Value_Dispose(window_ctor);
             const proto_key = v8.v8_String_NewFromUtf8(options.isolate, "prototype", 9);
             if (proto_key) |pk| {
+                defer v8.v8_String_Dispose(pk);
                 if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    defer v8.v8_Value_Dispose(window_proto);
                     _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
                 }
             }
@@ -2589,12 +2615,15 @@ pub fn createChildContext(
     // (function(global_scope){...})(self) requires self === globalThis
     // so that properties set on global_scope become true global bindings.
     if (v8.v8_String_NewFromUtf8(options.isolate, "self", 4)) |self_str| {
+        defer v8.v8_String_Dispose(self_str);
         _ = v8.v8_Object_Set(global, child_context, @ptrCast(self_str), @ptrCast(global));
     }
     if (v8.v8_String_NewFromUtf8(options.isolate, "window", 6)) |window_str| {
+        defer v8.v8_String_Dispose(window_str);
         _ = v8.v8_Object_Set(global, child_context, @ptrCast(window_str), @ptrCast(global));
     }
     if (v8.v8_String_NewFromUtf8(options.isolate, "frames", 6)) |frames_str| {
+        defer v8.v8_String_Dispose(frames_str);
         _ = v8.v8_Object_Set(global, child_context, @ptrCast(frames_str), @ptrCast(global));
     }
 
@@ -2694,6 +2723,7 @@ pub fn createChildContext(
 
     child_entry.* = ContextEntry{
         .v8_ctx = child_context,
+        .owns_v8_ctx = true,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
@@ -2762,6 +2792,16 @@ pub fn createChildContext(
 /// `engine` is left alone on purpose - it points at a static interface, and
 /// `ContextData.deinit` needs it to release `_engine_event_loop_storage`.
 fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
+    // The entry's own handle was the last strong root of a destroyed frame:
+    // everything else that held the page is released by now, so every frame
+    // ever torn down kept its whole heap - context, global, wrappers - alive
+    // for the rest of the process. Nothing reads a retired entry's context:
+    // the map no longer finds it, destroyChildContext returns at `destroying`,
+    // and the drain in deinit frees only Zig state.
+    if (entry.owns_v8_ctx) {
+        v8.v8_Context_Dispose(entry.v8_ctx);
+        entry.owns_v8_ctx = false;
+    }
     entry.runtime_ctx.clearV8WrapperCacheStorage();
     entry.runtime_ctx.engine_ctx = null;
     entry.runtime_ctx.realm = null;
@@ -2975,8 +3015,11 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
             ctx_data.clearV8WrapperCacheStorage();
         }
 
-        // Clean up realm
+        // Clean up realm. Its intrinsics (%TypeError%, %Object%, ...) are
+        // owned Globals of this context's constructors: each one alone keeps
+        // the frame's whole heap alive, as removeContext and deinit know.
         if (entry.realm) |realm| {
+            @import("realm_v8.zig").disposeIntrinsics(realm);
             realm.deinit();
         }
 
