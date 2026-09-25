@@ -439,6 +439,9 @@ fn convertHeadersInit(
                 outer_seq[i] = &.{};
                 continue;
             };
+            // Every handle read here is owned and released once read: a pair
+            // array is a page object, and one leaked per header kept the page.
+            defer v8.v8_Value_Dispose(elem);
 
             // Each element should be an array of [key, value]
             if (!v8.v8_Value_IsArray(elem)) {
@@ -456,11 +459,13 @@ fn convertHeadersInit(
             for (0..pair_len) |j| {
                 const item = v8.v8_Array_Get(context, pair_array, @intCast(j));
                 if (item) |it| {
+                    defer v8.v8_Value_Dispose(it);
                     if (v8.v8_Value_IsSymbol_Local(@ptrCast(it))) {
                         return ConversionError.TypeError;
                     }
                     const str = v8.v8_Value_ToString(it, context);
                     if (str) |s| {
+                        defer v8.v8_String_Dispose(s);
                         const len = v8.v8_String_Utf8Length(s);
                         if (len > 0) {
                             const buf = try allocator.alloc(u8, @intCast(len));
@@ -492,6 +497,7 @@ fn convertHeadersInit(
             // Empty record
             return .{ .byte_string_byte_string_record = &.{} };
         };
+        defer v8.v8_Array_Dispose(prop_names);
 
         const prop_count = v8.v8_Array_Length(prop_names);
         // Get the entry type from the typedef's union field
@@ -503,9 +509,11 @@ fn convertHeadersInit(
         var valid_count: usize = 0;
         for (0..prop_count) |i| {
             const prop_name_val = v8.v8_Array_Get(context, prop_names, @intCast(i)) orelse continue;
+            defer v8.v8_Value_Dispose(prop_name_val);
 
             // Get property name as string
             const prop_name_str = v8.v8_Value_ToString(prop_name_val, context) orelse continue;
+            defer v8.v8_String_Dispose(prop_name_str);
             const name_len = v8.v8_String_Utf8Length(prop_name_str);
             if (name_len <= 0) continue;
 
@@ -515,11 +523,13 @@ fn convertHeadersInit(
 
             // Get property value
             const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
+            defer v8.v8_Value_Dispose(prop_val);
 
             var val_str: runtime.ByteString = "";
             if (!v8.v8_Value_IsSymbol_Local(@ptrCast(prop_val))) {
                 const str = v8.v8_Value_ToString(prop_val, context);
                 if (str) |s| {
+                    defer v8.v8_String_Dispose(s);
                     const len = v8.v8_String_Utf8Length(s);
                     if (len > 0) {
                         const buf = try allocator.alloc(u8, @intCast(len));
@@ -1413,11 +1423,17 @@ pub fn fromV8Value(
                 field.name.ptr,
                 @intCast(field.name.len),
             );
+            defer if (field_name_str) |n| v8.v8_String_Dispose(n);
 
             // Get property value from object
             const field_v8_opt = v8.v8_Object_Get(object, context, @ptrCast(field_name_str));
 
             if (field_v8_opt) |field_v8| {
+                // Get made this handle for the member, and it is released when
+                // the member's conversion copied out of it - the rule the
+                // binding applies to arguments. Kept, an object member (a
+                // Headers, a signal) pinned its page.
+                defer if (comptime interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
                 // Convert field value
                 @field(result, field.name) = try fromV8Value(
                     field.type,

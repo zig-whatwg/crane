@@ -198,6 +198,8 @@ fn v8ResolvePromise(
         DebugAssertions.logPointerUntagging(tagged.raw, @ptrCast(result), tagged.getTag());
         break :blk result;
     } else ffi.v8_Undefined(handle.isolate) orelse return EngineError.OperationFailed;
+    // The undefined was made here; a caller's value is the caller's.
+    defer if (value == null) ffi.v8_Value_Dispose(v8_value);
 
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, v8_value)) {
         return EngineError.PromiseError;
@@ -220,6 +222,7 @@ fn v8RejectPromise(
         err_name.ptr,
         @intCast(err_name.len),
     ) orelse return EngineError.OperationFailed;
+    defer ffi.v8_String_Dispose(err_str);
 
     // Create appropriate Error object based on error type
     const err_obj = switch (err) {
@@ -233,6 +236,8 @@ fn v8RejectPromise(
             return EngineError.OperationFailed,
     };
 
+    // Made here and only handed to Reject, which keeps its own reference.
+    defer ffi.v8_Value_Dispose(err_obj);
     if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, err_obj)) {
         return EngineError.PromiseError;
     }
@@ -249,9 +254,11 @@ fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
 /// handle struct is freed.
 fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
-    // Note: We don't dispose the resolver/promise here as they're V8-managed
-    // and the Promise object needs to remain valid after this call.
-    // The V8 GC will clean them up when the Promise is no longer referenced.
+    // The resolver is released here: nothing can settle the promise once its
+    // handle is gone, and a Global to the resolver keeps the promise - and its
+    // page - alive, whatever the GC would do otherwise. The promise's own
+    // handle is not: getPromiseObject gave it to the caller, which returns it.
+    ffi.v8_PromiseResolver_Dispose(handle.resolver);
     allocator.destroy(handle);
 }
 

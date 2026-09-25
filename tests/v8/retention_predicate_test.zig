@@ -201,8 +201,16 @@ test "argHandleIsCopied - function pointers adopt the handle outright" {
     try std.testing.expect(!copied(FnPtr));
 }
 
-test "argHandleIsCopied - Instance pointers and handler unions are NOT copied" {
-    try std.testing.expect(!copied(*runtime.Instance));
+test "argHandleIsCopied - an Instance pointer is copied: it comes from the wrapper, not the handle" {
+    // conv.fromV8Value reads the wrapper's internal field and returns the
+    // Instance; the argument's own Global is not referred to afterwards. Kept,
+    // it was a handle to a page object per call - fetch(request), new
+    // Response(body, init) - each pinning the page.
+    try std.testing.expect(copied(*runtime.Instance));
+    try std.testing.expect(copied(?*runtime.Instance));
+}
+
+test "argHandleIsCopied - handler unions are NOT copied" {
     const TimerHandlerShaped = union(enum) {
         domstring: runtime.DOMString,
         function: *anyopaque,
@@ -210,10 +218,44 @@ test "argHandleIsCopied - Instance pointers and handler unions are NOT copied" {
     try std.testing.expect(!copied(TimerHandlerShaped));
 }
 
+test "argHandleIsCopied - a union of copied arms is copied" {
+    const RequestInfoShaped = union(enum) { request: *runtime.Instance, url: runtime.DOMString };
+    try std.testing.expect(copied(RequestInfoShaped));
+}
+
+test "argHandleIsCopied - a dictionary reads each member through its own handle" {
+    // Dictionary conversion reads every member with Get, so a member - even a
+    // JSValue, which keeps what it points at - aliases the member's handle,
+    // never the dictionary's. Members are still held to the rule so that an
+    // unknown pointer keeps the conservative answer.
+    const RequestInitShaped = struct {
+        method: ?[]const u8 = null,
+        signal: ?*runtime.Instance = null,
+        window: ?runtime.JSValue = null,
+        keepalive: ?bool = null,
+        issuers: ?[]const runtime.DOMString = null,
+        reporting: ?struct { a: bool, b: bool } = null,
+    };
+    try std.testing.expect(copied(RequestInitShaped));
+    const WithUnknownPointer = struct { a: ?bool = null, b: ?*anyopaque = null };
+    try std.testing.expect(!copied(WithUnknownPointer));
+}
+
+test "argHandleIsCopied - a sequence of copied elements is copied" {
+    try std.testing.expect(copied([]const runtime.DOMString));
+    try std.testing.expect(copied([]const []const u8));
+}
+
+test "argHandleIsCopied - BodyInit is copied: its converter only ever makes strings" {
+    // convertBodyInit returns an owned or empty USVString on every path; the
+    // BufferSource arm, which would be a view, is never produced.
+    try std.testing.expect(copied(v8.interface_mod.copied_arg_types.BodyInit));
+}
+
 test "argHandleIsCopied - wrappers follow their payload" {
     try std.testing.expect(copied(?runtime.DOMString));
     try std.testing.expect(copied(?i32));
-    try std.testing.expect(!copied(?*runtime.Instance));
+    try std.testing.expect(!copied(?runtime.JSValue));
 }
 
 test "argHandleIsCopied - an unknown type defaults to NOT copied" {

@@ -252,6 +252,8 @@ pub fn typeRetainsContext(comptime T: type) bool {
 
 fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
     return comptime blk: {
+        // Dictionaries are walked member by member, recursively.
+        @setEvalBranchQuota(100_000);
         // Inert scalars: conversion produces a Zig value holding no handle.
         if (T == void or T == bool) break :blk false;
         if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk false;
@@ -349,6 +351,8 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 /// So an unrecognised type answers FALSE: keep the handle, keep the old leak.
 pub fn argHandleIsCopied(comptime T: type) bool {
     return comptime blk: {
+        // Dictionaries are walked member by member, recursively.
+        @setEvalBranchQuota(100_000);
         // Scalars decode to a Zig value; the handle is read and done with.
         if (T == void or T == bool) break :blk true;
         if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk true;
@@ -377,11 +381,64 @@ pub fn argHandleIsCopied(comptime T: type) bool {
             break :blk argHandleIsCopied(@FieldType(T, "value"));
         }
 
-        // JSValue, callbacks, Instance pointers, unions, dictionaries, slices:
-        // assume the handle is kept.
+        // JSValue keeps the pointer it was given (see the test that pins it).
+        if (T == runtime.JSValue) break :blk false;
+
+        // A wrapped platform object: the conversion returns the Instance from
+        // the wrapper's internal field, and the argument's own handle is not
+        // referred to again.
+        if (T == *runtime.Instance) break :blk true;
+
+        // BodyInit: convertBodyInit makes an owned or empty USVString on every
+        // path - the BufferSource arm, which would be a view, is never produced.
+        if (T == copied_arg_types.BodyInit) break :blk true;
+
+        // A sequence reads each element through its own handle (v8_Array_Get):
+        // copied when its elements are.
+        if (info == .pointer and info.pointer.size == .slice) {
+            break :blk argHandleIsCopied(info.pointer.child);
+        }
+
+        // A dictionary reads each member through its own handle (Get), so no
+        // member aliases the dictionary's handle. Members are still held to a
+        // rule - a JSValue member aliasing ITS OWN handle is fine - so that an
+        // unknown pointer keeps the conservative answer.
+        if (info == .@"struct" and !@hasDecl(T, "Meta")) {
+            for (info.@"struct".fields) |field| {
+                if (!memberHandleIsSafe(field.type)) break :blk false;
+            }
+            break :blk true;
+        }
+
+        // A union converts the same handle through whichever arm matches.
+        if (info == .@"union") {
+            for (info.@"union".fields) |field| {
+                if (!argHandleIsCopied(field.type)) break :blk false;
+            }
+            break :blk true;
+        }
+
+        // Callbacks, function pointers, buffer views, unknown pointers: assume
+        // the handle is kept.
         break :blk false;
     };
 }
+
+/// A dictionary member's conversion may alias the handle Get made for that
+/// member - a JSValue does - but never the dictionary's own.
+fn memberHandleIsSafe(comptime T: type) bool {
+    if (argHandleIsCopied(T)) return true;
+    if (T == runtime.JSValue) return true;
+    const info = @typeInfo(T);
+    if (info == .optional) return memberHandleIsSafe(info.optional.child);
+    return false;
+}
+
+/// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
+/// name them too.
+pub const copied_arg_types = struct {
+    pub const BodyInit = @import("typedefs").BodyInit;
+};
 
 /// Does converting an argument of type `T` yield a NON-OWNING view - memory
 /// this engine never allocated and must therefore never free?
