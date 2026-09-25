@@ -41,6 +41,9 @@ progress = [
   "acc6a45fb - inert dictionaries, unions, sequences and Instance pointers release their context; receiver contexts released: live context handles after 6 pages 50 -> 14",
   "bb4a19e46 - argument, dictionary-member and promise-resolver handles released once copied",
   "ef7e6e2fa - callback wrappers own their context; setter, contentWindow and security-token leaks fixed: retained memory falls for the first time",
+  "9fd458bfe - journal records live V8 native contexts per file (exact, where heap is noisy)",
+  "875a0db20 - a destroyed frame releases its own handles (context, Window constructor, intrinsics, global); variadic arguments released",
+  "7b265eb8f - the event handler map owns its values: 40 frame files leave 21 live contexts, not 102",
 ]
 
   [[infra.items]]
@@ -76,12 +79,12 @@ progress = [
   status = "done"
 
   [[infra.items]]
-  name = "A retired frame's context handle held weakly, so a torn-down frame releases its page"
-  status = "todo"
+  name = "A torn-down frame releases its own handles (context, constructors, intrinsics, global proxy)"
+  status = "done"
 
   [[infra.items]]
   name = "on* event handler values released when replaced and at teardown"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Wrapper cache stops holding torn-down wrappers strongly (markAsCleanedUp)"
@@ -89,6 +92,10 @@ progress = [
 
   [[infra.items]]
   name = "Native timers release their handler and context handles"
+  status = "done"
+
+  [[infra.items]]
+  name = "JSValue arguments borrowed by default; an impl that keeps one clones it (as Blink's ScriptValue)"
   status = "todo"
 
   [[infra.items]]

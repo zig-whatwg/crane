@@ -3518,3 +3518,51 @@ Then start a server that outlives any one runner: `python3 wpt.py serve --config
 **Fix**: when nothing is installed, `createDependent` makes a signal through `interfaces.AbortSignal.init`, which installs the implementation, and lets it go (`releaseIfUnwrapped`). `tests/wpt/crane/request-before-any-abortsignal.html` pins it, and it goes red only in a fresh process.
 
 **Takeaway**: **Before trusting a lazily installed hook, ask whether its consumer can run before any owner exists.** A test that passes in a sweep and fails alone is often one where a previous page did the setup.
+
+---
+
+### Debugging: Count native contexts, then name the first hop
+
+**Date**: 2026-09-25
+**Lesson**: `native_contexts` in the journal (V8's `number_of_native_contexts`, read after each file) is the exact measure of page retention. Retained heap only estimates it. A finished page should leave none of its realms behind.
+
+**What Happened**: 40 frame-heavy files in one process went from 4 to 102 live contexts and from 8 to 159 MB after GC. Disposing a retired entry's own context handle alone changed nothing, because every frame was pinned several times over. The fix took four rounds, each named by a heap snapshot's first hop from "(Global handles)" (`tmp/scratch/firsthop.py`-style: BFS from the root, skipping weak edges):
+
+1. `closure Window` - both child-context paths leaked the `Window` constructor and `Window.prototype` they read to fix the global's prototype.
+2. `closure TypeError` / `Object` - `destroyChildContext` freed the realm without `disposeIntrinsics`.
+3. `object WindowProperties` - which was the frame's **global proxy**, not WindowProperties: a snapshot names an object by the `Symbol.toStringTag` on its chain, and WindowProperties carries that tag. `createChildContext`'s own `v8_Context_Global` result was never disposed.
+4. The on* handler values: `EventTarget`'s event handler map never disposed a replaced, cleared or torn-down value. A value is a function in its page, and the page stayed alive.
+
+After all four: 5-7 contexts and ~12 MB, flat across the same files.
+
+**Fix**: to find the holders, run the Global-creation-site tracker (`tmp/scratch/diag_patch.py`), then resolve each growing site to a LINE. `dsymutil zig-out/bin/wpt_runner -o x.dSYM` takes two seconds, after which `atos -o x.dSYM/Contents/Resources/DWARF/wpt_runner -l <base> <pcs>` prints `file.zig:line`. `lldb` over ssh prints nothing.
+
+**Takeaway**: **Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.** Fixing one holder moves nothing, so measure the count after each round, not the heap after all of them.
+
+---
+
+### Architecture: A worker realm has no event loop, and a retired context marks a dead window realm
+
+**Date**: 2026-09-25
+**Lesson**: A worker's `ContextData` has `event_loop == null`, and its `timer` is the page's. A window's retired `ContextData` has `engine_ctx == null`, and it is never freed while the context manager lives.
+
+**Why**: Workers run their tasks as timers on the page's loop. `retireEntry` sets `engine_ctx` to null instead of freeing the entry.
+
+**What Happened**: Async `fetch()` (the networking lane, increment 1) holds a promise resolver across turns. For a worker, "queue a task on the realm's event loop" does nothing, so it falls back to a 0 ms timer followed by `finishTaskIn`.
+
+**Fix**: For a window realm, `ctx.engine_ctx != null` is a safe liveness test across turns. A worker realm needs a teardown hook instead, because its isolate may already be disposed.
+
+**Takeaway**: **Before holding a realm across turns, find out who tells you it ended, and whether its isolate outlives that moment.**
+
+---
+
+### Testing: Synchronous I/O behind an async API reorders script against the parser
+
+**Date**: 2026-09-25
+**Lesson**: A file failing on `null` from `document.body`, or from an element later in the page, may be failing on ordering rather than on a missing feature.
+
+**Why**: While `fetch()` blocked, `fetch(...).then(...)` settled at the end of the first script, before the parser had reached the elements after it.
+
+**What Happened**: `event-handler-attributes-frameset-window.html` went from ERROR 0/0 to OK 376/376 when fetch became asynchronous. Nothing about event handlers changed.
+
+**Takeaway**: **Before chasing a feature a whole file seems to lack, check what an API that should be asynchronous is doing synchronously.**
