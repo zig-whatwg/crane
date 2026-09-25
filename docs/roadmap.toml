@@ -138,11 +138,13 @@ html/ sources) and streaming bodies cannot work. XHR, fetch, workers, \
 WebSockets and navigation all sit on it."""
 done_when = "Fetches complete on the event loop and response bodies stream."
 areas = ["fetch/", "xhr/"]
-progress = []
+progress = [
+  "70278c0d1 - window fetch() completes on the event loop: a curl multi scheduler pumped each turn (networking lane, increment 1)",
+]
 
   [[infra.items]]
   name = "Fetches run on the event loop (curl multi), not blocking the thread"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Response bodies stream into ReadableStream as they arrive"
@@ -331,7 +333,7 @@ infra = "networking"
 owner = "agent"
 status = "doing"
 branch = "lane/networking"
-paths = ["src/fetch/", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/wpt/crane/net-*"]
+paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
