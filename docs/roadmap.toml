@@ -1,0 +1,330 @@
+# Crane engine roadmap.
+#
+# The shared infrastructure to finish before feature areas are handed to agents
+# working in parallel on other machines, the prerequisites for that parallel
+# work, and the areas that can be handed out afterwards. Rendered by
+# tools/wpt_progress.py into wpt-results/progress.html next to the WPT gate.
+#
+# Keep it current as work lands: flip an item's `status`, and add a line to
+# `progress` naming the commit. Statuses are "todo", "doing" or "done"; an
+# infrastructure piece's own status follows from its items. Anything the report
+# can measure it measures itself - blocking files per `areas` prefix, retained
+# heap per file, commits not yet pushed - so write no numbers here that would
+# go stale.
+
+[meta]
+goal = """Establish the engine's shared infrastructure first, then hand isolated \
+feature areas to parallel agents that never need to change it."""
+
+# ---------------------------------------------------------------------------
+# Engine infrastructure
+# ---------------------------------------------------------------------------
+
+[[infra]]
+id = "lifetime"
+title = "Object lifetime and V8 handle ownership"
+why = """Every feature allocates V8 handles, and a finished page is never freed: \
+listener callbacks, on* handler values and wrapper-cache strong holds pin its \
+whole context. In a long sweep that is V8 FatalProcessOutOfMemory - 11 of 18 \
+crashes in the dc36e6b3b sweep. Left open, every agent meets it and patches the \
+same binding files differently."""
+done_when = """Retained heap stays flat across a sweep shard (CRANE_HEAP_GC=1), \
+and the tracing decision - V8 TracedReference / cppgc versus manual \
+disposal - is made once."""
+metric = "heap"
+progress = [
+  "26626c087 - bindings release the context handles they take: live Global<Context> after 8 pages 431 -> 101",
+  "journal records heap_used_kb; CRANE_HEAP_GC and CRANE_HEAP_SNAPSHOT diagnose retention",
+]
+
+  [[infra.items]]
+  name = "Binding callbacks release the context, holder and value handles they take"
+  status = "done"
+
+  [[infra.items]]
+  name = "Per-context registration releases what it installs (methods, namespaces, window globals)"
+  status = "doing"
+
+  [[infra.items]]
+  name = "Callback registry resets a context's callbacks when the context is torn down"
+  status = "doing"
+
+  [[infra.items]]
+  name = "on* event handler values released when replaced and at teardown"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Wrapper cache stops holding torn-down wrappers strongly (markAsCleanedUp)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Native timers release their handler and context handles"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Decide tracing (TracedReference / cppgc) versus manual disposal"
+  status = "todo"
+
+[[infra]]
+id = "navigation"
+title = "Navigation and document lifecycle"
+why = """Navigation is synchronous, a frame keeps its Window across a navigation \
+(a new document should get a new Window), and there is no session history. \
+History, links, form submission, windows and bfcache all build on this."""
+done_when = """A navigated document gets a new Window, navigation runs as the \
+spec's tasks, and session history exists for features to build on."""
+areas = ["html/browsers/browsing-the-web/", "html/browsers/history/", "html/semantics/links/", "html/browsers/windows/", "navigation-api/"]
+progress = []
+
+  [[infra.items]]
+  name = "A navigated document gets a new Window"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Navigation runs as tasks, not synchronously inside the caller"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Session history entries and traversal"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Unload, pagehide and beforeunload in the right order"
+  status = "todo"
+
+[[infra]]
+id = "networking"
+title = "Asynchronous networking"
+why = """fetch() blocks the whole process in curl_easy_perform, so infinite \
+responses, polling helpers (common/dispatcher/dispatcher.js, loaded by 251 \
+html/ sources) and streaming bodies cannot work. XHR, fetch, workers, \
+WebSockets and navigation all sit on it."""
+done_when = "Fetches complete on the event loop and response bodies stream."
+areas = ["fetch/", "xhr/"]
+progress = []
+
+  [[infra.items]]
+  name = "Fetches run on the event loop (curl multi), not blocking the thread"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Response bodies stream into ReadableStream as they arrive"
+  status = "todo"
+
+  [[infra.items]]
+  name = "XHR and navigation fetch through the same path"
+  status = "todo"
+
+[[infra]]
+id = "origins"
+title = "Origins and cross-origin security"
+why = """Every frame is effectively same-origin. Cross-origin WindowProxy and \
+Location access checks, document.domain and agent clusters are missing."""
+done_when = """Cross-origin access checks, document.domain and agent clusters \
+exist, and a message that cannot cross a cluster fires messageerror."""
+areas = ["html/browsers/origin/", "html/browsers/the-window-object/"]
+progress = []
+
+  [[infra.items]]
+  name = "Cross-origin WindowProxy and Location access checks"
+  status = "todo"
+
+  [[infra.items]]
+  name = "document.domain"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Agent clusters and Origin-Agent-Cluster"
+  status = "todo"
+
+  [[infra.items]]
+  name = "messageerror for values that cannot cross a cluster"
+  status = "todo"
+
+[[infra]]
+id = "bindings"
+title = "Binding-layer gaps"
+why = """They live in generated code or interface.zig, so an agent working \
+around one would hand-patch shared files."""
+done_when = "Every item below is in the generator or the binding layer, not worked around in impls."
+progress = [
+  "5dbae790e - WebAssembly left to V8 (namespaceIsEngineProvided)",
+]
+
+  [[infra.items]]
+  name = "Operation overload resolution"
+  status = "done"
+
+  [[infra.items]]
+  name = "Operation receivers brand-checked"
+  status = "done"
+
+  [[infra.items]]
+  name = "Engine-provided namespaces (WebAssembly) left to V8"
+  status = "done"
+
+  [[infra.items]]
+  name = "Mixins inherited, implemented once in the mixin impl"
+  status = "doing"
+
+  [[infra.items]]
+  name = "WebIDL union types generated"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Callback functions carried by CallbackWrapper, not a tagged pointer"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Getter and setter receivers brand-checked"
+  status = "todo"
+
+  [[infra.items]]
+  name = "An interface-level way to fire a trusted event"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Window.prototype sound after a snapshot restore (window instanceof EventTarget)"
+  status = "todo"
+
+[[infra]]
+id = "serialization"
+title = "Structured serialization"
+why = """postMessage, workers, storage and history state all use it, and it \
+carries only bytes plus transferred ArrayBuffers."""
+done_when = """A side-data channel carries WebAssembly modules, SharedArrayBuffers \
+and transferable platform objects."""
+progress = []
+
+  [[infra.items]]
+  name = "DataCloneError from the serializer delegate"
+  status = "done"
+
+  [[infra.items]]
+  name = "WebAssembly.Module across windows in one agent cluster"
+  status = "todo"
+
+  [[infra.items]]
+  name = "SharedArrayBuffer where the agent cluster allows it"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Transferable and serializable platform objects (MessagePort, Blob, File)"
+  status = "todo"
+
+[[infra]]
+id = "event-loop"
+title = "Event loop completeness"
+why = "Mostly done; two gaps remain that every async feature eventually meets."
+done_when = "Idle workers run V8's posted tasks and task sources are spec-shaped."
+progress = [
+  "5dbae790e - V8's platform tasks pumped each turn",
+]
+
+  [[infra.items]]
+  name = "One event loop turn runs the tasks queued before it"
+  status = "done"
+
+  [[infra.items]]
+  name = "V8 platform tasks pumped (async WebAssembly, FinalizationRegistry)"
+  status = "done"
+
+  [[infra.items]]
+  name = "A worker with no timer of its own still runs V8's posted tasks"
+  status = "todo"
+
+  [[infra.items]]
+  name = "A real rendering opportunity instead of a requestAnimationFrame timer"
+  status = "todo"
+
+# ---------------------------------------------------------------------------
+# Prerequisites for parallel work
+# ---------------------------------------------------------------------------
+
+[[parallel]]
+name = "main pushed to origin, so other machines can see the work"
+status = "todo"
+metric = "unpushed"
+
+[[parallel]]
+name = "Per-area worklists"
+status = "todo"
+
+[[parallel]]
+name = "A lint that fails when an agent edits outside its area"
+status = "todo"
+
+[[parallel]]
+name = "AGENTS.md lessons as one file per lesson"
+status = "todo"
+
+[[parallel]]
+name = "Lint baselines updated by the integrator only"
+status = "todo"
+
+[[parallel]]
+name = "Progress report ordered by commit, not journal mtime"
+status = "todo"
+
+[[parallel]]
+name = "Results stable under load (pinned timings or a serial re-check)"
+status = "todo"
+
+# ---------------------------------------------------------------------------
+# Areas to hand out once their infrastructure is done
+# ---------------------------------------------------------------------------
+
+[[delegable]]
+name = "Forms and constraint validation"
+areas = ["html/semantics/forms/"]
+needs = ["lifetime", "bindings"]
+
+[[delegable]]
+name = "Embedded content"
+areas = ["html/semantics/embedded-content/"]
+needs = ["lifetime", "navigation"]
+
+[[delegable]]
+name = "Document metadata"
+areas = ["html/semantics/document-metadata/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "Custom elements"
+areas = ["custom-elements/"]
+needs = ["lifetime", "bindings"]
+
+[[delegable]]
+name = "DOM (nodes, ranges, traversal, events)"
+areas = ["dom/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "Encoding"
+areas = ["encoding/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "URL and URLPattern"
+areas = ["url/", "urlpattern/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "Cookie Store"
+areas = ["cookiestore/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "WebSockets"
+areas = ["websockets/"]
+needs = ["lifetime", "networking"]
+
+[[delegable]]
+name = "Streams"
+areas = ["streams/"]
+needs = ["lifetime"]
+
+[[delegable]]
+name = "Dynamic markup insertion (document.open / write)"
+areas = ["html/webappapis/dynamic-markup-insertion/"]
+needs = ["lifetime", "navigation"]

@@ -53,6 +53,11 @@ GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED'
 # they include; invalidated by the mtime and size of the source AND of every
 # script it pulls in, since the tests are often declared in the include.
 ESTIMATES = os.path.join(REPO, 'tmp', 'wpt-subtest-estimates.json')
+
+# The engine roadmap: the shared infrastructure to finish before feature areas
+# go to parallel agents, the prerequisites for that, and the areas to hand out.
+# Hand-edited; everything the page can measure about it is measured here.
+ROADMAP = os.path.join(REPO, 'docs', 'roadmap.toml')
 WPT_ROOT = os.path.join(REPO, 'tests', 'wpt')
 
 # A subtest-declaring call. The lookbehind stops `subsetTest(` matching `test(`
@@ -405,6 +410,213 @@ def bar(numer, denom, cls):
             f'style="width:{pct:.1f}%"></div></div>')
 
 
+def load_roadmap():
+    """docs/roadmap.toml, or None when it is missing or does not parse."""
+    try:
+        import tomllib
+        with open(ROADMAP, 'rb') as f:
+            return tomllib.load(f)
+    except (OSError, ImportError, ValueError):
+        return None
+
+
+def git_unpushed():
+    """Commits on HEAD that origin/main does not have, or None when unknown."""
+    try:
+        out = subprocess.run(['git', 'rev-list', '--count', 'origin/main..HEAD'], cwd=REPO,
+                             capture_output=True, text=True, timeout=5)
+        return int(out.stdout.strip()) if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def area_stats(prefixes, worklist, records):
+    """Subset files under any of `prefixes`: total, blocking, clean, unrun."""
+    c = collections.Counter()
+    for p in worklist:
+        if not any(p.startswith(pre) for pre in prefixes):
+            continue
+        c['total'] += 1
+        rec = records.get(p)
+        st = status_of(rec)
+        if st == 'UNRUN':
+            c['unrun'] += 1
+        elif st in GATING:
+            c['blocking'] += 1
+        elif not rec.get('failed') and not rec.get('timed_out'):
+            c['clean'] += 1
+    return c
+
+
+def _slope(ys):
+    """Least-squares slope of `ys` against their position."""
+    n = len(ys)
+    mx = (n - 1) / 2
+    my = sum(ys) / n
+    den = sum((i - mx) ** 2 for i in range(n))
+    return sum((i - mx) * (y - my) for i, y in enumerate(ys)) / den if den else 0.0
+
+
+def heap_trend(min_files=30):
+    """Retained-heap growth per file, from the journals that record heap_used_kb.
+
+    One process runs the files of one journal in order, so the slope of its
+    heap readings is what each file leaves behind. A journal merged from shards
+    interleaves several processes, each with its own heap, and a slope across
+    them means nothing - so only a journal whose `index` never decreases, one
+    process's records in order, is read. Readings without CRANE_HEAP_GC include
+    garbage not yet collected; over dozens of files the slope is retention.
+    """
+    files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')) +
+                   glob.glob(os.path.join(RESULTS, '*', '*.jsonl')),
+                   key=os.path.getmtime, reverse=True)
+    for fn in files:
+        base = os.path.basename(fn)
+        if base == 'journal.jsonl' and glob.glob(os.path.join(os.path.dirname(fn), 'journal.shard*.jsonl')):
+            continue
+        ys = []
+        last_index = -1
+        one_process = True
+        for line in open(fn, errors='replace'):
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            idx = rec.get('index', 0)
+            if idx < last_index:
+                one_process = False
+                break
+            last_index = idx
+            if rec.get('heap_used_kb'):
+                ys.append(rec['heap_used_kb'])
+        if one_process and len(ys) >= min_files:
+            return {'kb_per_file': _slope(ys), 'files': len(ys), 'first_mb': ys[0] / 1024,
+                    'last_mb': ys[-1] / 1024,
+                    'journal': os.path.relpath(fn, RESULTS)}
+    return None
+
+
+def item_status(items):
+    """An infrastructure piece's status, from its items'."""
+    states = {i.get('status', 'todo') for i in items}
+    if states == {'done'}:
+        return 'done'
+    if states <= {'todo'}:
+        return 'todo'
+    return 'doing'
+
+
+def pill(status):
+    label = {'done': 'done', 'doing': 'in progress', 'todo': 'not started'}.get(status, status)
+    return f'<span class="pill {html.escape(status)}">{label}</span>'
+
+
+def render_roadmap(roadmap, worklist, records):
+    """The roadmap sections: infrastructure, parallel-work prerequisites, and
+    the areas to delegate - each status from the TOML, each number measured."""
+    if not roadmap:
+        return ''
+    infra = roadmap.get('infra', [])
+    unpushed = git_unpushed()
+    heap = heap_trend()
+
+    status_by_id = {}
+    cards = []
+    items_done = items_total = 0
+    for piece in infra:
+        items = piece.get('items', [])
+        st = item_status(items)
+        status_by_id[piece['id']] = st
+        done = sum(1 for i in items if i.get('status') == 'done')
+        doing = sum(1 for i in items if i.get('status') == 'doing')
+        items_done += done
+        items_total += len(items)
+        li = ''.join(
+            f'<li class="{html.escape(i.get("status", "todo"))}">{html.escape(i["name"])}</li>'
+            for i in items)
+        live = []
+        if piece.get('areas'):
+            a = area_stats(piece['areas'], worklist, records)
+            live.append(f'<b>{a["blocking"]:,}</b> blocking of {a["total"]:,} subset files in '
+                        + ', '.join(f'<code>{html.escape(x)}</code>' for x in piece['areas']))
+        if piece.get('metric') == 'heap':
+            if heap:
+                live.append(f'Retained heap: <b>{heap["kb_per_file"]:+,.0f} KB per file</b> '
+                            f'over {heap["files"]:,} files ({heap["first_mb"]:.0f} &rarr; '
+                            f'{heap["last_mb"]:.0f} MB) in <code>{html.escape(heap["journal"])}</code>. '
+                            f'Flat is the goal.')
+            else:
+                live.append('Retained heap: no journal with <code>heap_used_kb</code> yet.')
+        prog = ''.join(f'<li>{html.escape(x)}</li>' for x in piece.get('progress', []))
+        cards.append(f"""
+  <div class="rm-card {st}">
+    <div class="rm-head"><span class="rm-title">{html.escape(piece['title'])}</span>{pill(st)}</div>
+    <div class="rm-bar">{bar(done + doing * 0.5, len(items), 'ok')}<span class="dim">{done} of {len(items)} done</span></div>
+    <p class="rm-why">{html.escape(piece.get('why', ''))}</p>
+    {''.join(f'<p class="rm-live">{x}</p>' for x in live)}
+    <ul class="rm-items">{li}</ul>
+    <p class="rm-done"><b>Done when:</b> {html.escape(piece.get('done_when', ''))}</p>
+    {f'<details><summary class="dim">Progress</summary><ul class="rm-prog">{prog}</ul></details>' if prog else ''}
+  </div>""")
+
+    par_rows = []
+    par_done = 0
+    for pre in roadmap.get('parallel', []):
+        st = pre.get('status', 'todo')
+        note = ''
+        if pre.get('metric') == 'unpushed' and unpushed is not None:
+            st = 'done' if unpushed == 0 else st
+            note = f' <span class="dim">&middot; {unpushed:,} commit{"s" if unpushed != 1 else ""} not on origin</span>'
+        par_done += st == 'done'
+        par_rows.append(f'<li class="{st}">{pill(st)} {html.escape(pre["name"])}{note}</li>')
+    parallel_ready = par_done == len(roadmap.get('parallel', []))
+
+    del_rows = []
+    ready = 0
+    for d in roadmap.get('delegable', []):
+        a = area_stats(d.get('areas', []), worklist, records)
+        waiting = [n for n in d.get('needs', []) if status_by_id.get(n) != 'done']
+        is_ready = not waiting and parallel_ready
+        ready += is_ready
+        titles = {p['id']: p['title'] for p in infra}
+        why = ('ready' if is_ready else
+               'waiting on ' + ', '.join(titles.get(n, n) for n in waiting) if waiting else
+               'waiting on the parallel-work prerequisites')
+        del_rows.append(f"""
+      <tr class="{'good' if is_ready else ''}">
+        <td class="area">{html.escape(d['name'])}<div class="dim rm-paths">{', '.join(html.escape(x) for x in d.get('areas', []))}</div></td>
+        <td class="num">{a['total']:,}</td>
+        <td class="num gate">{a['blocking'] or '&middot;'}</td>
+        <td class="num ok">{a['clean'] or '&middot;'}</td>
+        <td class="rm-wait">{pill('done') if is_ready else ''}<span class="dim">{html.escape(why)}</span></td>
+      </tr>""")
+
+    infra_done = sum(1 for v in status_by_id.values() if v == 'done')
+    goal = html.escape(roadmap.get('meta', {}).get('goal', ''))
+    return f"""
+<h2 class="section">Engine roadmap <small class="dim">docs/roadmap.toml</small></h2>
+<p class="dim rm-goal">{goal}</p>
+<div class="cards">
+  <div class="card"><div class="k">Infrastructure done</div><div class="v">{infra_done}<span class="dim" style="font-size:14px"> / {len(infra)}</span></div></div>
+  <div class="card"><div class="k">Infrastructure items</div><div class="v">{items_done}<span class="dim" style="font-size:14px"> / {items_total}</span></div></div>
+  <div class="card"><div class="k">Parallel-work prerequisites</div><div class="v">{par_done}<span class="dim" style="font-size:14px"> / {len(par_rows)}</span></div></div>
+  <div class="card"><div class="k">Areas ready to hand out</div><div class="v">{ready}<span class="dim" style="font-size:14px"> / {len(del_rows)}</span></div></div>
+</div>
+
+<h2>Engine infrastructure <small class="dim">finish before work goes parallel</small></h2>
+<div class="rm-grid">{''.join(cards)}</div>
+
+<h2>Prerequisites for parallel work</h2>
+<div class="panel"><ul class="rm-par">{''.join(par_rows)}</ul></div>
+
+<h2>Areas to hand out <small class="dim">once what they need is done</small></h2>
+<table>
+  <thead><tr><th>Area</th><th>Subset</th><th>Blocking</th><th>Clean</th><th>Readiness</th></tr></thead>
+  <tbody>{''.join(del_rows)}</tbody>
+</table>
+"""
+
+
 def git_head():
     try:
         return subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=REPO,
@@ -698,7 +910,7 @@ status survives.</p>
 """
 
 
-def render(areas, worklist, records, files, out_path, history=None, shape=None):
+def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
@@ -813,10 +1025,11 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None):
     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
 
     history_html = render_history(history) if history else ''
+    roadmap_html = render_roadmap(roadmap, worklist, records)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Crane 0.1 — WPT progress</title>
+<title>Crane Engine Progress</title>
 <style>
   :root {{
     --bg:#fbfaf9; --panel:#fff; --ink:#1c1a17; --dim:#77706a; --line:#e4dfd9; --dimline:#b9b2aa;
@@ -921,14 +1134,46 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None):
   td.compw {{ line-height:1.45 }}
   .note {{ font-size:12px; margin:12px 0 0; max-width:88ch; line-height:1.5 }}
   @media (max-width:640px) {{ td.compw {{ display:none }} }}
+
+  h2.section {{ font-size:18px; margin:40px 0 4px; }}
+  .rm-goal {{ font-size:13.5px; max-width:80ch; margin:0 0 16px }}
+  .rm-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:12px; margin-bottom:28px }}
+  .rm-card {{ background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; border-left:4px solid var(--dimline) }}
+  .rm-card.done {{ border-left-color:var(--ok) }}
+  .rm-card.doing {{ border-left-color:var(--warn) }}
+  .rm-head {{ display:flex; justify-content:space-between; gap:10px; align-items:baseline }}
+  .rm-title {{ font-weight:650 }}
+  .rm-bar {{ display:flex; gap:10px; align-items:center; font-size:12px; margin:6px 0 8px }}
+  .rm-why, .rm-done, .rm-live {{ font-size:12.5px; margin:6px 0; line-height:1.45 }}
+  .rm-live {{ color:var(--ink) }}
+  .rm-items, .rm-prog, .rm-par {{ margin:6px 0; padding-left:0; list-style:none; font-size:12.5px }}
+  .rm-items li {{ padding:2px 0 2px 20px; position:relative }}
+  .rm-items li::before {{ position:absolute; left:2px; font-weight:700 }}
+  .rm-items li.done::before {{ content:"\\2713"; color:var(--ok) }}
+  .rm-items li.doing::before {{ content:"\\25D0"; color:var(--warn) }}
+  .rm-items li.todo::before {{ content:"\\25CB"; color:var(--dim) }}
+  .rm-items li.todo {{ color:var(--dim) }}
+  .rm-prog li {{ padding:2px 0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px }}
+  .rm-par li {{ padding:5px 0; border-bottom:1px solid var(--line) }}
+  .rm-par li:last-child {{ border-bottom:0 }}
+  .rm-paths {{ font-size:11px }}
+  td.rm-wait {{ text-align:left; font-size:12.5px }}
+  .pill {{ display:inline-block; font-size:10.5px; font-weight:650; letter-spacing:.03em;
+    text-transform:uppercase; padding:1px 7px; border-radius:9px; margin-right:6px;
+    border:1px solid currentColor; white-space:nowrap }}
+  .pill.done {{ color:var(--ok) }}
+  .pill.doing {{ color:var(--warn) }}
+  .pill.todo {{ color:var(--dim) }}
 </style></head><body><div class="wrap">
 
-<h1>Crane 0.1 &mdash; WPT progress</h1>
-<div class="sub">Generated {now} &middot; {total:,} sources in the 0.1 subset
-  &middot; <code>tools/wpt_progress.py</code></div>
+<h1>Crane engine progress</h1>
+<div class="sub">Generated {now} &middot; WPT: {total:,} sources in the 0.1 subset
+  &middot; roadmap: <code>docs/roadmap.toml</code> &middot; <code>tools/wpt_progress.py</code></div>
 
 <div class="gate">
-  <h2>Release gate</h2>
+  <h2>WPT 0.1 release gate</h2>
   <div class="verdict">{'MET' if gate_met else f'{gating:,} blocking'}
     <small>{'Zero crashes, zero timeouts, whole subset run.' if gate_met else
       f'0.1 ships when crashes and timeouts reach zero. {unrun:,} of {total:,} sources not yet run.'}</small>
@@ -942,6 +1187,10 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None):
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
 </div>
+
+{roadmap_html}
+
+<h2 class="section">WPT detail</h2>
 
 {subtest_html}
 
@@ -996,7 +1245,7 @@ def main():
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
     history = record_generation(worklist, records, areas)
     gate_met, gating, run, total, clean = render(
-        areas, worklist, records, files, out, history, shape)
+        areas, worklist, records, files, out, history, shape, load_roadmap())
 
     tot = collections.Counter()
     for c in areas.values():

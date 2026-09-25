@@ -128,6 +128,12 @@ After every feature commit:
 2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir /tmp/crane-z16-cache`.
 3. **Report the headline** - blocking files and passing subtests from the page -
    in your summary.
+4. **Keep the roadmap current.** The same page renders the engine roadmap from
+   `docs/roadmap.toml`: the shared infrastructure to finish before feature
+   areas go to parallel agents, the prerequisites for that, and the areas to
+   hand out. When a commit moves a roadmap item, flip its `status` and add the
+   commit to its piece's `progress`. Write no numbers there - the page measures
+   blocking files per area, retained heap per file and unpushed commits itself.
 
 And at least once per working session, or every few feature commits: a full
 worklist sweep at HEAD, from a frozen copy of the runner, into
