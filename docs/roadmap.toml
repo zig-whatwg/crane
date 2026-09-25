@@ -36,6 +36,7 @@ progress = [
   "26626c087 - bindings release the context handles they take: live Global<Context> after 8 pages 431 -> 101",
   "journal records heap_used_kb; CRANE_HEAP_GC and CRANE_HEAP_SNAPSHOT diagnose retention",
   "0100e3e5b - per-context registration releases its handles; callback registry resets a torn-down context's callbacks: live handles after 8 pages 21,469 -> 16,788",
+  "f2d429ab5 - legacy platform object wrappers release the proxied target: a simple page no longer retains anything",
 ]
 
   [[infra.items]]
@@ -49,6 +50,14 @@ progress = [
   [[infra.items]]
   name = "Callback registry resets a context's callbacks when the context is torn down"
   status = "done"
+
+  [[infra.items]]
+  name = "Legacy platform object wrappers release the proxied target's handle"
+  status = "done"
+
+  [[infra.items]]
+  name = "Return values: the binding owns and releases what conversion hands it (promises, objects, strings)"
+  status = "todo"
 
   [[infra.items]]
   name = "on* event handler values released when replaced and at teardown"
