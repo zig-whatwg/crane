@@ -2369,6 +2369,12 @@ void v8_Platform_Initialize() {
     }
 }
 
+/// Whether Atomics.wait() may block on |isolate| - HTML's [[CanBlock]] for
+/// the agent the isolate hosts.
+void v8_Isolate_SetAllowAtomicsWait(Isolate* isolate, bool allow) {
+    if (isolate) isolate->SetAllowAtomicsWait(allow);
+}
+
 /// Run one foreground task V8 has posted to the platform for |isolate|, if
 /// one is due, and report whether one ran. V8 finishes an asynchronous
 /// WebAssembly compile, and runs FinalizationRegistry cleanup, through such

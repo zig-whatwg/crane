@@ -193,6 +193,13 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_Dispose(isolate);
         }
 
+        // This isolate hosts similar-origin window agents, and HTML's "obtain a
+        // similar-origin window agent" creates each with [[CanBlock]] false, so
+        // Atomics.wait() throws a TypeError here. V8's default lets it block, which would
+        // freeze the page's only thread. Blink turns it off on the main thread
+        // too; dedicated workers keep the default, their [[CanBlock]] is true.
+        v8.ffi.v8_Isolate_SetAllowAtomicsWait(isolate, false);
+
         // Register V8 lifecycle cleanup handlers
         v8.registerBuiltinHandlers() catch |err| {
             log.warn("Failed to register lifecycle handlers: {}", .{err});

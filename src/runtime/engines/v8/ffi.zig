@@ -2205,6 +2205,10 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 /// entered.
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
 
+/// Whether `Atomics.wait()` may block on `isolate` - HTML's [[CanBlock]] for
+/// the agent it hosts. V8's default is true.
+pub extern fn v8_Isolate_SetAllowAtomicsWait(isolate: *Isolate, allow: bool) void;
+
 /// Set the microtasks policy for the isolate
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 
