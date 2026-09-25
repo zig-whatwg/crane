@@ -39,6 +39,7 @@ progress = [
   "f2d429ab5 - legacy platform object wrappers release the proxied target: a simple page no longer retains anything",
   "50d353245 - method results the binding owns are released; promises are handed over",
   "acc6a45fb - inert dictionaries, unions, sequences and Instance pointers release their context; receiver contexts released: live context handles after 6 pages 50 -> 14",
+  "bb4a19e46 - argument, dictionary-member and promise-resolver handles released once copied",
 ]
 
   [[infra.items]]
@@ -67,6 +68,10 @@ progress = [
 
   [[infra.items]]
   name = "Argument handles released when conversion copied out of them (dictionaries, Instance arguments)"
+  status = "done"
+
+  [[infra.items]]
+  name = "Callback wrappers own a copy of their context, so the binding releases its own (EventTarget.addEventListener, on* setters)"
   status = "todo"
 
   [[infra.items]]
