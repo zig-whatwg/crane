@@ -8962,6 +8962,12 @@ void v8_ClearAsyncIteratorTemplateCache() {
     g_async_iterator_isolate = nullptr;
 }
 
+/// Clear the cache only if it holds |isolate|'s template: a worker's teardown
+/// must not reset the page's.
+void v8_ClearAsyncIteratorTemplateCacheFor(Isolate* isolate) {
+    if (g_async_iterator_isolate == isolate) v8_ClearAsyncIteratorTemplateCache();
+}
+
 /// Clear the module resolve callback
 /// MUST be called before disposing an isolate to prevent use-after-free crashes.
 /// The user_data pointer becomes invalid when the Zig runtime is deinitialized.

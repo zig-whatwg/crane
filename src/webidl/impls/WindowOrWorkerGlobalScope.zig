@@ -511,7 +511,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             // steps - the abort steps settled p already.
             if (!alive(self) or self.locally_aborted) return self.taskDone();
 
-            // Read once: `release` frees this call, and the isolate is
+            // Read once: `taskDone` can free this call, and the isolate is
             // exited after it - the defers run in reverse.
             const isolate = self.isolate;
             const entered = v8.ffi.v8_Isolate_GetCurrent() != isolate;

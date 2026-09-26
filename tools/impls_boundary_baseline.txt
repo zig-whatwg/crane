@@ -139,7 +139,6 @@ src/html/scripted_parser.zig Document.setDefaultView 1
 src/html/upgrade.zig CustomElementRegistry.CustomElementDefinition 1
 src/html/upgrade.zig CustomElementRegistry.lookUpCustomElementDefinition 2
 src/html/worker_v8_context.zig MessagePort.initWithInternal 1
-src/html/worker_v8_context.zig Response.fromInternalResponse 1
 src/platform/layout_backend.zig Node.getInternalState 1
 src/platform/layout_backend.zig Node.getTextContentInternal 1
 src/runtime/engines/v8/context_manager.zig Document.getInternal 1

@@ -2850,6 +2850,10 @@ pub fn throwWebIDLErrorFromContext(
         throwDOMExceptionFromContext(isolate, context, error_name, error_name);
     } else if (std.mem.eql(u8, error_name, "TypeError")) {
         throwTypeErrorFromContext(isolate, context, "TypeError");
+    } else if (std.mem.eql(u8, error_name, "NotEnoughArguments")) {
+        // WebIDL overload resolution: fewer arguments than any overload
+        // requires is a TypeError (step "if S is empty, throw a TypeError").
+        throwTypeErrorFromContext(isolate, context, "Not enough arguments");
     } else if (std.mem.eql(u8, error_name, "RangeError")) {
         // TODO: implement throwRangeErrorFromContext
         throwRangeError(isolate, "RangeError");
