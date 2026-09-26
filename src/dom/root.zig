@@ -72,6 +72,7 @@ pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");
 pub const live_collections = @import("live_collections.zig");
+pub const token_lists = @import("token_lists.zig");
 pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.zig");
 pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 pub const range_tracking = @import("range_tracking.zig");

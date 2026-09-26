@@ -319,9 +319,12 @@ pub const HTMLTableRowElement = struct {
         return value;
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableRowElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "get_align")) return try HTMLTableRowElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -330,12 +333,14 @@ pub const HTMLTableRowElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableRowElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "set_align")) return try HTMLTableRowElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn get_ch(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableRowElementImpl.get_ch(instance);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "get_ch")) return try HTMLTableRowElementImpl.get_ch(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "char" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
@@ -344,12 +349,14 @@ pub const HTMLTableRowElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableRowElementImpl.set_ch(instance, value);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "set_ch")) return try HTMLTableRowElementImpl.set_ch(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "char" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn get_chOff(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableRowElementImpl.get_chOff(instance);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "get_chOff")) return try HTMLTableRowElementImpl.get_chOff(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charoff" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
@@ -358,12 +365,14 @@ pub const HTMLTableRowElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableRowElementImpl.set_chOff(instance, value);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "set_chOff")) return try HTMLTableRowElementImpl.set_chOff(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_vAlign(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableRowElementImpl.get_vAlign(instance);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "get_vAlign")) return try HTMLTableRowElementImpl.get_vAlign(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "valign" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -372,12 +381,14 @@ pub const HTMLTableRowElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableRowElementImpl.set_vAlign(instance, value);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "set_vAlign")) return try HTMLTableRowElementImpl.set_vAlign(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableRowElementImpl.get_bgColor(instance);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "get_bgColor")) return try HTMLTableRowElementImpl.get_bgColor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -386,7 +397,8 @@ pub const HTMLTableRowElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableRowElementImpl.set_bgColor(instance, value);
+        if (comptime @hasDecl(HTMLTableRowElementImpl, "set_bgColor")) return try HTMLTableRowElementImpl.set_bgColor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     pub fn call_insertCell(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {

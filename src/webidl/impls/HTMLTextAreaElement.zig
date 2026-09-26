@@ -24,9 +24,6 @@ pub const ImplError = error{
     NotImplemented,
     InvalidState,
     OutOfMemory,
-    /// An out-of-range assignment to cols/rows/maxLength/minLength. The name
-    /// matters: it is the DOMException the binding maps it to.
-    IndexSizeError,
 };
 
 /// Per-instance state, stored BY VALUE in a map of this module's own rather than
@@ -194,61 +191,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 }
 
 // ---------------------------------------------------------------------------
-// Reflection helpers
-// ---------------------------------------------------------------------------
-
-fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, attr)) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-    return runtime.DOMString.initEmpty();
-}
-
-fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!bool {
-    // A boolean content attribute is true by PRESENCE; readonly="false" is true.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    return elem_internal.findAttribute(null, attr) != null;
-}
-
-/// Reflects an integer attribute, falling back to `default` when the attribute is
-/// absent or does not parse. `positive_only` implements "limited to only positive
-/// numbers", where a zero is as invalid as a letter.
-fn reflectInt(
-    instance: *runtime.Instance,
-    comptime attr: []const u8,
-    comptime T: type,
-    default: T,
-    comptime positive_only: bool,
-) anyerror!T {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, attr) orelse return default;
-    const parsed = std.fmt.parseInt(T, std.mem.trim(u8, entry.value, " \t\n\r\x0C"), 10) catch return default;
-    if (parsed < 0) return default;
-    if (positive_only and parsed == 0) return default;
-    return parsed;
-}
-
-fn setBoolAttr(instance: *runtime.Instance, comptime attr: []const u8, value: bool) anyerror!void {
-    const name = runtime.DOMString.initInterned(attr);
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
-}
-
-fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(attr), value);
-}
-
-fn setIntAttr(instance: *runtime.Instance, comptime attr: []const u8, value: anytype) anyerror!void {
-    var buf: [24]u8 = undefined;
-    const text = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
-    try setStringAttr(instance, attr, runtime.DOMString.initInterned(text));
-}
-
-// ---------------------------------------------------------------------------
 // Raw value / API value
 // ---------------------------------------------------------------------------
 
@@ -337,73 +279,12 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for cols
-pub fn get_cols(instance: *runtime.Instance) anyerror!u32 {
-    // Limited to only POSITIVE numbers, default 20 - so cols="0" reads back 20.
-    return reflectInt(instance, "cols", u32, 20, true);
-}
-
-/// Getter for dirName
-pub fn get_dirName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "dirname");
-}
-
-/// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "disabled");
-}
-
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // TODO: form association is not implemented; HTMLInputElement returns null
     // here for the same reason.
     _ = instance;
     return null;
-}
-
-/// Getter for maxLength
-pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
-    // Limited to only non-negative numbers, default -1, so maxlength="0" is 0.
-    return reflectInt(instance, "maxlength", i32, -1, false);
-}
-
-/// Getter for minLength
-pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
-    return reflectInt(instance, "minlength", i32, -1, false);
-}
-
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "name");
-}
-
-/// Getter for placeholder
-pub fn get_placeholder(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "placeholder");
-}
-
-/// Getter for readOnly
-pub fn get_readOnly(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "readonly");
-}
-
-/// Getter for required
-pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "required");
-}
-
-/// Getter for rows
-pub fn get_rows(instance: *runtime.Instance) anyerror!u32 {
-    // Limited to only positive numbers, default 2.
-    return reflectInt(instance, "rows", u32, 2, true);
-}
-
-/// Getter for wrap
-pub fn get_wrap(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Plain reflection. `wrap` is an enumerated CONTENT attribute (soft/hard),
-    // but the IDL attribute is [Reflect] rather than limited to known values, so
-    // an unrecognised value is handed back verbatim.
-    return reflectString(instance, "wrap");
 }
 
 /// Getter for type
@@ -503,81 +384,6 @@ pub fn get_selectionEnd(instance: *runtime.Instance) anyerror!u32 {
 pub fn get_selectionDirection(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = StateMap.get(instance) orelse return runtime.DOMString.initInterned("none");
     return runtime.DOMString.initInterned(internal.selection_direction.keyword());
-}
-
-// ---------------------------------------------------------------------------
-// Out-of-range integer assignments
-//
-// "Limited to only positive numbers" and "limited to only non-negative numbers"
-// both throw "IndexSizeError" on an out-of-range assignment rather than writing
-// the attribute, which textarea-minlength.html and textarea-maxlength.html each
-// assert.
-// ---------------------------------------------------------------------------
-
-/// Setter for autocomplete
-pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Written VERBATIM; only the getter canonicalises.
-    try setStringAttr(instance, "autocomplete", value);
-}
-
-/// Setter for cols
-pub fn set_cols(instance: *runtime.Instance, value: u32) anyerror!void {
-    // "Limited to only positive numbers": zero is invalid.
-    if (value == 0) return error.IndexSizeError;
-    try setIntAttr(instance, "cols", value);
-}
-
-/// Setter for dirName
-pub fn set_dirName(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "dirname", value);
-}
-
-/// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "disabled", value);
-}
-
-/// Setter for maxLength
-pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
-    if (value < 0) return error.IndexSizeError;
-    try setIntAttr(instance, "maxlength", value);
-}
-
-/// Setter for minLength
-pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
-    if (value < 0) return error.IndexSizeError;
-    try setIntAttr(instance, "minlength", value);
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "name", value);
-}
-
-/// Setter for placeholder
-pub fn set_placeholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "placeholder", value);
-}
-
-/// Setter for readOnly
-pub fn set_readOnly(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "readonly", value);
-}
-
-/// Setter for required
-pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "required", value);
-}
-
-/// Setter for rows
-pub fn set_rows(instance: *runtime.Instance, value: u32) anyerror!void {
-    if (value == 0) return error.IndexSizeError;
-    try setIntAttr(instance, "rows", value);
-}
-
-/// Setter for wrap
-pub fn set_wrap(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "wrap", value);
 }
 
 /// Setter for defaultValue

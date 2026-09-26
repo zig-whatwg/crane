@@ -300,9 +300,12 @@ pub const HTMLFrameElement = struct {
         return try HTMLFrameElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_name")) return try HTMLFrameElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -311,12 +314,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_name")) return try HTMLFrameElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_scrolling(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameElementImpl.get_scrolling(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_scrolling")) return try HTMLFrameElementImpl.get_scrolling(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "scrolling" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -325,12 +330,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_scrolling(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_scrolling")) return try HTMLFrameElementImpl.set_scrolling(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "scrolling" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLFrameElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_src")) return try HTMLFrameElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -339,12 +346,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_src")) return try HTMLFrameElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_frameBorder(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameElementImpl.get_frameBorder(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_frameBorder")) return try HTMLFrameElementImpl.get_frameBorder(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "frameborder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -353,12 +362,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_frameBorder(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_frameBorder")) return try HTMLFrameElementImpl.set_frameBorder(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "frameborder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLFrameElementImpl.get_longDesc(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_longDesc")) return try HTMLFrameElementImpl.get_longDesc(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "longdesc", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -367,12 +378,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_longDesc(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_longDesc")) return try HTMLFrameElementImpl.set_longDesc(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "longdesc", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_noResize(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLFrameElementImpl.get_noResize(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_noResize")) return try HTMLFrameElementImpl.get_noResize(instance);
+        return try reflection.get(bool, instance, .{ .name = "noresize" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -381,7 +394,8 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_noResize(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_noResize")) return try HTMLFrameElementImpl.set_noResize(instance, value);
+        try reflection.set(bool, instance, .{ .name = "noresize" }, value);
     }
 
     pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -394,7 +408,8 @@ pub const HTMLFrameElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_marginHeight(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameElementImpl.get_marginHeight(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_marginHeight")) return try HTMLFrameElementImpl.get_marginHeight(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "marginheight" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -403,12 +418,14 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_marginHeight(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_marginHeight")) return try HTMLFrameElementImpl.set_marginHeight(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "marginheight" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_marginWidth(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameElementImpl.get_marginWidth(instance);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "get_marginWidth")) return try HTMLFrameElementImpl.get_marginWidth(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "marginwidth" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -417,7 +434,8 @@ pub const HTMLFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameElementImpl.set_marginWidth(instance, value);
+        if (comptime @hasDecl(HTMLFrameElementImpl, "set_marginWidth")) return try HTMLFrameElementImpl.set_marginWidth(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for

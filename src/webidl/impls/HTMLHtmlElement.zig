@@ -55,16 +55,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     return instance;
 }
-
-/// Getter for version
-pub fn get_version(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for version
-pub fn set_version(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

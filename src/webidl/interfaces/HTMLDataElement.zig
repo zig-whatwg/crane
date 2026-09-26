@@ -256,9 +256,12 @@ pub const HTMLDataElement = struct {
         return try HTMLDataElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLDataElementImpl.get_value(instance);
+        if (comptime @hasDecl(HTMLDataElementImpl, "get_value")) return try HTMLDataElementImpl.get_value(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLDataElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDataElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLDataElementImpl, "set_value")) return try HTMLDataElementImpl.set_value(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
     }
 };

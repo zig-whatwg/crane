@@ -382,9 +382,12 @@ pub const HTMLBodyElement = struct {
         try HTMLBodyElementImpl.set_onorientationchange(instance, value);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_text(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_text")) return try HTMLBodyElementImpl.get_text(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "text" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -393,12 +396,14 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_text(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_text")) return try HTMLBodyElementImpl.set_text(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "text" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_link(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_link(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_link")) return try HTMLBodyElementImpl.get_link(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "link" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -407,12 +412,14 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_link(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_link")) return try HTMLBodyElementImpl.set_link(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "link" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_vLink(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_vLink(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_vLink")) return try HTMLBodyElementImpl.get_vLink(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "vlink" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -421,12 +428,14 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_vLink(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_vLink")) return try HTMLBodyElementImpl.set_vLink(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "vlink" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_aLink(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_aLink(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_aLink")) return try HTMLBodyElementImpl.get_aLink(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "alink" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -435,12 +444,14 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_aLink(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_aLink")) return try HTMLBodyElementImpl.set_aLink(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "alink" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_bgColor(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_bgColor")) return try HTMLBodyElementImpl.get_bgColor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -449,12 +460,14 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_bgColor(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_bgColor")) return try HTMLBodyElementImpl.set_bgColor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_background(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBodyElementImpl.get_background(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_background")) return try HTMLBodyElementImpl.get_background(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "background" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -463,7 +476,8 @@ pub const HTMLBodyElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBodyElementImpl.set_background(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_background")) return try HTMLBodyElementImpl.set_background(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "background" }, value);
     }
 
     pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;

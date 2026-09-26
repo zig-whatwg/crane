@@ -56,18 +56,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for width
-pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for height
-pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for videoWidth
 pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
@@ -76,18 +64,6 @@ pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for videoHeight
 pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for poster
-pub fn get_poster(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for playsInline
-pub fn get_playsInline(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
@@ -107,34 +83,6 @@ pub fn get_onleavepictureinpicture(instance: *runtime.Instance) anyerror!typedef
 /// Getter for disablePictureInPicture
 pub fn get_disablePictureInPicture(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for poster
-pub fn set_poster(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for playsInline
-pub fn set_playsInline(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }
 

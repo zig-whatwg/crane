@@ -112,30 +112,9 @@ pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.In
 //                  unrecognised one to the INVALID VALUE DEFAULT
 // ---------------------------------------------------------------------------
 
-fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, attr)) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-    return runtime.DOMString.initEmpty();
-}
-
 fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!bool {
     const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
     return elem_internal.findAttribute(null, attr) != null;
-}
-
-fn setBoolAttr(instance: *runtime.Instance, comptime attr: []const u8, value: bool) anyerror!void {
-    const name = runtime.DOMString.initInterned(attr);
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
-}
-
-fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(attr), value);
 }
 
 /// The list of options, owned by the caller.
@@ -170,42 +149,12 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "disabled");
-}
-
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // TODO: form association is not implemented; HTMLInputElement returns null
     // here for the same reason.
     _ = instance;
     return null;
-}
-
-/// Getter for multiple
-pub fn get_multiple(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "multiple");
-}
-
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "name");
-}
-
-/// Getter for required
-pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "required");
-}
-
-/// Getter for size
-pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-    // Reflects, limited to only non-negative numbers, default 0. Note this is NOT
-    // the DISPLAY size, which is 1 when the attribute is absent or zero - see
-    // HTMLOptionElement.displaySize, which the reset algorithm uses.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, "size") orelse return 0;
-    return std.fmt.parseInt(u32, std.mem.trim(u8, entry.value, " \t\n\r\x0C"), 10) catch 0;
 }
 
 /// Getter for type
@@ -319,39 +268,6 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Setter for autocomplete
-pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Written VERBATIM; only the getter canonicalises.
-    try setStringAttr(instance, "autocomplete", value);
-}
-
-/// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "disabled", value);
-}
-
-/// Setter for multiple
-pub fn set_multiple(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "multiple", value);
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "name", value);
-}
-
-/// Setter for required
-pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "required", value);
-}
-
-/// Setter for size
-pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const text = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
-    try setStringAttr(instance, "size", runtime.DOMString.initInterned(text));
 }
 
 /// Setter for length

@@ -276,9 +276,12 @@ pub const HTMLHRElement = struct {
         return try HTMLHRElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHRElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLHRElementImpl, "get_align")) return try HTMLHRElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -287,12 +290,14 @@ pub const HTMLHRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHRElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLHRElementImpl, "set_align")) return try HTMLHRElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHRElementImpl.get_color(instance);
+        if (comptime @hasDecl(HTMLHRElementImpl, "get_color")) return try HTMLHRElementImpl.get_color(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "color" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -301,12 +306,14 @@ pub const HTMLHRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHRElementImpl.set_color(instance, value);
+        if (comptime @hasDecl(HTMLHRElementImpl, "set_color")) return try HTMLHRElementImpl.set_color(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "color" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_noShade(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLHRElementImpl.get_noShade(instance);
+        if (comptime @hasDecl(HTMLHRElementImpl, "get_noShade")) return try HTMLHRElementImpl.get_noShade(instance);
+        return try reflection.get(bool, instance, .{ .name = "noshade" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -315,12 +322,14 @@ pub const HTMLHRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHRElementImpl.set_noShade(instance, value);
+        if (comptime @hasDecl(HTMLHRElementImpl, "set_noShade")) return try HTMLHRElementImpl.set_noShade(instance, value);
+        try reflection.set(bool, instance, .{ .name = "noshade" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_size(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHRElementImpl.get_size(instance);
+        if (comptime @hasDecl(HTMLHRElementImpl, "get_size")) return try HTMLHRElementImpl.get_size(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "size" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -329,12 +338,14 @@ pub const HTMLHRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHRElementImpl.set_size(instance, value);
+        if (comptime @hasDecl(HTMLHRElementImpl, "set_size")) return try HTMLHRElementImpl.set_size(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "size" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHRElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLHRElementImpl, "get_width")) return try HTMLHRElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -343,6 +354,7 @@ pub const HTMLHRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHRElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLHRElementImpl, "set_width")) return try HTMLHRElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 };

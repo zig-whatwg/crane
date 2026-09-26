@@ -288,12 +288,6 @@ fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: run
     try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
 }
 
-/// Check if a content attribute exists
-fn hasContentAttribute(instance: *runtime.Instance, name: []const u8) bool {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
-    return elem_internal.findAttribute(null, name) != null;
-}
-
 /// Remove content attribute `name` - DOM "remove an attribute by namespace
 /// and local name" with a null namespace.
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
@@ -304,20 +298,6 @@ fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
 // Content Attribute Reflection Properties
 // Spec: https://html.spec.whatwg.org/multipage/dom.html#reflecting-content-attributes-in-idl-attributes
 // =============================================================================
-
-/// Getter for title
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-title
-/// Reflects the title content attribute
-pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "title") orelse runtime.DOMString.initEmpty();
-}
-
-/// Getter for lang
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-lang
-/// Reflects the lang content attribute
-pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "lang") orelse runtime.DOMString.initEmpty();
-}
 
 /// Getter for translate
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-translate
@@ -365,19 +345,6 @@ pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return runtime.JSValue.fromBoolean(true);
     }
     return null; // Not hidden
-}
-
-/// Getter for inert
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
-/// Boolean attribute
-pub fn get_inert(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "inert");
-}
-
-/// Getter for accessKey
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-accesskey-attribute
-pub fn get_accessKey(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "accesskey") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for accessKeyLabel
@@ -494,24 +461,6 @@ pub fn get_popover(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return runtime.DOMString.initInterned("auto");
     }
     return null; // Not a popover
-}
-
-/// Getter for headingOffset
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-headingoffset
-pub fn get_headingOffset(instance: *runtime.Instance) anyerror!u32 {
-    if (getContentAttribute(instance, "headingoffset")) |value| {
-        const s = value.asSlice();
-        // Parse as unsigned integer
-        return std.fmt.parseInt(u32, s, 10) catch 0;
-    }
-    return 0;
-}
-
-/// Getter for headingReset
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-headingreset
-/// Boolean attribute
-pub fn get_headingReset(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "headingreset");
 }
 
 /// Getter for editContext
@@ -693,12 +642,6 @@ pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return getContentAttribute(instance, "nonce") orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for autofocus
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-fe-autofocus
-pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "autofocus");
-}
-
 /// Getter for tabIndex
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
@@ -712,16 +655,6 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
 // =============================================================================
 // Content Attribute Reflection Setters
 // =============================================================================
-
-/// Setter for title
-pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "title", value);
-}
-
-/// Setter for lang
-pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "lang", value);
-}
 
 /// Setter for translate
 pub fn set_translate(instance: *runtime.Instance, value: bool) anyerror!void {
@@ -748,20 +681,6 @@ pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror
     try setContentAttribute(instance, "hidden", runtime.DOMString.initEmpty());
 }
 
-/// Setter for inert
-pub fn set_inert(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "inert", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "inert");
-    }
-}
-
-/// Setter for accessKey
-pub fn set_accessKey(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "accesskey", value);
-}
-
 /// Setter for draggable
 pub fn set_draggable(instance: *runtime.Instance, value: bool) anyerror!void {
     if (value) {
@@ -778,16 +697,6 @@ pub fn set_spellcheck(instance: *runtime.Instance, value: bool) anyerror!void {
     } else {
         try setContentAttribute(instance, "spellcheck", runtime.DOMString.initInterned("false"));
     }
-}
-
-/// Setter for writingSuggestions
-pub fn set_writingSuggestions(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "writingsuggestions", value);
-}
-
-/// Setter for autocapitalize
-pub fn set_autocapitalize(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "autocapitalize", value);
 }
 
 /// Setter for autocorrect
@@ -830,22 +739,6 @@ pub fn set_popover(instance: *runtime.Instance, value: ?runtime.DOMString) anyer
     }
 }
 
-/// Setter for headingOffset
-pub fn set_headingOffset(instance: *runtime.Instance, value: u32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "headingoffset", runtime.DOMString.initInterned(str));
-}
-
-/// Setter for headingReset
-pub fn set_headingReset(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "headingreset", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "headingreset");
-    }
-}
-
 /// Setter for editContext
 pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // EditContext is not yet widely implemented
@@ -879,20 +772,6 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try setContentAttribute(instance, "nonce", value);
-}
-
-pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "autofocus", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "autofocus");
-    }
-}
-
-pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "tabindex", runtime.DOMString.initInterned(str));
 }
 
 // =============================================================================

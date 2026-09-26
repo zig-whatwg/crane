@@ -344,9 +344,12 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
     pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFormElementImpl.get_acceptCharset(instance);
+        if (comptime @hasDecl(HTMLFormElementImpl, "get_acceptCharset")) return try HTMLFormElementImpl.get_acceptCharset(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "accept-charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
@@ -355,7 +358,8 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_acceptCharset(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_acceptCharset")) return try HTMLFormElementImpl.set_acceptCharset(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "accept-charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -369,7 +373,8 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_action(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_action")) return try HTMLFormElementImpl.set_action(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "action" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -430,7 +435,8 @@ pub const HTMLFormElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFormElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLFormElementImpl, "get_name")) return try HTMLFormElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -439,12 +445,14 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_name")) return try HTMLFormElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_noValidate(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLFormElementImpl.get_noValidate(instance);
+        if (comptime @hasDecl(HTMLFormElementImpl, "get_noValidate")) return try HTMLFormElementImpl.get_noValidate(instance);
+        return try reflection.get(bool, instance, .{ .name = "novalidate" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -453,12 +461,14 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_noValidate(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_noValidate")) return try HTMLFormElementImpl.set_noValidate(instance, value);
+        try reflection.set(bool, instance, .{ .name = "novalidate" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFormElementImpl.get_target(instance);
+        if (comptime @hasDecl(HTMLFormElementImpl, "get_target")) return try HTMLFormElementImpl.get_target(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -467,12 +477,14 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_target(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_target")) return try HTMLFormElementImpl.set_target(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFormElementImpl.get_rel(instance);
+        if (comptime @hasDecl(HTMLFormElementImpl, "get_rel")) return try HTMLFormElementImpl.get_rel(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -481,7 +493,8 @@ pub const HTMLFormElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFormElementImpl.set_rel(instance, value);
+        if (comptime @hasDecl(HTMLFormElementImpl, "set_rel")) return try HTMLFormElementImpl.set_rel(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
@@ -491,7 +504,7 @@ pub const HTMLFormElement = struct {
         if (state.own.cached_relList) |cached| {
             return cached;
         }
-        const value = try HTMLFormElementImpl.get_relList(instance);
+        const value = if (comptime @hasDecl(HTMLFormElementImpl, "get_relList")) try HTMLFormElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
         return value;
     }

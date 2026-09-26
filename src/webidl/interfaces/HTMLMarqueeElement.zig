@@ -315,9 +315,12 @@ pub const HTMLMarqueeElement = struct {
         return try HTMLMarqueeElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_behavior(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMarqueeElementImpl.get_behavior(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_behavior")) return try HTMLMarqueeElementImpl.get_behavior(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "behavior" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -326,12 +329,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_behavior(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_behavior")) return try HTMLMarqueeElementImpl.set_behavior(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "behavior" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMarqueeElementImpl.get_bgColor(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_bgColor")) return try HTMLMarqueeElementImpl.get_bgColor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -340,12 +345,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_bgColor(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_bgColor")) return try HTMLMarqueeElementImpl.set_bgColor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_direction(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMarqueeElementImpl.get_direction(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_direction")) return try HTMLMarqueeElementImpl.get_direction(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "direction" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -354,12 +361,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_direction(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_direction")) return try HTMLMarqueeElementImpl.set_direction(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "direction" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMarqueeElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_height")) return try HTMLMarqueeElementImpl.get_height(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -368,12 +377,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_height")) return try HTMLMarqueeElementImpl.set_height(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLMarqueeElementImpl.get_hspace(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_hspace")) return try HTMLMarqueeElementImpl.get_hspace(instance);
+        return try reflection.get(u32, instance, .{ .name = "hspace" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -382,7 +393,8 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_hspace(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_hspace")) return try HTMLMarqueeElementImpl.set_hspace(instance, value);
+        try reflection.set(u32, instance, .{ .name = "hspace" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -401,7 +413,8 @@ pub const HTMLMarqueeElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=6]
     pub fn get_scrollAmount(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLMarqueeElementImpl.get_scrollAmount(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_scrollAmount")) return try HTMLMarqueeElementImpl.get_scrollAmount(instance);
+        return try reflection.get(u32, instance, .{ .name = "scrollamount", .default = 6 });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=6]
@@ -410,12 +423,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_scrollAmount(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_scrollAmount")) return try HTMLMarqueeElementImpl.set_scrollAmount(instance, value);
+        try reflection.set(u32, instance, .{ .name = "scrollamount", .default = 6 }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=85]
     pub fn get_scrollDelay(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLMarqueeElementImpl.get_scrollDelay(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_scrollDelay")) return try HTMLMarqueeElementImpl.get_scrollDelay(instance);
+        return try reflection.get(u32, instance, .{ .name = "scrolldelay", .default = 85 });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=85]
@@ -424,12 +439,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_scrollDelay(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_scrollDelay")) return try HTMLMarqueeElementImpl.set_scrollDelay(instance, value);
+        try reflection.set(u32, instance, .{ .name = "scrolldelay", .default = 85 }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_trueSpeed(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMarqueeElementImpl.get_trueSpeed(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_trueSpeed")) return try HTMLMarqueeElementImpl.get_trueSpeed(instance);
+        return try reflection.get(bool, instance, .{ .name = "truespeed" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -438,12 +455,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_trueSpeed(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_trueSpeed")) return try HTMLMarqueeElementImpl.set_trueSpeed(instance, value);
+        try reflection.set(bool, instance, .{ .name = "truespeed" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLMarqueeElementImpl.get_vspace(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_vspace")) return try HTMLMarqueeElementImpl.get_vspace(instance);
+        return try reflection.get(u32, instance, .{ .name = "vspace" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -452,12 +471,14 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_vspace(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_vspace")) return try HTMLMarqueeElementImpl.set_vspace(instance, value);
+        try reflection.set(u32, instance, .{ .name = "vspace" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMarqueeElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_width")) return try HTMLMarqueeElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -466,7 +487,8 @@ pub const HTMLMarqueeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMarqueeElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_width")) return try HTMLMarqueeElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!void {

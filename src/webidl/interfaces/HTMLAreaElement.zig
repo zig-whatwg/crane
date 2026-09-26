@@ -376,9 +376,12 @@ pub const HTMLAreaElement = struct {
         return try HTMLAreaElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alt(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_alt(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_alt")) return try HTMLAreaElementImpl.get_alt(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "alt" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -387,12 +390,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_alt(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_alt")) return try HTMLAreaElementImpl.set_alt(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "alt" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_coords(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_coords(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_coords")) return try HTMLAreaElementImpl.get_coords(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "coords" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -401,12 +406,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_coords(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_coords")) return try HTMLAreaElementImpl.set_coords(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "coords" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shape(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_shape(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_shape")) return try HTMLAreaElementImpl.get_shape(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "shape" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -415,12 +422,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_shape(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_shape")) return try HTMLAreaElementImpl.set_shape(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "shape" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_target(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_target")) return try HTMLAreaElementImpl.get_target(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -429,12 +438,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_target(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_target")) return try HTMLAreaElementImpl.set_target(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_download(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_download(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_download")) return try HTMLAreaElementImpl.get_download(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "download" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -443,12 +454,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_download(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_download")) return try HTMLAreaElementImpl.set_download(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "download" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLAreaElementImpl.get_ping(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_ping")) return try HTMLAreaElementImpl.get_ping(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "ping" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -457,12 +470,14 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_ping(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_ping")) return try HTMLAreaElementImpl.set_ping(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "ping" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAreaElementImpl.get_rel(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_rel")) return try HTMLAreaElementImpl.get_rel(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -471,7 +486,8 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_rel(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_rel")) return try HTMLAreaElementImpl.set_rel(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
@@ -481,7 +497,7 @@ pub const HTMLAreaElement = struct {
         if (state.own.cached_relList) |cached| {
             return cached;
         }
-        const value = try HTMLAreaElementImpl.get_relList(instance);
+        const value = if (comptime @hasDecl(HTMLAreaElementImpl, "get_relList")) try HTMLAreaElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
         return value;
     }
@@ -513,7 +529,8 @@ pub const HTMLAreaElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_noHref(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLAreaElementImpl.get_noHref(instance);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "get_noHref")) return try HTMLAreaElementImpl.get_noHref(instance);
+        return try reflection.get(bool, instance, .{ .name = "nohref" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -522,7 +539,8 @@ pub const HTMLAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAreaElementImpl.set_noHref(instance, value);
+        if (comptime @hasDecl(HTMLAreaElementImpl, "set_noHref")) return try HTMLAreaElementImpl.set_noHref(instance, value);
+        try reflection.set(bool, instance, .{ .name = "nohref" }, value);
     }
 
     /// Extended attributes: [CEReactions], [SecureContext]

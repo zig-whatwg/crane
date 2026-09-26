@@ -350,9 +350,12 @@ pub const HTMLFrameSetElement = struct {
         return try HTMLFrameSetElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_cols(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameSetElementImpl.get_cols(instance);
+        if (comptime @hasDecl(HTMLFrameSetElementImpl, "get_cols")) return try HTMLFrameSetElementImpl.get_cols(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "cols" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -361,12 +364,14 @@ pub const HTMLFrameSetElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameSetElementImpl.set_cols(instance, value);
+        if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_cols")) return try HTMLFrameSetElementImpl.set_cols(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "cols" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rows(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFrameSetElementImpl.get_rows(instance);
+        if (comptime @hasDecl(HTMLFrameSetElementImpl, "get_rows")) return try HTMLFrameSetElementImpl.get_rows(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rows" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -375,7 +380,8 @@ pub const HTMLFrameSetElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFrameSetElementImpl.set_rows(instance, value);
+        if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_rows")) return try HTMLFrameSetElementImpl.set_rows(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rows" }, value);
     }
 
     pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;

@@ -1158,9 +1158,12 @@ pub const SVGElement = struct {
         try SVGElementImpl.set_nonce(instance, value);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-        return try SVGElementImpl.get_autofocus(instance);
+        if (comptime @hasDecl(SVGElementImpl, "get_autofocus")) return try SVGElementImpl.get_autofocus(instance);
+        return try reflection.get(bool, instance, .{ .name = "autofocus" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1169,7 +1172,8 @@ pub const SVGElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try SVGElementImpl.set_autofocus(instance, value);
+        if (comptime @hasDecl(SVGElementImpl, "set_autofocus")) return try SVGElementImpl.set_autofocus(instance, value);
+        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -1183,7 +1187,8 @@ pub const SVGElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try SVGElementImpl.set_tabIndex(instance, value);
+        if (comptime @hasDecl(SVGElementImpl, "set_tabIndex")) return try SVGElementImpl.set_tabIndex(instance, value);
+        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
     }
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {

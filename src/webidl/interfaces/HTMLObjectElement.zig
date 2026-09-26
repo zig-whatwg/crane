@@ -373,9 +373,12 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLObjectElementImpl.get_data(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_data")) return try HTMLObjectElementImpl.get_data(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "data", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -384,12 +387,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_data(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_data")) return try HTMLObjectElementImpl.set_data(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "data", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_type")) return try HTMLObjectElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -398,12 +403,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_type")) return try HTMLObjectElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_name")) return try HTMLObjectElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -412,7 +419,8 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_name")) return try HTMLObjectElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -421,7 +429,8 @@ pub const HTMLObjectElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_width")) return try HTMLObjectElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -430,12 +439,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_width")) return try HTMLObjectElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_height")) return try HTMLObjectElementImpl.get_height(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -444,7 +455,8 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_height")) return try HTMLObjectElementImpl.set_height(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
     }
 
     pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -469,7 +481,8 @@ pub const HTMLObjectElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_align")) return try HTMLObjectElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -478,12 +491,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_align")) return try HTMLObjectElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_archive(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_archive(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_archive")) return try HTMLObjectElementImpl.get_archive(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "archive" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -492,12 +507,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_archive(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_archive")) return try HTMLObjectElementImpl.set_archive(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "archive" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_code(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_code(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_code")) return try HTMLObjectElementImpl.get_code(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "code" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -506,12 +523,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_code(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_code")) return try HTMLObjectElementImpl.set_code(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "code" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_declare(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLObjectElementImpl.get_declare(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_declare")) return try HTMLObjectElementImpl.get_declare(instance);
+        return try reflection.get(bool, instance, .{ .name = "declare" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -520,12 +539,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_declare(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_declare")) return try HTMLObjectElementImpl.set_declare(instance, value);
+        try reflection.set(bool, instance, .{ .name = "declare" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLObjectElementImpl.get_hspace(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_hspace")) return try HTMLObjectElementImpl.get_hspace(instance);
+        return try reflection.get(u32, instance, .{ .name = "hspace" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -534,12 +555,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_hspace(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_hspace")) return try HTMLObjectElementImpl.set_hspace(instance, value);
+        try reflection.set(u32, instance, .{ .name = "hspace" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_standby(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_standby(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_standby")) return try HTMLObjectElementImpl.get_standby(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "standby" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -548,12 +571,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_standby(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_standby")) return try HTMLObjectElementImpl.set_standby(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "standby" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLObjectElementImpl.get_vspace(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_vspace")) return try HTMLObjectElementImpl.get_vspace(instance);
+        return try reflection.get(u32, instance, .{ .name = "vspace" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -562,12 +587,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_vspace(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_vspace")) return try HTMLObjectElementImpl.set_vspace(instance, value);
+        try reflection.set(u32, instance, .{ .name = "vspace" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_codeBase(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_codeBase(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_codeBase")) return try HTMLObjectElementImpl.get_codeBase(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "codebase", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -576,12 +603,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_codeBase(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_codeBase")) return try HTMLObjectElementImpl.set_codeBase(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "codebase", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_codeType(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_codeType(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_codeType")) return try HTMLObjectElementImpl.get_codeType(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "codetype" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -590,12 +619,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_codeType(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_codeType")) return try HTMLObjectElementImpl.set_codeType(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "codetype" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_useMap(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_useMap(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_useMap")) return try HTMLObjectElementImpl.get_useMap(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "usemap" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -604,12 +635,14 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_useMap(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_useMap")) return try HTMLObjectElementImpl.set_useMap(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "usemap" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_border(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLObjectElementImpl.get_border(instance);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "get_border")) return try HTMLObjectElementImpl.get_border(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "border" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -618,7 +651,8 @@ pub const HTMLObjectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLObjectElementImpl.set_border(instance, value);
+        if (comptime @hasDecl(HTMLObjectElementImpl, "set_border")) return try HTMLObjectElementImpl.set_border(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "border" }, value);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {

@@ -13,6 +13,7 @@ pub const inherited_mixins = @import("inherited_mixins.zig");
 pub const files = @import("files.zig");
 pub const refs = @import("refs.zig");
 pub const extattr = @import("extattr.zig");
+pub const reflect = @import("reflect.zig");
 pub const generator = @import("generator.zig");
 pub const ir = @import("ir.zig");
 pub const type_registry = @import("type_registry.zig");

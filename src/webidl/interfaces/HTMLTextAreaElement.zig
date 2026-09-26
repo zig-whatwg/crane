@@ -388,6 +388,8 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLTextAreaElementImpl.get_autocomplete(instance);
@@ -399,12 +401,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_autocomplete(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_autocomplete")) return try HTMLTextAreaElementImpl.set_autocomplete(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=20]
     pub fn get_cols(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLTextAreaElementImpl.get_cols(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_cols")) return try HTMLTextAreaElementImpl.get_cols(instance);
+        return try reflection.get(u32, instance, .{ .name = "cols", .limit = .positive_with_fallback, .default = 20 });
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=20]
@@ -413,12 +417,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_cols(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_cols")) return try HTMLTextAreaElementImpl.set_cols(instance, value);
+        try reflection.set(u32, instance, .{ .name = "cols", .limit = .positive_with_fallback, .default = 20 }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_dirName(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTextAreaElementImpl.get_dirName(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_dirName")) return try HTMLTextAreaElementImpl.get_dirName(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "dirname" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -427,12 +433,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_dirName(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_dirName")) return try HTMLTextAreaElementImpl.set_dirName(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "dirname" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTextAreaElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_disabled")) return try HTMLTextAreaElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -441,7 +449,8 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_disabled")) return try HTMLTextAreaElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -450,7 +459,8 @@ pub const HTMLTextAreaElement = struct {
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLTextAreaElementImpl.get_maxLength(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_maxLength")) return try HTMLTextAreaElementImpl.get_maxLength(instance);
+        return try reflection.get(i32, instance, .{ .name = "maxlength", .limit = .non_negative });
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
@@ -459,12 +469,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_maxLength(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_maxLength")) return try HTMLTextAreaElementImpl.set_maxLength(instance, value);
+        try reflection.set(i32, instance, .{ .name = "maxlength", .limit = .non_negative }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLTextAreaElementImpl.get_minLength(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_minLength")) return try HTMLTextAreaElementImpl.get_minLength(instance);
+        return try reflection.get(i32, instance, .{ .name = "minlength", .limit = .non_negative });
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
@@ -473,12 +485,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_minLength(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_minLength")) return try HTMLTextAreaElementImpl.set_minLength(instance, value);
+        try reflection.set(i32, instance, .{ .name = "minlength", .limit = .non_negative }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTextAreaElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_name")) return try HTMLTextAreaElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -487,12 +501,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_name")) return try HTMLTextAreaElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_placeholder(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTextAreaElementImpl.get_placeholder(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_placeholder")) return try HTMLTextAreaElementImpl.get_placeholder(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "placeholder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -501,12 +517,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_placeholder(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_placeholder")) return try HTMLTextAreaElementImpl.set_placeholder(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "placeholder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_readOnly(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTextAreaElementImpl.get_readOnly(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_readOnly")) return try HTMLTextAreaElementImpl.get_readOnly(instance);
+        return try reflection.get(bool, instance, .{ .name = "readonly" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -515,12 +533,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_readOnly(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_readOnly")) return try HTMLTextAreaElementImpl.set_readOnly(instance, value);
+        try reflection.set(bool, instance, .{ .name = "readonly" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTextAreaElementImpl.get_required(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_required")) return try HTMLTextAreaElementImpl.get_required(instance);
+        return try reflection.get(bool, instance, .{ .name = "required" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -529,12 +549,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_required(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_required")) return try HTMLTextAreaElementImpl.set_required(instance, value);
+        try reflection.set(bool, instance, .{ .name = "required" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=2]
     pub fn get_rows(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLTextAreaElementImpl.get_rows(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_rows")) return try HTMLTextAreaElementImpl.get_rows(instance);
+        return try reflection.get(u32, instance, .{ .name = "rows", .limit = .positive_with_fallback, .default = 2 });
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=2]
@@ -543,12 +565,14 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_rows(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_rows")) return try HTMLTextAreaElementImpl.set_rows(instance, value);
+        try reflection.set(u32, instance, .{ .name = "rows", .limit = .positive_with_fallback, .default = 2 }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_wrap(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTextAreaElementImpl.get_wrap(instance);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_wrap")) return try HTMLTextAreaElementImpl.get_wrap(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "wrap" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -557,7 +581,8 @@ pub const HTMLTextAreaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTextAreaElementImpl.set_wrap(instance, value);
+        if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_wrap")) return try HTMLTextAreaElementImpl.set_wrap(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "wrap" }, value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {

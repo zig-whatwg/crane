@@ -261,9 +261,12 @@ pub const HTMLOptGroupElement = struct {
         return try HTMLOptGroupElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOptGroupElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLOptGroupElementImpl, "get_disabled")) return try HTMLOptGroupElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -272,12 +275,14 @@ pub const HTMLOptGroupElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptGroupElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLOptGroupElementImpl, "set_disabled")) return try HTMLOptGroupElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLOptGroupElementImpl.get_label(instance);
+        if (comptime @hasDecl(HTMLOptGroupElementImpl, "get_label")) return try HTMLOptGroupElementImpl.get_label(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "label" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +291,7 @@ pub const HTMLOptGroupElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptGroupElementImpl.set_label(instance, value);
+        if (comptime @hasDecl(HTMLOptGroupElementImpl, "set_label")) return try HTMLOptGroupElementImpl.set_label(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "label" }, value);
     }
 };

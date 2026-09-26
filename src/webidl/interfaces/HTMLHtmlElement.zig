@@ -256,9 +256,12 @@ pub const HTMLHtmlElement = struct {
         return try HTMLHtmlElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHtmlElementImpl.get_version(instance);
+        if (comptime @hasDecl(HTMLHtmlElementImpl, "get_version")) return try HTMLHtmlElementImpl.get_version(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "version" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLHtmlElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHtmlElementImpl.set_version(instance, value);
+        if (comptime @hasDecl(HTMLHtmlElementImpl, "set_version")) return try HTMLHtmlElementImpl.set_version(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "version" }, value);
     }
 };

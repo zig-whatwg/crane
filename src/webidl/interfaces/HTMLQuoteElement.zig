@@ -256,9 +256,12 @@ pub const HTMLQuoteElement = struct {
         return try HTMLQuoteElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLQuoteElementImpl.get_cite(instance);
+        if (comptime @hasDecl(HTMLQuoteElementImpl, "get_cite")) return try HTMLQuoteElementImpl.get_cite(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "cite", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -267,6 +270,7 @@ pub const HTMLQuoteElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLQuoteElementImpl.set_cite(instance, value);
+        if (comptime @hasDecl(HTMLQuoteElementImpl, "set_cite")) return try HTMLQuoteElementImpl.set_cite(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);
     }
 };

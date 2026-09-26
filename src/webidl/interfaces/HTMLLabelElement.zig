@@ -269,9 +269,12 @@ pub const HTMLLabelElement = struct {
         return try HTMLLabelElementImpl.get_form(instance);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLabelElementImpl.get_htmlFor(instance);
+        if (comptime @hasDecl(HTMLLabelElementImpl, "get_htmlFor")) return try HTMLLabelElementImpl.get_htmlFor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "for" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
@@ -280,7 +283,8 @@ pub const HTMLLabelElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLabelElementImpl.set_htmlFor(instance, value);
+        if (comptime @hasDecl(HTMLLabelElementImpl, "set_htmlFor")) return try HTMLLabelElementImpl.set_htmlFor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "for" }, value);
     }
 
     pub fn get_control(instance: *runtime.Instance) anyerror!?*runtime.Instance {
