@@ -58,6 +58,7 @@ pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");
 pub const navigable_container = @import("navigable_container.zig");
 pub const document_lifecycle = @import("document_lifecycle.zig");
+pub const content_navigables = @import("content_navigables.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
 pub const fetch_objects = @import("fetch_objects.zig");

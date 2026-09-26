@@ -116,6 +116,16 @@ pub const InternalState = struct {
     ready_state: enums.DocumentReadyState,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
+    /// HTML "completely loaded": "completely finish loading" has run.
+    completely_loaded: bool = false,
+    /// HTML "is initial about:blank": the document "create a new browsing
+    /// context and document" made, until something replaces it.
+    is_initial_about_blank: bool = false,
+    /// HTML "salvageable"; set false by "unload" (Crane keeps no bfcache).
+    salvageable: bool = true,
+    /// "The end" is waiting at step 8 - something delays the load event -
+    /// and has not queued step 9's task yet.
+    load_waiting_on_delay: bool = false,
 
     /// The document element (root element, usually <html>)
     document_element: ?*runtime.Instance,
@@ -592,6 +602,13 @@ pub fn init(
     @import("dom").document_lifecycle.install(.{
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
+        .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
+        .is_completely_loaded = &lifecycleIsCompletelyLoaded,
+        .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
+        .mark_initial_about_blank = &lifecycleMarkInitialAboutBlank,
+        .is_unloading = &lifecycleIsUnloading,
+        .fire_beforeunload = &lifecycleFireBeforeUnload,
+        .unload = &lifecycleUnload,
     });
 
     return instance;
@@ -3630,10 +3647,153 @@ fn lifecycleParsingStopped(document: *runtime.Instance) void {
 }
 
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
-/// completes the load.
+/// completes the load, once step 8 finds nothing delaying it.
 fn lifecycleFinishLoading(document: *runtime.Instance) void {
     queueLifecycleTask(document, .dom_content_loaded);
+    // Step 7 - the scripts that execute as soon as possible - runs them as
+    // they arrive (script_execution), so nothing is left to wait for here.
+    queueLoadUnlessDelayed(document);
+}
+
+/// "The end" step 8: "Spin the event loop until there is nothing that delays
+/// the load event in the Document." Then step 9: queue the task that
+/// completes the load. Spinning is waiting here: a document something still
+/// delays is marked, and whatever delayed it calls `loadDelayMayHaveEnded`
+/// when it stops (dom.content_navigables: a frame that finished loading, or
+/// went away).
+///
+/// A frame's navigation is what delays it today. Without this the window's
+/// load event, and every `onload` test reading its frames, ran before the
+/// frames it contains had loaded as soon as frame navigation stopped being
+/// synchronous.
+fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (@import("dom").content_navigables.delaysLoadEvent(document)) {
+        internal.load_waiting_on_delay = true;
+        return;
+    }
+    internal.load_waiting_on_delay = false;
     queueLifecycleTask(document, .load);
+}
+
+/// dom.document_lifecycle: something that delayed `document`'s load event
+/// may have stopped. If "the end" waits at step 8, look again.
+fn lifecycleLoadDelayMayHaveEnded(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (!internal.load_waiting_on_delay) return;
+    queueLoadUnlessDelayed(document);
+}
+
+fn lifecycleIsCompletelyLoaded(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return true;
+    return internal.completely_loaded;
+}
+
+fn lifecycleIsInitialAboutBlank(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return internal.is_initial_about_blank;
+}
+
+/// HTML "create a new browsing context and document": step 15 makes the
+/// document with "is initial about:blank" true, and step 21 completely
+/// finishes loading it - with no container yet, so no load event.
+fn lifecycleMarkInitialAboutBlank(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.is_initial_about_blank = true;
+    internal.completely_loaded = true;
+    // "Current document readiness" is initially "complete" (HTML §3.1.1);
+    // only "create and initialize a Document object" - navigation - makes
+    // it "loading". This document never went through that.
+    internal.ready_state = ._complete_;
+}
+
+fn lifecycleIsUnloading(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return internal.unload_counter > 0;
+}
+
+/// dom.document_lifecycle: the "steps to fire beforeunload" given
+/// `document` (HTML §7.4.2.4), from a task on the navigation and traversal
+/// task source - so it opens the scope an event needs.
+///
+/// Step 6's prompt needs sticky activation, which nothing in this engine
+/// grants, so no prompt is shown and nothing is cancelled. Deviation, stated:
+/// the event is a plain Event named beforeunload, cancelable - the
+/// BeforeUnloadEvent impl is a stub that never creates Event's state, so an
+/// instance of it cannot be dispatched. `returnValue` is not modelled.
+fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").document_lifecycle.BeforeUnloadResult {
+    const internal = getInternal(document) orelse return .{};
+    const window = (get_defaultView(document) catch null) orelse return .{};
+    const scope = @import("v8").JsScope.init(document.ctx) orelse return .{};
+    defer scope.deinit();
+
+    // Step 2: "Increase the document's unload counter by 1." Step 7 lowers
+    // it again, however the event handlers leave.
+    internal.unload_counter += 1;
+    defer internal.unload_counter -= 1;
+    // Steps 3 and 5: the event loop's termination nesting level, around the
+    // event - window.open() returns null inside it.
+    const termination_nesting = @import("html_core").navigation.termination_nesting;
+    termination_nesting.enter();
+    // Step 4: fire beforeunload at the relevant global object, cancelable.
+    fireEventWith(document, window, "beforeunload", .{ .cancelable = true });
+    termination_nesting.leave();
+    // Steps 6 and 8: no prompt, so not shown and not cancelled.
+    return .{};
+}
+
+/// dom.document_lifecycle: "unload" `document` (HTML §7.5.9) with no new
+/// document given - the unload timing info is not modelled - from a task.
+///
+/// Step 5: Crane keeps no document alive for history traversal, so
+/// intendToKeepInBfcache is false and the document is not salvageable.
+/// Steps 16 and 18-20 (suspended timers, cleanup steps, destroy) are the
+/// navigable's: navigation clears the window's timers once this returns.
+fn lifecycleUnload(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const window = (get_defaultView(document) catch null) orelse return;
+    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
+    defer scope.deinit();
+
+    // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
+    // lowers it after the unload event.
+    const termination_nesting = @import("html_core").navigation.termination_nesting;
+    termination_nesting.enter();
+    var terminating = true;
+    defer if (terminating) termination_nesting.leave();
+    // Step 8: "Increase oldDocument's unload counter by 1." Step 21 lowers
+    // it - document.open() is ignored in between (§8.4.1 step 5).
+    internal.unload_counter += 1;
+    defer internal.unload_counter -= 1;
+    // Step 9: intendToKeepInBfcache is false, so not salvageable.
+    internal.salvageable = false;
+    // Step 10: pagehide and hidden, if the page was showing.
+    if (internal.page_showing) {
+        internal.page_showing = false;
+        firePageTransition(document, window, "pagehide", internal.salvageable);
+        updateVisibilityState(document, ._hidden_);
+    }
+    // Step 12: "If oldDocument's salvageable state is false, then fire an
+    // event named unload at oldDocument's relevant global object, with legacy
+    // target override flag set." The override is not modelled.
+    if (!internal.salvageable) fireEvent(document, window, "unload", false);
+    // Step 14.
+    termination_nesting.leave();
+    terminating = false;
+}
+
+/// Page Visibility "update the visibility state" of `document`.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#update-the-visibility-state
+fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisibilityState) void {
+    const internal = getInternal(document) orelse return;
+    // Step 1: "If document's visibility state equals visibilityState, then return."
+    if (internal.visibility_state == state) return;
+    // Step 2: set it.
+    internal.visibility_state = state;
+    internal.hidden = state == ._hidden_;
+    // Step 6: "Fire an event named visibilitychange at document, with its
+    // bubbles attribute initialized to true."
+    fireEvent(document, document, "visibilitychange", true);
 }
 
 const LifecycleStep = enum { dom_content_loaded, load, container_load };
@@ -3692,9 +3852,13 @@ fn runLifecycleTask(context: ?*anyopaque) void {
         // object, with its bubbles attribute initialized to true."
         .dom_content_loaded => fireEvent(task.target, task.target, "DOMContentLoaded", true),
         .load => completeLoading(task.target),
-        // "Completely finish loading" step 4: the iframe load event steps,
-        // step 6: "Fire an event named load at element."
-        .container_load => fireEvent(task.target, task.target, "load", false),
+        // "Completely finish loading" step 4: the container's load event
+        // steps - the iframe's own (dom.content_navigables), which end the
+        // delay its navigation put on its node document's load event; step
+        // 5 for any other container: "fire an event named load at element".
+        .container_load => if (!@import("dom").content_navigables.runLoadEventSteps(task.target)) {
+            fireEvent(task.target, task.target, "load", false);
+        },
     }
 }
 
@@ -3723,8 +3887,10 @@ fn completeLoading(document: *runtime.Instance) void {
         internal.page_showing = true;
         firePageShow(document, window);
     }
-    // Step 9.12: "completely finish loading" - whose step 4 queues the
-    // container's load event (the iframe load event steps).
+    // Step 9.12: "completely finish loading". Its step 2 sets the completely
+    // loaded time; step 4 queues the container's load event (the iframe load
+    // event steps).
+    internal.completely_loaded = true;
     if (@import("dom").navigable_container.of(window)) |container| {
         queueLifecycleTask(container, .container_load);
     }
@@ -3733,10 +3899,14 @@ fn completeLoading(document: *runtime.Instance) void {
 /// Fire an event named `event_type` at `target`, created in `realm_of`'s
 /// realm. Script-facing dispatch, so it reads isTrusted false.
 fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type: []const u8, bubbles: bool) void {
+    fireEventWith(realm_of, target, event_type, .{ .bubbles = bubbles });
+}
+
+fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_type: []const u8, init_dict: dictionaries.EventInit) void {
     const event = interfaces.Event.call_constructor(
         realm_of.ctx,
         runtime.DOMString.initInterned(event_type),
-        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = bubbles }),
+        webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
@@ -3747,10 +3917,16 @@ fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type:
 /// "Fire a page transition event named pageshow at window with persisted"
 /// false.
 fn firePageShow(document: *runtime.Instance, window: *runtime.Instance) void {
+    firePageTransition(document, window, "pageshow", false);
+}
+
+/// "Fire a page transition event named `event_type` at window with
+/// `persisted`".
+fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, event_type: []const u8, persisted: bool) void {
     const event = interfaces.PageTransitionEvent.call_constructor(
         document.ctx,
-        runtime.DOMString.initInterned("pageshow"),
-        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = false }),
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
