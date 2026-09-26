@@ -410,7 +410,7 @@ area = "html/semantics/scripting-1/"
 owner = "agent"
 status = "doing"
 branch = "lane/scripting"
-paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "tests/html/script*", "tests/html/module*", "tests/wpt/crane/script-*"]
+paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "increment 2: src/html/parser/, src/html/scripted_parser.zig, src/html/dom_tree_adapter.zig, src/webidl/impls/HTMLParser.zig, Document.call_write/call_writeln, the script registration in src/dom/attribute_change_steps.zig, html/syntax/ and html/webappapis/dynamic-markup-insertion/", "tests/html/script*", "tests/html/module*", "tests/html/parser*", "tests/wpt/crane/script-*", "tests/wpt/crane/parse-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
