@@ -26,9 +26,12 @@ pub const Request = struct {
     url: []const u8,
     noopener: bool = false,
     history_behavior: HistoryBehavior = .auto,
-    /// Form submission: "if form document has not yet completely loaded" and
-    /// is the chosen navigable's active document, the navigation replaces.
-    replace_if_source_not_loaded: bool = false,
+    /// Form submission step 22: the form document had not completely loaded
+    /// when the form was submitted - decided then, not when the planned
+    /// navigation runs, by which time an onload handler's submission has
+    /// seen the load finish. The navigation replaces if the form document
+    /// is the chosen navigable's active document.
+    source_not_completely_loaded: bool = false,
 };
 
 /// What the navigable container supplies.

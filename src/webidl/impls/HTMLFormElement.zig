@@ -855,6 +855,9 @@ const PlannedNavigation = struct {
     token: u64,
     url: []const u8,
     target: []const u8,
+    /// Submit step 22's condition, taken when the form was submitted: the
+    /// form document had not completely loaded.
+    source_not_completely_loaded: bool,
     allocator: std.mem.Allocator,
 
     fn destroy(self: *PlannedNavigation) void {
@@ -875,12 +878,18 @@ fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8) 
         allocator.free(target);
         return;
     };
+    // Submit step 22: "If form document equals targetNavigable's active
+    // document, and form document has not yet completely loaded, then set
+    // historyHandling to "replace"" - the load state now, at submission.
+    const document = interfaces.Node.get_ownerDocument(form) catch null;
+    const not_loaded = if (document) |d| !@import("dom").document_lifecycle.isCompletelyLoaded(d) else false;
     task.* = .{
         .form = form,
         .form_generation = runtime.SlabAllocator.generationOf(form),
         .token = next_navigation_token,
         .url = url,
         .target = target,
+        .source_not_completely_loaded = not_loaded,
         .allocator = allocator,
     };
     next_navigation_token += 1;
@@ -924,7 +933,7 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     navigables.navigateByTarget(document, .{
         .target = task.target,
         .url = task.url,
-        .replace_if_source_not_loaded = true,
+        .source_not_completely_loaded = task.source_not_completely_loaded,
     });
 }
 

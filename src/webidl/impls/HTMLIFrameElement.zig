@@ -1667,8 +1667,7 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .push => .push,
                 .replace => .replace,
             };
-            if (request.replace_if_source_not_loaded and activeDocumentOf(integration) == source_document and
-                !document_lifecycle.isCompletelyLoaded(source_document)) behavior = .replace;
+            if (request.source_not_completely_loaded and activeDocumentOf(integration) == source_document) behavior = .replace;
             navigate(integration, request.url, .{ .source_document = source_document, .history_behavior = behavior });
         },
         .page => |page| {
