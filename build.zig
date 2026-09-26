@@ -1053,6 +1053,9 @@ pub fn build(b: *std.Build) void {
     typedefs_mod.addImport("v8", v8_mod);
     interfaces_mod.addImport("v8", v8_mod);
     namespaces_mod.addImport("v8", v8_mod);
+    // The adapter registers the namespaces a snapshot lacks when it creates a
+    // Window realm (an Engine function pointer cannot take a comptime module).
+    v8_mod.addImport("namespaces", namespaces_mod);
     // Note: impls also needs "v8" for JSValue types in generated signatures
 
     // DOM module

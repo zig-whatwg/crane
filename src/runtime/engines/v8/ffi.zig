@@ -692,6 +692,10 @@ pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
 /// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
 /// nearly all of them. Read it as a rate: N per element on a create-and-discard
 /// loop is N leaked per element.
+///
+/// Always 0 unless the wrapper is built with -DCRANE_TRACK_GLOBALS=1, and only
+/// gc_bench is. A test asserting that nothing leaked wants
+/// `v8_Isolate_GetGlobalHandleBytes`, which every build has.
 pub extern fn v8_Debug_CreatedGlobals() i64;
 
 /// Read slot `index` of the Global-creation site histogram. Returns false past the
@@ -704,6 +708,10 @@ pub extern fn v8_Isolate_GetHeapUsage(
     total: ?*usize,
     external: ?*usize,
 ) void;
+/// Bytes of V8's global handle table in use - every live `Global<T>`, counted
+/// by V8 and updated as each is created or reset. In every build: the measure
+/// for a test asserting that an operation leaves no handle behind.
+pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
 /// Native contexts alive in the heap, and how many of those V8 counts as
 /// detached. A page whose contexts outlive it shows here exactly.
 pub extern fn v8_Isolate_GetContextCounts(
@@ -3222,3 +3230,12 @@ pub extern fn crane_release_function_global(global: ?*anyopaque) void;
 /// @param raw_func - Unregistered Global<Function>* to compare
 /// @return true if the functions are identical (same JS function object)
 pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *anyopaque) bool;
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----

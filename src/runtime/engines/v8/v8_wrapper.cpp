@@ -2616,6 +2616,16 @@ void v8_Isolate_GetContextCounts(Isolate* isolate, size_t* native_contexts,
     if (detached_contexts) *detached_contexts = stats.number_of_detached_contexts();
 }
 
+// Bytes of V8's global handle table in use: every live Global<T>, whoever made
+// it, counted by V8 itself (GlobalHandles::UsedSize, adjusted as each handle is
+// created or reset). Unlike the CRANE_TRACK_GLOBALS counters it is in every
+// build, so a test can assert that an operation leaves no handle behind.
+size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    return stats.used_global_handles_size();
+}
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
@@ -11431,3 +11441,12 @@ void v8_Isolate_SetHostCreateShadowRealmContextCallback(
 }
 
 } // extern "C"
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----
