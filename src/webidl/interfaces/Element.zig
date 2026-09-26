@@ -353,10 +353,16 @@ pub const Element = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "namespaceURI", "get_namespaceURI", null },
+            .{ "prefix", "get_prefix", null },
+            .{ "localName", "get_localName", null },
             .{ "tagName", "get_tagName", null },
             .{ "id", "get_id", "set_id" },
             .{ "className", "get_className", "set_className" },
             .{ "classList", "get_classList", "set_classList" },
+            .{ "slot", "get_slot", "set_slot" },
+            .{ "attributes", "get_attributes", null },
+            .{ "shadowRoot", "get_shadowRoot", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
@@ -365,6 +371,14 @@ pub const Element = struct {
             .{ "activeViewTransition", "get_activeViewTransition", null },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
             .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
+            .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
+            .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
+            .{ "scrollWidth", "get_scrollWidth", null },
+            .{ "scrollHeight", "get_scrollHeight", null },
+            .{ "clientTop", "get_clientTop", null },
+            .{ "clientLeft", "get_clientLeft", null },
+            .{ "clientWidth", "get_clientWidth", null },
+            .{ "clientHeight", "get_clientHeight", null },
             .{ "currentCSSZoom", "get_currentCSSZoom", null },
             .{ "role", "get_role", "set_role" },
             .{ "ariaActiveDescendantElement", "get_ariaActiveDescendantElement", "set_ariaActiveDescendantElement" },
@@ -425,26 +439,11 @@ pub const Element = struct {
             .{ "childElementCount", "get_childElementCount", null },
             .{ "previousElementSibling", "get_previousElementSibling", null },
             .{ "nextElementSibling", "get_nextElementSibling", null },
+            .{ "assignedSlot", "get_assignedSlot", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "namespaceURI", "get_namespaceURI", null },
-            .{ "prefix", "get_prefix", null },
-            .{ "localName", "get_localName", null },
-            .{ "slot", "get_slot", "set_slot" },
-            .{ "attributes", "get_attributes", null },
-            .{ "shadowRoot", "get_shadowRoot", null },
-            .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
-            .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
-            .{ "scrollWidth", "get_scrollWidth", null },
-            .{ "scrollHeight", "get_scrollHeight", null },
-            .{ "clientTop", "get_clientTop", null },
-            .{ "clientLeft", "get_clientLeft", null },
-            .{ "clientWidth", "get_clientWidth", null },
-            .{ "clientHeight", "get_clientHeight", null },
-            .{ "assignedSlot", "get_assignedSlot", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
 

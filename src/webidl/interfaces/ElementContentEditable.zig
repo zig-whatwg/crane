@@ -42,16 +42,15 @@ pub const ElementContentEditable = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
             .{ "enterKeyHint", "get_enterKeyHint", "set_enterKeyHint" },
+            .{ "isContentEditable", "get_isContentEditable", null },
             .{ "inputMode", "get_inputMode", "set_inputMode" },
             .{ "virtualKeyboardPolicy", "get_virtualKeyboardPolicy", "set_virtualKeyboardPolicy" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
-            .{ "isContentEditable", "get_isContentEditable", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

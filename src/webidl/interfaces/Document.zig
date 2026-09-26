@@ -519,6 +519,7 @@ pub const Document = struct {
             .{ "lastModified", "get_lastModified", null },
             .{ "readyState", "get_readyState", null },
             .{ "title", "get_title", "set_title" },
+            .{ "dir", "get_dir", "set_dir" },
             .{ "body", "get_body", "set_body" },
             .{ "head", "get_head", null },
             .{ "images", "get_images", null },
@@ -530,6 +531,7 @@ pub const Document = struct {
             .{ "currentScript", "get_currentScript", null },
             .{ "defaultView", "get_defaultView", null },
             .{ "designMode", "get_designMode", "set_designMode" },
+            .{ "hidden", "get_hidden", null },
             .{ "visibilityState", "get_visibilityState", null },
             .{ "onreadystatechange", "get_onreadystatechange", "set_onreadystatechange" },
             .{ "onvisibilitychange", "get_onvisibilitychange", "set_onvisibilitychange" },
@@ -663,10 +665,7 @@ pub const Document = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "dir", "get_dir", "set_dir" },
-            .{ "hidden", "get_hidden", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = true;
 

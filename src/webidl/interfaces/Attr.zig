@@ -82,6 +82,9 @@ pub const Attr = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "namespaceURI", "get_namespaceURI", null },
+            .{ "prefix", "get_prefix", null },
+            .{ "localName", "get_localName", null },
             .{ "name", "get_name", null },
             .{ "value", "get_value", "set_value" },
             .{ "ownerElement", "get_ownerElement", null },
@@ -89,11 +92,7 @@ pub const Attr = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "namespaceURI", "get_namespaceURI", null },
-            .{ "prefix", "get_prefix", null },
-            .{ "localName", "get_localName", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

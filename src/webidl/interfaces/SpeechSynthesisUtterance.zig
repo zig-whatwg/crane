@@ -71,6 +71,7 @@ pub const SpeechSynthesisUtterance = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "text", "get_text", "set_text" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "voice", "get_voice", "set_voice" },
             .{ "volume", "get_volume", "set_volume" },
             .{ "rate", "get_rate", "set_rate" },
@@ -85,9 +86,7 @@ pub const SpeechSynthesisUtterance = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = true;
     };
