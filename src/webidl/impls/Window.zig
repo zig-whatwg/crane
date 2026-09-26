@@ -685,6 +685,11 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
 pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.document = document;
+    // A Window's associated Document is its browsing context's active
+    // document while the Window is that context's active window.
+    if (internal.browsing_context.getActiveWindow() == @as(?*anyopaque, @ptrCast(instance))) {
+        internal.browsing_context.setActiveDocument(@ptrCast(document), @ptrCast(instance));
+    }
 }
 
 /// Set the navigator associated with this Window.
@@ -852,18 +857,11 @@ pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
         instance.ctx,
     );
 
-    // Associate this History with the window
+    // Associate this History with the window, and the window's navigable
+    // - whose traversable holds the session history it reads.
     if (HistoryImpl.getInternal(history)) |history_internal| {
         history_internal.window = instance;
-
-        // Initialize with a single entry for the current document's URL
-        // Per spec, session history starts with one entry for the initial document
-        const initial_entry = HistoryImpl.HistoryEntry{
-            .url = try internal.allocator.dupe(u8, "about:blank"),
-            .state = null,
-        };
-        try history_internal.entries.append(internal.allocator, initial_entry);
-        history_internal.current_index = 0;
+        history_internal.browsing_context = internal.browsing_context;
     }
 
     // Cache for future access
@@ -1042,6 +1040,15 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // If disowned, return null
     if (internal.browsing_context.disowned) {
         return runtime.JSValue.jsNull;
+    }
+
+    // HTML: the opener is the browsing context's opener browsing context's
+    // WindowProxy - so its ACTIVE window, which a navigation of the opener
+    // replaces; the Window that called open() may be gone from it.
+    if (internal.browsing_context.opener) |opener_bc| {
+        if (opener_bc.getActiveWindow()) |active| {
+            return runtime.JSValue.fromInstanceAnyopaque(active);
+        }
     }
 
     // Return opener if set - opener is a stored Window instance pointer

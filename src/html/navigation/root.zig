@@ -23,6 +23,7 @@ pub const algorithms = @import("algorithms.zig");
 pub const fetch_integration = @import("fetch_integration.zig");
 pub const navigate_steps = @import("navigate_steps.zig");
 pub const termination_nesting = @import("termination_nesting.zig");
+pub const joint_history = @import("joint_history.zig");
 pub const document_type = @import("document_type.zig");
 pub const document_creation = @import("document_creation.zig");
 pub const event_dispatcher = @import("event_dispatcher.zig");
