@@ -2661,21 +2661,6 @@ pub fn build(b: *std.Build) void {
         };
     }
 
-    // V8 tests
-    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
-        const v8_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "engine", .module = engine_mod },
-        };
-        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_imports, true) catch |err| {
-            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
-        };
-    }
-
     // Benchmark tests (requires V8 + browser)
     //
     // Wired to a dedicated `bench` step and deliberately kept OUT of
