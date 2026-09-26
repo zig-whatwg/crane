@@ -157,6 +157,13 @@ pub const ReportExceptionFn = *const fn (host: ?*anyopaque, info: *const ErrorIn
 /// passed alongside them.
 pub const RealmSteps = *const fn (data: ?*anyopaque) void;
 
+// Lane regions for types the lanes' operations use (declarations cannot go
+// between container fields). Each lane declares only inside its own region.
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----
+
 /// Abstract interface for JavaScript engine operations
 ///
 /// All engine implementations (V8, JSC, etc.) must provide these operations.
