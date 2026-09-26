@@ -2982,6 +2982,19 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
             for (tree.items) |gone| history.removeNavigable(gone.id);
         }
     }
+    // "Destroy a child navigable" step 5: "destroy a document and its
+    // descendants" given its active document - children first.
+    if (activeDocumentOf(internal.integration)) |active| {
+        var documents = collectInclusiveDescendantDocuments(active, internal.integration.allocator);
+        defer documents.deinit(internal.integration.allocator);
+        var i = documents.items.len;
+        while (i > 0) {
+            i -= 1;
+            const entry = documents.items[i];
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            dom_module.document_lifecycle.destroy(entry.document);
+        }
+    }
     const was_delaying = internal.integration.delaying_load;
     internal.integration.onRemovedFromDocument();
     // The node document may have been waiting on this frame's navigation to

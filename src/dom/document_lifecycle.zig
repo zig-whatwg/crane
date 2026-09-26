@@ -27,6 +27,7 @@ pub const Implementation = struct {
     is_unloading: *const fn (document: *runtime.Instance) bool,
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
+    destroy: *const fn (document: *runtime.Instance) void,
 };
 
 /// The "steps to fire beforeunload" result that navigation reads: whether the
@@ -109,6 +110,15 @@ pub fn unload(document: *runtime.Instance) void {
     impl.unload(document);
 }
 
+/// HTML "destroy" `document` (§7.5.5): it is no longer salvageable and its
+/// browsing context is null - `document.defaultView` answers null from here
+/// on. What "destroy a child navigable" does to the documents of a removed
+/// frame, and what "unload" ends with for a document nothing keeps.
+pub fn destroy(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.destroy(document);
+}
+
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
     const saved = implementation;
@@ -121,6 +131,7 @@ test "without an installed implementation nothing is asked of a document" {
     loadDelayMayHaveEnded(&document);
     markInitialAboutBlank(&document);
     unload(&document);
+    destroy(&document);
     // The answers that let a caller go on: a document nobody can ask about
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.

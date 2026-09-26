@@ -123,6 +123,9 @@ pub const InternalState = struct {
     is_initial_about_blank: bool = false,
     /// HTML "salvageable"; set false by "unload" (Crane keeps no bfcache).
     salvageable: bool = true,
+    /// HTML "destroy" has run: the document's browsing context is null. It
+    /// stays readable - script elsewhere may hold it - but has no view.
+    destroyed: bool = false,
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
@@ -609,6 +612,7 @@ pub fn init(
         .is_unloading = &lifecycleIsUnloading,
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
+        .destroy = &lifecycleDestroy,
     });
 
     return instance;
@@ -1441,13 +1445,17 @@ pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrS
 /// HTML §7.3.1 - Returns the Window object associated with the document, or null
 /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
 ///
-/// Returns the Window whose document is this Document, or null if none.
+/// "1. If this's browsing context is null, then return null. 2. Return this's
+/// browsing context's WindowProxy object." A document made without one
+/// (createHTMLDocument, DOMParser) has no view; a document that has been
+/// destroyed - unloaded by a navigation that replaced it, or its frame
+/// removed - has had its browsing context set to null ("destroy" step 7),
+/// though its Window, which it still names, may live on.
 pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
-    if (internal.default_view) |window| {
-        return @ptrCast(window);
-    }
-    return null;
+    if (internal.destroyed) return null;
+    const window = internal.default_view orelse return null;
+    return @ptrCast(window);
 }
 
 /// Set the default view (window) associated with this document.
@@ -3797,6 +3805,22 @@ fn lifecycleUnload(document: *runtime.Instance) void {
     // Step 14.
     termination_nesting.leave();
     terminating = false;
+    // Step 19: "If oldDocument's salvageable state is false, then destroy
+    // oldDocument." Its handlers above still saw it fully active.
+    if (!internal.salvageable) lifecycleDestroy(document);
+}
+
+/// dom.document_lifecycle: HTML "destroy" `document` (§7.5.5), the steps
+/// that are the document's own. Step 2: "Set document's salvageable state to
+/// false." Step 7: "Set document's browsing context to null." Not modelled
+/// here, stated: steps 1 and 3-6 and 8-9 - its descendants' documents are
+/// the navigable's to destroy (they are destroyed first), its tasks are
+/// dropped by the event loop's fully-active check, and its message ports,
+/// fetches and worker owner sets are not tracked per document.
+fn lifecycleDestroy(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.salvageable = false;
+    internal.destroyed = true;
 }
 
 /// Page Visibility "update the visibility state" of `document`.
