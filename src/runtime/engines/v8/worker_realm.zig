@@ -483,7 +483,14 @@ pub fn isCallable(value: runtime.JSValue) bool {
 }
 
 /// Engine table `keepPlatformObjectAlive`: the wrapper cache holds
-/// `instance`'s wrapper strongly from now on, until the realm's cache goes.
+/// `instance`'s wrapper for its pending activity (Blink's
+/// ActiveScriptWrappable), until `releasePlatformObject` or the realm's end.
 pub fn keepPlatformObjectAlive(instance: *runtime.Instance) void {
-    wrapper_cache.holdStrong(instance);
+    wrapper_cache.holdForPendingActivity(instance);
+}
+
+/// Engine table `releasePlatformObject`: the pending activity has ended; the
+/// wrapper is weak again unless another reason holds it.
+pub fn releasePlatformObject(instance: *runtime.Instance) void {
+    wrapper_cache.releasePendingActivity(instance);
 }

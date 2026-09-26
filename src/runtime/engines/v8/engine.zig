@@ -174,6 +174,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .defineBuiltinFunction = worker_realm.defineBuiltinFunction,
     .isCallable = worker_realm.isCallable,
     .keepPlatformObjectAlive = worker_realm.keepPlatformObjectAlive,
+    .releasePlatformObject = worker_realm.releasePlatformObject,
     // ---- end lane: engine-boundary ----
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8

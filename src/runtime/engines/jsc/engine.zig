@@ -96,6 +96,7 @@ pub const jsc_engine_interface: EngineInterface = .{
     .defineBuiltinFunction = notSupportedDefineBuiltinFunction,
     .isCallable = notSupportedIsCallable,
     .keepPlatformObjectAlive = notSupportedKeepPlatformObjectAlive,
+    .releasePlatformObject = notSupportedReleasePlatformObject,
     // ---- end lane: engine-boundary ----
     .name = "JavaScriptCore",
     .version = "WebKit",
@@ -786,6 +787,7 @@ fn notSupportedIsCallable(_: runtime.JSValue) bool {
     return false;
 }
 fn notSupportedKeepPlatformObjectAlive(_: *runtime.Instance) void {}
+fn notSupportedReleasePlatformObject(_: *runtime.Instance) void {}
 // ---- end lane: engine-boundary ----
 
 test "jsc_engine_interface - has all required functions" {
