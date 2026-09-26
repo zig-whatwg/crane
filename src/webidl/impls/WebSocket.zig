@@ -38,13 +38,18 @@ const WebSocketConnection = websocket.WebSocketConnection;
 // The constructor applies the URL parser, per steps 2-5.
 const api_parser = @import("api_parser");
 
+// EventTarget is an ancestor: its impl owns the event listener list, the
+// event handlers in it, and trusted dispatch.
+const EventTargetImpl = @import("EventTarget.zig");
+
 const log = std.log.scoped(.websocket);
 
-/// Largest single frame `pump` will hand to script.
+/// The receive scratch: how much of a frame libcurl hands over per call.
 ///
-/// `Send-65K-data.any.js` round-trips 65536 bytes, so anything smaller turns
-/// that test into a silent truncation rather than a failure.
-const RECV_BUFFER_SIZE: usize = 128 * 1024;
+/// Not a limit on a message's size. The connection assembles each message
+/// across as many chunks - and frames - as it arrives in; this only sets how
+/// many calls that takes.
+const RECV_BUFFER_SIZE: usize = 64 * 1024;
 
 /// How often the connection is drained, in milliseconds.
 ///
@@ -144,8 +149,7 @@ fn pumpCallback(user_data: ?*anyopaque) void {
     //     Fatal error in v8::HandleScope::CreateHandle()
     //     Cannot create a handle without a HandleScope
     //
-    // which aborts the process. `invokeIdlHandler` opens its own scope, but by
-    // then the event has already been constructed and dispatched.
+    // which aborts the process. `pumpInScope` opens it.
     token.in_callback = true;
     const still_live = pumpInScope(token.instance);
     token.in_callback = false;
@@ -177,8 +181,6 @@ fn pumpCallback(user_data: ?*anyopaque) void {
 ///     # Cannot create a handle without a HandleScope
 ///
 /// which the journal records as one CRASH with no subtests and no clue.
-/// `invokeIdlHandler` opens its own scope, but the event has been constructed
-/// and dispatched long before that.
 ///
 /// If no isolate can be found, the pump does NOTHING rather than proceed
 /// unscoped, and reports itself live so the next turn can try again. A socket
@@ -193,8 +195,8 @@ fn pumpCallback(user_data: ?*anyopaque) void {
 ///
 /// 1. ENTER the socket's isolate (`v8_Isolate_Enter`). A HandleScope on the
 ///    worker's isolate is not enough, and neither is entering the worker's
-///    context: everything below - `JsScope`, the event wrappers,
-///    `invokeIdlHandler`, `binaryPayload` - asks `v8_Isolate_GetCurrent()`, and
+///    context: everything below - `JsScope`, the event wrappers, the listener
+///    calls, `binaryPayload` - asks `v8_Isolate_GetCurrent()`, and
 ///    until the isolate is entered that answers with the page's. Handles made
 ///    there, under a scope opened on the worker's isolate, are the "Cannot
 ///    create a handle without a HandleScope" abort that kept worker sockets
@@ -251,20 +253,8 @@ pub const InternalState = struct {
     /// Binary type preference
     binary_type: enums.BinaryType,
 
-    /// Event handlers stored as V8 Global handles.
-    ///
-    /// These MUST be Global handles (not raw pointers) because:
-    /// 1. The JavaScript callback objects need to survive past the setter's HandleScope
-    /// 2. Local handles become invalid when the HandleScope that created them is destroyed
-    /// 3. Without Global handles, invoking event handlers would crash due to dangling pointers
-    ///
-    /// See: src/runtime/engines/v8/global_handles.zig for Global handle management.
-    onopen: v8_engine.OptionalGlobalHandle,
-    onerror: v8_engine.OptionalGlobalHandle,
-    onclose: v8_engine.OptionalGlobalHandle,
-    onmessage: v8_engine.OptionalGlobalHandle,
-
-    /// V8 isolate for creating/disposing Global handles
+    /// The isolate the socket was made in: the page's, or a worker's. The pump
+    /// enters it for each turn (see `pumpInScope`).
     isolate: ?*v8_engine.ffi.Isolate,
 
     /// The pump's token, while one exists. See `PollToken`.
@@ -283,17 +273,21 @@ pub const InternalState = struct {
     pump_done: bool = false,
 
     /// Receive scratch, allocated on first use and reused for the socket's
-    /// life. Not a stack array: `pump` runs as a timer callback, and a 128 KB
+    /// life. Not a stack array: `pump` runs as a timer callback, and a 64 KB
     /// frame there is a stack overflow waiting for the right call depth.
     recv_buffer: ?[]u8 = null,
 
-    /// Set once the close outcome is decided, by close() or by the protocol.
-    close_reported: bool = false,
-
-    /// Close code and reason to report, captured when the close is decided.
-    reported_code: u16 = 1006,
-    reported_reason: ?[]const u8 = null,
-    reported_clean: bool = false,
+    /// What `bufferedAmount` returns (WebSockets § 3.1): the application data
+    /// send() queued that had not been transmitted "as of the last time the
+    /// event loop reached step 1", plus whatever send() queued since - "this
+    /// thus includes any text sent during the execution of the current task".
+    ///
+    /// So send() adds to it, and only a pump turn - a task, so the event loop
+    /// has been through step 1 since - brings it back to what the connection
+    /// still holds. Reading the connection directly instead reported 0 straight
+    /// after a send() the socket took at once, which `Send-data.any.js` and
+    /// every test like it assert against.
+    buffered_amount: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -301,10 +295,6 @@ pub const InternalState = struct {
             .connection = null,
             .url_string = "",
             .binary_type = ._blob_,
-            .onopen = null,
-            .onerror = null,
-            .onclose = null,
-            .onmessage = null,
             .isolate = null,
         };
     }
@@ -317,12 +307,6 @@ pub const InternalState = struct {
             self.poll = null;
         }
 
-        // Dispose V8 Global handles to prevent memory leaks
-        v8_engine.disposeOptionalGlobalHandle(&self.onopen);
-        v8_engine.disposeOptionalGlobalHandle(&self.onerror);
-        v8_engine.disposeOptionalGlobalHandle(&self.onclose);
-        v8_engine.disposeOptionalGlobalHandle(&self.onmessage);
-
         if (self.connection) |conn| {
             conn.deinit();
             self.connection = null;
@@ -331,10 +315,6 @@ pub const InternalState = struct {
             for (protos) |p| self.allocator.free(p);
             self.allocator.free(protos);
             self.requested_protocols = null;
-        }
-        if (self.reported_reason) |r| {
-            self.allocator.free(r);
-            self.reported_reason = null;
         }
         if (self.recv_buffer) |b| {
             self.allocator.free(b);
@@ -361,12 +341,9 @@ pub const InternalState = struct {
         return 3; // CLOSED if no connection
     }
 
-    /// Get the buffered amount from the connection
+    /// `bufferedAmount`. See the field.
     pub fn getBufferedAmount(self: *const InternalState) u64 {
-        if (self.connection) |conn| {
-            return conn.buffered_amount;
-        }
-        return 0;
+        return self.buffered_amount;
     }
 
     /// Get the negotiated protocol from the connection
@@ -394,14 +371,19 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Initialize instance (creates the instance)
+///
+/// Through EventTarget's init, which registers the EventTarget state - the
+/// event listener list and the event handler map - that every WebSocket event
+/// is dispatched through. Made with `runtime.Instance.init` instead, a socket
+/// had that state only once `addEventListener` created it lazily, so
+/// `ws.onerror = f` on a fresh socket threw InvalidStateError.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
@@ -419,6 +401,11 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
+
+    // And the EventTarget state: listeners, handlers and the registry entry.
+    // The registry is keyed by address, so an entry left behind is inherited
+    // by whatever the slab puts at this address next - listeners and all.
+    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -435,6 +422,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Drain one turn's worth of protocol activity and fire what it produced.
 ///
+/// One turn is one task, so each thing it fires is fired from a task, as
+/// WebSockets § 4 queues them: the connection established (`open`), a message
+/// received (`message`), the connection closed (`error` if it was failed,
+/// then `close`).
+///
 /// Returns false when there is nothing left to poll for, so the caller stops
 /// re-arming. Every `return false` below is also a point past which `internal`
 /// may no longer exist: dispatching an event runs script, and script can drop
@@ -445,64 +437,63 @@ fn pump(instance: *runtime.Instance) bool {
     if (internal.pump_done) return false;
     const connection = internal.connection orelse return false;
 
-    // 0. close() before the handshake even started. `connection.close` fails
-    //    the connection outright in that case, so there is nothing to connect
-    //    to any more - only the close event is still owed.
-    if (connection.state == .CLOSED) {
-        captureCloseFromConnection(internal, connection);
-        finishClose(instance, internal);
-        return false;
-    }
-
-    // 1. Establish the WebSocket connection. Deferred off the constructor so
-    //    that readyState is observably CONNECTING first.
-    if (!internal.connect_attempted) {
+    // 1. Establish the WebSocket connection (constructor step 12, "in
+    //    parallel"). Begun on the first turn rather than in the constructor so
+    //    that `new WebSocket(url)` returns CONNECTING; after that, advanced a
+    //    step per turn so that script keeps running while it is in flight.
+    if (!internal.connect_attempted and !connection.closed) {
         internal.connect_attempted = true;
-
-        connection.connect(internal.requested_protocols) catch |err| {
-            // "Fail the WebSocket connection": an error event, then a close
-            // event with wasClean false and code 1006. Both are required - a
-            // test waiting only on close must still see it.
-            log.warn("handshake to {s} failed: {s}", .{ internal.url_string, @errorName(err) });
-            internal.close_reported = true;
-            internal.reported_code = 1006;
-            internal.reported_clean = false;
-            fireSimpleEvent(instance, "error", .@"error");
-            if (getInternal(instance)) |live| finishClose(instance, live);
-            return false;
+        const origin = clientOrigin(instance.ctx);
+        defer if (origin) |o| instance.ctx.allocator.free(o);
+        connection.startConnect(.{
+            .protocols = internal.requested_protocols,
+            .origin = origin,
+        }) catch |err| {
+            log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
         };
+    }
+    if (connection.state == .CONNECTING and !connection.closed) {
+        const established = connection.pollConnect() catch |err| blk: {
+            // "Fail the WebSocket connection" - which `closed` and `failed`
+            // now say; the close task below fires `error` and then `close`.
+            log.debug("handshake to {s} failed: {s}", .{ internal.url_string, @errorName(err) });
+            break :blk false;
+        };
+        if (established) {
+            // § 4, "the WebSocket connection is established": ready state
+            // OPEN, protocol and extensions, then `open`.
+            syncState(instance);
+            fireSimpleEvent(instance, "open");
 
-        syncState(instance);
-        fireSimpleEvent(instance, "open", .open);
-
-        // The open listener ran script. It may have closed the socket, and it
-        // may have dropped it entirely.
-        const after_open = getInternal(instance) orelse return false;
-        if (after_open.pump_done) return false;
-        if (connection.state == .CLOSED) {
-            captureCloseFromConnection(after_open, connection);
-            finishClose(instance, after_open);
-            return false;
+            // The open listener ran script. It may have closed the socket, and
+            // it may have dropped it entirely.
+            const after_open = getInternal(instance) orelse return false;
+            if (after_open.pump_done) return false;
         }
     }
 
-    // 2. Receive. `connection.receive` reports "nothing yet" as null and folds
-    //    an arriving close frame into its own state, so the loop ends either on
-    //    a quiet socket or on a closed one.
+    // 2. The network takes what send() and close() queued.
+    connection.flush();
+
+    // 3. The event loop has reached step 1 since the last turn: bufferedAmount
+    //    is what the connection still holds.
+    internal.buffered_amount = connection.bufferedAmount();
+
+    // 4. Receive. `connection.receive` reports "nothing yet" as null, and
+    //    handles a Close frame or a lost transport itself, so the loop ends on
+    //    a quiet socket or a closed one.
     const buffer = internal.recvBuffer() orelse return false;
-    while (connection.state == .OPEN or connection.state == .CLOSING) {
+    while (!connection.closed and (connection.state == .OPEN or connection.state == .CLOSING)) {
         const message = connection.receive(buffer) catch |err| {
-            // A transport error after the handshake is an abnormal closure.
-            // Not a fired error event: the spec fires error only when the
-            // connection could not be established or was closed uncleanly, and
-            // the close event below carries that.
             log.warn("receive on {s} failed: {s}", .{ internal.url_string, @errorName(err) });
-            internal.close_reported = true;
-            internal.reported_code = 1006;
-            internal.reported_clean = false;
-            finishClose(instance, internal);
-            return false;
+            connection.fail();
+            break;
         } orelse break;
+
+        // § 4, "a WebSocket message has been received", step 1: if the ready
+        // state is not OPEN, return. A message that arrives after close() is
+        // dropped.
+        if (connection.state != .OPEN) continue;
 
         fireMessageEvent(instance, internal, message.data, message.is_text);
 
@@ -511,10 +502,8 @@ fn pump(instance: *runtime.Instance) bool {
         if (after_message.pump_done) return false;
     }
 
-    // 3. The closing handshake completed, either because the server sent a
-    //    close frame or because ours was acknowledged.
-    if (connection.state == .CLOSED) {
-        captureCloseFromConnection(internal, connection);
+    // 5. The WebSocket connection is closed: the close task.
+    if (connection.closed) {
         finishClose(instance, internal);
         return false;
     }
@@ -522,51 +511,84 @@ fn pump(instance: *runtime.Instance) bool {
     return true;
 }
 
-/// Copy the connection's close outcome into the state the close event reads.
+/// The task WebSockets § 4 queues when "the WebSocket connection is closed":
 ///
-/// Skipped once `close()` has already decided: the values script asked for are
-/// what the event must report, and the connection only ever holds what the peer
-/// echoed back.
-fn captureCloseFromConnection(internal: *InternalState, connection: *WebSocketConnection) void {
-    if (internal.close_reported) return;
-    internal.close_reported = true;
-
-    internal.reported_code = connection.close_code orelse 1005;
-    internal.reported_clean = connection.wasClean();
-    if (internal.reported_reason == null) {
-        if (connection.close_reason) |reason| {
-            internal.reported_reason = internal.allocator.dupe(u8, reason) catch null;
-        }
-    }
-}
-
-/// Fire the close event, once, and retire the pump.
+/// 1. Change the ready state to CLOSED.
+/// 2. If the user agent was required to fail the WebSocket connection, fire
+///    `error`.
+/// 3. Fire `close`, with wasClean, the connection close code and the
+///    connection close reason.
+///
+/// Runs once. The close event's values are read before `error` fires: an
+/// error listener runs script, and script may drop the WebSocket and its
+/// connection with it.
 fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
     if (internal.pump_done) return;
     internal.pump_done = true;
 
-    if (internal.connection) |conn| conn.state = .CLOSED;
+    const connection = internal.connection orelse return;
+    var reason_buffer: [@import("websocket").connection.max_close_payload]u8 = undefined;
+    const reason = connection.close_reason orelse "";
+    const n = @min(reason.len, reason_buffer.len);
+    @memcpy(reason_buffer[0..n], reason[0..n]);
+    const outcome: CloseOutcome = .{
+        .was_clean = connection.close_was_clean,
+        .code = connection.close_code orelse 1006,
+        .reason = reason_buffer[0..n],
+    };
+    const failed = connection.failed;
+
+    // 1.
+    connection.state = .CLOSED;
     syncState(instance);
 
-    fireCloseEvent(instance, internal);
+    // 2.
+    if (failed) {
+        fireSimpleEvent(instance, "error");
+        // Script ran: the WebSocket may be gone. Nothing below reads it but
+        // through `instance`, which the dispatch paths look up afresh.
+        if (getInternal(instance) == null) return;
+    }
+
+    // 3.
+    fireCloseEvent(instance, outcome);
+}
+
+const CloseOutcome = struct {
+    was_clean: bool,
+    code: u16,
+    reason: []const u8,
+};
+
+/// The client's origin, serialized, for the handshake's `Origin` header:
+/// this's relevant settings object's origin (Fetch appends a request Origin
+/// header to every request whose mode is "websocket"). Read through the
+/// realm's global, which is a Window or a WorkerGlobalScope and so answers
+/// WindowOrWorkerGlobalScope's `origin`. Owned by `ctx.allocator`.
+fn clientOrigin(ctx: runtime.Context) ?[]const u8 {
+    const ffi = v8_engine.ffi;
+    const engine_ctx = ctx.engine_ctx orelse return null;
+    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const global = ffi.v8_Context_Global(v8_context) orelse return null;
+    defer ffi.v8_Object_Dispose(global);
+    const raw = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
+    const global_instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
+    // "null" is an opaque origin, and a header saying so is still the one to send.
+    return origin;
 }
 
 // =============================================================================
 // Event dispatch
 //
-// Two places a listener can be, and both have to be tried - the same split
-// XMLHttpRequest.zig documents at length:
-//
-//   1. the event listener list, via `EventTarget.dispatchEvent`;
-//   2. the event handler IDL attribute (`ws.onopen = f`), which Crane keeps in
-//      this impl's own InternalState as a V8 Global rather than as a listener,
-//      so `EventTarget.invokeIdlEventHandler` cannot see it.
+// One place a listener can be: the event listener list, which holds both the
+// `addEventListener` listeners and the event handlers (`ws.onopen = f`), in
+// the order they were activated (HTML § 8.1.8.1). So trusted dispatch alone
+// reaches every one, `ws.dispatchEvent(e)` reaches `ws.onerror` too, and each
+// runs with the WebSocket as `this`.
 // =============================================================================
 
-/// Which handler attribute an event type maps to.
-const HandlerKind = enum { open, @"error", close, message };
-
-fn fireSimpleEvent(instance: *runtime.Instance, name: []const u8, kind: HandlerKind) void {
+fn fireSimpleEvent(instance: *runtime.Instance, name: []const u8) void {
     const ctx = instance.ctx;
     const type_string = runtime.DOMString.initInterned(name);
 
@@ -576,18 +598,18 @@ fn fireSimpleEvent(instance: *runtime.Instance, name: []const u8, kind: HandlerK
         webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
 
-    deliver(instance, event, type_string, kind, .plain);
+    deliver(instance, event, type_string, .plain);
 }
 
-fn fireCloseEvent(instance: *runtime.Instance, internal: *InternalState) void {
+fn fireCloseEvent(instance: *runtime.Instance, outcome: CloseOutcome) void {
     const ctx = instance.ctx;
     const type_string = runtime.DOMString.initInterned("close");
 
     const init_dict = dictionaries.CloseEventInit{
         .base = .{},
-        .wasClean = internal.reported_clean,
-        .code = internal.reported_code,
-        .reason = internal.reported_reason orelse "",
+        .wasClean = outcome.was_clean,
+        .code = outcome.code,
+        .reason = outcome.reason,
     };
 
     const event = interfaces.CloseEvent.call_constructor(
@@ -596,7 +618,7 @@ fn fireCloseEvent(instance: *runtime.Instance, internal: *InternalState) void {
         webidl.Opt(dictionaries.CloseEventInit).passed(init_dict),
     ) catch return;
 
-    deliver(instance, event, type_string, .close, .close);
+    deliver(instance, event, type_string, .close);
 }
 
 fn fireMessageEvent(
@@ -630,7 +652,7 @@ fn fireMessageEvent(
         webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
     ) catch return;
 
-    deliver(instance, event, type_string, .message, .message);
+    deliver(instance, event, type_string, .message);
 }
 
 /// A binary frame as `binaryType` says to present it.
@@ -701,12 +723,11 @@ fn originOf(url: []const u8) []const u8 {
 
 const EventShape = enum { plain, close, message };
 
-/// Deliver an event to both kinds of listener, then release it if nothing kept it.
+/// Fire `event` at the WebSocket, then release it if nothing kept it.
 fn deliver(
     target: *runtime.Instance,
     event: *runtime.Instance,
     type_string: runtime.DOMString,
-    kind: HandlerKind,
     shape: EventShape,
 ) void {
     // `dispatchEvent` throws unless the event's INITIALIZED flag is set, and no
@@ -721,11 +742,10 @@ fn deliver(
 
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl.
-    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch |err| {
+    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 
-    invokeIdlHandler(target, event, kind);
     releaseEventIfUnwrapped(event, shape);
 }
 
@@ -746,57 +766,6 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, shape: EventShape) void {
         .close => interfaces.CloseEvent.deinit(event),
         .message => interfaces.MessageEvent.deinit(event),
     }
-}
-
-/// Call `ws.onopen = f` and friends with the event.
-///
-/// The handler is stored as a V8 Global and must be passed through AS a Global:
-/// `v8_Value_IsFunction` takes a `Global<Value>*` and calls `Get` on it, so a
-/// Local reinterpreted as one is read at the wrong offset and crashes. This is
-/// the mistake `XMLHttpRequest.invokeIdlHandler` records having made.
-fn invokeIdlHandler(target: *runtime.Instance, event: *runtime.Instance, kind: HandlerKind) void {
-    const internal = getInternal(target) orelse return;
-    const handle = switch (kind) {
-        .open => internal.onopen,
-        .@"error" => internal.onerror,
-        .close => internal.onclose,
-        .message => internal.onmessage,
-    } orelse return;
-
-    const callback_global: *v8_engine.ffi.Value = @ptrCast(handle.ptr);
-
-    const engine_ctx = target.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // A Local handle is only valid inside a HandleScope, and wrapping the event
-    // creates several.
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
-
-    // Wrap with the event's ACTUAL interface, so an onmessage handler sees
-    // `.data` rather than a bare Event.
-    const interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
-    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-        event,
-        interface_name,
-        v8_isolate,
-        v8_context,
-    ) catch return;
-
-    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
-    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_global)};
-
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        callback_global,
-        v8_context,
-        @ptrCast(undefined_recv),
-        1,
-        @ptrCast(&args),
-    );
-    v8_engine.ffi.v8_FreeFunctionCallResult(result);
 }
 
 /// Constructor implementation
@@ -913,12 +882,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     state.own.protocol = runtime.DOMString.initEmpty();
     state.own.binaryType = ._blob_;
     internal.binary_type = ._blob_;
-
-    // Initialize event handlers to null
-    state.own.onopen = null;
-    state.own.onerror = null;
-    state.own.onclose = null;
-    state.own.onmessage = null;
 
     // Steps 8-9. protocols is a string or a sequence of strings. Each must be a
     // valid HTTP token, and no value may repeat (ASCII case-insensitively) -
@@ -1134,40 +1097,19 @@ pub fn get_bufferedAmount(instance: *runtime.Instance) anyerror!u64 {
     return internal.getBufferedAmount();
 }
 
-/// Getter for onopen
-/// Returns the event handler by retrieving a Local handle from the Global handle.
+/// Getter for onopen (HTML § 8.1.8.1, the event handler IDL attribute).
 pub fn get_onopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return null;
-    const isolate = internal.isolate orelse return null;
-    if (internal.onopen) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "open");
 }
 
-/// Getter for onerror
-/// Returns the event handler by retrieving a Local handle from the Global handle.
+/// Getter for onerror (HTML § 8.1.8.1, the event handler IDL attribute).
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return null;
-    const isolate = internal.isolate orelse return null;
-    if (internal.onerror) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
 }
 
-/// Getter for onclose
-/// Returns the event handler by retrieving a Local handle from the Global handle.
+/// Getter for onclose (HTML § 8.1.8.1, the event handler IDL attribute).
 pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return null;
-    const isolate = internal.isolate orelse return null;
-    if (internal.onclose) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "close");
 }
 
 /// Getter for extensions
@@ -1196,16 +1138,9 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for onmessage
-/// Returns the event handler by retrieving a Local handle from the Global handle.
+/// Getter for onmessage (HTML § 8.1.8.1, the event handler IDL attribute).
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return null;
-    const isolate = internal.isolate orelse return null;
-    if (internal.onmessage) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
 }
 
 /// Getter for binaryType
@@ -1218,64 +1153,28 @@ pub fn get_binaryType(instance: *runtime.Instance) anyerror!enums.BinaryType {
     return internal.binary_type;
 }
 
-/// Extract GlobalHandle from a tagged callback pointer (from V8 conversion).
-/// The V8 conversions layer creates Global handles and tags the pointers.
-fn extractEventHandler(handler: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
-    if (handler) |ptr| {
-        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        }
-    }
-    return null;
-}
-
-/// Setter for onopen
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
+/// Setter for onopen: the handler joins the event listener list, where
+/// dispatch finds it in the order it was activated.
 pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onopen);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    internal.onopen = extractEventHandler(@ptrCast(value));
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "open", value);
 }
 
-/// Setter for onerror
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
+/// Setter for onerror: the handler joins the event listener list, where
+/// dispatch finds it in the order it was activated.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onerror);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    internal.onerror = extractEventHandler(@ptrCast(value));
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
 }
 
-/// Setter for onclose
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
+/// Setter for onclose: the handler joins the event listener list, where
+/// dispatch finds it in the order it was activated.
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onclose);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    internal.onclose = extractEventHandler(@ptrCast(value));
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "close", value);
 }
 
-/// Setter for onmessage
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
+/// Setter for onmessage: the handler joins the event listener list, where
+/// dispatch finds it in the order it was activated.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onmessage);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    internal.onmessage = extractEventHandler(@ptrCast(value));
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
 }
 
 /// Setter for binaryType
@@ -1326,44 +1225,22 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
 
     // Step 3, first case: "If this's ready state is CLOSING or CLOSED, do
     // nothing." Validation above still runs - a bad code throws even on an
-    // already-closing socket - but nothing below may re-decide the close
-    // outcome, or a second close(3000) would rewrite the code the first one
-    // committed to.
+    // already-closing socket.
     if (internal.pump_done) return;
-    if (connection.state == .CLOSING or connection.state == .CLOSED) return;
 
-    // Remember what the close event should report. `close(1000, "reason")`
-    // must come back as code 1000 with that reason and wasClean true, so the
-    // values are captured HERE - by the time the handshake completes the
-    // connection has only what the peer echoed.
+    // Step 3's other cases: fail a connection not yet established, or start
+    // the closing handshake. Either way the ready state is now CLOSING.
+    //
+    // What the close event reports is NOT decided here. It is the connection
+    // close code and reason (RFC 6455 § 7.1.5, 7.1.6) - those of the Close
+    // frame the peer sends back - or 1006 and "" for a failed connection,
+    // whatever close() asked for.
     const close_code: ?u16 = if (code.was_passed) code.value else null;
-    if (reason_str) |r| {
-        if (internal.reported_reason) |old| internal.allocator.free(old);
-        internal.reported_reason = internal.allocator.dupe(u8, r) catch null;
-    }
-
-    const was_connecting = connection.state == .CONNECTING;
-
     try connection.close(close_code, reason_str);
-
-    internal.close_reported = true;
-    if (was_connecting) {
-        // "If the connection is not yet established, fail the WebSocket
-        // connection" - which is never clean, and reports 1006 whatever code
-        // was asked for.
-        internal.reported_code = 1006;
-        internal.reported_clean = false;
-    } else {
-        internal.reported_code = close_code orelse 1005;
-        internal.reported_clean = true;
-    }
-
-    // Update the state
-    const state = instance.getState(State);
-    state.own.readyState = connection.getReadyState();
+    syncState(instance);
 
     // The close event is fired from the pump, never from here: script called
-    // close() and must see readyState CLOSING (or CLOSED) return first.
+    // close() and must see readyState CLOSING return first.
     if (internal.poll) |token| token.arm();
 }
 
@@ -1399,29 +1276,18 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!vo
 
     const payload = try payloadOf(internal, data, &scratch);
 
-    // Steps 3-4. Send if the connection is established and OPEN; otherwise the
-    // data is DISCARDED, silently. Not an error - CLOSING and CLOSED are both
-    // normal states to call send in.
-    if (internal.getReadyState() != 1) {
-        // Step 5 still applies: bufferedAmount counts data that was queued and
-        // not transmitted.
-        connection.buffered_amount += payload.bytes.len;
-        syncState(instance);
-        return;
-    }
+    // Steps 3-4. Send if the connection is established and its closing
+    // handshake has not started; otherwise the data is discarded, silently.
+    // Not an error - CLOSING and CLOSED are both normal states to call send in.
+    // The connection decides which, and queues what it sends behind what is
+    // already waiting.
+    connection.send(if (payload.is_text) .text else .binary, payload.bytes) catch |err| {
+        log.warn("send on {s} failed: {s}", .{ internal.url_string, @errorName(err) });
+    };
 
-    if (payload.is_text) {
-        connection.sendText(payload.bytes) catch |err| {
-            log.warn("send text on {s} failed: {s}", .{ internal.url_string, @errorName(err) });
-            return;
-        };
-    } else {
-        connection.sendBinary(payload.bytes) catch |err| {
-            log.warn("send binary on {s} failed: {s}", .{ internal.url_string, @errorName(err) });
-            return;
-        };
-    }
-
+    // Step 5. "Increase this's bufferedAmount by the byte length of data" -
+    // sent or discarded, it counts until a later task finds it transmitted.
+    internal.buffered_amount += payload.bytes.len;
     syncState(instance);
 }
 
