@@ -710,6 +710,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An object the engine makes for a Zig holder must be wrapped or pinned](docs/lessons/architecture-an-object-the-engine-makes-for-a-zig-holder-must-be-pinned.md) - Before you store a pointer to an Instance, decide whether the wrapper cache or a pin keeps it alive.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
+- [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
 
 ### Spec Compliance
 
