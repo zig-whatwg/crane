@@ -1366,7 +1366,7 @@ fn runHashChange(context: ?*anyopaque) void {
         webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    _ = @import("EventTarget.zig").dispatchTrusted(task.window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -1929,7 +1929,7 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
 
     // Dispatch the event on the iframe element
     // HTMLIFrameElement inherits from HTMLElement -> Element -> Node -> EventTarget
-    _ = interfaces.EventTarget.call_dispatchEvent(instance, event) catch return;
+    _ = @import("EventTarget.zig").dispatchTrusted(instance, event) catch return;
 }
 
 /// Getter for contentWindow

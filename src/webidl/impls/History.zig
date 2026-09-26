@@ -571,7 +571,7 @@ fn sameDocumentTraversal(bc: *BrowsingContext, old_url: []const u8, entry: *join
         webidl.Opt(dictionaries.PopStateEventInit).passed(.{ .base = .{}, .state = state }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 
     // 6.4.5: hashchange, when the fragment changed.
@@ -635,6 +635,6 @@ fn runHashChange(context: ?*anyopaque) void {
         webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(task.window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }

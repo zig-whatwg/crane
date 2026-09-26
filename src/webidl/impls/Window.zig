@@ -1980,7 +1980,7 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
     };
     const generation = runtime.SlabAllocator.generationOf(event);
 
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
 
     // Who owns the event now. A GC during the dispatch may already have
     // collected it, once the last listener let go of the wrapper - then its

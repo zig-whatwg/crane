@@ -756,7 +756,7 @@ fn runHashChange(context: ?*anyopaque) void {
         webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(task.window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

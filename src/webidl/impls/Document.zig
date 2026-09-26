@@ -3752,7 +3752,7 @@ fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").documen
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
-    const not_canceled = interfaces.EventTarget.call_dispatchEvent(window, event) catch true;
+    const not_canceled = @import("EventTarget.zig").dispatchTrusted(window, event) catch true;
     // Step 6's condition, less sticky activation: "eventFiringResult is
     // false, or the returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
@@ -3921,7 +3921,7 @@ fn completeLoading(document: *runtime.Instance) void {
 }
 
 /// Fire an event named `event_type` at `target`, created in `realm_of`'s
-/// realm. Script-facing dispatch, so it reads isTrusted false.
+/// realm - the user agent's, so trusted (DOM 2.10).
 fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type: []const u8, bubbles: bool) void {
     fireEventWith(realm_of, target, event_type, .{ .bubbles = bubbles });
 }
@@ -3933,7 +3933,7 @@ fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_t
         webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch {};
     // A listener that kept the event keeps it alive; otherwise it is done.
     event.releaseIfUnwrapped(generation);
 }
@@ -3953,7 +3953,7 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
+    _ = @import("EventTarget.zig").dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
