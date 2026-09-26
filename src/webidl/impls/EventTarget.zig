@@ -1049,9 +1049,8 @@ pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
     errdefer finishDispatch(event);
 
     // Steps 2-5. targetOverride is target: the legacy target override flag is
-    // only ever passed by HTML, and only for a Window. activationTarget (steps
-    // 3, 6.4-6.5, 12) and clearTargets (steps 5, 6.10-6.11) need activation
-    // behaviour and shadow roots respectively, neither of which exists yet.
+    // only ever passed by HTML, and only for a Window. clearTargets (steps 5,
+    // 6.10-6.11) needs shadow roots, which do not exist yet.
     const related_target = EventImpl.getRelatedTarget(event);
 
     // `get_type` hands back a borrowed slice into the event's own storage, and
@@ -1067,6 +1066,17 @@ pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
     const structs = path.toSlice();
 
     publishEventPath(event, structs, allocator);
+
+    // Steps 3, 6.4, 6.5 and 6.9.6.1: activationTarget - the target, if it has
+    // activation behaviour, else (for a bubbling event) the first ancestor on
+    // the path that has it; only for a MouseEvent named "click". The
+    // behaviours are the element types' own (dom.activation).
+    const activation_target: ?ActivationTarget = activationTargetOf(structs, event, event_type);
+
+    // Step 12 (6.12 in the spec's numbering): legacy-pre-activation behaviour.
+    if (activation_target) |at| {
+        if (at.behavior.legacy_pre_activation) |pre| pre(at.target);
+    }
 
     // Step 13: for each struct of event's path, IN REVERSE ORDER, invoke with
     // "capturing".
@@ -1099,10 +1109,54 @@ pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
     // Steps 7, 8, 9 and 10
     finishDispatch(event);
 
-    // Steps 11 and 12 (clearTargets, activation behaviour) are not reachable yet.
+    // Step 11 (clearTargets) is not reachable yet.
+
+    // Step 12: "If activationTarget is non-null: if event's canceled flag is
+    // unset, then run activationTarget's activation behavior with event;
+    // otherwise, if activationTarget has legacy-canceled-activation behavior,
+    // run it."
+    // defaultPrevented is the canceled flag ("return true if this's canceled
+    // flag is set").
+    if (activation_target) |at| {
+        if (!(interfaces.Event.get_defaultPrevented(event) catch false)) {
+            at.behavior.run(at.target, event);
+        } else if (at.behavior.legacy_canceled_activation) |canceled| {
+            canceled(at.target);
+        }
+    }
 
     // Step 13: return false if event's canceled flag is set; otherwise true.
     return !EventImpl.getCanceledFlag(event);
+}
+
+const ActivationTarget = struct {
+    target: *runtime.Instance,
+    behavior: @import("dom").activation.Behavior,
+};
+
+/// DOM dispatch steps 6.4-6.5 and 6.9.6.1 over the built path: with no
+/// shadow trees, every parent is appended through step 6.9.6, so the target
+/// comes first and each ancestor after it in path order.
+fn activationTargetOf(structs: []const PathStruct, event: *runtime.Instance, event_type: []const u8) ?ActivationTarget {
+    // Step 6.4: "Let isActivationEvent be true, if event is a MouseEvent
+    // object and event's type attribute is "click"; otherwise false."
+    if (!std.mem.eql(u8, event_type, "click")) return null;
+    if (event.stateAs(interfaces.MouseEvent.State) == null) return null;
+    const activation = @import("dom").activation;
+    if (structs.len == 0) return null;
+    // Step 6.5: the target itself.
+    if (activation.of(structs[0].invocation_target)) |behavior| {
+        return .{ .target = structs[0].invocation_target, .behavior = behavior };
+    }
+    // Step 6.9.6.1: an ancestor, only when the event bubbles.
+    const bubbles = interfaces.Event.get_bubbles(event) catch false;
+    if (!bubbles) return null;
+    for (structs[1..]) |s| {
+        if (activation.of(s.invocation_target)) |behavior| {
+            return .{ .target = s.invocation_target, .behavior = behavior };
+        }
+    }
+    return null;
 }
 
 /// Dispatch steps 7-10: leave the event in a state that can be dispatched again.

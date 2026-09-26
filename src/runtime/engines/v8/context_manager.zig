@@ -1768,6 +1768,12 @@ pub const ChildContextOptions = struct {
     /// When false (default), the context shares the parent's security token allowing
     /// same-origin access patterns.
     use_opaque_origin: bool = false,
+
+    /// A detached global proxy to build the new context around, keeping its
+    /// identity (v8_Context_NewFromSnapshotWithGlobal): a navigable's
+    /// WindowProxy across the Window a navigation replaces. The caller keeps
+    /// its handle. Null makes a new proxy.
+    reuse_global_proxy: ?*v8.Object = null,
 };
 
 // ============================================================================
@@ -2496,10 +2502,12 @@ pub fn createChildContext(
     const parent_key = @intFromPtr(parent_raw_addr);
     const parent_entry = state.contexts.get(parent_key) orelse return error.ParentNotFound;
 
-    // 1. Create new V8 context from snapshot (interfaces already registered)
-    const child_context = v8.v8_Context_NewFromSnapshot(
-        options.isolate,
-    ) orelse return error.ContextCreationFailed;
+    // 1. Create new V8 context from snapshot (interfaces already registered) -
+    // around the navigable's existing WindowProxy when there is one.
+    const child_context = (if (options.reuse_global_proxy) |proxy|
+        v8.v8_Context_NewFromSnapshotWithGlobal(options.isolate, proxy)
+    else
+        v8.v8_Context_NewFromSnapshot(options.isolate)) orelse return error.ContextCreationFailed;
 
     // Get stable address for map key
     const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return error.InvalidContext;

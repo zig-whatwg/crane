@@ -66,6 +66,10 @@ pub const InternalState = struct {
     /// Whether this element has been focused programmatically
     was_focused_by_script: bool = false,
 
+    /// HTML "click in progress flag" (click() steps 2-5): a click() reached
+    /// again from its own event's handlers does nothing.
+    click_in_progress: bool = false,
+
     // === Element Internals ===
     /// ElementInternals instance if attachInternals() was called
     element_internals: ?*runtime.Instance = null,
@@ -934,16 +938,62 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 /// Operation: click
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-click
 pub fn call_click(instance: *runtime.Instance) anyerror!void {
-    // Fire a click event at this element
-    // In a full implementation, this would:
-    // 1. Create a MouseEvent with type "click"
-    // 2. Set bubbles=true, cancelable=true
-    // 3. Dispatch the event via EventTarget.dispatchEvent()
+    const internal = getInternalState(instance) orelse return;
+    // Step 1: "If this element is a form control that is disabled, then
+    // return."
+    if (isDisabledFormControl(instance)) return;
+    // Step 2: "If this element's click in progress flag is set, then return."
+    if (internal.click_in_progress) return;
+    // Step 3: "Set this element's click in progress flag."
+    internal.click_in_progress = true;
+    // Step 5, however the dispatch leaves. The state is looked up again: the
+    // handlers can run anything.
+    defer if (getInternalState(instance)) |after| {
+        after.click_in_progress = false;
+    };
+    // Step 4: "Fire a synthetic pointer event named click at this element,
+    // with the not trusted flag set."
+    fireSyntheticPointerEvent(instance, "click");
+}
 
-    // TODO(events): "fire a synthetic pointer event named click" at the
-    // element, with activation behaviour - nothing is dispatched yet. (This
-    // used to read the onclick handler and drop it.)
-    _ = instance;
+/// HTML "fire a synthetic pointer event named `event_type` at target, with
+/// the not trusted flag set": a PointerEvent that bubbles, is cancelable and
+/// composed, whose view is the target's node document's Window, with no
+/// modifier keys - dispatched, so a click runs the activation behaviour of
+/// its target or an ancestor (dom.activation).
+fn fireSyntheticPointerEvent(target: *runtime.Instance, comptime event_type: []const u8) void {
+    const view: ?*runtime.Instance = blk: {
+        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse break :blk null;
+        break :blk interfaces.Document.get_defaultView(document) catch null;
+    };
+    // Steps 3-4: bubbles, cancelable, composed; step 7: view.
+    const init_dict: dictionaries.PointerEventInit = .{ .base = .{ .base = .{ .base = .{
+        .base = .{ .bubbles = true, .cancelable = true, .composed = true },
+        .view = view,
+    } } } };
+    const event = interfaces.PointerEvent.call_constructor(
+        target.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.PointerEventInit).passed(init_dict),
+    ) catch return;
+    // A listener can keep the event; otherwise it is done after dispatch.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    // Step 5: isTrusted stays false (the not trusted flag). Step 9: dispatch.
+    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+}
+
+/// Whether `instance` is a disabled form control: a button, input, select or
+/// textarea with a disabled attribute. Deviation, stated: a control disabled
+/// only through a disabled fieldset ancestor is not recognised here.
+fn isDisabledFormControl(instance: *runtime.Instance) bool {
+    const element = ElementImpl.getInternal(instance) orelse return false;
+    const name = element.local_name.asSlice();
+    const controls = [_][]const u8{ "button", "input", "select", "textarea" };
+    for (controls) |control| {
+        if (std.mem.eql(u8, name, control)) return element.findAttribute(null, "disabled") != null;
+    }
+    return false;
 }
 
 /// Operation: showPopover

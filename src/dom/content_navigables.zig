@@ -26,6 +26,9 @@ pub const Implementation = struct {
     /// False when `container` is not one this implementation owns, and its
     /// caller fires the load event itself.
     run_load_event_steps: *const fn (container: *runtime.Instance) bool,
+    /// HTML "stop loading" the navigable whose active document is
+    /// `document`, if a container owns one: its ongoing navigation ends.
+    stop_loading: *const fn (document: *runtime.Instance) void,
 };
 
 threadlocal var implementation: ?Implementation = null;
@@ -49,6 +52,13 @@ pub fn runLoadEventSteps(container: *runtime.Instance) bool {
     return impl.run_load_event_steps(container);
 }
 
+/// HTML "stop loading" `document`'s node navigable - the document open
+/// steps' step 8 - when a navigable container holds it.
+pub fn stopLoading(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.stop_loading(document);
+}
+
 test "without an installed implementation nothing delays a load event" {
     const saved = implementation;
     defer implementation = saved;
@@ -57,4 +67,5 @@ test "without an installed implementation nothing delays a load event" {
     var document: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&document));
     try @import("std").testing.expect(!runLoadEventSteps(&document));
+    stopLoading(&document);
 }
