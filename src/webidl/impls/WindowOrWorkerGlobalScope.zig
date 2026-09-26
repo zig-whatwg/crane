@@ -5,6 +5,7 @@ const runtime = @import("runtime");
 const html_core = @import("html_core");
 const global_settings = @import("dom").global_settings;
 const streams_js = @import("streams_js.zig");
+const same_object = @import("same_object.zig");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -429,11 +430,17 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// The fetch, from start until it ends (`done` or `gone`) or is
         /// aborted.
         in_flight: ?*fetch.algorithms.AsyncFetch = null,
-        /// requestObject's signal while this call's abort steps are on it -
-        /// held as (address, slab generation), since nothing here keeps the
-        /// signal alive and a collected signal's slot can be reissued.
+        /// requestObject's signal while this call's abort steps are on it,
+        /// as (address, slab generation).
         signal: ?*runtime.Instance = null,
         signal_generation: u64 = 0,
+        /// Keeps that signal alive for as long as this call. requestObject
+        /// goes when fetch() returns, and with it its own pin, but DOM
+        /// § 3.3.1: a signal with source signals and abort algorithms must
+        /// not be collected - `controller.abort()` reaches the abort steps
+        /// through it. The generation check stays for a pin that could not
+        /// be taken (no isolate).
+        signal_pin: same_object.Pin = .{},
         /// Step 9's locallyAborted.
         locally_aborted: bool = false,
         /// p is settled (or never will be), and its resolver released.
@@ -652,6 +659,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             if (self.fetch_holds or self.task_holds) return;
             if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
             self.signal = null;
+            self.signal_pin.release();
             if (self.outcome) |outcome| {
                 var result = outcome catch null;
                 if (result) |*r| r.deinit();
@@ -731,6 +739,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     if (abort_algorithms.add(signal, .{ .ctx = call, .run = Call.aborted })) {
         call.signal = signal;
         call.signal_generation = runtime.SlabAllocator.generationOf(signal);
+        call.signal_pin.hold(signal);
     } else |err| {
         std.log.scoped(.fetch).warn("fetch(): abort steps not added: {s}", .{@errorName(err)});
     }

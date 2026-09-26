@@ -1122,6 +1122,11 @@ fn consumeThroughStream(instance: *runtime.Instance, method: BodyMethod) anyerro
         return finishReturn(deferred);
     };
     const reader = try srd.acquireDefaultReader(realm, stream);
+    // The read holds it through a Zig pointer; wrapping registers it with the
+    // wrapper cache, which keeps streams-graph objects for the realm and
+    // frees them with it - as ReadableStreamTee and pipeTo do. Unwrapped,
+    // nothing ever freed it.
+    _ = try realm.wrap(reader);
 
     const read = try instance.ctx.allocator.create(FullRead);
     deferred_taken = true;
