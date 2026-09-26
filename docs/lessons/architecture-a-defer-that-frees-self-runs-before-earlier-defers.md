@@ -10,3 +10,11 @@
 **Fix**: read what the late defers need into locals BEFORE any defer that can free the owner (`const isolate = self.isolate;`). `XMLHttpRequest`'s `PendingFetch.run` and `timedOut` already declared their destroy before their exit. Pinned by `crane/net-fetch-worker-terminate.html` (terminates workers 0-40 ms after starting fetches in them; exit 134 before, clean after).
 
 **Takeaway**: **When a function frees its own receiver in a defer, every other defer that touches the receiver must be declared after it - or read what it needs into a local first. Check the faulting line before the theory.**
+
+## A second case: leave a realm before destroying it (2026-09-26)
+
+The navigation lane met the same ordering: a commit that ran script inside
+`JsScope.init(ctx)` also deferred freeing its integration, which destroys that
+context. Declared after the scope's defer, it ran first - the context was
+disposed while entered, then exited. Fix: put the scope in a callee, so it has
+exited before the caller frees anything.

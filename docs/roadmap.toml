@@ -111,7 +111,9 @@ History, links, form submission, windows and bfcache all build on this."""
 done_when = """A navigated document gets a new Window, navigation runs as the \
 spec's tasks, and session history exists for features to build on."""
 areas = ["html/browsers/browsing-the-web/", "html/browsers/history/", "html/semantics/links/", "html/browsers/windows/", "navigation-api/"]
-progress = []
+progress = [
+  "f03633d6a - frame and popup navigation runs as the spec's tasks (beforeunload, fetch via AsyncFetch, commit); frames delay their container's load event; unload/pagehide fire; markup <iframe src> navigates (navigation lane, increment 1)",
+]
 
   [[infra.items]]
   name = "A navigated document gets a new Window"
@@ -127,7 +129,7 @@ progress = []
 
   [[infra.items]]
   name = "Unload, pagehide and beforeunload in the right order"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "networking"
@@ -141,6 +143,7 @@ areas = ["fetch/", "xhr/"]
 progress = [
   "70278c0d1 - window fetch() completes on the event loop: a curl multi scheduler pumped each turn (networking lane, increment 1)",
   "066da9ed2 - asynchronous XHR on the same scheduler, XHR handlers on EventTarget's map, fetch() abort steps (increment 2); worker fetch() async through the bound operation (9ec30ea8f)",
+  "64e40148e - response bodies stream: headers first, a body pipe each clone reads, response.body filled by the network, XHR progress as bytes arrive (increment 3)",
 ]
 
   [[infra.items]]
@@ -149,7 +152,7 @@ progress = [
 
   [[infra.items]]
   name = "Response bodies stream into ReadableStream as they arrive"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "XHR and navigation fetch through the same path"

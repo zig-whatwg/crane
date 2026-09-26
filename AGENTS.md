@@ -703,6 +703,11 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Single-threaded networking must send the request before the script ends, and let the timer decide timeouts](docs/lessons/architecture-single-threaded-networking-must-send-the-request.md) - "In parallel" in a spec means the network makes progress while script runs.
 - [A defer that frees `self` runs before the earlier defers that read it](docs/lessons/architecture-a-defer-that-frees-self-runs-before-earlier-defers.md) - When a function frees its own receiver in a defer, every other defer that touches the receiver must be declared after it - or read what it needs into a local first.
 - [An object wrapped in two realms must outlive both wrappers](docs/lessons/architecture-an-object-wrapped-in-two-realms-outlives-both.md) - Ask how many wrappers an object can have before freeing it when one dies.
+- [An asynchronous frame navigation must hold its container's load event](docs/lessons/architecture-an-asynchronous-frame-navigation-must-hold-its-container-s.md) - Any engine work moved off the caller's stack that a document's load depends on must register as delaying the load event.
+- [A feature reached only through its IDL setter never runs for markup](docs/lessons/architecture-a-feature-reached-only-through-its-idl-setter-never-runs-for.md) - If a behaviour lives behind an IDL setter, test it with markup before trusting it.
+- [curl's header callback delivers every header block](docs/lessons/architecture-curl-s-header-callback-delivers-every-header-block.md) - Track header-block boundaries in the callback; a header line alone does not say which block it belongs to.
+- [An object the engine makes for a Zig holder must be wrapped or pinned](docs/lessons/architecture-an-object-the-engine-makes-for-a-zig-holder-must-be-pinned.md) - Before you store a pointer to an Instance, decide whether the wrapper cache or a pin keeps it alive.
+- [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
 
 ### Spec Compliance
@@ -716,6 +721,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [window.postMessage had never delivered a message](docs/lessons/spec-compliance-window-postmessage-had-never-delivered-a-message.md) - When a whole directory hangs on one API, call that API with the four plainest arguments before reading any test.
 - [A relative iframe `src` never loaded, and three bugs hid behind it](docs/lessons/spec-compliance-a-relative-iframe-src-never-loaded-and-three.md) - Test a feature with the URL shapes the corpus actually uses.
 - [A frame's parse skipped "the end" step 5, so no module script ran in a frame](docs/lessons/spec-compliance-a-frame-s-parse-skipped-the-end-step-5-so-no.md) - Every parser driver owes the whole of "the end".
+- [A body that is always a pipe needs main fetch step 20](docs/lessons/spec-compliance-a-body-that-is-always-a-pipe-needs-main-fetch-step-20.md) - When bytes become a stream, "no body" and "empty body" become different states.
 
 ### Codegen
 
