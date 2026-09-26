@@ -1,0 +1,17 @@
+# Architecture: Engine code defines a realm's properties; it never assigns them
+
+**Date**: 2026-09-26
+**Lesson**: A `v8_Object_Set` on a global runs whatever setter the property has - the script-facing WebIDL binding, with its receiver checks, its conversions and its handle leaks - and an exception it throws that nobody sees is still a handle into the realm.
+
+**Why**: Two lines of realm setup in `context_manager.zig` assigned `self`, `window` and `frames` with [[Set]]. None of them is an own property there (`registerPropertiesAsOwnOnObject` skips them), so the [[Set]] found Window.prototype's accessors and called the bindings:
+
+- `createChildContext` step 4d2 ran before the realm had a Window. The [Global] setters could not resolve the receiver and threw "Illegal invocation" (`self`, `frames`; `window` has no setter). `conversions.throwTypeErrorFromContext` never releases the TypeError's Global, so each one kept its realm alive for the rest of the process. The assignments did nothing else: step 8 set `self` again once the Window existed.
+- `createWindowBoundToGlobal` step 7 set `self` through the [Replaceable] setter, whose argument handle (`info.get(0)`, owned) the setter binding never releases. It was a handle to the frame's WindowProxy, which kept the frame's realm - and, through the realm's security token, its parent page - alive after the frame was gone.
+
+**What Happened**: The sweep at a680e6733 lost 26 files to SIGTRAP (V8 "Fatal JavaScript out of memory: Ineffective mark-compacts near heap limit", raised from `LowMemoryNotification` in the next file's `navigateWithOptions`). Three files in one process were enough: `euckr-encode-form-ksc5601`, `euckr-encode-form`, `euckr-encode-href`. Each encode-form file submits a form into two frames about 45 times. Since the navigation lane's 41d2c27e0 (a navigation makes a new Window behind the same WindowProxy) every submission is a new realm, and every realm leaked: `native_contexts` 457 after the first file, 915 after the second (ee5bedd70: 4 and 4). The leak per realm was older; the realm per navigation multiplied it. A heap snapshot's first hop from "(Global handles)" named 66 `TypeError` objects, message "Illegal invocation"; a stack dump at the throw named `Window.set_self` and `Window.set_frames`; the Global-creation-site tracker (docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) named the setter's argument handle for what was left.
+
+**Fix**: Delete step 4d2's assignments, and define `self` in `createWindowBoundToGlobal` with `v8_Object_DefineProperty(..., true, true, true)` - the [Replaceable] setter's own [[DefineOwnProperty]], without the binding. `crane/sweep-frame-realms-released.html` (a removed frame's retired and current realms are collected) goes 0/1 -> 1/1; three frame-less, three static-frame and five navigated-frame pages under `CRANE_HEAP_GC=1` hold 2, 3 and 13 contexts flat (were 2, +2 per file and +12 per file).
+
+Still open, in held files: every exception the binding throws through `conversions.throw*` leaks its handles (the exception pins its realm), and every attribute setter leaks its argument's handle (`interface.zig` `makeSetterCallback`; operations release theirs through `convertArgReleasing`).
+
+**Takeaway**: **Engine code defines a realm's properties; it never assigns them.** A [[Set]] runs the script-facing setter, and a TypeError thrown into nobody's catch is still a Global into the realm that made it.
