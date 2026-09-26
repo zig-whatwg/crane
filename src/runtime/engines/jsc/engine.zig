@@ -87,6 +87,18 @@ pub const jsc_engine_interface: EngineInterface = .{
     // ---- lane: page-realm ----
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    .createObservableArray = notSupportedCreateObservableArray,
+    .queueMicrotask = notSupportedQueueMicrotask,
+    .createResolvedPromise = notSupportedCreateResolvedPromise,
+    .createRejectedPromise = notSupportedCreateRejectedPromise,
+    .createSimpleException = notSupportedCreateSimpleException,
+    .createDictionaryObject = notSupportedCreateDictionaryObject,
+    .currentRealm = notSupportedCurrentRealm,
+    .describeArrayBufferView = notSupportedDescribeArrayBufferView,
+    .writeIntoArrayBufferView = notSupportedWriteIntoArrayBufferView,
+    .callUserObjectOperation = notSupportedCallUserObjectOperation,
+    .convertToUnrestrictedDouble = notSupportedConvertToUnrestrictedDouble,
+    .takeCallbackFunction = notSupportedTakeCallbackFunction,
     // ---- end lane: runtime-impls ----
 };
 
@@ -94,6 +106,46 @@ pub const jsc_engine_interface: EngineInterface = .{
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+// TODO(engine adapter): the runtime-impls lane's operations on this engine.
+fn notSupportedCreateObservableArray(_: runtime.Context) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedQueueMicrotask(_: runtime.Context, _: runtime.RealmSteps, _: ?*anyopaque) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateResolvedPromise(_: runtime.Context, _: runtime.JSValue) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateRejectedPromise(_: runtime.Context, _: runtime.JSValue) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateSimpleException(_: runtime.Context, _: runtime.SimpleExceptionKind, _: []const u8) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateDictionaryObject(_: runtime.Context, _: []const runtime.DictionaryMember) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+/// No realm is known to be current; callers fall back to the object's own.
+fn notSupportedCurrentRealm() ?runtime.Context {
+    return null;
+}
+/// Answers "not a view": an impl then throws the TypeError the conversion would.
+fn notSupportedDescribeArrayBufferView(_: runtime.JSValue) ?runtime.ArrayBufferViewDescription {
+    return null;
+}
+fn notSupportedWriteIntoArrayBufferView(_: runtime.JSValue, _: []const u8, _: usize) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedCallUserObjectOperation(_: runtime.Context, _: *runtime.CallbackWrapper, _: []const u8, _: []const runtime.JSValue) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToUnrestrictedDouble(_: runtime.Context, _: runtime.JSValue) EngineError!f64 {
+    return EngineError.NotSupported;
+}
+/// This engine's bindings make no callback-function arguments yet: nothing to take.
+fn notSupportedTakeCallbackFunction(_: *const anyopaque) runtime.JSValue {
+    return runtime.JSValue.jsUndefined;
+}
 // ---- end lane: runtime-impls ----
 
 /// Promise handle for tracking JSC promise state

@@ -358,7 +358,7 @@ pub fn deinit() void {
 
         // Clean up ObservableArray static registry
         // This is a safety net for states not cleaned up via V8 GC weak callbacks
-        runtime.ObservableArrayExotic.cleanupAll();
+        @import("observable_array.zig").cleanupAll();
 
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed

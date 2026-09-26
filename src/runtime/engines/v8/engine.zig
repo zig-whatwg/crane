@@ -104,6 +104,18 @@ pub const v8_engine_interface: EngineInterface = .{
     // ---- lane: page-realm ----
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    .createObservableArray = @import("observable_array.zig").createObservableArray,
+    .queueMicrotask = @import("value_construction.zig").queueMicrotask,
+    .createResolvedPromise = @import("value_construction.zig").createResolvedPromise,
+    .createRejectedPromise = @import("value_construction.zig").createRejectedPromise,
+    .createSimpleException = @import("value_construction.zig").createSimpleException,
+    .createDictionaryObject = @import("value_construction.zig").createDictionaryObject,
+    .currentRealm = @import("current_realm.zig").currentRealm,
+    .describeArrayBufferView = @import("array_buffer_views.zig").describeArrayBufferView,
+    .writeIntoArrayBufferView = @import("array_buffer_views.zig").writeIntoArrayBufferView,
+    .callUserObjectOperation = @import("callback_interfaces.zig").callUserObjectOperation,
+    .convertToUnrestrictedDouble = @import("webidl_conversions_numeric.zig").convertToUnrestrictedDouble,
+    .takeCallbackFunction = @import("callback_interfaces.zig").takeCallbackFunction,
     // ---- end lane: runtime-impls ----
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,

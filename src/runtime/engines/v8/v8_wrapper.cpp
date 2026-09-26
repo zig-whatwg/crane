@@ -11439,4 +11439,64 @@ void v8_Isolate_SetHostCreateShadowRealmContextCallback(
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+// ============================================================================
+// WebIDL "create a simple exception" (the runtime-impls lane's Engine
+// operation createSimpleException): the error constructors v8::Exception
+// reaches beyond TypeError and RangeError, created in a given realm.
+// ============================================================================
+
+extern "C" {
+
+/// Create ReferenceError in a specific context: Construct(%ReferenceError%,
+/// « message ») with that realm's intrinsic, as the TypeError and RangeError
+/// variants above do.
+Global<Value>* v8_Exception_ReferenceErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+
+    Context::Scope context_scope(ctx);
+
+    Local<Value> exception = Exception::ReferenceError(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
+} // extern "C"
+
+extern "C" {
+
+/// WebIDL "write" `length` bytes into an ArrayBufferView, `starting_offset`
+/// bytes into the view (the runtime-impls lane's writeIntoArrayBufferView):
+/// SetValueInBuffer over [[ViewedArrayBuffer]] from [[ByteOffset]] +
+/// startingOffset, for an ArrayBuffer or a SharedArrayBuffer alike. False when
+/// `view` is not an ArrayBufferView, its buffer is detached, or the bytes do
+/// not fit in the view.
+bool v8_ArrayBufferView_WriteBytes(Global<Value>* view, const uint8_t* bytes, size_t length, size_t starting_offset) {
+    if (!view || view->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = view->Get(isolate);
+    if (!v->IsArrayBufferView()) return false;
+    Local<ArrayBufferView> abv = v.As<ArrayBufferView>();
+    size_t view_length = abv->ByteLength();
+    if (starting_offset > view_length || length > view_length - starting_offset) return false;
+    Local<Object> buffer = abv->Buffer();
+    void* data = nullptr;
+    if (buffer->IsSharedArrayBuffer()) {
+        data = buffer.As<SharedArrayBuffer>()->Data();
+    } else if (buffer->IsArrayBuffer()) {
+        Local<ArrayBuffer> ab = buffer.As<ArrayBuffer>();
+        if (ab->WasDetached()) return false;
+        data = ab->Data();
+    }
+    if (length == 0) return true;
+    if (!data || !bytes) return false;
+    memcpy(static_cast<uint8_t*>(data) + abv->ByteOffset() + starting_offset, bytes, length);
+    return true;
+}
+
+} // extern "C"
 // ---- end lane: runtime-impls ----

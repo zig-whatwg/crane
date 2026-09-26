@@ -164,6 +164,9 @@ pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+pub const SimpleExceptionKind = @import("engine_interface.zig").SimpleExceptionKind;
+pub const DictionaryMember = @import("engine_interface.zig").DictionaryMember;
+pub const ArrayBufferViewDescription = @import("engine_interface.zig").ArrayBufferViewDescription;
 // ---- end lane: runtime-impls ----
 pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
