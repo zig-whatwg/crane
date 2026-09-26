@@ -485,9 +485,12 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             // steps - the abort steps settled p already.
             if (!alive(self) or self.locally_aborted) return self.release();
 
-            const entered = v8.ffi.v8_Isolate_GetCurrent() != self.isolate;
-            if (entered) v8.ffi.v8_Isolate_Enter(self.isolate);
-            defer if (entered) v8.ffi.v8_Isolate_Exit(self.isolate);
+            // Read once: `release` frees this call, and the isolate is
+            // exited after it - the defers run in reverse.
+            const isolate = self.isolate;
+            const entered = v8.ffi.v8_Isolate_GetCurrent() != isolate;
+            if (entered) v8.ffi.v8_Isolate_Enter(isolate);
+            defer if (entered) v8.ffi.v8_Isolate_Exit(isolate);
             defer self.release();
             {
                 const scope = v8.JsScope.init(self.ctx) orelse return;
@@ -495,7 +498,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 self.processResponse();
             }
             // In a worker, the task's end is the worker's to run.
-            @import("html").worker_v8_context.finishTaskIn(self.isolate);
+            @import("html").worker_v8_context.finishTaskIn(isolate);
         }
 
         /// processResponse, given fetch's outcome.
