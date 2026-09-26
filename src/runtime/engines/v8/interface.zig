@@ -2006,6 +2006,21 @@ pub fn V8Interface(comptime Interface: type) type {
             return ptr_child_info == .@"fn";
         }
 
+        /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
+        /// platform object that implements the interface, throw a TypeError"
+        /// ([LegacyLenientThis]: return undefined). The receiver checks in
+        /// the accessor callbacks read WrapperTypeInfo, which
+        /// `wrapper_type_info_registry` never supplies and `dom_type_info`
+        /// supplies for 24 interfaces, so every other wrapper - and every
+        /// constructor-made one - was unwrapped unchecked, and
+        /// `HTMLInputElement.value` answered for a textarea. The state
+        /// ancestry is the brand, as it is for operations (MethodCallback);
+        /// a vtable with no ancestry cannot be asked and passes.
+        fn implementsInterface(instance: *const runtime.Instance) bool {
+            if (comptime !@hasDecl(Interface, "State")) return true;
+            return instance.vtable.ancestors.len == 0 or instance.stateAs(Interface.State) != null;
+        }
+
         /// Generate a property getter callback for a specific property at comptime
         ///
         /// This creates a callback that:
@@ -2302,6 +2317,16 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
 
                         const instance: *runtime.Instance = @ptrCast(@alignCast(resolved_instance.?));
+
+                        if (!implementsInterface(instance)) {
+                            const lenient = comptime isLenientThisProperty(if (std.mem.startsWith(u8, getter_name, "get_")) getter_name[4..] else getter_name);
+                            if (lenient) {
+                                if (v8.v8_Undefined(isolate_inner)) |undef| info.setReturnValue(undef);
+                            } else {
+                                conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
+                            }
+                            return;
+                        }
 
                         // Additional safety check: validate instance.ctx is not corrupted
                         // This catches cases where the Instance struct was freed but V8 still holds a reference
@@ -4508,6 +4533,18 @@ pub fn V8Interface(comptime Interface: type) type {
             {
                 conv.throwTypeError(isolate, "Illegal invocation");
                 return .kNo;
+            }
+
+            if (!implementsInterface(instance)) {
+                if (maybe_holder) |holder| {
+                    if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                        defer v8.v8_Context_Dispose(creation_ctx);
+                        conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                        return .kYes;
+                    }
+                }
+                conv.throwTypeError(isolate, "Illegal invocation");
+                return .kYes;
             }
 
             // Find and call the getter for this lazy property
@@ -7693,6 +7730,13 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
 
                     const instance: *runtime.Instance = @ptrCast(@alignCast(resolved_instance.?));
+
+                    if (!implementsInterface(instance)) {
+                        if (!is_lenient_this) {
+                            conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
+                        }
+                        return;
+                    }
 
                     // Analyze setter signature
                     const fn_info = @typeInfo(@TypeOf(zig_setter)).@"fn";
