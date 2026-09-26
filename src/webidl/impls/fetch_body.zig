@@ -25,7 +25,6 @@ const blob_bytes = @import("dom").blob_bytes;
 const srd = @import("streams_readable.zig");
 const js = @import("streams_js.zig");
 const same_object = @import("same_object.zig");
-const v8 = @import("v8");
 const BodyPipe = fetch.internal.BodyPipe;
 
 pub const Error = error{ TypeError, OutOfMemory };
@@ -471,24 +470,42 @@ fn settleWithBytes(instance: *runtime.Instance, kind: *const Owner.Kind, method:
     // relevant realm, which is not always the caller's (a method borrowed
     // from another window). A stream that has already ended reads to its
     // end inside the method call, before any microtask would enter it.
-    const scope = v8.JsScope.init(instance.ctx);
-    defer if (scope) |sc| sc.deinit();
-    const result = kind.steps(instance, method) catch |err| {
-        const e = try realm.typeError(@errorName(err));
-        defer js.dispose(e);
-        deferred.reject(realm, e);
-        return;
-    };
-    // The bytes form returns its promise; ours takes on its outcome.
-    switch (result) {
-        .handle => |h| {
-            const promise: js.Value = @ptrCast(@alignCast(h.ptr));
-            deferred.resolve(realm, promise);
-            if (h.needs_disposal) js.dispose(promise);
-        },
-        else => deferred.resolveUndefined(realm),
-    }
+    var run: MethodSteps = .{ .instance = instance, .kind = kind, .method = method, .realm = realm, .deferred = deferred };
+    const in_realm = if (instance.ctx.getEngine()) |engine| engine.runInRealm else null;
+    if (in_realm) |f| {
+        f(instance.ctx, MethodSteps.steps, &run) catch MethodSteps.steps(&run);
+    } else MethodSteps.steps(&run);
 }
+
+/// The method's own steps and the settling of its promise, run in the
+/// object's realm.
+const MethodSteps = struct {
+    instance: *runtime.Instance,
+    kind: *const Owner.Kind,
+    method: Method,
+    realm: js.Realm,
+    deferred: js.Deferred,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *MethodSteps = @ptrCast(@alignCast(data.?));
+        const realm = self.realm;
+        const result = self.kind.steps(self.instance, self.method) catch |err| {
+            const e = realm.typeError(@errorName(err)) catch return;
+            defer js.dispose(e);
+            self.deferred.reject(realm, e);
+            return;
+        };
+        // The bytes form returns its promise; ours takes on its outcome.
+        switch (result) {
+            .handle => |h| {
+                const promise: js.Value = @ptrCast(@alignCast(h.ptr));
+                self.deferred.resolve(realm, promise);
+                if (h.needs_disposal) js.dispose(promise);
+            },
+            else => self.deferred.resolveUndefined(realm),
+        }
+    }
+};
 
 /// Fetch "fully read body" through the body's stream: read every chunk,
 /// then run the method's steps. Streams "read-loop": each chunk step reads
@@ -568,7 +585,6 @@ const FullRead = struct {
 const PipeStream = struct {
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
-    isolate: *v8.ffi.Isolate,
     /// The body's pipe, this source's from creation until cancel or
     /// deinit.
     pipe: ?*BodyPipe,
@@ -596,7 +612,7 @@ const PipeStream = struct {
             pipe.release();
             return err;
         };
-        self.* = .{ .allocator = ctx.allocator, .ctx = ctx, .isolate = realm.isolate, .pipe = pipe };
+        self.* = .{ .allocator = ctx.allocator, .ctx = ctx, .pipe = pipe };
         pipe.consumer = .{ .context = self, .notify = notify };
         // Held while the stream is set up: a failed setup clears the
         // source's algorithms, which must not free it under this call.
@@ -686,7 +702,6 @@ const PipeStream = struct {
     /// Error the stream with the pipe's failure: an abort's reason, or a
     /// TypeError for a network error.
     fn errorStream(self: *PipeStream, realm: js.Realm, controller: *runtime.Instance, pipe: *BodyPipe) void {
-        _ = self;
         const failure = pipe.failure();
         if (failure.kind == .aborted) {
             if (failure.reason) |reason| {
@@ -699,7 +714,12 @@ const PipeStream = struct {
                 srd.byteControllerError(realm, controller, e);
                 return;
             }
-            const e = v8.conversions.newDOMExceptionFromContext(realm.isolate, realm.context, "AbortError", "The operation was aborted.") orelse return;
+            // No reason given: an "AbortError" DOMException.
+            const engine = self.ctx.getEngine() orelse return;
+            const createException = engine.createDOMException orelse return;
+            const exception = createException(self.ctx, "AbortError", "The operation was aborted.") catch return;
+            defer if (engine.releaseValue) |release| release(exception);
+            const e = realm.fromRuntime(exception) catch return;
             defer js.dispose(e);
             srd.byteControllerError(realm, controller, e);
             return;
@@ -731,35 +751,36 @@ const PipeStream = struct {
         const self: *PipeStream = @ptrCast(@alignCast(context.?));
         self.task_queued = false;
         if (self.detached or self.ctx.engine_ctx == null) return self.freeIfDone();
-        // A task from the event loop, not from script: enter the realm.
-        const isolate = self.isolate;
-        const entered = v8.ffi.v8_Isolate_GetCurrent() != isolate;
-        if (entered) v8.ffi.v8_Isolate_Enter(isolate);
-        defer if (entered) v8.ffi.v8_Isolate_Exit(isolate);
-        {
-            const scope = v8.JsScope.init(self.ctx) orelse return self.freeIfDone();
-            defer scope.deinit();
-            const realm = js.Realm.ofContext(self.ctx) catch return self.freeIfDone();
-            self.busy += 1;
-            defer self.busy -= 1;
-            const pipe = self.pipe orelse return;
-            const controller = self.controller orelse return;
-            if (pipe.state == .errored) {
-                // Errored at once, read or not: an aborted body's stream
-                // errors with the abort reason even while nobody reads.
-                self.errorStream(realm, controller, pipe);
-            } else if (self.pending_pull != null) {
-                if (self.deliver(realm)) {
-                    if (self.pending_pull) |d| {
-                        self.pending_pull = null;
-                        d.resolveUndefined(realm);
-                        d.deinit();
-                    }
+        // A task from the event loop, not from script: HTML "queue a global
+        // task" - it runs in the realm, which ends it (a microtask
+        // checkpoint; a worker's end of task).
+        const engine = self.ctx.getEngine() orelse return self.freeIfDone();
+        const run = engine.runTaskInRealm orelse return self.freeIfDone();
+        self.busy += 1;
+        run(self.ctx, taskSteps, self) catch {};
+        self.busy -= 1;
+        self.freeIfDone();
+    }
+
+    /// The task's steps: act on the pipe's news.
+    fn taskSteps(data: ?*anyopaque) void {
+        const self: *PipeStream = @ptrCast(@alignCast(data.?));
+        const realm = js.Realm.ofContext(self.ctx) catch return;
+        const pipe = self.pipe orelse return;
+        const controller = self.controller orelse return;
+        if (pipe.state == .errored) {
+            // Errored at once, read or not: an aborted body's stream
+            // errors with the abort reason even while nobody reads.
+            self.errorStream(realm, controller, pipe);
+        } else if (self.pending_pull != null) {
+            if (self.deliver(realm)) {
+                if (self.pending_pull) |d| {
+                    self.pending_pull = null;
+                    d.resolveUndefined(realm);
+                    d.deinit();
                 }
             }
         }
-        self.freeIfDone();
-        @import("html").worker_v8_context.finishTaskIn(isolate);
     }
 
     fn dropTask(context: ?*anyopaque) void {

@@ -927,14 +927,6 @@ src/webidl/impls/ReadableStream.zig v8_isolate 4
 src/webidl/impls/Request.zig @import("v8") 2
 src/webidl/impls/Request.zig v8_context 4
 src/webidl/impls/Request.zig v8_engine 6
-src/webidl/impls/Response.zig @import("v8") 1
-src/webidl/impls/Response.zig v8.JsScope 1
-src/webidl/impls/Response.zig v8.conversions 1
-src/webidl/impls/Response.zig v8.ffi 5
-src/webidl/impls/Response.zig v8_Isolate_Enter 1
-src/webidl/impls/Response.zig v8_Isolate_Exit 1
-src/webidl/impls/Response.zig v8_Isolate_GetCurrent 1
-src/webidl/impls/Response.zig v8_PromiseResolver_Dispose 1
 src/webidl/impls/StaticRange.zig @import("v8").pointer_tag 1
 src/webidl/impls/StaticRange.zig v8.pointer_tag.untagPointer 2
 src/webidl/impls/StorageEvent.zig @import("v8").pointer_tag 1
