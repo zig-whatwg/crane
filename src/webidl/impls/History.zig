@@ -279,7 +279,17 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     const bc = activeNavigable(internal) orelse return error.SecurityError;
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
     if (delta_val == 0) {
-        // Step 3: reload. Deviation, stated: reload is not modelled.
+        // Step 3: "reload document's node navigable" - its current entry,
+        // repopulated from the entry's URL: a traversal of the navigable to
+        // the entry it is on. Reload step 1: not while unloading. A
+        // navigable the engine has no navigation for - the top-level page -
+        // is not reloaded, stated.
+        const window = internal.window orelse return;
+        const document = try interfaces.Window.get_document(window);
+        if (@import("dom").document_lifecycle.isUnloading(document)) return;
+        const history = try ensureEntries(bc);
+        const entry = history.currentEntry(bc.id) orelse return;
+        @import("dom").navigables.traverseNavigable(@ptrCast(bc), entry.id, entry.url, entry.resource);
         return;
     }
     queueTraversal(internal, bc.getTop(), delta_val);
@@ -529,7 +539,7 @@ fn runTraversal(context: ?*anyopaque) void {
         if (change.same_document) {
             sameDocumentTraversal(change.navigable, change.old_url, entry);
         } else {
-            @import("dom").navigables.traverseNavigable(@ptrCast(change.navigable), entry.id, entry.url);
+            @import("dom").navigables.traverseNavigable(@ptrCast(change.navigable), entry.id, entry.url, entry.resource);
         }
     }
 }

@@ -83,3 +83,25 @@ test "a destroyed navigable's entries go, and the current step stays used" {
     try testing.expectEqual(@as(u32, 1), li.length);
     try testing.expectEqual(@as(u32, 0), li.index);
 }
+
+test "a srcdoc document's resource stays with its entries, and a new document drops it" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/t", null);
+    try h.addInitialEntry(frame, "about:blank", null);
+    try h.commitDocument(frame, "about:srcdoc", null, .push);
+    try h.setCurrentResource(frame, "<p>one");
+    const srcdoc_step = h.current_step;
+    // A fragment navigation on it shares its document state, resource and all.
+    try h.commitSameDocument(frame, "about:srcdoc#yo", .null, .push);
+    try testing.expectEqualStrings("<p>one", h.currentEntry(frame).?.resource.?);
+    // A new document has none of its own until it is given one.
+    try h.commitDocument(frame, "http://x.test/f", null, .push);
+    try testing.expect(h.currentEntry(frame).?.resource == null);
+    try testing.expectEqualStrings("<p>one", h.entryAt(frame, srcdoc_step).?.resource.?);
+    // A replace is a new document state: the old resource goes with it.
+    try h.commitDocument(frame, "about:srcdoc", null, .replace);
+    try h.setCurrentResource(frame, "<p>two");
+    try h.commitDocument(frame, "about:srcdoc", null, .replace);
+    try testing.expect(h.currentEntry(frame).?.resource == null);
+}

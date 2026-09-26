@@ -35,7 +35,7 @@ pub const Request = struct {
 pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8) void,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void,
 };
 
 threadlocal var implementation: ?Implementation = null;
@@ -69,10 +69,11 @@ pub fn followHyperlink(subject: *runtime.Instance) void {
 /// A history traversal changes `browsing_context`'s document (an
 /// `html_core` BrowsingContext): navigate it to its session history entry
 /// `entry_id`, whose URL is `url`, without adding an entry - the entry takes
-/// the document the navigation makes.
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8) void {
+/// the document the navigation makes. `resource` is the entry's document
+/// state's resource when it is a string (a srcdoc document's markup).
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void {
     const impl = implementation orelse return;
-    impl.traverse_navigable(browsing_context, entry_id, url);
+    impl.traverse_navigable(browsing_context, entry_id, url, resource);
 }
 
 test "without an installed implementation nothing navigates" {
@@ -83,5 +84,5 @@ test "without an installed implementation nothing navigates" {
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element);
-    traverseNavigable(@ptrCast(&element), 1, "about:blank");
+    traverseNavigable(@ptrCast(&element), 1, "about:blank", null);
 }

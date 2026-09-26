@@ -64,12 +64,17 @@ pub const Entry = struct {
     document: ?*anyopaque,
     /// Classic history API state (history.state).
     state: SerializedState = .null,
+    /// The document state's resource when it is a string: an iframe srcdoc
+    /// document's markup, which a traversal loads again rather than the
+    /// srcdoc attribute's current value. Owned.
+    resource: ?[]u8 = null,
     /// "Scroll restoration mode" is "manual".
     scroll_restoration_manual: bool = false,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
         allocator.free(self.url);
         self.state.deinit(allocator);
+        if (self.resource) |r| allocator.free(r);
     }
 };
 
@@ -168,7 +173,22 @@ pub const JointHistory = struct {
     /// `state`, pushed or replacing the current one.
     pub fn commitSameDocument(self: *JointHistory, navigable: u64, url: []const u8, state: SerializedState, handling: HistoryHandling) !void {
         const current = self.currentEntry(navigable) orelse return error.NoCurrentEntry;
+        // The document state is shared, so its resource is too.
+        const resource: ?[]u8 = if (current.resource) |r| try self.allocator.dupe(u8, r) else null;
+        errdefer if (resource) |r| self.allocator.free(r);
         try self.commit(navigable, url, current.document_state, current.document, state, handling);
+        const committed = self.currentEntry(navigable) orelse unreachable;
+        if (committed.resource) |old| self.allocator.free(old);
+        committed.resource = resource;
+    }
+
+    /// Record `resource` - a srcdoc document's markup - as the document
+    /// state's resource of `navigable`'s current entry.
+    pub fn setCurrentResource(self: *JointHistory, navigable: u64, resource: ?[]const u8) !void {
+        const entry = self.currentEntry(navigable) orelse return error.NoCurrentEntry;
+        const copy: ?[]u8 = if (resource) |r| try self.allocator.dupe(u8, r) else null;
+        if (entry.resource) |old| self.allocator.free(old);
+        entry.resource = copy;
     }
 
     fn commit(self: *JointHistory, navigable: u64, url: []const u8, doc_state: u64, document: ?*anyopaque, state: SerializedState, handling: HistoryHandling) !void {
@@ -189,6 +209,11 @@ pub const JointHistory = struct {
                 current.url = owned_url;
                 current.state.deinit(self.allocator);
                 current.state = state;
+                // A new document state has a resource of its own, if any.
+                if (current.document_state != doc_state) {
+                    if (current.resource) |r| self.allocator.free(r);
+                    current.resource = null;
+                }
                 current.document_state = doc_state;
                 current.document = document;
                 current.id = self.next_id;

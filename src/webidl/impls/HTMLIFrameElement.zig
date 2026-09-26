@@ -983,7 +983,9 @@ fn startFetch(record: *Navigation) void {
     const url = record.url;
 
     if (record.srcdoc) |html| {
-        record.response = htmlResponse(allocator, "about:srcdoc", html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        // At about:srcdoc - or, for a traversal to a fragment entry of one,
+        // at that entry's URL (about:srcdoc#yo).
+        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
     if (navigate_steps.matchesAboutBlank(url)) {
@@ -1158,7 +1160,10 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation) void {
         return;
     }
     const url = integration.getLoadedUrl() orelse record.url;
-    history.commitDocument(bc.id, url, document, jointHandling(record.history_handling)) catch {};
+    history.commitDocument(bc.id, url, document, jointHandling(record.history_handling)) catch return;
+    // Navigate step 24.4: the document state's resource is documentResource
+    // - a srcdoc document's markup, which a traversal back loads again.
+    if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
 }
 
 fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.joint_history.HistoryHandling {
@@ -1174,13 +1179,14 @@ fn historyUrlOf(document: *anyopaque, allocator: std.mem.Allocator) anyerror![]u
 }
 
 /// dom.navigables: a history traversal navigates `browsing_context_ptr`'s
-/// navigable to the entry it traverses to. The top-level page cannot be
-/// replaced, so only a frame or popup can.
-fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8) void {
+/// navigable to the entry it traverses to - from its document state's
+/// resource, when that is a srcdoc document's markup. The top-level page
+/// cannot be replaced, so only a frame or popup can.
+fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void {
     for (live_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
-        navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id });
+        navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .srcdoc = resource });
         return;
     }
 }
