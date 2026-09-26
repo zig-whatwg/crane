@@ -400,7 +400,7 @@ paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/in
 name = "WebSockets"
 area = "websockets/"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/websockets"
 paths = ["src/websocket/", "src/webidl/impls/{WebSocket,CloseEvent}.zig", "tests/websocket/", "tests/wpt/crane/ws-*"]
 
