@@ -5,6 +5,9 @@
 //! Impls reach script values through these instead of V8 (AGENTS.md, "The
 //! engine boundary"): each takes the realm as a runtime.Context and hands back
 //! an OWNED handle, or an ENGINE-OWNED one where its declaration says so.
+//!
+//! At the end, the engine protocol's first operations bound to V8
+//! (`@import("engine")`): the same adapter functions, statically dispatched.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -403,4 +406,123 @@ test "a callback-function argument is handed over as an owned handle to the same
     // The impl's to release; after that the function is script's alone.
     engine.releaseValue.?(taken);
     try std.testing.expectEqual(@as(i32, 7), try eval("theCallback()"));
+}
+
+// ============================================================================
+// The same adapter functions, through the engine protocol
+// ============================================================================
+//
+// `@import("engine")` bound to V8 (src/runtime/engines/v8/protocol.zig): each
+// `protocol.op(...)` is a direct call into the adapter function the table
+// above also names - both paths reach the same code. Imported under another
+// name only because this file already calls the table `engine`: a file that
+// moves to the protocol changes every call and takes the name.
+//
+// Here rather than in a file of their own: every tests/v8 file is a root
+// compile of most of the tree (6-9 GB), and these need no setup the file
+// does not already have.
+
+const protocol = @import("engine");
+
+/// What script's `expression` evaluates to, as an Owned handle.
+fn evalOwned(expression: []const u8) !protocol.Owned {
+    return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression), .needs_disposal = true } } };
+}
+
+test "the protocol is bound to V8, which has every capability the protocol declares" {
+    try std.testing.expectEqualStrings("V8", protocol.name);
+    inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {
+        try std.testing.expect(@field(protocol.capabilities, field.name));
+    }
+}
+
+test "protocol: currentRealm is the context manager's realm for the entered context, and holds no context" {
+    _ = try realm();
+    // Already initialized, and already hosted, are as good.
+    v8.context_manager.init(std.heap.page_allocator) catch {};
+    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
+    try std.testing.expectEqual(hosted, protocol.currentRealm() orelse return error.NoCurrentRealm);
+    try std.testing.expectEqual(protocol.currentRealm(), engine.currentRealm.?());
+    // Each call disposes the Global<Context> GetCurrentContext made.
+    try std.testing.expectEqual(contexts_before, ffi.v8_Debug_LiveContextGlobals());
+}
+
+test "protocol: isCallable is ECMAScript IsCallable" {
+    _ = try realm();
+    const function = try evalOwned("(function () {})");
+    defer function.release();
+    const object = try evalOwned("({})");
+    defer object.release();
+    try std.testing.expect(protocol.isCallable(function.value));
+    try std.testing.expect(!protocol.isCallable(object.value));
+    try std.testing.expect(!protocol.isCallable(runtime.JSValue.fromNumber(1)));
+    try std.testing.expect(!protocol.isCallable(runtime.JSValue.jsUndefined));
+}
+
+test "protocol: createResolvedPromise is an Owned promise of the realm, fulfilled with the value" {
+    const ctx = try realm();
+    const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
+    defer resolved.release();
+    try std.testing.expect(resolved.value.handle.needs_disposal);
+    try expose("protocolResolved", resolved.value);
+    try std.testing.expectEqual(@as(i32, 1), try eval("protocolResolved instanceof Promise ? 1 : 0"));
+    const promise: *ffi.Promise = @ptrCast(@alignCast(resolved.value.handle.ptr));
+    try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
+    const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
+    defer ffi.v8_Value_Dispose(result);
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+}
+
+fn setFromProtocolTask(data: ?*anyopaque) void {
+    const ran: *bool = @ptrCast(@alignCast(data.?));
+    const set = eval("globalThis.fromProtocolTask = 5") catch return;
+    ran.* = set == 5;
+}
+
+test "protocol: runTaskInRealm runs the steps as a task inside the realm" {
+    const ctx = try realm();
+    var ran = false;
+    try protocol.runTaskInRealm(ctx, setFromProtocolTask, &ran);
+    try std.testing.expect(ran);
+    try std.testing.expectEqual(@as(i32, 5), try eval("globalThis.fromProtocolTask"));
+}
+
+/// A caller of a capability-gated operation, written as every caller must be:
+/// on an engine without the capability the call is compiled out.
+fn handledOrUnknown(promise: runtime.JSValue) ?bool {
+    if (protocol.capabilities.promise_rejection_tracking) return protocol.promiseIsHandled(promise);
+    return null;
+}
+
+test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[PromiseIsHandled]]" {
+    const ctx = try realm();
+    const promise = try protocol.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
+    defer promise.release();
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(promise.value));
+    try expose("watched", promise.value);
+    try std.testing.expectEqual(@as(i32, 1), try eval("watched.then(() => {}); 1"));
+    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(promise.value));
+    // Not a promise: false.
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(runtime.JSValue.fromNumber(1)));
+}
+
+test "protocol: requestGarbageCollection collects the agent's heap" {
+    _ = try realm();
+    // A realm's agent is its isolate, as the context manager records it.
+    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 0), try eval("globalThis.collectable = new WeakRef({ big: new Array(1000).fill(1) }); 0"));
+    var collected = false;
+    for (0..5) |_| {
+        // The target is kept alive until the job that made the WeakRef - or
+        // last dereferenced it - ends (ECMAScript ClearKeptObjects, at the
+        // microtask checkpoint).
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+        protocol.requestGarbageCollection(agent);
+        if (try eval("globalThis.collectable.deref() === undefined ? 1 : 0") == 1) {
+            collected = true;
+            break;
+        }
+    }
+    try std.testing.expect(collected);
 }
