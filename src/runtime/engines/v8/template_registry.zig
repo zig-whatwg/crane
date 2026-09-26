@@ -593,6 +593,14 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
 /// Known legacy platform object interfaces that have indexed or named property access.
 /// These require Proxy wrapping to ensure correct [[OwnPropertyKeys]] enumeration order.
+///
+/// WebIDL 3.9: a legacy platform object is one that supports indexed or named
+/// properties - an interface with an indexed or named property getter, its
+/// own or inherited. Nothing else belongs here: HTMLTableSectionElement
+/// ("has rows collection" - but `rows` is an attribute), Selection and
+/// MimeType have neither, and wrapping them only cost them the proxy's
+/// semantics (HTMLTableRowsCollection and HTMLTableCellsCollection are not
+/// interfaces at all).
 const legacy_platform_objects = [_][]const u8{
     // DOM Collections with indexed/named access
     "NodeList",
@@ -609,10 +617,6 @@ const legacy_platform_objects = [_][]const u8{
     "HTMLFormControlsCollection",
     "HTMLOptionsCollection",
     "RadioNodeList",
-    // Table-related collections
-    "HTMLTableRowsCollection",
-    "HTMLTableCellsCollection",
-    "HTMLTableSectionElement", // has rows collection
     // File API
     "FileList",
     // Storage
@@ -620,14 +624,11 @@ const legacy_platform_objects = [_][]const u8{
     // Plugin-related (legacy)
     "Plugin",
     "PluginArray",
-    "MimeType",
     "MimeTypeArray",
     // Touch events
     "TouchList",
     // Data transfer
     "DataTransferItemList",
-    // Selection
-    "Selection",
     // NOTE: Window is NOT included here because it's the global object
     // and wrapping it in a Proxy breaks method invocation semantics.
     // Window's OwnPropertyKeys order needs special handling in V8 C++.
