@@ -7964,31 +7964,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 return dom_str.asSlice();
             } else if (T == bool or T == runtime.Boolean) {
                 return conv.fromV8Boolean(isolate, v8_value);
-            } else if (T == i32 or T == runtime.Long) {
-                return try conv.fromV8Long(context, v8_value);
-            } else if (T == i16) {
-                const val = try conv.fromV8Long(context, v8_value);
-                return @intCast(val);
-            } else if (T == i8) {
-                const val = try conv.fromV8Long(context, v8_value);
-                return @intCast(val);
-            } else if (T == u32 or T == runtime.UnsignedLong) {
-                return try conv.fromV8UnsignedLong(context, v8_value);
-            } else if (T == u16) {
-                const val = try conv.fromV8UnsignedLong(context, v8_value);
-                return @intCast(val);
-            } else if (T == u8) {
-                const val = try conv.fromV8UnsignedLong(context, v8_value);
-                return @intCast(val);
-            } else if (T == i64 or T == runtime.LongLong) {
-                return try conv.fromV8LongLong(context, v8_value);
-            } else if (T == u64 or T == runtime.UnsignedLongLong) {
-                const val = try conv.fromV8LongLong(context, v8_value);
-                return @intCast(val);
-            } else if (T == f64 or T == runtime.Double) {
-                return try conv.fromV8Double(context, v8_value);
-            } else if (T == f32 or T == runtime.Float) {
-                return try conv.fromV8Float(context, v8_value);
+            } else if (@typeInfo(T) == .int or @typeInfo(T) == .float) {
+                // Every integer and floating-point type converts as an
+                // operation argument does: ToNumber, then ConvertToInt for an
+                // integer - `short`'s wrap included, where an @intCast from
+                // `long` would have panicked on 70000.
+                return try conv.fromV8Value(T, allocator, isolate, context, v8_value);
             } else {
                 // For complex types (callbacks, optionals, etc.), use the generic converter
                 return try conv.fromV8Value(T, allocator, isolate, context, v8_value);
