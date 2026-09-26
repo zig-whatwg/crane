@@ -114,12 +114,6 @@ src/browser/Context.zig v8_location 2
 src/browser/Context.zig v8_navigator 4
 src/browser/Context.zig v8_performance 2
 src/browser/Context.zig v8_wrapper 8
-src/browser/navigation.zig @import("v8") 1
-src/browser/navigation.zig v8.ffi 22
-src/browser/navigation.zig v8_Isolate_PerformMicrotaskCheckpoint 3
-src/browser/navigation.zig v8_Script_Compile 3
-src/browser/navigation.zig v8_Script_Run 3
-src/browser/navigation.zig v8_String_NewFromUtf8 3
 src/dom/event_target.zig @import("v8") 2
 src/dom/event_target.zig v8_engine 4
 src/html/full.zig @import("worker_v8_context.zig") 1
