@@ -272,8 +272,11 @@ pub const HTMLParamElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLParamElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLParamElementImpl, "get_name")) return try HTMLParamElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -282,12 +285,14 @@ pub const HTMLParamElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLParamElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLParamElementImpl, "set_name")) return try HTMLParamElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLParamElementImpl.get_value(instance);
+        if (comptime @hasDecl(HTMLParamElementImpl, "get_value")) return try HTMLParamElementImpl.get_value(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -296,12 +301,14 @@ pub const HTMLParamElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLParamElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLParamElementImpl, "set_value")) return try HTMLParamElementImpl.set_value(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLParamElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLParamElementImpl, "get_type")) return try HTMLParamElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -310,12 +317,14 @@ pub const HTMLParamElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLParamElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLParamElementImpl, "set_type")) return try HTMLParamElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_valueType(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLParamElementImpl.get_valueType(instance);
+        if (comptime @hasDecl(HTMLParamElementImpl, "get_valueType")) return try HTMLParamElementImpl.get_valueType(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "valuetype" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -324,6 +333,7 @@ pub const HTMLParamElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLParamElementImpl.set_valueType(instance, value);
+        if (comptime @hasDecl(HTMLParamElementImpl, "set_valueType")) return try HTMLParamElementImpl.set_valueType(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "valuetype" }, value);
     }
 };

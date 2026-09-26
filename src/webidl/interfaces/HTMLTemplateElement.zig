@@ -300,8 +300,11 @@ pub const HTMLTemplateElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_shadowRootDelegatesFocus(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTemplateElementImpl.get_shadowRootDelegatesFocus(instance);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootDelegatesFocus")) return try HTMLTemplateElementImpl.get_shadowRootDelegatesFocus(instance);
+        return try reflection.get(bool, instance, .{ .name = "shadowrootdelegatesfocus" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -310,12 +313,14 @@ pub const HTMLTemplateElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTemplateElementImpl.set_shadowRootDelegatesFocus(instance, value);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootDelegatesFocus")) return try HTMLTemplateElementImpl.set_shadowRootDelegatesFocus(instance, value);
+        try reflection.set(bool, instance, .{ .name = "shadowrootdelegatesfocus" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shadowRootClonable(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTemplateElementImpl.get_shadowRootClonable(instance);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootClonable")) return try HTMLTemplateElementImpl.get_shadowRootClonable(instance);
+        return try reflection.get(bool, instance, .{ .name = "shadowrootclonable" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -324,12 +329,14 @@ pub const HTMLTemplateElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTemplateElementImpl.set_shadowRootClonable(instance, value);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootClonable")) return try HTMLTemplateElementImpl.set_shadowRootClonable(instance, value);
+        try reflection.set(bool, instance, .{ .name = "shadowrootclonable" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shadowRootSerializable(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTemplateElementImpl.get_shadowRootSerializable(instance);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootSerializable")) return try HTMLTemplateElementImpl.get_shadowRootSerializable(instance);
+        return try reflection.get(bool, instance, .{ .name = "shadowrootserializable" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -338,12 +345,14 @@ pub const HTMLTemplateElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTemplateElementImpl.set_shadowRootSerializable(instance, value);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootSerializable")) return try HTMLTemplateElementImpl.set_shadowRootSerializable(instance, value);
+        try reflection.set(bool, instance, .{ .name = "shadowrootserializable" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shadowRootCustomElementRegistry(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTemplateElementImpl.get_shadowRootCustomElementRegistry(instance);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.get_shadowRootCustomElementRegistry(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -352,6 +361,7 @@ pub const HTMLTemplateElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTemplateElementImpl.set_shadowRootCustomElementRegistry(instance, value);
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.set_shadowRootCustomElementRegistry(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" }, value);
     }
 };

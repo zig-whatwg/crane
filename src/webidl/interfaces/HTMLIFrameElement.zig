@@ -396,8 +396,11 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
+    const reflection = @import("impls").reflection;
+
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLIFrameElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_src")) return try HTMLIFrameElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -406,7 +409,8 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_src")) return try HTMLIFrameElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -425,7 +429,8 @@ pub const HTMLIFrameElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_name")) return try HTMLIFrameElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -434,7 +439,8 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_name")) return try HTMLIFrameElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -444,7 +450,7 @@ pub const HTMLIFrameElement = struct {
         if (state.own.cached_sandbox) |cached| {
             return cached;
         }
-        const value = try HTMLIFrameElementImpl.get_sandbox(instance);
+        const value = if (comptime @hasDecl(HTMLIFrameElementImpl, "get_sandbox")) try HTMLIFrameElementImpl.get_sandbox(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "sandbox" });
         state.own.cached_sandbox = value;
         return value;
     }
@@ -462,7 +468,8 @@ pub const HTMLIFrameElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_allow(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_allow(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_allow")) return try HTMLIFrameElementImpl.get_allow(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "allow" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -471,12 +478,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_allow(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_allow")) return try HTMLIFrameElementImpl.set_allow(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "allow" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_allowFullscreen(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_allowFullscreen(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_allowFullscreen")) return try HTMLIFrameElementImpl.get_allowFullscreen(instance);
+        return try reflection.get(bool, instance, .{ .name = "allowfullscreen" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -485,12 +494,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_allowFullscreen(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_allowFullscreen")) return try HTMLIFrameElementImpl.set_allowFullscreen(instance, value);
+        try reflection.set(bool, instance, .{ .name = "allowfullscreen" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_width")) return try HTMLIFrameElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -499,12 +510,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_width")) return try HTMLIFrameElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_height")) return try HTMLIFrameElementImpl.get_height(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -513,7 +526,8 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_height")) return try HTMLIFrameElementImpl.set_height(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -604,7 +618,8 @@ pub const HTMLIFrameElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_align")) return try HTMLIFrameElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -613,12 +628,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_align")) return try HTMLIFrameElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_scrolling(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_scrolling(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_scrolling")) return try HTMLIFrameElementImpl.get_scrolling(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "scrolling" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -627,12 +644,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_scrolling(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_scrolling")) return try HTMLIFrameElementImpl.set_scrolling(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "scrolling" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_frameBorder(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_frameBorder(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_frameBorder")) return try HTMLIFrameElementImpl.get_frameBorder(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "frameborder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -641,12 +660,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_frameBorder(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_frameBorder")) return try HTMLIFrameElementImpl.set_frameBorder(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "frameborder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLIFrameElementImpl.get_longDesc(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_longDesc")) return try HTMLIFrameElementImpl.get_longDesc(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "longdesc", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -655,12 +676,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_longDesc(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_longDesc")) return try HTMLIFrameElementImpl.set_longDesc(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "longdesc", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_marginHeight(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_marginHeight(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_marginHeight")) return try HTMLIFrameElementImpl.get_marginHeight(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "marginheight" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -669,12 +692,14 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_marginHeight(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginHeight")) return try HTMLIFrameElementImpl.set_marginHeight(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "marginheight" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_marginWidth(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_marginWidth(instance);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "get_marginWidth")) return try HTMLIFrameElementImpl.get_marginWidth(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "marginwidth" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -683,7 +708,8 @@ pub const HTMLIFrameElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLIFrameElementImpl.set_marginWidth(instance, value);
+        if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginWidth")) return try HTMLIFrameElementImpl.set_marginWidth(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
     }
 
     /// Extended attributes: [SecureContext]

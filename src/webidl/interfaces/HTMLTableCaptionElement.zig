@@ -257,8 +257,11 @@ pub const HTMLTableCaptionElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableCaptionElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLTableCaptionElementImpl, "get_align")) return try HTMLTableCaptionElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLTableCaptionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableCaptionElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLTableCaptionElementImpl, "set_align")) return try HTMLTableCaptionElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 };

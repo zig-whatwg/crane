@@ -266,8 +266,11 @@ pub const HTMLLegendElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLegendElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLLegendElementImpl, "get_align")) return try HTMLLegendElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -276,6 +279,7 @@ pub const HTMLLegendElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLegendElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLLegendElementImpl, "set_align")) return try HTMLLegendElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 };

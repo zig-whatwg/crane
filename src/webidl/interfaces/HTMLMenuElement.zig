@@ -257,8 +257,11 @@ pub const HTMLMenuElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMenuElementImpl.get_compact(instance);
+        if (comptime @hasDecl(HTMLMenuElementImpl, "get_compact")) return try HTMLMenuElementImpl.get_compact(instance);
+        return try reflection.get(bool, instance, .{ .name = "compact" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLMenuElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMenuElementImpl.set_compact(instance, value);
+        if (comptime @hasDecl(HTMLMenuElementImpl, "set_compact")) return try HTMLMenuElementImpl.set_compact(instance, value);
+        try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
 };

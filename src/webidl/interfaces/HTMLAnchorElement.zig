@@ -407,8 +407,11 @@ pub const HTMLAnchorElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_target(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_target")) return try HTMLAnchorElementImpl.get_target(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -417,12 +420,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_target(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_target")) return try HTMLAnchorElementImpl.set_target(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_download(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_download(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_download")) return try HTMLAnchorElementImpl.get_download(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "download" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -431,12 +436,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_download(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_download")) return try HTMLAnchorElementImpl.set_download(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "download" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLAnchorElementImpl.get_ping(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_ping")) return try HTMLAnchorElementImpl.get_ping(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "ping" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -445,12 +452,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_ping(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_ping")) return try HTMLAnchorElementImpl.set_ping(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "ping" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_rel(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_rel")) return try HTMLAnchorElementImpl.get_rel(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -459,7 +468,8 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_rel(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_rel")) return try HTMLAnchorElementImpl.set_rel(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
@@ -469,7 +479,7 @@ pub const HTMLAnchorElement = struct {
         if (state.own.cached_relList) |cached| {
             return cached;
         }
-        const value = try HTMLAnchorElementImpl.get_relList(instance);
+        const value = if (comptime @hasDecl(HTMLAnchorElementImpl, "get_relList")) try HTMLAnchorElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
         return value;
     }
@@ -487,7 +497,8 @@ pub const HTMLAnchorElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_hreflang(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_hreflang(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_hreflang")) return try HTMLAnchorElementImpl.get_hreflang(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "hreflang" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -496,12 +507,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_hreflang(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_hreflang")) return try HTMLAnchorElementImpl.set_hreflang(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "hreflang" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_type")) return try HTMLAnchorElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -510,7 +523,8 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_type")) return try HTMLAnchorElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -571,7 +585,8 @@ pub const HTMLAnchorElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_coords(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_coords(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_coords")) return try HTMLAnchorElementImpl.get_coords(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "coords" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -580,12 +595,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_coords(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_coords")) return try HTMLAnchorElementImpl.set_coords(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "coords" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_charset(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_charset")) return try HTMLAnchorElementImpl.get_charset(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -594,12 +611,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_charset(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_charset")) return try HTMLAnchorElementImpl.set_charset(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_name")) return try HTMLAnchorElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -608,12 +627,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_name")) return try HTMLAnchorElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rev(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_rev(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_rev")) return try HTMLAnchorElementImpl.get_rev(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rev" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -622,12 +643,14 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_rev(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_rev")) return try HTMLAnchorElementImpl.set_rev(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rev" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shape(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLAnchorElementImpl.get_shape(instance);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "get_shape")) return try HTMLAnchorElementImpl.get_shape(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "shape" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -636,7 +659,8 @@ pub const HTMLAnchorElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLAnchorElementImpl.set_shape(instance, value);
+        if (comptime @hasDecl(HTMLAnchorElementImpl, "set_shape")) return try HTMLAnchorElementImpl.set_shape(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "shape" }, value);
     }
 
     /// Extended attributes: [CEReactions], [SecureContext]

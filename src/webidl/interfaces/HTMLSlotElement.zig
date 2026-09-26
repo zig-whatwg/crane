@@ -270,8 +270,11 @@ pub const HTMLSlotElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLSlotElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLSlotElementImpl, "get_name")) return try HTMLSlotElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -280,7 +283,8 @@ pub const HTMLSlotElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSlotElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLSlotElementImpl, "set_name")) return try HTMLSlotElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     pub fn call_assign(instance: *runtime.Instance, nodes: []const runtime.JSValue) anyerror!void {

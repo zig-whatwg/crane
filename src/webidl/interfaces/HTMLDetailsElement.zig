@@ -262,8 +262,11 @@ pub const HTMLDetailsElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLDetailsElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLDetailsElementImpl, "get_name")) return try HTMLDetailsElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -272,12 +275,14 @@ pub const HTMLDetailsElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDetailsElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLDetailsElementImpl, "set_name")) return try HTMLDetailsElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_open(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLDetailsElementImpl.get_open(instance);
+        if (comptime @hasDecl(HTMLDetailsElementImpl, "get_open")) return try HTMLDetailsElementImpl.get_open(instance);
+        return try reflection.get(bool, instance, .{ .name = "open" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +291,7 @@ pub const HTMLDetailsElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDetailsElementImpl.set_open(instance, value);
+        if (comptime @hasDecl(HTMLDetailsElementImpl, "set_open")) return try HTMLDetailsElementImpl.set_open(instance, value);
+        try reflection.set(bool, instance, .{ .name = "open" }, value);
     }
 };

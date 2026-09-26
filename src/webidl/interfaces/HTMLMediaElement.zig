@@ -521,8 +521,11 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
+    const reflection = @import("impls").reflection;
+
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLMediaElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_src")) return try HTMLMediaElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -531,7 +534,8 @@ pub const HTMLMediaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMediaElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_src")) return try HTMLMediaElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     pub fn get_srcObject(instance: *runtime.Instance) anyerror!?MediaProvider {
@@ -644,7 +648,8 @@ pub const HTMLMediaElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_autoplay(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMediaElementImpl.get_autoplay(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_autoplay")) return try HTMLMediaElementImpl.get_autoplay(instance);
+        return try reflection.get(bool, instance, .{ .name = "autoplay" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -653,12 +658,14 @@ pub const HTMLMediaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMediaElementImpl.set_autoplay(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_autoplay")) return try HTMLMediaElementImpl.set_autoplay(instance, value);
+        try reflection.set(bool, instance, .{ .name = "autoplay" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_loop(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMediaElementImpl.get_loop(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_loop")) return try HTMLMediaElementImpl.get_loop(instance);
+        return try reflection.get(bool, instance, .{ .name = "loop" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -667,12 +674,14 @@ pub const HTMLMediaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMediaElementImpl.set_loop(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_loop")) return try HTMLMediaElementImpl.set_loop(instance, value);
+        try reflection.set(bool, instance, .{ .name = "loop" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_controls(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMediaElementImpl.get_controls(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_controls")) return try HTMLMediaElementImpl.get_controls(instance);
+        return try reflection.get(bool, instance, .{ .name = "controls" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -681,7 +690,8 @@ pub const HTMLMediaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMediaElementImpl.set_controls(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_controls")) return try HTMLMediaElementImpl.set_controls(instance, value);
+        try reflection.set(bool, instance, .{ .name = "controls" }, value);
     }
 
     pub fn get_volume(instance: *runtime.Instance) anyerror!f64 {
@@ -702,7 +712,8 @@ pub const HTMLMediaElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect="muted"]
     pub fn get_defaultMuted(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLMediaElementImpl.get_defaultMuted(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_defaultMuted")) return try HTMLMediaElementImpl.get_defaultMuted(instance);
+        return try reflection.get(bool, instance, .{ .name = "muted" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="muted"]
@@ -711,7 +722,8 @@ pub const HTMLMediaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMediaElementImpl.set_defaultMuted(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_defaultMuted")) return try HTMLMediaElementImpl.set_defaultMuted(instance, value);
+        try reflection.set(bool, instance, .{ .name = "muted" }, value);
     }
 
     /// Extended attributes: [SameObject]

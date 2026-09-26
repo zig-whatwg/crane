@@ -344,8 +344,11 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLScriptElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_type")) return try HTMLScriptElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -354,12 +357,14 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_type")) return try HTMLScriptElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLScriptElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_src")) return try HTMLScriptElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -368,12 +373,14 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_src")) return try HTMLScriptElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_noModule(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLScriptElementImpl.get_noModule(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_noModule")) return try HTMLScriptElementImpl.get_noModule(instance);
+        return try reflection.get(bool, instance, .{ .name = "nomodule" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -382,7 +389,8 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_noModule(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_noModule")) return try HTMLScriptElementImpl.set_noModule(instance, value);
+        try reflection.set(bool, instance, .{ .name = "nomodule" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -401,7 +409,8 @@ pub const HTMLScriptElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLScriptElementImpl.get_defer(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_defer")) return try HTMLScriptElementImpl.get_defer(instance);
+        return try reflection.get(bool, instance, .{ .name = "defer" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -410,7 +419,8 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_defer(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_defer")) return try HTMLScriptElementImpl.set_defer(instance, value);
+        try reflection.set(bool, instance, .{ .name = "defer" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -420,7 +430,7 @@ pub const HTMLScriptElement = struct {
         if (state.own.cached_blocking) |cached| {
             return cached;
         }
-        const value = try HTMLScriptElementImpl.get_blocking(instance);
+        const value = if (comptime @hasDecl(HTMLScriptElementImpl, "get_blocking")) try HTMLScriptElementImpl.get_blocking(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "blocking" });
         state.own.cached_blocking = value;
         return value;
     }
@@ -466,7 +476,8 @@ pub const HTMLScriptElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_integrity(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLScriptElementImpl.get_integrity(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_integrity")) return try HTMLScriptElementImpl.get_integrity(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "integrity" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -475,7 +486,8 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_integrity(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_integrity")) return try HTMLScriptElementImpl.set_integrity(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -508,7 +520,8 @@ pub const HTMLScriptElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLScriptElementImpl.get_charset(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_charset")) return try HTMLScriptElementImpl.get_charset(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -517,12 +530,14 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_charset(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_charset")) return try HTMLScriptElementImpl.set_charset(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_event(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLScriptElementImpl.get_event(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_event")) return try HTMLScriptElementImpl.get_event(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "event" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -531,12 +546,14 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_event(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_event")) return try HTMLScriptElementImpl.set_event(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "event" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLScriptElementImpl.get_htmlFor(instance);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "get_htmlFor")) return try HTMLScriptElementImpl.get_htmlFor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "for" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
@@ -545,7 +562,8 @@ pub const HTMLScriptElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLScriptElementImpl.set_htmlFor(instance, value);
+        if (comptime @hasDecl(HTMLScriptElementImpl, "set_htmlFor")) return try HTMLScriptElementImpl.set_htmlFor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "for" }, value);
     }
 
     /// Extended attributes: [CEReactions], [SecureContext]

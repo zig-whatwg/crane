@@ -299,8 +299,11 @@ pub const HTMLTableSectionElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableSectionElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "get_align")) return try HTMLTableSectionElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -309,12 +312,14 @@ pub const HTMLTableSectionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableSectionElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_align")) return try HTMLTableSectionElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn get_ch(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableSectionElementImpl.get_ch(instance);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "get_ch")) return try HTMLTableSectionElementImpl.get_ch(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "char" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
@@ -323,12 +328,14 @@ pub const HTMLTableSectionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableSectionElementImpl.set_ch(instance, value);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_ch")) return try HTMLTableSectionElementImpl.set_ch(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "char" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn get_chOff(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableSectionElementImpl.get_chOff(instance);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "get_chOff")) return try HTMLTableSectionElementImpl.get_chOff(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charoff" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
@@ -337,12 +344,14 @@ pub const HTMLTableSectionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableSectionElementImpl.set_chOff(instance, value);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_chOff")) return try HTMLTableSectionElementImpl.set_chOff(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_vAlign(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableSectionElementImpl.get_vAlign(instance);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "get_vAlign")) return try HTMLTableSectionElementImpl.get_vAlign(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "valign" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -351,7 +360,8 @@ pub const HTMLTableSectionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableSectionElementImpl.set_vAlign(instance, value);
+        if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_vAlign")) return try HTMLTableSectionElementImpl.set_vAlign(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
     }
 
     pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {

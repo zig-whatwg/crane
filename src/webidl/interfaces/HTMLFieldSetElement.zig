@@ -302,8 +302,11 @@ pub const HTMLFieldSetElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLFieldSetElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLFieldSetElementImpl, "get_disabled")) return try HTMLFieldSetElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -312,7 +315,8 @@ pub const HTMLFieldSetElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFieldSetElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLFieldSetElementImpl, "set_disabled")) return try HTMLFieldSetElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -321,7 +325,8 @@ pub const HTMLFieldSetElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFieldSetElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLFieldSetElementImpl, "get_name")) return try HTMLFieldSetElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -330,7 +335,8 @@ pub const HTMLFieldSetElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFieldSetElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLFieldSetElementImpl, "set_name")) return try HTMLFieldSetElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {

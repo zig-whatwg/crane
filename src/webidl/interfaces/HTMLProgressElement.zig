@@ -270,6 +270,8 @@ pub const HTMLProgressElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
+    const reflection = @import("impls").reflection;
+
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
         return try HTMLProgressElementImpl.get_value(instance);
     }
@@ -280,12 +282,14 @@ pub const HTMLProgressElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLProgressElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLProgressElementImpl, "set_value")) return try HTMLProgressElementImpl.set_value(instance, value);
+        try reflection.set(f64, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositive], [ReflectDefault=1.0]
     pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
-        return try HTMLProgressElementImpl.get_max(instance);
+        if (comptime @hasDecl(HTMLProgressElementImpl, "get_max")) return try HTMLProgressElementImpl.get_max(instance);
+        return try reflection.get(f64, instance, .{ .name = "max", .limit = .positive, .default = 1.0 });
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositive], [ReflectDefault=1.0]
@@ -294,7 +298,8 @@ pub const HTMLProgressElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLProgressElementImpl.set_max(instance, value);
+        if (comptime @hasDecl(HTMLProgressElementImpl, "set_max")) return try HTMLProgressElementImpl.set_max(instance, value);
+        try reflection.set(f64, instance, .{ .name = "max", .limit = .positive, .default = 1.0 }, value);
     }
 
     pub fn get_position(instance: *runtime.Instance) anyerror!f64 {

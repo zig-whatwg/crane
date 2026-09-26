@@ -134,8 +134,11 @@ pub const HTMLOrSVGElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOrSVGElementImpl.get_autofocus(instance);
+        if (comptime @hasDecl(HTMLOrSVGElementImpl, "get_autofocus")) return try HTMLOrSVGElementImpl.get_autofocus(instance);
+        return try reflection.get(bool, instance, .{ .name = "autofocus" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -144,7 +147,8 @@ pub const HTMLOrSVGElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOrSVGElementImpl.set_autofocus(instance, value);
+        if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_autofocus")) return try HTMLOrSVGElementImpl.set_autofocus(instance, value);
+        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -158,7 +162,8 @@ pub const HTMLOrSVGElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
+        if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_tabIndex")) return try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
+        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
     }
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {

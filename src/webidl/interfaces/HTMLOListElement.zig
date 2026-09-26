@@ -272,8 +272,11 @@ pub const HTMLOListElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_reversed(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOListElementImpl.get_reversed(instance);
+        if (comptime @hasDecl(HTMLOListElementImpl, "get_reversed")) return try HTMLOListElementImpl.get_reversed(instance);
+        return try reflection.get(bool, instance, .{ .name = "reversed" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -282,12 +285,14 @@ pub const HTMLOListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOListElementImpl.set_reversed(instance, value);
+        if (comptime @hasDecl(HTMLOListElementImpl, "set_reversed")) return try HTMLOListElementImpl.set_reversed(instance, value);
+        try reflection.set(bool, instance, .{ .name = "reversed" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1]
     pub fn get_start(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLOListElementImpl.get_start(instance);
+        if (comptime @hasDecl(HTMLOListElementImpl, "get_start")) return try HTMLOListElementImpl.get_start(instance);
+        return try reflection.get(i32, instance, .{ .name = "start", .default = 1 });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1]
@@ -296,12 +301,14 @@ pub const HTMLOListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOListElementImpl.set_start(instance, value);
+        if (comptime @hasDecl(HTMLOListElementImpl, "set_start")) return try HTMLOListElementImpl.set_start(instance, value);
+        try reflection.set(i32, instance, .{ .name = "start", .default = 1 }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLOListElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLOListElementImpl, "get_type")) return try HTMLOListElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -310,12 +317,14 @@ pub const HTMLOListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOListElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLOListElementImpl, "set_type")) return try HTMLOListElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOListElementImpl.get_compact(instance);
+        if (comptime @hasDecl(HTMLOListElementImpl, "get_compact")) return try HTMLOListElementImpl.get_compact(instance);
+        return try reflection.get(bool, instance, .{ .name = "compact" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -324,6 +333,7 @@ pub const HTMLOListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOListElementImpl.set_compact(instance, value);
+        if (comptime @hasDecl(HTMLOListElementImpl, "set_compact")) return try HTMLOListElementImpl.set_compact(instance, value);
+        try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
 };

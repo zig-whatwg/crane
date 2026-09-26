@@ -335,8 +335,11 @@ pub const HTMLVideoElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLVideoElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_width")) return try HTMLVideoElementImpl.get_width(instance);
+        return try reflection.get(u32, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -345,12 +348,14 @@ pub const HTMLVideoElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLVideoElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_width")) return try HTMLVideoElementImpl.set_width(instance, value);
+        try reflection.set(u32, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLVideoElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_height")) return try HTMLVideoElementImpl.get_height(instance);
+        return try reflection.get(u32, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -359,7 +364,8 @@ pub const HTMLVideoElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLVideoElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_height")) return try HTMLVideoElementImpl.set_height(instance, value);
+        try reflection.set(u32, instance, .{ .name = "height" }, value);
     }
 
     pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
@@ -372,7 +378,8 @@ pub const HTMLVideoElement = struct {
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_poster(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLVideoElementImpl.get_poster(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_poster")) return try HTMLVideoElementImpl.get_poster(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "poster", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -381,12 +388,14 @@ pub const HTMLVideoElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLVideoElementImpl.set_poster(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_poster")) return try HTMLVideoElementImpl.set_poster(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "poster", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_playsInline(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLVideoElementImpl.get_playsInline(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_playsInline")) return try HTMLVideoElementImpl.get_playsInline(instance);
+        return try reflection.get(bool, instance, .{ .name = "playsinline" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -395,7 +404,8 @@ pub const HTMLVideoElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLVideoElementImpl.set_playsInline(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_playsInline")) return try HTMLVideoElementImpl.set_playsInline(instance, value);
+        try reflection.set(bool, instance, .{ .name = "playsinline" }, value);
     }
 
     pub fn get_onenterpictureinpicture(instance: *runtime.Instance) anyerror!EventHandler {

@@ -282,8 +282,11 @@ pub const HTMLTableColElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
+    const reflection = @import("impls").reflection;
+
     pub fn get_span(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLTableColElementImpl.get_span(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_span")) return try HTMLTableColElementImpl.get_span(instance);
+        return try reflection.get(u32, instance, .{ .name = "span", .default = 1, .range = .{ 1, 1000 } });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
@@ -292,12 +295,14 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_span(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_span")) return try HTMLTableColElementImpl.set_span(instance, value);
+        try reflection.set(u32, instance, .{ .name = "span", .default = 1, .range = .{ 1, 1000 } }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableColElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_align")) return try HTMLTableColElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -306,12 +311,14 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_align")) return try HTMLTableColElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn get_ch(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableColElementImpl.get_ch(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_ch")) return try HTMLTableColElementImpl.get_ch(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "char" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
@@ -320,12 +327,14 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_ch(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_ch")) return try HTMLTableColElementImpl.set_ch(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "char" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn get_chOff(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableColElementImpl.get_chOff(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_chOff")) return try HTMLTableColElementImpl.get_chOff(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charoff" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
@@ -334,12 +343,14 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_chOff(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_chOff")) return try HTMLTableColElementImpl.set_chOff(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_vAlign(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableColElementImpl.get_vAlign(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_vAlign")) return try HTMLTableColElementImpl.get_vAlign(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "valign" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -348,12 +359,14 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_vAlign(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_vAlign")) return try HTMLTableColElementImpl.set_vAlign(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableColElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "get_width")) return try HTMLTableColElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -362,6 +375,7 @@ pub const HTMLTableColElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableColElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLTableColElementImpl, "set_width")) return try HTMLTableColElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 };

@@ -262,8 +262,11 @@ pub const HTMLMapElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMapElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLMapElementImpl, "get_name")) return try HTMLMapElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -272,7 +275,8 @@ pub const HTMLMapElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMapElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLMapElementImpl, "set_name")) return try HTMLMapElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [SameObject]

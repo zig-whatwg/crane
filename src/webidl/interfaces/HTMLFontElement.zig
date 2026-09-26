@@ -267,8 +267,11 @@ pub const HTMLFontElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
+    const reflection = @import("impls").reflection;
+
     pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFontElementImpl.get_color(instance);
+        if (comptime @hasDecl(HTMLFontElementImpl, "get_color")) return try HTMLFontElementImpl.get_color(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "color" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -277,12 +280,14 @@ pub const HTMLFontElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFontElementImpl.set_color(instance, value);
+        if (comptime @hasDecl(HTMLFontElementImpl, "set_color")) return try HTMLFontElementImpl.set_color(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "color" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_face(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFontElementImpl.get_face(instance);
+        if (comptime @hasDecl(HTMLFontElementImpl, "get_face")) return try HTMLFontElementImpl.get_face(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "face" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -291,12 +296,14 @@ pub const HTMLFontElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFontElementImpl.set_face(instance, value);
+        if (comptime @hasDecl(HTMLFontElementImpl, "set_face")) return try HTMLFontElementImpl.set_face(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "face" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_size(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLFontElementImpl.get_size(instance);
+        if (comptime @hasDecl(HTMLFontElementImpl, "get_size")) return try HTMLFontElementImpl.get_size(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "size" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -305,7 +312,8 @@ pub const HTMLFontElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLFontElementImpl.set_size(instance, value);
+        if (comptime @hasDecl(HTMLFontElementImpl, "set_size")) return try HTMLFontElementImpl.set_size(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "size" }, value);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for

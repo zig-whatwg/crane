@@ -296,8 +296,11 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLStyleElementImpl.get_media(instance);
+        if (comptime @hasDecl(HTMLStyleElementImpl, "get_media")) return try HTMLStyleElementImpl.get_media(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -306,7 +309,8 @@ pub const HTMLStyleElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLStyleElementImpl.set_media(instance, value);
+        if (comptime @hasDecl(HTMLStyleElementImpl, "set_media")) return try HTMLStyleElementImpl.set_media(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -316,7 +320,7 @@ pub const HTMLStyleElement = struct {
         if (state.own.cached_blocking) |cached| {
             return cached;
         }
-        const value = try HTMLStyleElementImpl.get_blocking(instance);
+        const value = if (comptime @hasDecl(HTMLStyleElementImpl, "get_blocking")) try HTMLStyleElementImpl.get_blocking(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "blocking" });
         state.own.cached_blocking = value;
         return value;
     }
@@ -334,7 +338,8 @@ pub const HTMLStyleElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLStyleElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLStyleElementImpl, "get_type")) return try HTMLStyleElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -343,7 +348,8 @@ pub const HTMLStyleElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLStyleElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLStyleElementImpl, "set_type")) return try HTMLStyleElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {

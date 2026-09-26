@@ -262,8 +262,11 @@ pub const HTMLModElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
+    const reflection = @import("impls").reflection;
+
     pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLModElementImpl.get_cite(instance);
+        if (comptime @hasDecl(HTMLModElementImpl, "get_cite")) return try HTMLModElementImpl.get_cite(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "cite", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -272,12 +275,14 @@ pub const HTMLModElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLModElementImpl.set_cite(instance, value);
+        if (comptime @hasDecl(HTMLModElementImpl, "set_cite")) return try HTMLModElementImpl.set_cite(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_dateTime(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLModElementImpl.get_dateTime(instance);
+        if (comptime @hasDecl(HTMLModElementImpl, "get_dateTime")) return try HTMLModElementImpl.get_dateTime(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "datetime" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +291,7 @@ pub const HTMLModElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLModElementImpl.set_dateTime(instance, value);
+        if (comptime @hasDecl(HTMLModElementImpl, "set_dateTime")) return try HTMLModElementImpl.set_dateTime(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);
     }
 };

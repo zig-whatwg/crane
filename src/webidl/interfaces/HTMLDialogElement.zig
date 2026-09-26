@@ -282,8 +282,11 @@ pub const HTMLDialogElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_open(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLDialogElementImpl.get_open(instance);
+        if (comptime @hasDecl(HTMLDialogElementImpl, "get_open")) return try HTMLDialogElementImpl.get_open(instance);
+        return try reflection.get(bool, instance, .{ .name = "open" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -292,7 +295,8 @@ pub const HTMLDialogElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDialogElementImpl.set_open(instance, value);
+        if (comptime @hasDecl(HTMLDialogElementImpl, "set_open")) return try HTMLDialogElementImpl.set_open(instance, value);
+        try reflection.set(bool, instance, .{ .name = "open" }, value);
     }
 
     pub fn get_returnValue(instance: *runtime.Instance) anyerror!DOMString {
@@ -314,7 +318,8 @@ pub const HTMLDialogElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDialogElementImpl.set_closedBy(instance, value);
+        if (comptime @hasDecl(HTMLDialogElementImpl, "set_closedBy")) return try HTMLDialogElementImpl.set_closedBy(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "closedby" }, value);
     }
 
     /// Extended attributes: [CEReactions]

@@ -140,6 +140,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
+    const reflection = @import("impls").reflection;
+
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLHyperlinkElementUtilsImpl.get_href(instance);
     }
@@ -150,7 +152,8 @@ pub const HTMLHyperlinkElementUtils = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+        if (comptime @hasDecl(HTMLHyperlinkElementUtilsImpl, "set_href")) return try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "href" }, value);
     }
 
     pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {

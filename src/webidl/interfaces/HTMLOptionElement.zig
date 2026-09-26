@@ -292,8 +292,11 @@ pub const HTMLOptionElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOptionElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "get_disabled")) return try HTMLOptionElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -302,7 +305,8 @@ pub const HTMLOptionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptionElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "set_disabled")) return try HTMLOptionElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -320,12 +324,14 @@ pub const HTMLOptionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptionElementImpl.set_label(instance, value);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "set_label")) return try HTMLOptionElementImpl.set_label(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "label" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="selected"]
     pub fn get_defaultSelected(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLOptionElementImpl.get_defaultSelected(instance);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "get_defaultSelected")) return try HTMLOptionElementImpl.get_defaultSelected(instance);
+        return try reflection.get(bool, instance, .{ .name = "selected" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="selected"]
@@ -334,7 +340,8 @@ pub const HTMLOptionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptionElementImpl.set_defaultSelected(instance, value);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "set_defaultSelected")) return try HTMLOptionElementImpl.set_defaultSelected(instance, value);
+        try reflection.set(bool, instance, .{ .name = "selected" }, value);
     }
 
     pub fn get_selected(instance: *runtime.Instance) anyerror!bool {
@@ -356,7 +363,8 @@ pub const HTMLOptionElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOptionElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLOptionElementImpl, "set_value")) return try HTMLOptionElementImpl.set_value(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions]

@@ -257,8 +257,11 @@ pub const HTMLTimeElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_dateTime(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTimeElementImpl.get_dateTime(instance);
+        if (comptime @hasDecl(HTMLTimeElementImpl, "get_dateTime")) return try HTMLTimeElementImpl.get_dateTime(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "datetime" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLTimeElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTimeElementImpl.set_dateTime(instance, value);
+        if (comptime @hasDecl(HTMLTimeElementImpl, "set_dateTime")) return try HTMLTimeElementImpl.set_dateTime(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);
     }
 };

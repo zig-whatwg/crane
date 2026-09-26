@@ -257,8 +257,11 @@ pub const HTMLDivElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLDivElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLDivElementImpl, "get_align")) return try HTMLDivElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLDivElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDivElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLDivElementImpl, "set_align")) return try HTMLDivElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 };

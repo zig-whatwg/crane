@@ -277,8 +277,11 @@ pub const HTMLMetaElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMetaElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "get_name")) return try HTMLMetaElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -287,12 +290,14 @@ pub const HTMLMetaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMetaElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "set_name")) return try HTMLMetaElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="http-equiv"]
     pub fn get_httpEquiv(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMetaElementImpl.get_httpEquiv(instance);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "get_httpEquiv")) return try HTMLMetaElementImpl.get_httpEquiv(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "http-equiv" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="http-equiv"]
@@ -301,12 +306,14 @@ pub const HTMLMetaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMetaElementImpl.set_httpEquiv(instance, value);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "set_httpEquiv")) return try HTMLMetaElementImpl.set_httpEquiv(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "http-equiv" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_content(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMetaElementImpl.get_content(instance);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "get_content")) return try HTMLMetaElementImpl.get_content(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "content" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -315,12 +322,14 @@ pub const HTMLMetaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMetaElementImpl.set_content(instance, value);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "set_content")) return try HTMLMetaElementImpl.set_content(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "content" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMetaElementImpl.get_media(instance);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "get_media")) return try HTMLMetaElementImpl.get_media(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -329,12 +338,14 @@ pub const HTMLMetaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMetaElementImpl.set_media(instance, value);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "set_media")) return try HTMLMetaElementImpl.set_media(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_scheme(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLMetaElementImpl.get_scheme(instance);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "get_scheme")) return try HTMLMetaElementImpl.get_scheme(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "scheme" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -343,6 +354,7 @@ pub const HTMLMetaElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMetaElementImpl.set_scheme(instance, value);
+        if (comptime @hasDecl(HTMLMetaElementImpl, "set_scheme")) return try HTMLMetaElementImpl.set_scheme(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "scheme" }, value);
     }
 };

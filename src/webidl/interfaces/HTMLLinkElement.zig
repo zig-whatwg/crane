@@ -367,8 +367,11 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
+    const reflection = @import("impls").reflection;
+
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLLinkElementImpl.get_href(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_href")) return try HTMLLinkElementImpl.get_href(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "href", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -377,7 +380,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_href(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_href")) return try HTMLLinkElementImpl.set_href(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "href", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -396,7 +400,8 @@ pub const HTMLLinkElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_rel(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_rel")) return try HTMLLinkElementImpl.get_rel(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -405,7 +410,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_rel(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_rel")) return try HTMLLinkElementImpl.set_rel(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -429,7 +435,7 @@ pub const HTMLLinkElement = struct {
         if (state.own.cached_relList) |cached| {
             return cached;
         }
-        const value = try HTMLLinkElementImpl.get_relList(instance);
+        const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_relList")) try HTMLLinkElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
         return value;
     }
@@ -447,7 +453,8 @@ pub const HTMLLinkElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_media(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_media")) return try HTMLLinkElementImpl.get_media(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -456,12 +463,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_media(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_media")) return try HTMLLinkElementImpl.set_media(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_integrity(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_integrity(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_integrity")) return try HTMLLinkElementImpl.get_integrity(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "integrity" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -470,12 +479,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_integrity(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_integrity")) return try HTMLLinkElementImpl.set_integrity(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_hreflang(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_hreflang(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_hreflang")) return try HTMLLinkElementImpl.get_hreflang(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "hreflang" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -484,12 +495,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_hreflang(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_hreflang")) return try HTMLLinkElementImpl.set_hreflang(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "hreflang" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_type")) return try HTMLLinkElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -498,7 +511,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_type")) return try HTMLLinkElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -508,7 +522,7 @@ pub const HTMLLinkElement = struct {
         if (state.own.cached_sizes) |cached| {
             return cached;
         }
-        const value = try HTMLLinkElementImpl.get_sizes(instance);
+        const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_sizes")) try HTMLLinkElementImpl.get_sizes(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "sizes" });
         state.own.cached_sizes = value;
         return value;
     }
@@ -526,7 +540,8 @@ pub const HTMLLinkElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_imageSrcset(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLLinkElementImpl.get_imageSrcset(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_imageSrcset")) return try HTMLLinkElementImpl.get_imageSrcset(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "imagesrcset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -535,12 +550,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_imageSrcset(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_imageSrcset")) return try HTMLLinkElementImpl.set_imageSrcset(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "imagesrcset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_imageSizes(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_imageSizes(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_imageSizes")) return try HTMLLinkElementImpl.get_imageSizes(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "imagesizes" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -549,7 +566,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_imageSizes(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_imageSizes")) return try HTMLLinkElementImpl.set_imageSizes(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "imagesizes" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -573,7 +591,7 @@ pub const HTMLLinkElement = struct {
         if (state.own.cached_blocking) |cached| {
             return cached;
         }
-        const value = try HTMLLinkElementImpl.get_blocking(instance);
+        const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_blocking")) try HTMLLinkElementImpl.get_blocking(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "blocking" });
         state.own.cached_blocking = value;
         return value;
     }
@@ -591,7 +609,8 @@ pub const HTMLLinkElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLLinkElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_disabled")) return try HTMLLinkElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -600,7 +619,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_disabled")) return try HTMLLinkElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -619,7 +639,8 @@ pub const HTMLLinkElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_charset(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_charset")) return try HTMLLinkElementImpl.get_charset(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -628,12 +649,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_charset(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_charset")) return try HTMLLinkElementImpl.set_charset(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rev(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_rev(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_rev")) return try HTMLLinkElementImpl.get_rev(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rev" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -642,12 +665,14 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_rev(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_rev")) return try HTMLLinkElementImpl.set_rev(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rev" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLinkElementImpl.get_target(instance);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "get_target")) return try HTMLLinkElementImpl.get_target(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -656,7 +681,8 @@ pub const HTMLLinkElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLinkElementImpl.set_target(instance, value);
+        if (comptime @hasDecl(HTMLLinkElementImpl, "set_target")) return try HTMLLinkElementImpl.set_target(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {

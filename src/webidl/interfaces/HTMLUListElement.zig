@@ -262,8 +262,11 @@ pub const HTMLUListElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
+    const reflection = @import("impls").reflection;
+
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLUListElementImpl.get_compact(instance);
+        if (comptime @hasDecl(HTMLUListElementImpl, "get_compact")) return try HTMLUListElementImpl.get_compact(instance);
+        return try reflection.get(bool, instance, .{ .name = "compact" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -272,12 +275,14 @@ pub const HTMLUListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLUListElementImpl.set_compact(instance, value);
+        if (comptime @hasDecl(HTMLUListElementImpl, "set_compact")) return try HTMLUListElementImpl.set_compact(instance, value);
+        try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLUListElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLUListElementImpl, "get_type")) return try HTMLUListElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +291,7 @@ pub const HTMLUListElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLUListElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLUListElementImpl, "set_type")) return try HTMLUListElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 };
