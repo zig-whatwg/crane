@@ -428,6 +428,25 @@ fn addModuleTestWithV8(
     return builder.addTest(.{ .root_module = test_mod });
 }
 
+/// The engine protocol (src/runtime/engine_protocol.zig) bound to the
+/// adapter at `adapter_root`, over `runtime`: a facade and adapter pair of
+/// their own, for a test compile whose graph holds no other binding - one
+/// file belongs to one module per compile, so two bindings of the facade
+/// cannot meet in one.
+fn engineProtocolBinding(
+    builder: *std.Build,
+    target: std.Build.ResolvedTarget,
+    runtime: *std.Build.Module,
+    adapter_root: std.Build.LazyPath,
+) *std.Build.Module {
+    const facade = builder.createModule(.{ .root_source_file = builder.path("src/runtime/engine_protocol.zig"), .target = target });
+    facade.addImport("runtime", runtime);
+    const adapter = builder.createModule(.{ .root_source_file = adapter_root, .target = target });
+    adapter.addImport("engine", facade);
+    facade.addImport("engine_impl", adapter);
+    return facade;
+}
+
 /// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
@@ -1015,6 +1034,32 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
     impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
+
+    // ========================================================================
+    // ENGINE PROTOCOL (module `engine`)
+    // ========================================================================
+    //
+    // AGENTS.md "The engine boundary": consumers `@import("engine")` and call
+    // `engine.op(...)`. The facade forwards every operation, inline, to
+    // `engine_impl` - the protocol root of the adapter `-Dengine=` selects -
+    // so dispatch is static, and a missing or mis-typed adapter function is
+    // a compile error in the facade. One module each, shared by every
+    // artifact: binding it adds no root-module analysis, and runtime already
+    // imports v8, so it adds no module cycle either.
+    const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
+    const engine_mod = b.addModule("engine", .{
+        .root_source_file = engine_protocol_root,
+        .target = target,
+    });
+    engine_mod.addImport("runtime", runtime_mod);
+    const engine_impl_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
+        .target = target,
+    });
+    engine_impl_mod.addImport("engine", engine_mod);
+    if (std.mem.eql(u8, engine_choice, "v8")) engine_impl_mod.addImport("v8", v8_mod);
+    engine_mod.addImport("engine_impl", engine_impl_mod);
+    impls_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
@@ -2498,11 +2543,51 @@ pub fn build(b: *std.Build) void {
 
     // Runtime tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "runtime")) {
+        // The runtime tier's tests link no engine, and bind the engine
+        // protocol to an adapter with none behind it.
+        //
+        // A second binding of the facade cannot share a compile with the
+        // production one: Zig checks that a file belongs to one module over
+        // the whole import graph, analysed or not ("file exists in modules
+        // 'engine' and 'engine0'"). runtime_mod reaches the V8 binding
+        // through its `v8` import (runtime -> v8 -> impls -> engine), so
+        // these tests use runtime without that import - the runtime tier as
+        // the engine boundary will leave it (its one V8 use is
+        // realm.zig's populateIntrinsics, which no runtime test reaches).
+        const runtime_tier_mod = b.createModule(.{
+            .root_source_file = runtime_mod.root_source_file,
+            .target = target,
+        });
+        for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
+            if (!std.mem.eql(u8, import_name, "v8")) runtime_tier_mod.addImport(import_name, dep);
+        }
+        // Every tests/runtime file sees the protocol bound to the runtime
+        // tier's test adapter. And each other adapter with no engine behind
+        // it - the JavaScriptCore and QuickJS protocol roots, which nothing
+        // else compiles while -Dengine=jsc|quickjs is not buildable - gets the
+        // protocol's tests in a compile of its own: compiling the facade
+        // against an adapter is what checks it against the protocol.
+        const test_adapter_engine_mod = engineProtocolBinding(b, target, runtime_tier_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
+            const conformance = b.addTest(.{
+                .name = b.fmt("engine_protocol_{s}", .{adapter}),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tests/runtime/engine_protocol_test.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "runtime", .module = runtime_tier_mod },
+                        .{ .name = "engine", .module = engineProtocolBinding(b, target, runtime_tier_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter}))) },
+                    },
+                }),
+            });
+            test_step.dependOn(&b.addRunArtifact(conformance).step);
+        }
         const runtime_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "host", .module = host_mod },
-            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "runtime", .module = runtime_tier_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "engine", .module = test_adapter_engine_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add runtime test files: {}\n", .{err});
@@ -2522,6 +2607,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "engine", .module = engine_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -2583,6 +2669,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "engine", .module = engine_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
