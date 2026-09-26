@@ -232,3 +232,8 @@ test "a realm records its document URL, replacing and forgetting it" {
     ctx.clearDocumentUrl();
     try std.testing.expect(ctx.documentUrl() == null);
 }
+
+test "the adapter registers its table as the build's configured engine" {
+    v8.snapshot_loader.registerConfiguredEngine();
+    try std.testing.expect(runtime.configuredEngine() == engine);
+}

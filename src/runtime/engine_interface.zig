@@ -157,6 +157,23 @@ pub const ReportExceptionFn = *const fn (host: ?*anyopaque, info: *const ErrorIn
 /// passed alongside them.
 pub const RealmSteps = *const fn (data: ?*anyopaque) void;
 
+/// The Engine table of the engine this build selected (`-Dengine=`), as its
+/// adapter registered it when the engine was initialized - the way code with
+/// no realm yet (a browser's first navigation) reaches `createWindowRealm`.
+/// Null before any engine has been initialized. Process-wide: every agent and
+/// thread uses the same table.
+var configured_engine: ?*const EngineInterface = null;
+
+/// The build's engine, or null before it is initialized.
+pub fn configuredEngine() ?*const EngineInterface {
+    return configured_engine;
+}
+
+/// Called by an engine adapter when it initializes its engine.
+pub fn setConfiguredEngine(engine: *const EngineInterface) void {
+    configured_engine = engine;
+}
+
 // Lane regions for types the lanes' operations use (declarations cannot go
 // between container fields). Each lane declares only inside its own region.
 // ---- lane: page-realm ----

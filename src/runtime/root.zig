@@ -160,6 +160,8 @@ pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectC
 pub const ErrorInfo = @import("engine_interface.zig").ErrorInfo;
 pub const ReportExceptionFn = @import("engine_interface.zig").ReportExceptionFn;
 pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
+pub const configuredEngine = @import("engine_interface.zig").configuredEngine;
+pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEngine;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
