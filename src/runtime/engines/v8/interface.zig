@@ -546,6 +546,23 @@ pub fn legacyNullToEmptyMask(comptime Interface: type, comptime fn_name: []const
     return 0;
 }
 
+/// WebIDL `double` and `float`, not `unrestricted` (3.2.7, 3.2.9): the
+/// arguments of `fn_name` - bit i for argument i, bit 0 for an attribute
+/// setter's value - whose NaN and infinities are a TypeError. Codegen writes
+/// the table (`restricted_floats` in a generated interface) from the IDL; an
+/// interface without one answers 0 and converts as before.
+pub fn restrictedFloatMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
+    if (!@hasDecl(Interface, "restricted_floats")) return 0;
+    inline for (Interface.restricted_floats) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], fn_name)) return entry[1];
+    }
+    return 0;
+}
+
+fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
+    return index < 32 and (mask >> @intCast(index)) & 1 != 0;
+}
+
 /// `value` itself, or - when it is null and [LegacyNullToEmptyString] applies -
 /// a new empty string in its place. The argument handles here are owned
 /// (`v8_FunctionCallbackInfo_GetArgument` allocates), so the replaced handle is
@@ -3028,6 +3045,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         webidl_param_count,
                         ReturnType,
                         comptime legacyNullToEmptyMask(Interface, zig_name),
+                        comptime restrictedFloatMask(Interface, zig_name),
                         instance,
                         info,
                         allocator,
@@ -3153,6 +3171,28 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Static empty slice used by fromV8Value for empty strings - must not be freed
         const static_empty_u8: []const u8 = &[_]u8{};
+
+        /// Convert one argument, then - for a restricted `double` or `float`
+        /// (`restricted_floats`) - apply that conversion's last step: NaN and
+        /// the infinities are a TypeError. The check is part of this
+        /// argument's own conversion, so no later argument is converted first.
+        fn convertArg(
+            comptime T: type,
+            comptime restricted_arg: bool,
+            allocator: std.mem.Allocator,
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            arg: *v8.Value,
+        ) !T {
+            const value = try convertArgReleasing(T, allocator, isolate, context, arg);
+            if (comptime restricted_arg) {
+                conv.requireFinite(T, value) catch |err| {
+                    freeConvertedArg(T, allocator, value);
+                    return err;
+                };
+            }
+            return value;
+        }
 
         /// Free a converted argument if it was allocated.
         /// Empty strings return a static slice that must NOT be freed.
@@ -3287,6 +3327,7 @@ pub fn V8Interface(comptime Interface: type) type {
             comptime webidl_param_count: usize,
             comptime ReturnType: type,
             comptime null_to_empty: u32,
+            comptime restricted: u32,
             instance: *runtime.Instance,
             raw_info: *const v8.FunctionCallbackInfo,
             allocator: std.mem.Allocator,
@@ -3319,12 +3360,15 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                             if (arg1.len > 0) allocator.free(arg1);
                         }
+                        // Each element is a restricted float conversion; the
+                        // defer above releases the slice if one fails.
+                        if (comptime restrictedBit(restricted, 0)) try conv.requireFinite(Param1Type, arg1);
                         break :blk try method_fn(instance, arg1);
                     }
 
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3344,7 +3388,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3359,7 +3403,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -3380,7 +3424,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3395,7 +3439,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3409,7 +3453,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArg(Param3Type, comptime restrictedBit(restricted, 2), allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
@@ -3431,7 +3475,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3446,7 +3490,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3460,7 +3504,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArg(Param3Type, comptime restrictedBit(restricted, 2), allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3474,7 +3518,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
-                        break :arg_blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                        break :arg_blk try convertArg(Param4Type, comptime restrictedBit(restricted, 3), allocator, isolate, v8_context, v8_arg4);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3509,7 +3553,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         const ParamType = param.type.?;
                         call_args[i] = if (js_arg_count >= i) arg_blk: {
                             const v8_arg = info.get(@intCast(i - 1));
-                            break :arg_blk try convertArgReleasing(ParamType, allocator, isolate, v8_context, v8_arg);
+                            break :arg_blk try convertArg(ParamType, comptime restrictedBit(restricted, i - 1), allocator, isolate, v8_context, v8_arg);
                         } else arg_blk: {
                             if (comptime getDefaultArgValue(ParamType)) |default_val| {
                                 break :arg_blk default_val;
@@ -7801,6 +7845,16 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
 
+                    // A restricted `double` or `float` (`restricted_floats`):
+                    // NaN and the infinities are a TypeError, before the
+                    // setter steps run.
+                    if (comptime restrictedFloatMask(Interface, setter_name_param) & 1 != 0) {
+                        conv.requireFinite(ValueType, zig_value) catch |err| {
+                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                            return;
+                        };
+                    }
+
                     // Call the setter (handle error union return)
                     const ReturnType = fn_info.return_type.?;
                     const return_type_info = @typeInfo(ReturnType);
@@ -8111,6 +8165,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         webidl_param_count,
                         ReturnType,
                         comptime legacyNullToEmptyMask(Interface, zig_name),
+                        comptime restrictedFloatMask(Interface, zig_name),
                         template_instance,
                         info,
                         allocator,

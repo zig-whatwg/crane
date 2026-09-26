@@ -232,6 +232,39 @@ pub fn fromV8Double(
     return toNumber(context, value);
 }
 
+/// WebIDL 3.2.7 `float` and 3.2.9 `double` - the restricted types - after the
+/// conversion `fromV8Float`/`fromV8Double` share with their `unrestricted`
+/// forms: "If x is NaN, +Infinity, or -Infinity, then throw a TypeError", and
+/// for `float` also a value that rounds to +/-2^128 (float step 5), which is
+/// what an f32 that came out infinite from a finite number is. `value` is the
+/// converted value: an f64 or f32, its nullable form, an optional argument
+/// (`webidl.Opt`), or a sequence of them. The binding calls this where codegen
+/// marked a value restricted (`restricted_floats`, `restricted_members`).
+pub fn requireFinite(comptime T: type, value: T) ConversionError!void {
+    switch (@typeInfo(T)) {
+        .float => if (!std.math.isFinite(value)) return ConversionError.TypeError,
+        .optional => |o| if (value) |v| try requireFinite(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            for (value) |v| try requireFinite(ptr.child, v);
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireFinite(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `restricted_members`.
+fn isRestrictedMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "restricted_members")) return false;
+        for (T.restricted_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Convert V8 Value to Zig f32 (float)
 pub fn fromV8Float(
     context: *v8.Context,
@@ -1462,6 +1495,10 @@ pub fn fromV8Value(
                     context,
                     field_v8,
                 );
+                // A restricted `double` or `float` member: NaN and the
+                // infinities are a TypeError, as part of this member's
+                // conversion - before the next member is read.
+                if (comptime isRestrictedMember(T, field.name)) try requireFinite(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
