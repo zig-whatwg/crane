@@ -162,7 +162,8 @@ fn fireErrorEvent(
     };
 
     const generation = runtime.SlabAllocator.generationOf(event);
-    const not_canceled = interfaces.EventTarget.call_dispatchEvent(global, event) catch true;
+    // Fired by the user agent, so trusted (DOM 2.10).
+    const not_canceled = @import("dom").fire_event.dispatchTrusted(global, event) catch true;
 
     // An event no listener ever saw was never wrapped, so V8 holds no
     // reference to it and nothing else will ever free it - including the

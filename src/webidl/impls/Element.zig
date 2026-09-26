@@ -3681,8 +3681,9 @@ fn fireImageEvent(instance: *runtime.Instance, event_type: []const u8) !void {
     const cancelable = webidl.Opt(bool).passed(false);
     try interfaces.Event.call_initEvent(event, event_type_str, bubbles, cancelable);
 
-    // Dispatch the event on the element
-    _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);
+    // Dispatch the event on the element - fired by the user agent, so trusted
+    // (DOM 2.10). EventTarget is an ancestor, so its impl.
+    _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 
 /// Operation: insertAdjacentHTML

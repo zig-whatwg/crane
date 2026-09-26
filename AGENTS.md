@@ -783,3 +783,4 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [WindowOrWorkerGlobalScope is inherited; its includer state goes through `dom.global_settings`](docs/lessons/workflow-windoworworkerglobalscope-is-inherited-its.md) - A mixin with includer state is still implemented once.
 - [Never overwrite a binary macOS has already run; remove it first](docs/lessons/workflow-never-overwrite-a-binary-macos-has-already-run.md) - Exit 137 before the first line of output is code signing, not the engine.
 - [Build after each lane merge - two clean merges can make a broken tree](docs/lessons/workflow-build-after-each-lane-merge.md) - "Each branch is green" says nothing about their merge.
+- [lint-impls counts every usage once per local alias](docs/lessons/workflow-lint-impls-counts-every-usage-once-per-alias.md) - Before binding a non-ancestor impl in one more function, count the file's existing bindings.

@@ -236,7 +236,7 @@ progress = [
 
   [[infra.items]]
   name = "An interface-level way to fire a trusted event"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Window.prototype sound after a snapshot restore (window instanceof EventTarget)"
