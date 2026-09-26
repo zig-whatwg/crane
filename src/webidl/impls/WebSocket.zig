@@ -38,6 +38,9 @@ const WebSocketConnection = websocket.WebSocketConnection;
 // The constructor applies the URL parser, per steps 2-5.
 const api_parser = @import("api_parser");
 
+// A socket keeps its own wrapper alive until it has closed.
+const same_object = @import("same_object.zig");
+
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
 const EventTargetImpl = @import("EventTarget.zig");
@@ -289,6 +292,18 @@ pub const InternalState = struct {
     /// every test like it assert against.
     buffered_amount: u64 = 0,
 
+    /// The socket's own wrapper, held from construction until the close event
+    /// has fired.
+    ///
+    /// WebSockets § 7: a WebSocket whose connection is not yet closed must not
+    /// be collected while it has listeners for the events still to come - and
+    /// a socket is routinely held by nothing but its listeners
+    /// (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
+    /// channel exists (WebSocket::HasPendingActivity); this is that, through
+    /// the same Pin XMLHttpRequest holds across a fetch. Released in the close
+    /// task, and in deinit, which is how a realm's teardown gets past it.
+    keep_alive: same_object.Pin = .{},
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -306,6 +321,8 @@ pub const InternalState = struct {
             token.detach();
             self.poll = null;
         }
+
+        self.keep_alive.release();
 
         if (self.connection) |conn| {
             conn.deinit();
@@ -552,6 +569,9 @@ fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
 
     // 3.
     fireCloseEvent(instance, outcome);
+
+    // Nothing more will fire: the socket's lifetime is its wrapper's again.
+    if (getInternal(instance)) |live| live.keep_alive.release();
 }
 
 const CloseOutcome = struct {
@@ -906,6 +926,8 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     const token = try PollToken.create(instance, timer);
     internal.poll = token;
     token.arm();
+
+    internal.keep_alive.hold(instance);
 
     return instance;
 }
