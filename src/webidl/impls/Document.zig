@@ -3882,7 +3882,14 @@ fn runLifecycleTask(context: ?*anyopaque) void {
 /// Whether `document` is still its window's document - false once a
 /// navigation has put another in its place. A document with no window is
 /// not replaced by anything.
+///
+/// A navigation that makes a new Window leaves the old one's document in
+/// place, so asking the Window is not enough: an unloaded document - not
+/// salvageable, since Crane keeps no bfcache - is never fully active again.
 fn isShownByItsWindow(document: *runtime.Instance) bool {
+    if (getInternal(document)) |internal| {
+        if (!internal.salvageable) return false;
+    }
     const window = (get_defaultView(document) catch null) orelse return true;
     const shown = interfaces.Window.get_document(window) catch return true;
     return shown == document;
