@@ -71,7 +71,8 @@ test "a response runs headers received, loading and done, then load and loadend"
     defer recorder.deinit();
     try sent(&state, &recorder);
 
-    try send_algo.sendAsyncFinish(&state, null, try responseWith(200, "hello"));
+    var processor = xhr_root.response.ResponseProcessor.init(&state);
+    try std.testing.expect((try send_algo.sendAsyncFinish(&state, null, try responseWith(200, "hello"), &processor)) == null);
 
     // loadstart (send()), headers received, then - whether the throttled
     // body chunk reported itself or not - end-of-body's progress, done, load
@@ -100,7 +101,8 @@ test "a network error runs the request error steps for error" {
         .response = try fetch.internal.networkError(testing.allocator),
         .timing_info = fetch.internal.FetchTimingInfo.init(testing.allocator),
     };
-    try send_algo.sendAsyncFinish(&state, null, result);
+    var processor = xhr_root.response.ResponseProcessor.init(&state);
+    _ = try send_algo.sendAsyncFinish(&state, null, result, &processor);
 
     try recorder.expectNames(&.{ "loadstart", "readystatechange", "error", "loadend" });
     try testing.expectEqual(ReadyState.DONE, state.ready_state);
@@ -117,7 +119,8 @@ test "a fetch that could not run at all is an error, and an aborted one an abort
         defer recorder.deinit();
         try sent(&state, &recorder);
 
-        try send_algo.sendAsyncFinish(&state, null, case.err);
+        var processor = xhr_root.response.ResponseProcessor.init(&state);
+        _ = try send_algo.sendAsyncFinish(&state, null, case.err, &processor);
 
         try recorder.expectNames(&.{ "loadstart", "readystatechange", case.event, "loadend" });
     }
@@ -134,10 +137,77 @@ test "a response that arrived is not a timeout, however late its task runs" {
     // The impl ends a fetch still running at the deadline. One that ended
     // first had its response in time, even if a long task kept its task from
     // running until later (xhr/xhr-timeout-longtask.any.js).
-    try send_algo.sendAsyncFinish(&state, null, try responseWith(200, "in time"));
+    var processor = xhr_root.response.ResponseProcessor.init(&state);
+    _ = try send_algo.sendAsyncFinish(&state, null, try responseWith(200, "in time"), &processor);
 
     try testing.expect(!state.timed_out_flag);
     const names = recorder.names.items;
     try testing.expectEqualStrings("loadend", names[names.len - 1]);
     try testing.expectEqualStrings("load", names[names.len - 2]);
+}
+
+/// A response whose body is still arriving, through a pipe the test feeds.
+fn streamedResponse(source: **fetch.internal.PipeSource) !FetchResult {
+    const response = try fetch.internal.InternalResponse.init(testing.allocator);
+    errdefer response.deinit();
+    response.status = 200;
+    try response.addUrl("http://example.com/data");
+    try response.header_list.append("Content-Length", "10");
+    source.* = try fetch.internal.PipeSource.create(testing.allocator);
+    const pipe = try source.*.branch();
+    response.body = try fetch.internal.Body.fromPipe(testing.allocator, pipe);
+    return .{ .response = response, .timing_info = fetch.internal.FetchTimingInfo.init(testing.allocator) };
+}
+
+test "a body still arriving is handed back to read, and its pieces and end run their steps" {
+    var state = XMLHttpRequestState.init(testing.allocator);
+    defer state.deinit();
+    var recorder = Recorder{ .state = &state };
+    defer recorder.deinit();
+    try sent(&state, &recorder);
+
+    var source: *fetch.internal.PipeSource = undefined;
+    var processor = xhr_root.response.ResponseProcessor.init(&state);
+    const pipe = (try send_algo.sendAsyncFinish(&state, null, try streamedResponse(&source), &processor)) orelse return error.TestUnexpectedResult;
+    // Headers received, and nothing of the body yet.
+    try testing.expectEqual(ReadyState.HEADERS_RECEIVED, state.ready_state);
+
+    source.push("hello");
+    const first = try pipe.take();
+    defer testing.allocator.free(first);
+    try send_algo.sendAsyncBodyChunk(&state, &processor, first);
+    try testing.expectEqual(ReadyState.LOADING, state.ready_state);
+    try testing.expectEqualStrings("hello", state.received_bytes.items);
+
+    source.push("world");
+    source.finish();
+    const second = try pipe.take();
+    defer testing.allocator.free(second);
+    try send_algo.sendAsyncBodyChunk(&state, &processor, second);
+    send_algo.sendAsyncEndOfBody(&state, &processor);
+
+    try testing.expectEqualStrings("helloworld", state.received_bytes.items);
+    try testing.expectEqual(ReadyState.DONE, state.ready_state);
+    const names = recorder.names.items;
+    try testing.expectEqualStrings("load", names[names.len - 2]);
+    try testing.expectEqualStrings("loadend", names[names.len - 1]);
+}
+
+test "a body that fails while arriving runs the request error steps" {
+    var state = XMLHttpRequestState.init(testing.allocator);
+    defer state.deinit();
+    var recorder = Recorder{ .state = &state };
+    defer recorder.deinit();
+    try sent(&state, &recorder);
+
+    var source: *fetch.internal.PipeSource = undefined;
+    var processor = xhr_root.response.ResponseProcessor.init(&state);
+    _ = (try send_algo.sendAsyncFinish(&state, null, try streamedResponse(&source), &processor)) orelse return error.TestUnexpectedResult;
+    source.fail(.{ .kind = .network });
+    send_algo.sendAsyncBodyFailed(&state, &processor);
+
+    try testing.expectEqual(ReadyState.DONE, state.ready_state);
+    const names = recorder.names.items;
+    try testing.expectEqualStrings("error", names[names.len - 2]);
+    try testing.expectEqualStrings("loadend", names[names.len - 1]);
 }

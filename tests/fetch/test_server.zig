@@ -20,6 +20,8 @@
 //!   *    /redirect-loop    - 302, Location: /redirect-loop  (never ends)
 //!   *    /redirect-none    - 302 with no Location at all
 //!   *    /redirect-ftp     - 302, Location: ftp://127.0.0.1/ (not HTTP(S))
+//!   GET  /trickle/{n}      - n chunks of "chunk\n", 100ms apart, chunked
+//!   GET  /bad-chunk        - one good chunk, then a malformed one
 //!
 //! WebSocket Endpoints:
 //!   /ws/echo               - Echo all messages back
@@ -185,6 +187,18 @@ pub const TestServer = struct {
         if (isWebSocketUpgrade(request)) {
             try handleWebSocketUpgrade(allocator, io, stream, request, path, should_stop);
             return;
+        }
+
+        // Streamed bodies: the headers go first, then the body a piece at a
+        // time - what a streamed transfer has to hand on as it arrives.
+        if (std.mem.startsWith(u8, path, "/trickle/")) {
+            const count = std.fmt.parseInt(usize, path["/trickle/".len..], 10) catch 1;
+            return sendTrickle(io, stream, @min(count, 50));
+        }
+        if (std.mem.eql(u8, path, "/bad-chunk")) {
+            try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nchunk\n\r\n");
+            clock.sleep(100 * std.time.ns_per_ms);
+            return writeAllToStream(io, stream, "zz\r\nnot a chunk\r\n");
         }
 
         // A HEAD request is answered like the GET it stands for, minus the
@@ -619,6 +633,16 @@ pub const TestServer = struct {
         const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\nX-Test-Header: test-value\r\n\r\n", .{ status, status_text, content_type, content_length }) catch return error.ResponseTooLarge;
 
         try writeAllToStream(io, stream, response);
+    }
+
+    /// `count` chunks of "chunk\n", chunked, 100ms apart.
+    fn sendTrickle(io: Io, stream: net.Stream, count: usize) !void {
+        try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
+        for (0..count) |_| {
+            try writeAllToStream(io, stream, "6\r\nchunk\n\r\n");
+            clock.sleep(100 * std.time.ns_per_ms);
+        }
+        try writeAllToStream(io, stream, "0\r\n\r\n");
     }
 
     fn sendResponse(io: Io, stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, body: []const u8) !void {

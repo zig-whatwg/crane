@@ -31,6 +31,7 @@ const network = @import("../network/root.zig");
 const NetworkRequest = network.NetworkRequest;
 const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
+const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const main_fetch = @import("main_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
@@ -203,7 +204,29 @@ pub const FetchJob = struct {
         };
         defer network_response.deinit();
 
-        const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time) catch |err| {
+        const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, null) catch |err| {
+            return self.httpFetchFailed(err);
+        };
+        return self.httpNetworkOrCacheFetchReturned(response);
+    }
+
+    /// Carry on from the network's answer to the request the last `.network`
+    /// step asked for, as soon as its headers are in: `head` is the response
+    /// without a body, whose ownership passes in, and `body` the pipe the
+    /// body arrives through, which passes in too. The response fetch hands
+    /// on reads its body from the pipe - unless it is not the one handed on
+    /// (a redirect followed, a network error), when the pipe goes with it
+    /// and, with no reader left, stops the transfer.
+    pub fn resumeNetworkHead(self: *FetchJob, head: NetworkResponse, body: *BodyPipe) FetchError!Step {
+        const allocator = self.allocator;
+        const request = self.network_request orelse unreachable; // no request was asked for
+        self.network_request = null;
+        http_fetch.freeNetworkRequest(allocator, request);
+
+        var network_response = head;
+        defer network_response.deinit();
+
+        const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, body) catch |err| {
             return self.httpFetchFailed(err);
         };
         return self.httpNetworkOrCacheFetchReturned(response);

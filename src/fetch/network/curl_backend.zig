@@ -316,6 +316,13 @@ pub const LibcurlBackend = struct {
         raw_headers: std.ArrayList(u8),
         aborted: *std.atomic.Value(bool),
 
+        /// Where the header block now arriving starts in `raw_headers`, and
+        /// where the final one - the response's own, after any 1xx interim
+        /// responses - ends, once it has. A streamed transfer hands its
+        /// response on at that point, before the body.
+        block_start: usize = 0,
+        head_end: ?usize = null,
+
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
         method_z: ?[:0]u8 = null,
@@ -684,6 +691,8 @@ pub const Transfer = struct {
     /// otherwise still carry it.
     pub fn prepareAttempt(self: *Transfer) void {
         self.error_buf[0] = 0;
+        self.ctx.block_start = 0;
+        self.ctx.head_end = null;
         self.ctx.response_body.clearRetainingCapacity();
         for (self.ctx.response_headers.items) |header| {
             self.allocator.free(header.name);
@@ -706,6 +715,119 @@ pub const Transfer = struct {
         if (result != curl.CURLE_COULDNT_CONNECT) return null;
         if (attempt + 1 >= max_attempts) return null;
         return 100 * std.time.ns_per_ms * std.math.pow(u64, 2, attempt);
+    }
+
+    /// Whether the response's headers are all in - the status line and
+    /// header fields of the final (non-1xx) block.
+    pub fn headersComplete(self: *const Transfer) bool {
+        return self.ctx.head_end != null;
+    }
+
+    /// The response so far, once `headersComplete`: status, headers, final
+    /// URL and timing, and no body - that follows through `takeBody`. The
+    /// response is the caller's.
+    pub fn head(self: *Transfer) NetworkError!NetworkResponse {
+        const allocator = self.allocator;
+        const end = self.ctx.head_end orelse return NetworkError.ProtocolError;
+        const block = self.ctx.raw_headers.items[self.ctx.block_start..end];
+
+        var headers: std.ArrayList(NetworkResponse.Header) = .empty;
+        errdefer {
+            for (headers.items) |header| {
+                allocator.free(header.name);
+                allocator.free(header.value);
+            }
+            headers.deinit(allocator);
+        }
+        var lines = std.mem.splitSequence(u8, block, "\r\n");
+        while (lines.next()) |line| {
+            if (line.len == 0 or std.mem.startsWith(u8, line, "HTTP/")) continue;
+            const colon = std.mem.indexOf(u8, line, ":") orelse continue;
+            const name = std.mem.trim(u8, line[0..colon], " \t");
+            if (name.len == 0) continue;
+            const value = std.mem.trim(u8, line[colon + 1 ..], " \t");
+            const owned_name = allocator.dupe(u8, name) catch return NetworkError.OutOfMemory;
+            const owned_value = allocator.dupe(u8, value) catch {
+                allocator.free(owned_name);
+                return NetworkError.OutOfMemory;
+            };
+            headers.append(allocator, .{ .name = owned_name, .value = owned_value }) catch {
+                allocator.free(owned_name);
+                allocator.free(owned_value);
+                return NetworkError.OutOfMemory;
+            };
+        }
+
+        var status_code: c_long = 0;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
+        if (status_code == 0) status_code = statusOfBlock(block) orelse 0;
+
+        var http_version_raw: c_long = 0;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_HTTP_VERSION, &http_version_raw);
+        var starttransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
+        var effective_url: [*c]const u8 = null;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
+        var primary_ip: [*c]const u8 = null;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_PRIMARY_IP, &primary_ip);
+        var primary_port: c_long = 0;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
+
+        const owned_headers = headers.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory;
+        return NetworkResponse{
+            .allocator = allocator,
+            .status = @intCast(status_code),
+            .http_version = switch (http_version_raw) {
+                curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
+                curl.CURL_HTTP_VERSION_2_0 => .http_2,
+                curl.CURL_HTTP_VERSION_3 => .http_3,
+                else => .http_1_1,
+            },
+            .headers = owned_headers,
+            .body = null,
+            .final_url = if (effective_url != null and !std.mem.eql(u8, std.mem.span(effective_url.?), self.url))
+                allocator.dupe(u8, std.mem.span(effective_url.?)) catch null
+            else
+                null,
+            .total_time_ms = 0,
+            .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
+            .redirect_count = 0,
+            .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
+            .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
+        };
+    }
+
+    /// Body bytes received and not yet taken - a streamed transfer hands them
+    /// on as they arrive. Borrowed until `consumeBody`.
+    pub fn bodyReceived(self: *const Transfer) []const u8 {
+        return self.ctx.response_body.items;
+    }
+
+    /// Drop the body bytes `bodyReceived` returned; they have been handed on.
+    pub fn consumeBody(self: *Transfer) void {
+        self.ctx.response_body.clearRetainingCapacity();
+    }
+
+    /// How a streamed transfer ended, once its last attempt ended with
+    /// `result`: the same judgement `finish` makes - an abort, a transport
+    /// failure, or the clean end of a close-delimited body - without building
+    /// a response.
+    pub fn outcome(self: *Transfer, result: curl.CURLcode) NetworkError!void {
+        if (self.ctx.aborted.load(.seq_cst)) return NetworkError.Aborted;
+        if (result == curl.CURLE_OK) return;
+        const end = self.ctx.head_end orelse self.ctx.raw_headers.items.len;
+        var status_code: c_long = 0;
+        _ = curl.easy_getinfo(self.handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
+        if (isCloseDelimitedEndOfBlock(result, status_code, self.ctx.raw_headers.items[self.ctx.block_start..end])) return;
+        const net_err = curl_error.mapCurlError(result);
+        log.warn("{s} {s} failed: curl error {d}: {s} ({s})", .{
+            self.method,
+            self.url,
+            result,
+            curl.errorBufferMessage(&self.error_buf, result),
+            @errorName(net_err),
+        });
+        return net_err;
     }
 
     /// The transfer's outcome, once its last attempt ended with `result`.
@@ -898,7 +1020,35 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
     ctx.raw_headers.appendSlice(ctx.allocator, data[0..total_size]) catch {
         return 0; // Signal error
     };
+    noteHeaderLine(ctx, data[0..total_size]);
     return total_size;
+}
+
+/// Keep track of where header blocks end. curl hands every block it reads -
+/// a 1xx interim response's as well as the final one - to the header
+/// callback, line by line, each ended by an empty line. An interim block is
+/// skipped; the first other one is the response's.
+fn noteHeaderLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
+    if (ctx.head_end != null) return;
+    if (!std.mem.eql(u8, line, "\r\n") and !std.mem.eql(u8, line, "\n")) return;
+    const block = ctx.raw_headers.items[ctx.block_start..];
+    if (statusOfBlock(block)) |status| {
+        if (status >= 100 and status < 200) {
+            ctx.block_start = ctx.raw_headers.items.len;
+            return;
+        }
+    }
+    ctx.head_end = ctx.raw_headers.items.len;
+}
+
+/// The status code on a header block's status line, if it has one.
+fn statusOfBlock(block: []const u8) ?u16 {
+    if (!std.mem.startsWith(u8, block, "HTTP/")) return null;
+    const line_end = std.mem.indexOfScalar(u8, block, '\n') orelse block.len;
+    var parts = std.mem.tokenizeScalar(u8, block[0..line_end], ' ');
+    _ = parts.next() orelse return null;
+    const code = parts.next() orelse return null;
+    return std.fmt.parseInt(u16, std.mem.trim(u8, code, " \r"), 10) catch null;
 }
 
 /// Progress callback - used for abort detection
@@ -933,6 +1083,22 @@ fn progressCallback(
 /// This deliberately does not paper over a truncated *framed* response. If the
 /// server announced a length or used chunked encoding, then the terminator it
 /// promised never arrived, bytes are missing, and the error stands.
+///
+/// `isCloseDelimitedEndOfBlock` is the same judgement over a raw header block,
+/// for a streamed transfer, whose headers are not parsed into a list.
+fn isCloseDelimitedEndOfBlock(code: curl.CURLcode, status_code: c_long, block: []const u8) bool {
+    if (code != curl.CURLE_RECV_ERROR) return false;
+    if (status_code == 0) return false;
+    var lines = std.mem.splitSequence(u8, block, "\r\n");
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOf(u8, line, ":") orelse continue;
+        const name = std.mem.trim(u8, line[0..colon], " \t");
+        if (std.ascii.eqlIgnoreCase(name, "content-length")) return false;
+        if (std.ascii.eqlIgnoreCase(name, "transfer-encoding")) return false;
+    }
+    return true;
+}
+
 fn isCloseDelimitedEnd(
     code: curl.CURLcode,
     status_code: c_long,

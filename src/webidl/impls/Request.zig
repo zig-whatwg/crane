@@ -107,6 +107,12 @@ pub const InternalState = struct {
     /// `same_object.zig`. (`headers` works the other way round: the Headers
     /// object keeps its owner alive, because its list lives in the owner.)
     body_pin: same_object.Pin = .{},
+    /// Keeps `this.signal` alive for as long as this object: the getter
+    /// returns this's signal, one object for the Request's whole life, and
+    /// `state.own.signal` is a pointer V8 cannot see (Blink's Request traces
+    /// its signal_). Unpinned when this object goes, the signal is the wrapper
+    /// cache's - a fetch() still using it holds its own pin.
+    signal_pin: same_object.Pin = .{},
 };
 
 /// Initialize instance
@@ -164,6 +170,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // InternalState.Owner). At context teardown the order is arbitrary,
         // which is what that object's generation check is for.
         internal.body_pin.release();
+        internal.signal_pin.release();
 
         internal.request.deinit();
         allocator.destroy(internal);
@@ -523,6 +530,7 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     const signals: []const *runtime.Instance = if (signal) |s| &.{s} else &.{};
     // Step 30: this's signal is a dependent abort signal from signals.
     state.own.signal = try abort_algorithms.createDependent(ctx, signals);
+    internal.signal_pin.hold(state.own.signal);
 
     // Steps 36-42: Handle body from init
     if (init_opts.body) |body_init| {
@@ -925,6 +933,7 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Steps 3-4: clonedRequestObject's signal is a dependent abort signal
     // from « this's signal ».
     cloned_state.own.signal = try abort_algorithms.createDependent(instance.ctx, &.{state.own.signal});
+    cloned_internal.signal_pin.hold(cloned_state.own.signal);
 
     return cloned_instance;
 }

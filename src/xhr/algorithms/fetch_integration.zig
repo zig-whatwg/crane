@@ -71,7 +71,9 @@ pub fn fetch(
     if (result) |_| {} else |err| {
         log.warn("fetch failed for {s}: {s}", .{ request.currentUrl(), @errorName(err) });
     }
-    try processFetchResult(state, body, result, elapsed_timer.read() / std.time.ns_per_ms, processor, upload_tracker);
+    // A blocking fetch's body is all there: nothing is left to read.
+    const rest = try processFetchResult(state, body, result, elapsed_timer.read() / std.time.ns_per_ms, processor, upload_tracker);
+    std.debug.assert(rest == null);
 }
 
 /// What the fetch's outcome does to this XHR: send() from the point req's
@@ -79,6 +81,12 @@ pub fn fetch(
 /// state. `elapsed_ms` is how long a synchronous request's fetch took, for its
 /// timeout; null for an asynchronous one, whose timeout the caller enforces
 /// as the fetch runs.
+///
+/// A body that is all there is read here, to its end. A body still arriving
+/// - an asynchronous fetch hands the response on at its headers - is handed
+/// back, for the caller to read as it comes (step 11.9.13, "incrementally
+/// read"), feeding each piece to `processor`; null means nothing is left to
+/// read. The pipe is the response's, which the XHR state now owns.
 pub fn processFetchResult(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
@@ -86,7 +94,7 @@ pub fn processFetchResult(
     elapsed_ms: ?u64,
     processor: *ResponseProcessor,
     upload_tracker: ?*UploadTracker,
-) !void {
+) !?*fetch_mod.internal.BodyPipe {
     var result = fetch_result catch |err| {
         // The fetch algorithm reports transport failure IN-BAND, as a response
         // whose type is "error" - an error return here means it could not even
@@ -96,7 +104,7 @@ pub fn processFetchResult(
         } else {
             processor.handleNetworkError();
         }
-        return;
+        return null;
     };
     // The response outlives this function - the XHR state takes it. Only the
     // timing info is ours to free, so do NOT call `result.deinit()`, which
@@ -117,7 +125,7 @@ pub fn processFetchResult(
             response.deinit();
             state.timed_out_flag = true;
             processor.handleTimeout();
-            return;
+            return null;
         }
     }
 
@@ -143,7 +151,7 @@ pub fn processFetchResult(
     // connections and TLS errors.
     if (state.isNetworkError()) {
         processor.handleNetworkError();
-        return;
+        return null;
     }
 
     // Step 12, a synchronous request: processResponseConsumeBody appends the
@@ -160,11 +168,11 @@ pub fn processFetchResult(
             if (bytes.len > 0) try state.received_bytes.appendSlice(state.allocator, bytes);
         }
         processor.processResponseEndOfBody();
-        return;
+        return null;
     }
 
     // Steps 11.9.3-11.9.9: move to headers received and read the length.
-    if (!processor.processResponse()) return;
+    if (!processor.processResponse()) return null;
 
     // Re-read the response rather than unwrapping the one from before
     // `processResponse`: that call fires `readystatechange`, and a listener is
@@ -172,16 +180,20 @@ pub fn processFetchResult(
     // a network error - which here means NULL. `processResponse` returning true
     // already rules that out via the state check, so this is belt and braces
     // against a `.?` that would panic rather than fail a subtest.
-    const response_now = state.response orelse return;
+    const response_now = state.response orelse return null;
 
     // Step 11.9.7: If this's response's body is null, run handle response
     // end-of-body and return. A 204/304 legitimately has no body.
     const response_body = response_now.body orelse {
         processor.processResponseEndOfBody();
-        return;
+        return null;
     };
 
-    // Step 11.9.13: incrementally read the body. One chunk, see the header.
+    // Step 11.9.13: incrementally read the body - the caller's, as it
+    // arrives, when it is still arriving.
+    if (response_body.pipe) |pipe| return pipe;
+
+    // A body that is all here: one chunk.
     const bytes = response_body.getBytes();
     if (bytes.len > 0) {
         try processor.processResponseBodyChunk(bytes);
@@ -189,6 +201,7 @@ pub fn processFetchResult(
 
     // Step 11.9.11: processEndOfBody.
     processor.processResponseEndOfBody();
+    return null;
 }
 
 /// Build `req` from the XHR state.

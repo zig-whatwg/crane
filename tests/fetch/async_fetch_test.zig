@@ -201,7 +201,7 @@ test "terminate ends a fetch with no word to its client" {
     var recorder: Recorder = .{};
     const f = try AsyncFetch.start(testing.allocator, try requestFor(server, "/delay/1"), .{}, &scheduler, recorder.client());
     _ = async_fetch.pumpWith(&scheduler);
-    f.terminate();
+    f.terminate(.{ .kind = .network });
 
     const deadline = clock.monotonicMillis() + 1_500;
     while (clock.monotonicMillis() < deadline) {
@@ -211,4 +211,233 @@ test "terminate ends a fetch with no word to its client" {
     try testing.expectEqual(@as(usize, 0), recorder.done_calls);
     try testing.expectEqual(@as(usize, 0), recorder.gone_calls);
     try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+}
+
+/// A client that keeps the response and reads its body through the pipe, as
+/// a Response's stream does.
+const StreamingReader = struct {
+    response: ?*fetch.internal.InternalResponse = null,
+    done_at_ms: i64 = 0,
+    notified: usize = 0,
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
+    body_state_at_done: fetch.internal.body_pipe.State = .open,
+    finished: bool = false,
+    gone_calls: usize = 0,
+
+    fn client(self: *StreamingReader) AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = onFinished };
+    }
+
+    fn done(context: *anyopaque, result: algorithms.FetchError!algorithms.FetchResult) void {
+        const self: *StreamingReader = @ptrCast(@alignCast(context));
+        var r = result catch return;
+        r.timing_info.deinit();
+        self.done_at_ms = clock.monotonicMillis();
+        self.response = r.response;
+        if (r.response.body) |body| {
+            if (body.pipe) |pipe| {
+                self.body_state_at_done = pipe.state;
+                pipe.consumer = .{ .context = self, .notify = notify };
+            }
+        }
+    }
+
+    fn notify(context: *anyopaque) void {
+        const self: *StreamingReader = @ptrCast(@alignCast(context));
+        self.notified += 1;
+        const pipe = self.response.?.body.?.pipe.?;
+        const taken = pipe.take() catch return;
+        defer testing.allocator.free(taken);
+        self.bytes.appendSlice(testing.allocator, taken) catch {};
+    }
+
+    fn alive(_: *anyopaque) bool {
+        return true;
+    }
+    fn gone(context: *anyopaque) void {
+        const self: *StreamingReader = @ptrCast(@alignCast(context));
+        self.gone_calls += 1;
+    }
+    fn onFinished(context: *anyopaque) void {
+        const self: *StreamingReader = @ptrCast(@alignCast(context));
+        self.finished = true;
+    }
+
+    fn deinit(self: *StreamingReader) void {
+        if (self.response) |r| r.deinit();
+        self.bytes.deinit(testing.allocator);
+    }
+};
+
+fn turnUntil(scheduler: *NetworkScheduler, limit_ms: i64, done: *const fn (*anyopaque) bool, ctx: *anyopaque) void {
+    const deadline = clock.monotonicMillis() + limit_ms;
+    while (!done(ctx) and clock.monotonicMillis() < deadline) {
+        _ = async_fetch.pumpWith(scheduler);
+        clock.sleep(std.time.ns_per_ms);
+    }
+}
+
+test "a response is handed on at its headers, and its body arrives through its pipe" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    const started = clock.monotonicMillis();
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/10"), .{}, &scheduler, reader.client());
+
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.finished, &reader);
+
+    const response = reader.response orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(u16, 200), response.status);
+    // Ten 100ms chunks: the response came with the first of them, not after
+    // the last.
+    try testing.expect(reader.done_at_ms - started < 500);
+    try testing.expectEqual(fetch.internal.body_pipe.State.open, reader.body_state_at_done);
+    try testing.expectEqual(@as(usize, 60), reader.bytes.items.len);
+    try testing.expect(reader.notified >= 3);
+    try testing.expectEqual(fetch.internal.body_pipe.State.closed, response.body.?.pipe.?.state);
+    try testing.expectEqual(@as(usize, 0), async_fetch.inFlight());
+}
+
+test "a body that fails after its headers fails its pipe" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/bad-chunk"), .{}, &scheduler, reader.client());
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.finished, &reader);
+
+    const pipe = reader.response.?.body.?.pipe.?;
+    try testing.expectEqual(fetch.internal.body_pipe.State.errored, pipe.state);
+    try testing.expectEqualStrings("chunk\n", reader.bytes.items);
+}
+
+test "a response dropped while its body arrives stops the transfer" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
+    const Until = struct {
+        fn responded(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.response != null;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.responded, &reader);
+    try testing.expectEqual(@as(usize, 1), scheduler.inFlight());
+
+    // The Response goes - its body with it.
+    reader.response.?.deinit();
+    reader.response = null;
+    _ = async_fetch.pumpWith(&scheduler);
+
+    try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+    try testing.expect(reader.finished);
+    try testing.expectEqual(@as(usize, 0), async_fetch.inFlight());
+}
+
+test "a collecting fetch hands on its response only with the whole body, as bytes" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    const started = clock.monotonicMillis();
+    _ = try AsyncFetch.startWith(testing.allocator, try requestFor(server, "/trickle/5"), .{}, .{ .collect = true }, &scheduler, reader.client());
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.finished, &reader);
+
+    const body = reader.response.?.body.?;
+    try testing.expect(body.pipe == null);
+    try testing.expectEqualStrings("chunk\nchunk\nchunk\nchunk\nchunk\n", body.getBytes());
+    try testing.expect(reader.done_at_ms - started >= 400);
+}
+
+test "terminating a fetch whose body is arriving fails the body" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    const f = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
+    const Until = struct {
+        fn responded(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.response != null;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.responded, &reader);
+
+    f.terminate(.{ .kind = .aborted });
+
+    const pipe = reader.response.?.body.?.pipe.?;
+    try testing.expectEqual(fetch.internal.body_pipe.State.errored, pipe.state);
+    try testing.expectEqual(fetch.internal.body_pipe.Failure.Kind.aborted, pipe.failure().kind);
+    try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+    try testing.expect(!reader.finished);
+}
+
+test "a response with a null body status has a null body, and its transfer stops" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/status/204"), .{}, &scheduler, reader.client());
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.finished, &reader);
+
+    const response = reader.response orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(u16, 204), response.status);
+    try testing.expect(response.body == null);
 }

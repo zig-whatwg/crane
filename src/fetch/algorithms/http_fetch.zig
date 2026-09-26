@@ -32,6 +32,7 @@ const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const cors = @import("../cors/root.zig");
 const clock = @import("clock");
 const PreflightCache = cors.PreflightCache;
+const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -456,6 +457,11 @@ pub fn httpNetworkFetchUsesCookies(request: *const InternalRequest) bool {
 /// HTTP-network fetch, once the network has answered with `network_response`
 /// (sent at `start_time`): the response it returns.
 ///
+/// A network response that is all there is carries its body. One whose body
+/// is still arriving - the response is handed on at its headers, step 20 -
+/// has none, and `streamed_body` is the pipe it arrives through, whose
+/// ownership passes in.
+///
 /// Per Fetch spec §4.9:
 /// 3. Convert NetworkResponse to InternalResponse
 /// 4. Record timing information
@@ -464,14 +470,24 @@ pub fn httpNetworkFetchFinish(
     params: *FetchParams,
     network_response: *const NetworkResponse,
     start_time: f64,
+    streamed_body: ?*BodyPipe,
 ) HttpFetchError!*InternalResponse {
     const request = params.request;
 
     // Step 3: Convert NetworkResponse to InternalResponse
     const response = InternalResponse.init(allocator) catch {
+        if (streamed_body) |pipe| pipe.release();
         return HttpFetchError.OutOfMemory;
     };
     errdefer response.deinit();
+
+    // The body first, so that from here the response owns the pipe.
+    if (streamed_body) |pipe| {
+        response.body = @import("../internal/body.zig").Body.fromPipe(allocator, pipe) catch {
+            pipe.release();
+            return HttpFetchError.OutOfMemory;
+        };
+    }
 
     // Set response URL from request (or final URL if redirected)
     if (network_response.final_url) |final_url| {

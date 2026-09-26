@@ -39,6 +39,23 @@ const log = std.log.scoped(.network_scheduler);
 /// block; it may start and cancel other transfers.
 pub const Completion = *const fn (context: ?*anyopaque, result: NetworkError!NetworkResponse) void;
 
+/// Who hears a streamed transfer: its response as soon as the headers are
+/// in, its body as it arrives, and how it ended. Each runs inside `pump`,
+/// never inside a curl call; each may start and cancel transfers, this one
+/// included - after cancelling it, nothing more is heard.
+pub const StreamClient = struct {
+    context: ?*anyopaque,
+    /// The response's status and header fields are in. The response has no
+    /// body - that comes through `data` - and is the callee's.
+    head: *const fn (context: ?*anyopaque, response: NetworkResponse) void,
+    /// More of the body. Borrowed for the call.
+    data: *const fn (context: ?*anyopaque, bytes: []const u8) void,
+    /// The transfer is over: the body ended cleanly, or why not. The last
+    /// call. A transfer that failed before its headers were in ends here
+    /// without a `head`.
+    end: *const fn (context: ?*anyopaque, result: NetworkError!void) void,
+};
+
 pub const StartOptions = struct {
     /// Send and store cookies for this transfer - HTTP-network fetch does,
     /// unless the request's credentials mode is "omit".
@@ -58,8 +75,13 @@ pub const NetworkScheduler = struct {
         /// The transfer's allocator, which made this job too.
         allocator: Allocator,
         transfer: *Transfer,
-        on_complete: Completion,
-        context: ?*anyopaque,
+        /// Who hears it: the whole response at the end, or a stream.
+        client: union(enum) {
+            complete: struct { callback: Completion, context: ?*anyopaque },
+            stream: StreamClient,
+        },
+        /// A streamed transfer's `head` has been delivered.
+        head_delivered: bool = false,
         /// Attempts that ended without a connection.
         attempt: u8 = 0,
         /// In the multi handle. False while a retry waits for `retry_at_ns`,
@@ -95,6 +117,28 @@ pub const NetworkScheduler = struct {
         on_complete: Completion,
         context: ?*anyopaque,
     ) NetworkError!*Job {
+        return self.startJob(allocator, request, options, .{ .complete = .{ .callback = on_complete, .context = context } });
+    }
+
+    /// Start a transfer for `request` whose response `client` hears as it
+    /// arrives: headers first, then the body in pieces. Otherwise as `start`.
+    pub fn startStreaming(
+        self: *NetworkScheduler,
+        allocator: Allocator,
+        request: *const NetworkRequest,
+        options: StartOptions,
+        client: StreamClient,
+    ) NetworkError!*Job {
+        return self.startJob(allocator, request, options, .{ .stream = client });
+    }
+
+    fn startJob(
+        self: *NetworkScheduler,
+        allocator: Allocator,
+        request: *const NetworkRequest,
+        options: StartOptions,
+        client: @FieldType(Job, "client"),
+    ) NetworkError!*Job {
         if (curl_backend.getGlobalShare() == null) curl_backend.globalInit() catch return NetworkError.Unknown;
         const multi = self.multi orelse blk: {
             const m = curl.multi_init() orelse return NetworkError.OutOfMemory;
@@ -110,8 +154,7 @@ pub const NetworkScheduler = struct {
         job.* = .{
             .allocator = allocator,
             .transfer = transfer,
-            .on_complete = on_complete,
-            .context = context,
+            .client = client,
         };
         self.jobs.append(self.allocator, job) catch return NetworkError.OutOfMemory;
         errdefer _ = self.jobs.pop();
@@ -203,37 +246,92 @@ pub const NetworkScheduler = struct {
             job.ended = result;
         }
 
-        // Deliver them one at a time, finding the next afresh each time: a
-        // callback may cancel a job that also ended, or start one that takes
-        // a freed job's address - and a new job has not ended.
-        var delivered = false;
-        while (self.nextEnded()) |job| {
-            const result = job.ended.?;
+        // A connection that failed goes back for another attempt, if it has
+        // one left, before anything is delivered.
+        for (self.jobs.items) |job| {
+            const result = job.ended orelse continue;
+            const backoff_ns = Transfer.retryBackoffNs(result, job.attempt) orelse continue;
             job.ended = null;
-            if (Transfer.retryBackoffNs(result, job.attempt)) |backoff_ns| {
-                job.attempt += 1;
-                job.retry_at_ns = clock.monotonicNanos() + backoff_ns;
-                log.debug("{s} {s}: connection failed, retrying in {d}ms", .{ job.transfer.method, job.transfer.url, backoff_ns / std.time.ns_per_ms });
-                continue;
-            }
-            const index = self.indexOf(job).?;
-            _ = self.jobs.orderedRemove(index);
-            const on_complete = job.on_complete;
-            const context = job.context;
-            const response = job.transfer.finish(result);
-            job.transfer.destroy();
-            job.allocator.destroy(job);
-            on_complete(context, response);
+            job.attempt += 1;
+            job.retry_at_ns = clock.monotonicNanos() + backoff_ns;
+            log.debug("{s} {s}: connection failed, retrying in {d}ms", .{ job.transfer.method, job.transfer.url, backoff_ns / std.time.ns_per_ms });
+        }
+
+        // Deliver one thing at a time, finding the next afresh each time: a
+        // callback may cancel a job it has not heard from yet, or start one
+        // that takes a freed job's address. A streamed transfer's headers and
+        // body go before its end.
+        var delivered = false;
+        while (self.nextToDeliver()) |job| {
             delivered = true;
+            switch (job.client) {
+                .stream => |client| {
+                    if (!job.head_delivered and (job.transfer.headersComplete() or job.ended != null)) {
+                        if (job.transfer.headersComplete()) {
+                            job.head_delivered = true;
+                            const head = job.transfer.head() catch |err| {
+                                self.finalize(job);
+                                client.end(client.context, err);
+                                continue;
+                            };
+                            client.head(client.context, head);
+                            continue;
+                        }
+                    }
+                    if (job.head_delivered and job.transfer.bodyReceived().len > 0) {
+                        // Taken out first: the callback may cancel this very
+                        // job, which frees the transfer.
+                        const bytes = job.allocator.dupe(u8, job.transfer.bodyReceived()) catch {
+                            self.finalize(job);
+                            client.end(client.context, NetworkError.OutOfMemory);
+                            continue;
+                        };
+                        const allocator = job.allocator;
+                        defer allocator.free(bytes);
+                        job.transfer.consumeBody();
+                        client.data(client.context, bytes);
+                        continue;
+                    }
+                    const result = job.ended.?;
+                    const outcome = job.transfer.outcome(result);
+                    self.finalize(job);
+                    client.end(client.context, outcome);
+                },
+                .complete => |client| {
+                    const result = job.ended.?;
+                    const response = job.transfer.finish(result);
+                    self.finalize(job);
+                    client.callback(client.context, response);
+                },
+            }
         }
         return delivered;
     }
 
-    fn nextEnded(self: *const NetworkScheduler) ?*Job {
+    /// The next job with something to deliver: a streamed transfer's headers
+    /// or body, or any transfer's end.
+    fn nextToDeliver(self: *const NetworkScheduler) ?*Job {
         for (self.jobs.items) |job| {
+            switch (job.client) {
+                .stream => {
+                    if (!job.head_delivered and job.transfer.headersComplete()) return job;
+                    if (job.head_delivered and job.transfer.bodyReceived().len > 0) return job;
+                },
+                .complete => {},
+            }
             if (job.ended != null) return job;
         }
         return null;
+    }
+
+    /// Take `job` - no longer in the multi handle - out of the scheduler and
+    /// free it, before its last callback runs.
+    fn finalize(self: *NetworkScheduler, job: *Job) void {
+        if (job.running) _ = curl.multi_remove_handle(self.multi.?, job.transfer.handle);
+        const index = self.indexOf(job).?;
+        _ = self.jobs.orderedRemove(index);
+        job.transfer.destroy();
+        job.allocator.destroy(job);
     }
 
     fn indexOf(self: *const NetworkScheduler, job: *const Job) ?usize {
