@@ -716,6 +716,11 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A cache keyed on its source string must update the source on every write path](docs/lessons/architecture-a-cache-keyed-on-its-source-string-must-update-it-on-every-write.md) - Every writer of the value must also write its key.
 - [A USVString getter's result is freed by the binding](docs/lessons/architecture-a-usvstring-getter-s-result-is-freed-by-the-binding.md) - A USVString getter returns memory the binding will free - always a copy, never a view.
 - [A named setter interceptor on a prototype never runs for an instance](docs/lessons/architecture-a-named-setter-interceptor-on-a-prototype-never-runs-for-an-instance.md) - An interceptor on a prototype can serve reads; it cannot serve writes.
+- [A task run into a worker needs the worker's isolate entered](docs/lessons/architecture-a-task-run-into-a-worker-needs-the-worker-s-isolate-entered.md) - A dead end written in a comment is a hypothesis; grep `docs/lessons/` for the symptom first.
+- [A blocking handshake inside a timer turn stops the whole page](docs/lessons/architecture-a-blocking-handshake-inside-a-timer-turn-stops-the-whole-page.md) - Anything "in parallel" must advance one non-blocking step per turn.
+- [A short `curl_ws_send` is the middle of a frame](docs/lessons/architecture-a-short-curl-ws-send-is-the-middle-of-a-frame.md) - A partial write is state, not an error.
+- [An errdefer that outlives the handoff frees what the new owner will free](docs/lessons/architecture-an-errdefer-that-outlives-the-handoff-frees-what-the-new-owner-will-free.md) - End the errdefer scope where ownership moves.
+- [An EventTarget subclass must init and deinit through EventTarget's impl](docs/lessons/architecture-an-eventtarget-subclass-must-init-and-deinit-through-eventtarget-s-impl.md) - An address-keyed side table needs its owner's deinit.
 
 ### Spec Compliance
 
@@ -731,6 +736,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A body that is always a pipe needs main fetch step 20](docs/lessons/spec-compliance-a-body-that-is-always-a-pipe-needs-main-fetch-step-20.md) - When bytes become a stream, "no body" and "empty body" become different states.
 - [Evaluate a spec condition when the spec does](docs/lessons/spec-compliance-evaluate-a-spec-condition-when-the-spec-does.md) - A queued task sees the world after the event that queued it; record what the spec reads at the moment it reads it.
 - [Infra's ASCII whitespace is not `std.ascii.isWhitespace`](docs/lessons/spec-compliance-infra-ascii-whitespace-is-not-std-ascii-iswhitespace.md) - Use Infra's whitespace set for web microsyntaxes; the standard library's includes VT.
+- [A union argument reaches the impl in every JSValue shape](docs/lessons/spec-compliance-a-union-argument-reaches-the-impl-in-every-jsvalue-shape.md) - An impl that takes a raw JSValue owns the whole union conversion.
+- [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
 
 ### Codegen
 
@@ -783,6 +790,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [`ctx.getEngineContextAs(Isolate)` is a context cast to an isolate](docs/lessons/debugging-ctx-getenginecontextas-isolate-is-a-context-cast.md) - Three more impls survived the WebSocket and XHR fixes still casting a context pointer to an isolate (046399d52).
 - [Redirect the runner's output into a pipe, never a file](docs/lessons/debugging-redirect-the-runner-s-output-into-a-pipe-never-a.md) - Before concluding instrumentation did not run, pipe the output.
 - [Find what keeps a page alive: count native contexts, snapshot, attribute handles by site](docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) - Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.
+- [A 101 response's headers are filed under `CURLH_1XX`](docs/lessons/debugging-a-101-response-s-headers-are-filed-under-curlh-1xx.md) - A header curl says is missing may be filed under another origin bit.
 
 ### Workflow
 
