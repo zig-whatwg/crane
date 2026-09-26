@@ -1123,8 +1123,13 @@ pub fn fromV8Value(
         };
 
         // Runtime dispatch based on V8 value type
-        // Check function FIRST since functions are also objects in JavaScript
-        if (v8.v8_Value_IsFunction(value)) {
+        // Check function FIRST since functions are also objects in JavaScript.
+        // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
+        // - if there is one. Otherwise it is just an object and goes on
+        // through the object steps and, failing those, to the string step
+        // (ToString), so `new Request(URL)` - the URL constructor - is the
+        // string it stringifies to.
+        if (function_idx != null and v8.v8_Value_IsFunction(value)) {
             if (function_idx) |idx| {
                 // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
                 // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
