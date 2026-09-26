@@ -294,7 +294,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         internal.node_base = null;
                         internal.deinit();
                         Registry.remove(instance);
-                        // Remove lifecycle entry for address reuse safety
+                        // Cleanup complete; see the note at the end of deinit.
                         runtime.instance_lifecycle.markCleanupComplete(instance);
                         EventTargetImpl.deinit(instance);
                         return;
@@ -339,15 +339,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     Registry.remove(instance);
 
-    // CRITICAL: Remove the lifecycle entry now that cleanup is complete.
-    // This is essential for memory address reuse: when the SlabAllocator
-    // reuses this address for a new instance, isCleanupStarted() must return
-    // false so the new instance can be properly cleaned up.
-    //
-    // Double-free prevention is handled by wrapper_cache via markInstanceCleanedUp()
-    // (called at the start of deinit), which sets entry.instance_already_cleaned.
-    // wrapper_cache.deinit checks this flag FIRST before isCleanupStarted, so
-    // removing the lifecycle entry here is safe.
+    // Record that cleanup is complete - and keep recording it. While the
+    // wrapper cache is tearing down, markInstanceCleanedUp cannot flag the
+    // entry, so this record is the only thing that stops the cache running
+    // this deinit a second time. A reissued slot starts fresh (Instance.init).
     runtime.instance_lifecycle.markCleanupComplete(instance);
 
     // EventTarget cleanup happens via inheritance chain

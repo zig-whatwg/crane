@@ -171,12 +171,14 @@ pub fn markCleanupStarted(instance: *const Instance) bool {
 /// If we don't remove the entry, a new instance at the same address
 /// would be detected as "already cleaned up" and deinit would be skipped.
 pub fn markCleanupComplete(instance: *const Instance) void {
-    if (registry) |*r| {
-        // Remove the entry entirely - this is critical for memory reuse!
-        // When slab allocator reuses this address for a new instance,
-        // we need markCleanupStarted to return true (fresh state).
-        _ = r.remove(instance);
-    }
+    // Keep the record: a node torn down by its tree is still in its wrapper
+    // cache, whose teardown skips an instance only while this says "started".
+    // Removing it made that instance look untouched, and its deinit ran a
+    // second time (an iframe's IFrameIntegration freed twice). A reissued
+    // slot starts fresh anyway - Instance.init resets its flags.
+    const flags = getOrCreate(instance);
+    flags.cleanup_started = true;
+    flags.cleanup_complete = true;
 }
 
 /// Mark instance as attached to DOM

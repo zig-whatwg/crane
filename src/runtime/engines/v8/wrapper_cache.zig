@@ -413,8 +413,10 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         // Step 2: Check if instance cleanup already started (lifecycle tracking)
         // This prevents double-cleanup if Node.deinit was already called
         if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
-            // Already being cleaned up - just dispose handles
+            // Already being cleaned up - just dispose handles, and free the
+            // storage a completed cleanup left (slotReissued was ruled out above).
             // Note: entry already removed from cache above
+            if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) runtime.gc.releaseStorage(entry.instance);
             disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
             return;
@@ -581,6 +583,11 @@ pub const WrapperCache = struct {
                 skipped_started += 1;
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_STARTED iframe instance={*}", .{entry.instance});
+                }
+                // Its tree tore it down and left the storage: free that, and
+                // only that - deinit has run.
+                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
+                    runtime.gc.releaseStorage(entry.instance);
                 }
             } else if (is_reused) {
                 // Instance was reused for a different object - don't call onObjectFreed

@@ -359,6 +359,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> integration={*}", .{ instance, internal.integration });
         internal.deinit();
+        // The state block too, and no pointer left to it: a second deinit
+        // must find nothing to free.
+        state.own._internal = null;
+        const Arena = runtime.ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
     } else {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> No internal state", .{instance});
     }

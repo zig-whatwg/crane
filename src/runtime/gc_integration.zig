@@ -106,6 +106,14 @@ pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
         deinit(inst); // Calls Node.deinit_wrapper → Node.deinit
     }
 
+    releaseStorage(inst);
+}
+
+/// The storage half of `onObjectFreed`, for an instance whose deinit has
+/// already run - a node its tree tore down (`instance_lifecycle.isCleanedUp`)
+/// while its wrapper was still cached. The caller has established that the
+/// slot was not reissued.
+pub fn releaseStorage(inst: *Instance) void {
     // Step 2: Return the state block for reuse.
     //
     // The finalizer path, the counterpart to Instance.deinit - and the one that
