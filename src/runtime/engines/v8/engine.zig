@@ -94,6 +94,13 @@ pub const v8_engine_interface: EngineInterface = .{
     .runInRealm = v8RunInRealm,
     .createDOMException = v8CreateDOMException,
     .releaseValue = v8ReleaseValue,
+    .structuredSerializeForStorage = v8StructuredSerializeForStorage,
+    .structuredDeserialize = v8StructuredDeserialize,
+    .resolvePromiseWithInstance = v8ResolvePromiseWithInstance,
+    .rejectPromiseWithValue = v8RejectPromiseWithValue,
+    .markPromiseAsHandled = v8MarkPromiseAsHandled,
+    .createSequenceOfPlatformObjects = v8CreateSequenceOfPlatformObjects,
+    .relevantGlobalObject = v8RelevantGlobalObject,
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,
     .createArrayBuffer = v8CreateArrayBuffer,
@@ -466,6 +473,98 @@ fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []con
     return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
 }
 
+fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
+    const object: *ffi.Value = switch (value) {
+        .handle => |h| @ptrCast(@alignCast(h.ptr)),
+        // Primitives and strings are the caller's to keep; a platform object
+        // arrives wrapped, as a handle, when it is [Serializable].
+        else => return EngineError.DataCloneError,
+    };
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    var no_transfer: [1]*ffi.Value = undefined;
+    var no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
+    var size: usize = 0;
+    var code: c_int = 0;
+    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(object, &no_transfer, 0, &size, &no_buffers, &code) orelse
+        return if (code == 3) EngineError.ExceptionPending else EngineError.DataCloneError;
+    defer ffi.v8_Free_SerializedBuffer(bytes);
+    return allocator.dupe(u8, bytes[0..size]) catch EngineError.OutOfMemory;
+}
+
+fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineError!runtime.JSValue {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
+    var code: c_int = 0;
+    const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(bytes.ptr, bytes.len, &no_buffers, 0, &code) orelse
+        return EngineError.DataCloneError;
+    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+}
+
+fn v8ResolvePromiseWithInstance(promise_handle: *anyopaque, instance: *runtime.Instance) EngineError!void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    // The wrapper in the promise's realm: enter it for the lookup.
+    const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
+    defer scope.deinit();
+    // Borrowed: the wrapper cache (or, for a Window, the Window) owns it.
+    const wrapper = v8_conversions.instanceToV8(handle.isolate, instance);
+    if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, wrapper)) return EngineError.PromiseError;
+}
+
+fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
+    defer scope.deinit();
+    const reason = v8_conversions.toV8Value(runtime.JSValue, handle.isolate, handle.context, value) catch
+        return EngineError.OperationFailed;
+    // toV8Value hands back a handle or an instance's wrapper as it is, and
+    // makes a new value for anything else - which is released here.
+    const made = switch (value) {
+        .handle, .instance => false,
+        else => true,
+    };
+    defer if (made) ffi.v8_Value_Dispose(reason);
+    if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, reason)) return EngineError.PromiseError;
+}
+
+fn v8MarkPromiseAsHandled(promise_handle: *anyopaque) void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    ffi.v8_Promise_MarkAsHandled(@ptrCast(handle.promise));
+}
+
+fn v8CreateSequenceOfPlatformObjects(realm: runtime.Context, instances: []const *runtime.Instance) EngineError!runtime.JSValue {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const array = ffi.v8_Array_New(entered.isolate, @intCast(instances.len));
+    for (instances, 0..) |instance, i| {
+        // Borrowed wrappers; Set keeps its own reference.
+        const wrapper = v8_conversions.instanceToV8(entered.isolate, instance);
+        if (!ffi.v8_Array_Set(array, entered.scope.context, @intCast(i), wrapper)) {
+            ffi.v8_Global_Dispose(@ptrCast(array));
+            return EngineError.OperationFailed;
+        }
+    }
+    return .{ .handle = .{ .ptr = @ptrCast(array), .needs_disposal = true } };
+}
+
+fn v8RelevantGlobalObject(instance: *runtime.Instance) ?*runtime.Instance {
+    const engine_ctx = instance.ctx.engine_ctx orelse return null;
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    // A Window realm's Window, as the context manager records it (which also
+    // holds for a realm a navigation has since replaced) ...
+    if (context_manager.getWindowForContext(context)) |window| return window;
+    // ... else whatever global object the realm's global carries - a
+    // WorkerGlobalScope.
+    const global = ffi.v8_Context_Global(context) orelse return null;
+    defer ffi.v8_Object_Dispose(global);
+    const ptr = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
+    return @ptrCast(@alignCast(ptr));
+}
+
 fn v8ReleaseValue(value: runtime.JSValue) void {
     switch (value) {
         .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
@@ -806,6 +905,8 @@ fn v8CreateStringArray(
     for (strings, 0..) |str, i| {
         const v8_str = ffi.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse
             continue; // Skip on error
+        // Set keeps its own reference; this one was made here.
+        defer ffi.v8_String_Dispose(v8_str);
         _ = ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(v8_str));
     }
 

@@ -78,6 +78,13 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .runInRealm = notSupportedRunInRealm,
     .createDOMException = notSupportedCreateDOMException,
     .releaseValue = notSupportedReleaseValue,
+    .structuredSerializeForStorage = notSupportedStructuredSerializeForStorage,
+    .structuredDeserialize = notSupportedStructuredDeserialize,
+    .resolvePromiseWithInstance = notSupportedResolvePromiseWithInstance,
+    .rejectPromiseWithValue = notSupportedRejectPromiseWithValue,
+    .markPromiseAsHandled = notSupportedMarkPromiseAsHandled,
+    .createSequenceOfPlatformObjects = notSupportedCreateSequenceOfPlatformObjects,
+    .relevantGlobalObject = notSupportedRelevantGlobalObject,
 };
 
 /// Promise handle for tracking QuickJS promise state
@@ -781,3 +788,22 @@ fn notSupportedCreateDOMException(_: runtime.Context, _: []const u8, _: []const 
     return EngineError.NotSupported;
 }
 fn notSupportedReleaseValue(_: runtime.JSValue) void {}
+fn notSupportedStructuredSerializeForStorage(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError![]u8 {
+    return EngineError.NotSupported;
+}
+fn notSupportedStructuredDeserialize(_: runtime.Context, _: []const u8) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedResolvePromiseWithInstance(_: *anyopaque, _: *runtime.Instance) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedRejectPromiseWithValue(_: *anyopaque, _: runtime.JSValue) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedMarkPromiseAsHandled(_: *anyopaque) void {}
+fn notSupportedCreateSequenceOfPlatformObjects(_: runtime.Context, _: []const *runtime.Instance) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedRelevantGlobalObject(_: *runtime.Instance) ?*runtime.Instance {
+    return null;
+}

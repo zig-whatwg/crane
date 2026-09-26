@@ -178,6 +178,13 @@ pub const ContextData = struct {
     /// for a window realm, whose host loop ends its own tasks.
     end_of_task: ?*const fn (realm: *ContextData) void = null,
 
+    /// The URL this realm's settings object records as its document's (a
+    /// Window) or its script's (a worker): the API base URL that fetch, XHR,
+    /// WebSocket and module resolution resolve against. Realm state, not
+    /// engine state - it used to live in the V8 adapter's context manager.
+    /// Owned; set with `setDocumentUrl`.
+    document_url: ?[]u8 = null,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)
@@ -319,8 +326,27 @@ pub const ContextData = struct {
             }
         }
 
+        self.clearDocumentUrl();
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
+    }
+
+    /// The URL this realm records for its document (or worker script), if any.
+    pub fn documentUrl(self: *const Self) ?[]const u8 {
+        return self.document_url;
+    }
+
+    /// Record `url` as this realm's document URL, replacing any before it.
+    pub fn setDocumentUrl(self: *Self, url: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, url);
+        self.clearDocumentUrl();
+        self.document_url = copy;
+    }
+
+    /// Forget the recorded document URL, freeing it.
+    pub fn clearDocumentUrl(self: *Self) void {
+        if (self.document_url) |url| self.allocator.free(url);
+        self.document_url = null;
     }
 
     /// Get V8 wrapper cache storage (returns null if not initialized)

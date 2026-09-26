@@ -172,3 +172,63 @@ test "a DOMException is created as an owned value and released" {
     engine.releaseValue.?(.undefined);
     engine.releaseValue.?(.{ .number = 1 });
 }
+
+test "an object survives StructuredSerializeForStorage and StructuredDeserialize" {
+    const ctx = try realm();
+    var reports: Reports = .{};
+    try engine.runClassicScript.?(ctx, "globalThis.state = { a: 1, b: [2, 3], c: 'x' };", null, Reports.report, &reports);
+
+    // The object, as a handle the caller owns.
+    const context = context_once.?;
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, "state", 5) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(key);
+    const state = ffi.v8_Object_Get(global, context, @ptrCast(key)) orelse return error.GetFailed;
+    defer ffi.v8_Value_Dispose(state);
+
+    const bytes = try engine.structuredSerializeForStorage.?(ctx, .{ .handle = .{ .ptr = state, .needs_disposal = false } }, std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(bytes.len > 0);
+
+    const copy = try engine.structuredDeserialize.?(ctx, bytes);
+    defer engine.releaseValue.?(copy);
+    const copy_key = ffi.v8_String_NewFromUtf8(isolate_once.?, "copy", 4) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(copy_key);
+    _ = ffi.v8_Object_Set(global, context, @ptrCast(copy_key), @ptrCast(@alignCast(copy.handle.ptr)));
+    try std.testing.expectEqual(@as(i32, 1), try globalInt("globalThis.copy !== globalThis.state && globalThis.copy.a === 1 && globalThis.copy.b[1] === 3 && globalThis.copy.c === 'x' ? 1 : 0"));
+
+    // Primitives are the caller's to keep, not the engine's to serialize.
+    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeForStorage.?(ctx, .{ .number = 1 }, std.testing.allocator));
+}
+
+test "a promise is rejected with any value, and marked as handled" {
+    const ctx = try realm();
+    const handle = try engine.createPromise(ctx.engine_ctx.?, std.testing.allocator);
+    defer engine.destroyPromiseHandle.?(handle, std.testing.allocator);
+    engine.markPromiseAsHandled.?(handle);
+    try engine.rejectPromiseWithValue.?(handle, .{ .number = 42 });
+    const promise: *ffi.Promise = @ptrCast(@alignCast(engine.getPromiseObject(handle)));
+    try std.testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(promise));
+    const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
+    defer ffi.v8_Value_Dispose(result);
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+}
+
+test "an empty sequence of platform objects is a new empty array" {
+    const ctx = try realm();
+    const array = try engine.createSequenceOfPlatformObjects.?(ctx, &.{});
+    defer engine.releaseValue.?(array);
+    try std.testing.expect(array.handle.needs_disposal);
+    try std.testing.expectEqual(@as(u32, 0), ffi.v8_Array_Length(@ptrCast(@alignCast(array.handle.ptr))));
+}
+
+test "a realm records its document URL, replacing and forgetting it" {
+    const ctx = try realm();
+    try std.testing.expect(ctx.documentUrl() == null);
+    try ctx.setDocumentUrl("https://example.test/a.html");
+    try ctx.setDocumentUrl("https://example.test/b.html");
+    try std.testing.expectEqualStrings("https://example.test/b.html", ctx.documentUrl().?);
+    ctx.clearDocumentUrl();
+    try std.testing.expect(ctx.documentUrl() == null);
+}

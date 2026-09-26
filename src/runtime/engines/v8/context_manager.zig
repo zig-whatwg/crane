@@ -125,12 +125,8 @@ pub const ContextEntry = struct {
     /// Set during createChildContext() for iframe contexts.
     window_instance: ?*runtime.Instance = null,
 
-    /// Document URL for this context (used for module resolution)
-    /// Set when navigating to a page via setDocumentUrl().
-    document_url: ?[]const u8 = null,
-
-    /// Whether we own the document_url memory
-    owns_document_url: bool = false,
+    // The realm's document URL lives on its runtime context
+    // (runtime_ctx.document_url): realm state, not engine state.
 
     /// Set as destroyChildContext starts on this entry. Its teardown runs
     /// arbitrary deinit code - a Window, a DOM tree, iframe elements - and any
@@ -538,12 +534,7 @@ pub fn deinit() void {
                 ctx_data.deinit();
             }
 
-            // Clean up document URL if we own it
-            if (entry.owns_document_url) {
-                if (entry.document_url) |url| {
-                    entry.allocator.free(url);
-                }
-            }
+            entry.runtime_ctx.clearDocumentUrl();
 
             // Free the heap-allocated entry itself
             state.allocator.destroy(entry);
@@ -1221,12 +1212,7 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // no Instance can still be pointing at this ContextData.
         }
 
-        // Clean up document URL if we own it
-        if (entry.owns_document_url) {
-            if (entry.document_url) |url| {
-                entry.allocator.free(url);
-            }
-        }
+        entry.runtime_ctx.clearDocumentUrl();
     }
 }
 
@@ -1319,12 +1305,12 @@ fn handleDynamicImport(
         resolver.reject("No runtime context for this V8 context");
         return;
     };
-    std.log.debug("[DYN_IMPORT] Found context entry, document_url={s}", .{entry.document_url orelse "(null)"});
+    std.log.debug("[DYN_IMPORT] Found context entry, document_url={s}", .{entry.runtime_ctx.documentUrl() orelse "(null)"});
 
     const allocator = entry.runtime_ctx.allocator;
 
     // Resolve the specifier to a URL using document URL as fallback
-    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer, entry.document_url) catch {
+    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer, entry.runtime_ctx.documentUrl()) catch {
         resolver.reject("Failed to resolve module specifier");
         return;
     };
@@ -2818,8 +2804,7 @@ fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
     entry.children = .empty;
     entry.parent_entry = null;
     entry.window_instance = null;
-    entry.document_url = null;
-    entry.owns_document_url = false;
+    entry.runtime_ctx.clearDocumentUrl();
 
     state.retired.append(state.allocator, entry) catch {
         // Only reachable if this allocator is out of memory, which it is about to
@@ -3036,12 +3021,8 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         // valid for as long as an Instance can still be holding a pointer to it.
     }
 
-    // 6. Clean up document URL if we own it
-    if (entry.owns_document_url) {
-        if (entry.document_url) |url| {
-            entry.allocator.free(url);
-        }
-    }
+    // 6. Forget the realm's document URL.
+    entry.runtime_ctx.clearDocumentUrl();
 
     // 7. Take the entry out of the map, but keep it alive: Instances created in
     // this context were not destroyed above and still point into it.
@@ -3220,15 +3201,9 @@ pub fn setDocumentUrl(v8_ctx: *v8.Context, url: []const u8) !void {
     const key = @intFromPtr(raw_addr);
 
     if (state.contexts.get(key)) |entry| {
-        // Free old URL if we own it
-        if (entry.owns_document_url) {
-            if (entry.document_url) |old_url| {
-                entry.allocator.free(old_url);
-            }
-        }
-        // Duplicate the URL so we own the memory
-        entry.document_url = try entry.allocator.dupe(u8, url);
-        entry.owns_document_url = true;
+        // The realm keeps it: runtime.ContextData.setDocumentUrl, which code
+        // outside the adapter calls directly.
+        try entry.runtime_ctx.setDocumentUrl(url);
     } else {
         return error.ContextNotFound;
     }
@@ -3242,7 +3217,7 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
     const key = @intFromPtr(raw_addr);
 
     if (state.contexts.get(key)) |entry| {
-        return entry.document_url;
+        return entry.runtime_ctx.documentUrl();
     }
     return null;
 }

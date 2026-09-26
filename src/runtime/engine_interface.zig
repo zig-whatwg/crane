@@ -36,6 +36,7 @@
 const std = @import("std");
 const JSValue = @import("js_value.zig").JSValue;
 const Context = @import("context.zig").Context;
+const Instance = @import("instance.zig").Instance;
 
 /// Callback signature for main thread scheduling
 ///
@@ -119,6 +120,9 @@ pub const EngineError = error{
     /// boundary": every Engine operation has an explicit entry in every
     /// engine's table, so a missing one fails loudly, never silently).
     NotSupported,
+    /// HTML: the value is not serializable - "throw a DataCloneError" where
+    /// nothing has been thrown yet (compare ExceptionPending).
+    DataCloneError,
 };
 
 /// HTML "extract error information" (8.1.4.6 "report an exception", step 2)
@@ -791,6 +795,63 @@ pub const EngineInterface = struct {
         message: []const u8,
     ) EngineError!JSValue,
 
+    /// HTML StructuredSerializeForStorage (2.7.4) of an object `value` - a
+    /// `.handle`; a caller keeps primitives and strings itself. OWNED: the
+    /// bytes are allocated with `allocator` and are the caller's. Fails with
+    /// DataCloneError when the value cannot be serialized and nothing was
+    /// thrown, ExceptionPending when a "DataCloneError" DOMException, or
+    /// whatever script threw during serialization, is pending.
+    structuredSerializeForStorage: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError![]u8,
+
+    /// HTML StructuredDeserialize (2.7.7) of `bytes` that
+    /// structuredSerializeForStorage produced, in `realm`. OWNED: release the
+    /// result with `releaseValue`.
+    structuredDeserialize: ?*const fn (
+        realm: Context,
+        bytes: []const u8,
+    ) EngineError!JSValue,
+
+    /// WebIDL "resolve" a promise made by createPromise with a platform
+    /// object: its wrapper in the promise's realm. The handle stays valid
+    /// until destroyPromiseHandle.
+    resolvePromiseWithInstance: ?*const fn (
+        promise_handle: *anyopaque,
+        instance: *Instance,
+    ) EngineError!void,
+
+    /// WebIDL "reject" a promise made by createPromise with `value` - any
+    /// JSValue, a createDOMException result included (BORROWED: the caller
+    /// still releases its own value).
+    rejectPromiseWithValue: ?*const fn (
+        promise_handle: *anyopaque,
+        value: JSValue,
+    ) EngineError!void,
+
+    /// WebIDL "mark as handled": a rejection of this promise is never
+    /// reported as unhandled.
+    markPromiseAsHandled: ?*const fn (
+        promise_handle: *anyopaque,
+    ) void,
+
+    /// WebIDL: a `sequence<T>` of platform objects converted to a new array in
+    /// `realm`, each element the object's wrapper there. OWNED: release it
+    /// with `releaseValue`, or hand it to something documented to take it.
+    createSequenceOfPlatformObjects: ?*const fn (
+        realm: Context,
+        instances: []const *Instance,
+    ) EngineError!JSValue,
+
+    /// HTML "relevant global object" of `instance`: the global object of the
+    /// realm it was created in - a Window, or a WorkerGlobalScope - or null
+    /// when that realm has none any more.
+    relevantGlobalObject: ?*const fn (
+        instance: *Instance,
+    ) ?*Instance,
+
     /// Release a value an operation documented as OWNED returned. A value
     /// with `needs_disposal = false`, or one that is not a handle, is left
     /// alone, so any JSValue may be passed.
@@ -1080,6 +1141,13 @@ pub const stub_engine: EngineInterface = .{
     .runInRealm = null,
     .createDOMException = null,
     .releaseValue = null,
+    .structuredSerializeForStorage = null,
+    .structuredDeserialize = null,
+    .resolvePromiseWithInstance = null,
+    .rejectPromiseWithValue = null,
+    .markPromiseAsHandled = null,
+    .createSequenceOfPlatformObjects = null,
+    .relevantGlobalObject = null,
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
     .disposeScript = stubDisposeScript,
