@@ -3222,3 +3222,12 @@ pub extern fn crane_release_function_global(global: ?*anyopaque) void;
 /// @param raw_func - Unregistered Global<Function>* to compare
 /// @return true if the functions are identical (same JS function object)
 pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *anyopaque) bool;
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----
