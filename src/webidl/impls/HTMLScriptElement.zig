@@ -798,6 +798,7 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 
 /// Registered once, on the first script element created in this process.
 var insertion_steps_registered: bool = false;
+var children_changed_steps_registered: bool = false;
 
 /// The script element's insertion steps.
 ///
@@ -820,6 +821,9 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
 
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    // Only an HTML script element has script element state; an SVG script
+    // shares the name and not the processing model.
+    if (getInternal(instance) == null) return;
 
     // Prepare step 1 short-circuits on already started, and the parser owns its
     // own elements. Checking both here keeps a re-insertion from paying for a
@@ -831,6 +835,42 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
     _ = prepareScriptElement(allocator, instance) catch |err| {
         // A script that fails to prepare is not a document that fails to load.
         log.debug("insertion steps: prepare failed: {}", .{err});
+    };
+}
+
+/// The script element's children changed steps.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
+/// "script children changed steps given changedNode are:
+///  1. If the script element is not connected, then return.
+///  2. Run the script HTML element post-connection steps, given changedNode."
+/// and those steps are "1. If insertedNode is parser-inserted, then return.
+/// 2. Prepare the script element given insertedNode."
+///
+/// This is how a script that was connected while EMPTY - so preparing it
+/// returned at step 6 without setting already started - runs once text is put
+/// in it: `s.append("code")`, `s.textContent = "code"`, or a Text child's data
+/// changing (DOM "replace data" runs the parent's children changed steps).
+fn scriptChildrenChangedCallback(parent: *NodeBase) void {
+    if (parent.node_type != 1) return;
+    if (!std.ascii.eqlIgnoreCase(parent.node_name, "script")) return;
+    // Step 1.
+    if (!parent.is_connected) return;
+
+    const instance_ptr = instance_bridge.getInstance(parent) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    // Only an HTML script element has script element state; an SVG script
+    // shares the name and not the processing model.
+    if (getInternal(instance) == null) return;
+
+    // Prepare step 1 returns for an already-started script; checking it here
+    // keeps every text edit of a script that has run from paying for a call.
+    if (hasAlreadyStarted(instance)) return;
+    // Post-connection step 1.
+    if (isParserInserted(instance)) return;
+
+    _ = prepareScriptElement(instance.ctx.allocator, instance) catch |err| {
+        log.debug("children changed steps: prepare failed: {}", .{err});
     };
 }
 
@@ -851,11 +891,17 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     target.already_started = source.already_started;
 }
 
-/// Register the script insertion steps with the DOM mutation system. Idempotent.
+/// Register the script insertion and children changed steps with the DOM
+/// mutation system. Idempotent.
 pub fn ensureInsertionStepsRegistered() void {
-    if (insertion_steps_registered) return;
-    dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch return;
-    insertion_steps_registered = true;
+    if (!insertion_steps_registered) {
+        dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch return;
+        insertion_steps_registered = true;
+    }
+    if (!children_changed_steps_registered) {
+        dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch return;
+        children_changed_steps_registered = true;
+    }
 }
 
 /// Prepare the script element

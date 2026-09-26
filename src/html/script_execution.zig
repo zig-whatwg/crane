@@ -1695,12 +1695,26 @@ fn runQueuedErrorEvent(data: ?*anyopaque) void {
     fireErrorEvent(task.allocator, task.element);
 }
 
-/// Get child text content of an element
+/// The element's child text content.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-child-text-content
+/// "The child text content of a node node is the concatenation of the data of
+///  all the Text node children of node, in tree order."
+///
+/// CHILDREN, not descendants: "prepare the script element" step 5 reads it,
+/// and a script element can have element children - an SVG script the parser
+/// nests inside another (execution-timing/138-143), or anything script
+/// appends. Their text is not the script's source; walking into them fed the
+/// outer script the inner one's text and turned it into a SyntaxError.
+/// A CDATASection is a Text node, so its data counts.
 fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance) ![]const u8 {
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    try collectTextContent(element, &result);
+    var child = NodeImpl.getFirstChild(element);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isTextNode(c)) try appendCharacterData(c, &result);
+    }
 
     if (result.size() == 0) {
         result.deinit();
@@ -1710,26 +1724,17 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
     return try result.toOwnedSlice();
 }
 
-/// Recursively collect text content from a node and its descendants
-fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
-    const node_type = NodeImpl.getNodeType(node) orelse return;
+/// Text or CDATASection: the nodes whose data is child text content.
+fn isTextNode(node: *runtime.Instance) bool {
+    const node_type = NodeImpl.getNodeType(node) orelse return false;
+    return node_type == NodeImpl.NodeType.TEXT_NODE or
+        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
+}
 
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
-    {
-        // Get text content from Text/CDATASection node via CharacterData interface
-        // Text and CDATASection inherit from CharacterData which stores the data
-        var data = CharacterData.get_data(node) catch return;
-        defer data.deinit(result.allocator);
-        try result.appendSlice(data.asSlice());
-    } else {
-        // Recurse into children
-        var child = NodeImpl.getFirstChild(node);
-        while (child) |c| {
-            try collectTextContent(c, result);
-            child = NodeImpl.getNextSibling(c);
-        }
-    }
+fn appendCharacterData(node: *runtime.Instance, result: *infra.List(u8)) !void {
+    var data = CharacterData.get_data(node) catch return;
+    defer data.deinit(result.allocator);
+    try result.appendSlice(data.asSlice());
 }
 
 // =============================================================================
