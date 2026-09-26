@@ -132,4 +132,12 @@ pub const FileSystemHandle = struct {
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_queryPermission",
+        "call_isSameEntry",
+        "call_requestPermission",
+    };
 };

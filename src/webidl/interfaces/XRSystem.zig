@@ -136,4 +136,11 @@ pub const XRSystem = struct {
     pub fn call_isSessionSupported(instance: *runtime.Instance, mode: XRSessionMode) anyerror!runtime.JSValue {
         return try XRSystemImpl.call_isSessionSupported(instance, mode);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestSession",
+        "call_isSessionSupported",
+    };
 };

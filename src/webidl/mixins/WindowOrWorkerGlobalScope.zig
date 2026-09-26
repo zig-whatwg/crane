@@ -162,3 +162,11 @@ pub const overloads = .{
         .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(WindowOrWorkerGlobalScopeImpl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
     } },
 };
+
+/// WebIDL: operations whose return type is a promise - an exception in
+/// their steps becomes a rejected promise.
+pub const promise_returning = .{
+    "call_createImageBitmap",
+    "call_createImageBitmap__1",
+    "call_fetch",
+};

@@ -149,4 +149,11 @@ pub const USB = struct {
     pub fn call_requestDevice(instance: *runtime.Instance, options: USBDeviceRequestOptions) anyerror!runtime.JSValue {
         return try USBImpl.call_requestDevice(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getDevices",
+        "call_requestDevice",
+    };
 };

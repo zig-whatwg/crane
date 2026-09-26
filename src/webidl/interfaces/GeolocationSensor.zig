@@ -183,4 +183,10 @@ pub const GeolocationSensor = struct {
     pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!runtime.JSValue {
         return try GeolocationSensorImpl.call_static_read(instance, readOptions);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_read",
+    };
 };

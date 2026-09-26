@@ -116,4 +116,11 @@ pub const ML = struct {
             .{ .function = "call_createContext__1", .implemented = @hasDecl(MLImpl, "call_createContext__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUDevice")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUDevice.State) } else .other)} }} },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_createContext",
+        "call_createContext__1",
+    };
 };

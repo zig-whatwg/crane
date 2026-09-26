@@ -310,4 +310,11 @@ pub const MediaStreamTrack = struct {
     pub fn call_getConstraints(instance: *runtime.Instance) anyerror!MediaTrackConstraints {
         return try MediaStreamTrackImpl.call_getConstraints(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_sendCaptureAction",
+        "call_applyConstraints",
+    };
 };

@@ -114,4 +114,11 @@ pub const Attribution = struct {
     pub fn call_saveImpression(instance: *runtime.Instance, options: AttributionImpressionOptions) anyerror!runtime.JSValue {
         return try AttributionImpl.call_saveImpression(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_measureConversion",
+        "call_saveImpression",
+    };
 };

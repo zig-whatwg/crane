@@ -151,4 +151,10 @@ pub const DeviceMotionEvent = struct {
     pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DeviceMotionEventImpl.call_static_requestPermission(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_requestPermission",
+    };
 };

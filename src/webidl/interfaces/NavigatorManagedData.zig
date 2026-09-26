@@ -158,4 +158,15 @@ pub const NavigatorManagedData = struct {
     pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getSerialNumber(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getManagedConfiguration",
+        "call_getAnnotatedLocation",
+        "call_getAnnotatedAssetId",
+        "call_getDirectoryId",
+        "call_getHostname",
+        "call_getSerialNumber",
+    };
 };

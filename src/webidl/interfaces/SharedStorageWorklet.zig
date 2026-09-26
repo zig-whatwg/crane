@@ -109,4 +109,11 @@ pub const SharedStorageWorklet = struct {
     pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
         return try SharedStorageWorkletImpl.call_run(instance, name, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_selectURL",
+        "call_run",
+    };
 };

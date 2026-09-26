@@ -115,4 +115,10 @@ pub const BackgroundFetchUpdateUIEvent = struct {
     pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(BackgroundFetchUIOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchUpdateUIEventImpl.call_updateUI(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_updateUI",
+    };
 };

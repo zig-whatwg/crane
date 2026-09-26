@@ -518,4 +518,18 @@ pub const XRSession = struct {
     pub fn call_end(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_end(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_updateTargetFrameRate",
+        "call_restorePersistentAnchor",
+        "call_deletePersistentAnchor",
+        "call_initiateRoomCapture",
+        "call_requestHitTestSourceForTransientInput",
+        "call_requestLightProbe",
+        "call_requestReferenceSpace",
+        "call_requestHitTestSource",
+        "call_end",
+    };
 };

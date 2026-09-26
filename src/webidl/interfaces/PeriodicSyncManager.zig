@@ -109,4 +109,12 @@ pub const PeriodicSyncManager = struct {
     pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!runtime.JSValue {
         return try PeriodicSyncManagerImpl.call_register(instance, tag, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_unregister",
+        "call_getTags",
+        "call_register",
+    };
 };

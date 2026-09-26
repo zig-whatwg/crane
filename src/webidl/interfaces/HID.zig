@@ -149,4 +149,11 @@ pub const HID = struct {
     pub fn call_requestDevice(instance: *runtime.Instance, options: HIDDeviceRequestOptions) anyerror!runtime.JSValue {
         return try HIDImpl.call_requestDevice(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getDevices",
+        "call_requestDevice",
+    };
 };

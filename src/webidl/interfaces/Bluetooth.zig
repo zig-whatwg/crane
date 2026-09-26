@@ -221,4 +221,13 @@ pub const Bluetooth = struct {
     pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!runtime.JSValue {
         return try BluetoothImpl.call_requestDevice(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestLEScan",
+        "call_getAvailability",
+        "call_getDevices",
+        "call_requestDevice",
+    };
 };

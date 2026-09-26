@@ -395,7 +395,8 @@ fn runAbortSteps(signal: *runtime.Instance) void {
         webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.call_dispatchEvent(signal, event) catch {};
+    // "Signal abort" step 5 fires an event: trusted (DOM 2.10).
+    _ = EventTargetImpl.dispatchTrusted(signal, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

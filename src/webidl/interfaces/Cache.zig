@@ -160,4 +160,16 @@ pub const Cache = struct {
 
         return try CacheImpl.call_add(instance, request);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_match",
+        "call_delete",
+        "call_matchAll",
+        "call_addAll",
+        "call_put",
+        "call_keys",
+        "call_add",
+    };
 };

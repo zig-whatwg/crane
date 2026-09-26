@@ -209,4 +209,12 @@ pub const OfflineAudioContext = struct {
     pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!runtime.JSValue {
         return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_resume",
+        "call_startRendering",
+        "call_suspend",
+    };
 };

@@ -131,4 +131,10 @@ pub const NavigatorUAData = struct {
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!UALowEntropyJSON {
         return try NavigatorUADataImpl.call_toJSON(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getHighEntropyValues",
+    };
 };

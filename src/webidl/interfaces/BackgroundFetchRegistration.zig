@@ -208,4 +208,12 @@ pub const BackgroundFetchRegistration = struct {
     pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_abort",
+        "call_match",
+        "call_matchAll",
+    };
 };

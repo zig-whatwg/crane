@@ -3077,6 +3077,46 @@ fn writeLegacyNullToEmpty(
     try writer.writeAll("    };\n\n");
 }
 
+/// WebIDL (3.7.6, "create an operation function"): an operation whose return
+/// type is a promise runs its steps - the brand check, argument conversion and
+/// the operation - with an exception handler, and an exception becomes a
+/// promise rejected with it. The binding needs to know which operations:
+///
+///     pub const promise_returning = .{ "call_json", "call_static_any" };
+///
+/// Keyed like `legacy_null_to_empty`, by the Zig function the binding installs.
+pub fn writePromiseReturning(writer: anytype, overload_ops: []const types.Operation) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (overload_ops) |op| {
+        if (isPromiseType(op.idlType)) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL: operations whose return type is a promise - an exception in\n");
+    try writer.writeAll("    /// their steps becomes a rejected promise.\n");
+    try writer.writeAll("    pub const promise_returning = .{\n");
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        for (set.operations, 0..) |op, k| {
+            if (!isPromiseType(op.idlType)) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        \"{s}{s}\",\n", .{ prefix, name });
+            } else {
+                try writer.print("        \"{s}{s}__{d}\",\n", .{ prefix, name, k });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+fn isPromiseType(idl_type: types.IDLType) bool {
+    return std.mem.eql(u8, idl_type.type, "Promise");
+}
+
 /// [LegacyNullToEmptyString] on the member itself or on one of its union's
 /// member types.
 fn nullToEmpty(ext_attrs: []const types.ExtendedAttribute, idl_type: types.IDLType) bool {
@@ -3694,6 +3734,7 @@ pub fn writeDelegateFunctions(
 
     // Which string arguments and attribute values null converts to "" for.
     try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
+    try writePromiseReturning(writer, overload_ops);
 
     // Write serialize delegate for stringifier interfaces
     // Per WebIDL spec, bare stringifier declarations generate a toString() method

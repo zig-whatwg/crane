@@ -305,4 +305,13 @@ pub const ServiceWorkerRegistration = struct {
     pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!runtime.JSValue {
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_unregister",
+        "call_getNotifications",
+        "call_update",
+        "call_showNotification",
+    };
 };

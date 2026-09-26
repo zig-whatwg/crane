@@ -115,4 +115,11 @@ pub const MulticastController = struct {
     pub fn call_joinGroup(instance: *runtime.Instance, groupAddress: DOMString, options: webidl.Opt(MulticastGroupOptions)) anyerror!runtime.JSValue {
         return try MulticastControllerImpl.call_joinGroup(instance, groupAddress, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_leaveGroup",
+        "call_joinGroup",
+    };
 };

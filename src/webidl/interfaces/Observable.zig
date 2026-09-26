@@ -244,4 +244,17 @@ pub const Observable = struct {
     pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
         return try ObservableImpl.call_flatMap(instance, mapper);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_toArray",
+        "call_forEach",
+        "call_reduce",
+        "call_last",
+        "call_every",
+        "call_some",
+        "call_find",
+        "call_first",
+    };
 };

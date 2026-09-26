@@ -210,4 +210,10 @@ pub const FontFaceSet = struct {
     pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceSetImpl.call_add(instance, font);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_load",
+    };
 };

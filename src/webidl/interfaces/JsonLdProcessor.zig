@@ -134,4 +134,15 @@ pub const JsonLdProcessor = struct {
     pub fn call_static_flatten(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
         return try JsonLdProcessorImpl.call_static_flatten(instance, input, context, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_compact",
+        "call_static_fromRdf",
+        "call_static_toRdf",
+        "call_static_expand",
+        "call_static_frame",
+        "call_static_flatten",
+    };
 };

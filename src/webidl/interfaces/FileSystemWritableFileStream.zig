@@ -117,4 +117,12 @@ pub const FileSystemWritableFileStream = struct {
     pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!runtime.JSValue {
         return try FileSystemWritableFileStreamImpl.call_truncate(instance, size);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_write",
+        "call_seek",
+        "call_truncate",
+    };
 };

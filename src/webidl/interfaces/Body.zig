@@ -155,4 +155,15 @@ pub const Body = struct {
         // [NewObject] - Caller owns the returned object
         return try BodyImpl.call_blob(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_arrayBuffer",
+        "call_bytes",
+        "call_json",
+        "call_formData",
+        "call_text",
+        "call_blob",
+    };
 };

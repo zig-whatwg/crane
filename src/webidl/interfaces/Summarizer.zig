@@ -205,4 +205,13 @@ pub const Summarizer = struct {
     pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!runtime.JSValue {
         return try SummarizerImpl.call_summarize(instance, input, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_measureInputUsage",
+        "call_static_create",
+        "call_static_availability",
+        "call_summarize",
+    };
 };

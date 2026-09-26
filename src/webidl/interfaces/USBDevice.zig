@@ -340,4 +340,24 @@ pub const USBDevice = struct {
     pub fn call_controlTransferIn(instance: *runtime.Instance, setup: USBControlTransferParameters, length: u16) anyerror!runtime.JSValue {
         return try USBDeviceImpl.call_controlTransferIn(instance, setup, length);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_selectAlternateInterface",
+        "call_open",
+        "call_reset",
+        "call_transferIn",
+        "call_isochronousTransferOut",
+        "call_controlTransferOut",
+        "call_transferOut",
+        "call_isochronousTransferIn",
+        "call_clearHalt",
+        "call_claimInterface",
+        "call_selectConfiguration",
+        "call_releaseInterface",
+        "call_close",
+        "call_forget",
+        "call_controlTransferIn",
+    };
 };

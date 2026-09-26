@@ -7,7 +7,6 @@ src/browser/Context.zig EventTarget.call_addEventListener 3
 src/browser/Context.zig EventTarget.call_dispatchEvent 3
 src/browser/Context.zig EventTarget.call_removeEventListener 3
 src/browser/Context.zig HTMLIFrameElement.get_contentWindow 1
-src/browser/Context.zig HTMLIFrameElement.setIframeSrcLoadHook 1
 src/browser/Context.zig HTMLParser.ScriptLoader 2
 src/browser/Context.zig HTMLParser.parseHTMLWithScripting 1
 src/browser/Context.zig Location.setWindow 1
@@ -293,7 +292,6 @@ src/webidl/impls/MessageChannel.zig MessagePort.initWithInternal 2
 src/webidl/impls/MessagePort.zig MessageEvent.call_constructor 4
 src/webidl/impls/Node.zig CharacterData.getData 9
 src/webidl/impls/Node.zig CharacterData.set_data 2
-src/webidl/impls/Node.zig HTMLIFrameElement.fireIframeLoadEventIfNeeded 1
 src/webidl/impls/Node.zig NodeList.createLiveChildNodes 1
 src/webidl/impls/Node.zig ShadowRoot.getInternalState 1
 src/webidl/impls/NodeIterator.zig Node.getFirstChild 1

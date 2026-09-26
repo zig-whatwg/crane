@@ -192,4 +192,14 @@ pub const MediaDevices = struct {
     pub fn call_getSupportedConstraints(instance: *runtime.Instance) anyerror!MediaTrackSupportedConstraints {
         return try MediaDevicesImpl.call_getSupportedConstraints(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_enumerateDevices",
+        "call_selectAudioOutput",
+        "call_getViewportMedia",
+        "call_getDisplayMedia",
+        "call_getUserMedia",
+    };
 };

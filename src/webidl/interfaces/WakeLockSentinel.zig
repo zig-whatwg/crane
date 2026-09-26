@@ -142,4 +142,10 @@ pub const WakeLockSentinel = struct {
     pub fn call_release(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WakeLockSentinelImpl.call_release(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_release",
+    };
 };

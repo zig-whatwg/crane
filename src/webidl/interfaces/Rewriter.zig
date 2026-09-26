@@ -205,4 +205,13 @@ pub const Rewriter = struct {
     pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
         return try RewriterImpl.call_rewrite(instance, input, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_measureInputUsage",
+        "call_static_create",
+        "call_static_availability",
+        "call_rewrite",
+    };
 };

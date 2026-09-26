@@ -115,4 +115,13 @@ pub const CredentialsContainer = struct {
     pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(CredentialCreationOptions)) anyerror!runtime.JSValue {
         return try CredentialsContainerImpl.call_create(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_get",
+        "call_store",
+        "call_preventSilentAccess",
+        "call_create",
+    };
 };

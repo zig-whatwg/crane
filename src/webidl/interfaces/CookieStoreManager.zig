@@ -109,4 +109,12 @@ pub const CookieStoreManager = struct {
     pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CookieStoreManagerImpl.call_getSubscriptions(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_subscribe",
+        "call_unsubscribe",
+        "call_getSubscriptions",
+    };
 };

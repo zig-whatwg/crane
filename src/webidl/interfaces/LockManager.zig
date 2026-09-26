@@ -124,4 +124,12 @@ pub const LockManager = struct {
             .{ .function = "call_request__1", .implemented = @hasDecl(LockManagerImpl, "call_request__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} } } },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_query",
+        "call_request",
+        "call_request__1",
+    };
 };

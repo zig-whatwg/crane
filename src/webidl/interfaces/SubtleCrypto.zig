@@ -225,4 +225,26 @@ pub const SubtleCrypto = struct {
     pub fn call_exportKey(instance: *runtime.Instance, format: KeyFormat, key: *runtime.Instance) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_exportKey(instance, format, key);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_deriveBits",
+        "call_encrypt",
+        "call_decapsulateKey",
+        "call_wrapKey",
+        "call_decapsulateBits",
+        "call_digest",
+        "call_sign",
+        "call_deriveKey",
+        "call_verify",
+        "call_importKey",
+        "call_encapsulateKey",
+        "call_getPublicKey",
+        "call_decrypt",
+        "call_generateKey",
+        "call_encapsulateBits",
+        "call_unwrapKey",
+        "call_exportKey",
+    };
 };

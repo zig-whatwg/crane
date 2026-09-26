@@ -119,4 +119,11 @@ pub const Credential = struct {
     pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CredentialImpl.call_static_isConditionalMediationAvailable(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_willRequestConditionalCreation",
+        "call_static_isConditionalMediationAvailable",
+    };
 };

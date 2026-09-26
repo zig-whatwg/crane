@@ -230,4 +230,11 @@ pub const PaymentResponse = struct {
 
         return try PaymentResponseImpl.call_retry(instance, errorFields);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_complete",
+        "call_retry",
+    };
 };

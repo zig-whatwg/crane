@@ -210,4 +210,17 @@ pub const CookieStore = struct {
             .{ .function = "call_delete__1", .implemented = @hasDecl(CookieStoreImpl, "call_delete__1"), .args = &.{.{ .kinds = &.{.dictionary} }} },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_set",
+        "call_set__1",
+        "call_get",
+        "call_get__1",
+        "call_getAll",
+        "call_getAll__1",
+        "call_delete",
+        "call_delete__1",
+    };
 };

@@ -179,4 +179,12 @@ pub const RTCRtpSender = struct {
     pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: webidl.Opt(RTCSetParameterOptions)) anyerror!runtime.JSValue {
         return try RTCRtpSenderImpl.call_setParameters(instance, parameters, setParameterOptions);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getStats",
+        "call_replaceTrack",
+        "call_setParameters",
+    };
 };

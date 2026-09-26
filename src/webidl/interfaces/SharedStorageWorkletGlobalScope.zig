@@ -132,4 +132,10 @@ pub const SharedStorageWorkletGlobalScope = struct {
     pub fn call_register(instance: *runtime.Instance, name: DOMString, operationCtor: Function) anyerror!void {
         return try SharedStorageWorkletGlobalScopeImpl.call_register(instance, name, operationCtor);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_interestGroups",
+    };
 };

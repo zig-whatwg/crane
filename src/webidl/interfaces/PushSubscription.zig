@@ -149,4 +149,10 @@ pub const PushSubscription = struct {
     pub fn call_getKey(instance: *runtime.Instance, name: PushEncryptionKeyName) anyerror!?runtime.JSValue {
         return try PushSubscriptionImpl.call_getKey(instance, name);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_unsubscribe",
+    };
 };

@@ -137,4 +137,11 @@ pub const BluetoothRemoteGATTDescriptor = struct {
     pub fn call_readValue(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTDescriptorImpl.call_readValue(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_writeValue",
+        "call_readValue",
+    };
 };

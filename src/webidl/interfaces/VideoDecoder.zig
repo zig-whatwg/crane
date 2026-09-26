@@ -193,4 +193,11 @@ pub const VideoDecoder = struct {
     pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: VideoDecoderConfig) anyerror!runtime.JSValue {
         return try VideoDecoderImpl.call_static_isConfigSupported(instance, config);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_flush",
+        "call_static_isConfigSupported",
+    };
 };

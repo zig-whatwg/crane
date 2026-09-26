@@ -289,7 +289,8 @@ fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, 
         return true;
     };
     const generation = runtime.SlabAllocator.generationOf(event);
-    const not_canceled = interfaces.EventTarget.call_dispatchEvent(global, event) catch true;
+    // Fired by the user agent, so trusted (DOM 2.10).
+    const not_canceled = @import("dom").fire_event.dispatchTrusted(global, event) catch true;
     event.releaseIfUnwrapped(generation);
     return not_canceled;
 }

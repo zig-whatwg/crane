@@ -162,4 +162,12 @@ pub const NDEFReader = struct {
     pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!runtime.JSValue {
         return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_write",
+        "call_scan",
+        "call_makeReadOnly",
+    };
 };

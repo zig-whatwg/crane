@@ -215,4 +215,13 @@ pub const PaymentRequestEvent = struct {
     pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_openWindow",
+        "call_changeShippingOption",
+        "call_changeShippingAddress",
+        "call_changePaymentMethod",
+    };
 };

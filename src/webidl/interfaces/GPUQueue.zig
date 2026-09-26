@@ -147,4 +147,10 @@ pub const GPUQueue = struct {
     pub fn call_copyExternalImageToTexture(instance: *runtime.Instance, source: GPUCopyExternalImageSourceInfo, destination: GPUCopyExternalImageDestInfo, copySize: GPUExtent3D) anyerror!void {
         return try GPUQueueImpl.call_copyExternalImageToTexture(instance, source, destination, copySize);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_onSubmittedWorkDone",
+    };
 };

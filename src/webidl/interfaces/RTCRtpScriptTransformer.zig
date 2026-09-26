@@ -155,4 +155,11 @@ pub const RTCRtpScriptTransformer = struct {
     pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCRtpScriptTransformerImpl.call_sendKeyFrameRequest(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_generateKeyFrame",
+        "call_sendKeyFrameRequest",
+    };
 };

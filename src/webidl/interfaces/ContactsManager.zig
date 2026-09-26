@@ -100,4 +100,11 @@ pub const ContactsManager = struct {
     pub fn call_getProperties(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ContactsManagerImpl.call_getProperties(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_select",
+        "call_getProperties",
+    };
 };

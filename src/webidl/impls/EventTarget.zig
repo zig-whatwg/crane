@@ -188,6 +188,9 @@ pub fn init(
     // Initialize EventTarget internal state in registry
     _ = try initInternal(instance, allocator);
 
+    // No event can be fired before a target exists.
+    @import("dom").fire_event.install(.{ .dispatch_trusted = dispatchTrusted });
+
     return instance;
 }
 
@@ -774,6 +777,20 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
+    return dispatchEventWithTrust(instance, event, false);
+}
+
+/// DOM 2.10 "fire an event", for an event the user agent has already created
+/// and initialized: dispatch it with isTrusted true. Script's dispatchEvent()
+/// is the only thing that makes an event untrusted. Subtypes call this
+/// directly; code outside the hierarchy goes through `dom.fire_event`.
+pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
+    return dispatchEventWithTrust(target, event, true);
+}
+
+/// dispatchEvent()'s steps with isTrusted given: false for script (DOM 2.8
+/// step 2), true when the user agent fires the event.
+fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool) anyerror!bool {
     const EventImpl = @import("Event.zig");
 
     // Step 1: If event's dispatch flag is set, or if its initialized flag is not
@@ -786,8 +803,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
     if (EventImpl.getDispatchFlag(event)) return error.InvalidStateError;
     if (!EventImpl.getInitializedFlag(event)) return error.InvalidStateError;
 
-    // Step 2: Initialize event's isTrusted attribute to false
-    EventImpl.setIsTrusted(event, false);
+    // Step 2: Initialize event's isTrusted attribute to false - or, for an
+    // event the user agent fires, true.
+    EventImpl.setIsTrusted(event, trusted);
 
     // Step 3: Return the result of dispatching event to this
     return dispatch(instance, event);

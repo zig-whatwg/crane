@@ -127,4 +127,10 @@ pub const IdentityCredential = struct {
     pub fn call_static_disconnect(instance: *runtime.Instance, options: IdentityCredentialDisconnectOptions) anyerror!runtime.JSValue {
         return try IdentityCredentialImpl.call_static_disconnect(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_disconnect",
+    };
 };

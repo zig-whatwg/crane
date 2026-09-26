@@ -108,4 +108,12 @@ pub const Permissions = struct {
     pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
         return try PermissionsImpl.call_request(instance, permissionDesc);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_revoke",
+        "call_query",
+        "call_request",
+    };
 };

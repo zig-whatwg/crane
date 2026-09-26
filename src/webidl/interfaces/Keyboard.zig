@@ -138,4 +138,11 @@ pub const Keyboard = struct {
     pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try KeyboardImpl.call_lock(instance, keyCodes);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getLayoutMap",
+        "call_lock",
+    };
 };

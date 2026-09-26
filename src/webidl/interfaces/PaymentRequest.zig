@@ -228,4 +228,13 @@ pub const PaymentRequest = struct {
     pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentRequestImpl.call_static_securePaymentConfirmationAvailability(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_abort",
+        "call_canMakePayment",
+        "call_show",
+        "call_static_securePaymentConfirmationAvailability",
+    };
 };

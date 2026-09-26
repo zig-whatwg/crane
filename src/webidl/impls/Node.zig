@@ -1589,17 +1589,6 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) an
         };
     };
 
-    // After insertion, check if this is an iframe and fire load event if needed.
-    // Per HTML spec, about:blank iframes fire their load event synchronously after insertion.
-    // We do this here (with the correct runtime.Instance) rather than in the post-connection
-    // callback to ensure we dispatch the event to the same instance that JavaScript holds.
-    if (node_internal.node_type == NodeType.ELEMENT_NODE) {
-        if (std.mem.eql(u8, node_base.node_name, "IFRAME")) {
-            const HTMLIFrameElementImpl = @import("HTMLIFrameElement.zig");
-            HTMLIFrameElementImpl.fireIframeLoadEventIfNeeded(node);
-        }
-    }
-
     return node;
 }
 

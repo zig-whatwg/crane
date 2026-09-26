@@ -3296,4 +3296,10 @@ pub const WebGLRenderingContext = struct {
             .{ .function = "call_texImage2D__1", .implemented = @hasDecl(WebGLRenderingContextImpl, "call_texImage2D__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_makeXRCompatible",
+    };
 };

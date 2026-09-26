@@ -212,4 +212,15 @@ pub const PublicKeyCredential = struct {
     pub fn call_static_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.call_static_getClientCapabilities(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_isUserVerifyingPlatformAuthenticatorAvailable",
+        "call_static_isConditionalMediationAvailable",
+        "call_static_signalAllAcceptedCredentials",
+        "call_static_signalUnknownCredential",
+        "call_static_signalCurrentUserDetails",
+        "call_static_getClientCapabilities",
+    };
 };

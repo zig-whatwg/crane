@@ -106,4 +106,11 @@ pub const IdentityProvider = struct {
     pub fn call_static_close(instance: *runtime.Instance) anyerror!void {
         return try IdentityProviderImpl.call_static_close(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_getUserInfo",
+        "call_static_resolve",
+    };
 };

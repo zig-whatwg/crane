@@ -160,4 +160,10 @@ pub const GPUBuffer = struct {
     pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!runtime.JSValue {
         return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_mapAsync",
+    };
 };
