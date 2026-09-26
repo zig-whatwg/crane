@@ -1041,23 +1041,25 @@ pub fn build(b: *std.Build) void {
     //
     // AGENTS.md "The engine boundary": consumers `@import("engine")` and call
     // `engine.op(...)`. The facade forwards every operation, inline, to
-    // `engine_impl` - the protocol root of the adapter `-Dengine=` selects -
-    // so dispatch is static, and a missing or mis-typed adapter function is
-    // a compile error in the facade. One module each, shared by every
-    // artifact: binding it adds no root-module analysis, and runtime already
-    // imports v8, so it adds no module cycle either.
+    // `engine_impl.protocol` - the adapter `-Dengine=` selects - so dispatch
+    // is static, and a missing or mis-typed adapter function is a compile
+    // error in the facade. In a V8 build `engine_impl` IS the v8 module (its
+    // root re-exports src/runtime/engines/v8/protocol.zig), because the
+    // protocol functions live beside the adapter files they call, and a file
+    // of another module cannot import those by relative path. One module
+    // each, shared by every artifact: binding it adds no root-module
+    // analysis, and runtime already imports v8, so it adds no module cycle.
     const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
     const engine_mod = b.addModule("engine", .{
         .root_source_file = engine_protocol_root,
         .target = target,
     });
     engine_mod.addImport("runtime", runtime_mod);
-    const engine_impl_mod = b.createModule(.{
+    const engine_impl_mod = if (std.mem.eql(u8, engine_choice, "v8")) v8_mod else b.createModule(.{
         .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
         .target = target,
     });
     engine_impl_mod.addImport("engine", engine_mod);
-    if (std.mem.eql(u8, engine_choice, "v8")) engine_impl_mod.addImport("v8", v8_mod);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
 
