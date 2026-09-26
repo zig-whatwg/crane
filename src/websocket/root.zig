@@ -88,33 +88,20 @@
 //!
 //! The live path is real: `src/webidl/impls/WebSocket.zig` drives
 //! `WebSocketConnection`, which drives `curl_backend.zig`, which sets
-//! `CURLOPT_CONNECT_ONLY = CURL_CONNECT_ONLY_WEBSOCKET` and moves frames with
-//! `curl_ws_send`/`curl_ws_recv` against vendored curl 8.18.0.
+//! `CURLOPT_CONNECT_ONLY = CURL_CONNECT_ONLY_WEBSOCKET`, runs the handshake on
+//! a multi handle of its own so that it never blocks the event loop, and moves
+//! frames with `curl_ws_send`/`curl_ws_recv`.
 //!
-//! Two modules above describe an intended design that nothing calls yet. Both
-//! compile and are tested; neither is reachable from the live path:
+//! - **Events** fire from the interface's pump, one event-loop turn at a time,
+//!   in a window or a worker realm. `events.zig`'s `WebSocketEventQueue` is not
+//!   on that path.
+//! - **`bufferedAmount`** is `connection.OutgoingQueue`: frames the socket has
+//!   not taken yet, drained at each turn, which is what lets a frame the socket
+//!   takes only part of go out whole. `send_buffer.zig`'s `SendBuffer` is not on
+//!   that path - it queues whole messages and cannot carry a part-sent one.
 //!
-//! - **`events.zig`** - the four-event dispatch. `WebSocket.zig` stores
-//!   `onopen`/`onmessage`/`onerror`/`onclose` as V8 `Global` handles and never
-//!   invokes them, so no event of any kind fires today. Routing them through
-//!   `WebSocketEventQueue` needs a dispatch path built in `WebSocket.zig`
-//!   first; the queue is the easy half.
-//!
-//! - **`send_buffer.zig`** - `bufferedAmount`. `connection.zig` carries a plain
-//!   `buffered_amount: u64` field (connection.zig:95) that is initialised to 0,
-//!   read by `WebSocket.zig`, and never written, so the attribute returns a
-//!   constant 0. `SendBuffer` is the only implementation of the spec semantics
-//!   in the tree. Swapping it in is *not* just wiring: `call_send` is still a
-//!   stub that discards its JSValue, and `curl_backend.sendFrame` is
-//!   synchronous, so a queue-then-flush would take `bufferedAmount` 0 -> n -> 0
-//!   inside one call, which no observer can see. The spec getter returns what
-//!   had not been transmitted "as of the last time the event loop reached step
-//!   1", so a meaningful value needs an asynchronous flush at event-loop turns.
-//!   `sendFrame` also returns `error.PartialSend` and drops the unsent tail -
-//!   the one place a send buffer would earn its keep today.
-//!
-//! They were kept, not deleted, because both are 0.1 requirements and
-//! `connection.zig` does not implement either one.
+//! Both unused modules compile and are tested; neither is reachable from the
+//! live path.
 //!
 //! ## Usage Example
 //!
@@ -125,26 +112,20 @@
 //! var conn = try websocket.WebSocketConnection.init(allocator, "wss://example.com/ws");
 //! defer conn.deinit();
 //!
-//! // Establish connection
-//! try conn.connect(null); // or &[_][]const u8{"graphql", "chat"}
+//! // Establish it, a step per event-loop turn
+//! try conn.startConnect(.{ .protocols = &.{"chat"} });
+//! while (!try conn.pollConnect()) {}
 //!
-//! // Send text message
-//! try conn.sendText("Hello, WebSocket!");
+//! // Queue a message; `flush` pushes the queue on later turns
+//! try conn.send(.text, "Hello, WebSocket!");
 //!
-//! // Send binary message
-//! try conn.sendBinary(&[_]u8{ 0x01, 0x02, 0x03 });
-//!
-//! // Receive message (non-blocking)
-//! var buffer: [4096]u8 = undefined;
-//! if (try conn.receive(&buffer)) |msg| {
-//!     if (msg.is_text) {
-//!         std.debug.print("Text: {s}\n", .{msg.data});
-//!     } else {
-//!         std.debug.print("Binary: {} bytes\n", .{msg.data.len});
-//!     }
+//! // Receive a whole message (non-blocking)
+//! var scratch: [4096]u8 = undefined;
+//! if (try conn.receive(&scratch)) |msg| {
+//!     _ = msg.data;
 //! }
 //!
-//! // Close connection
+//! // Start the closing handshake; `closed` says when it is done
 //! try conn.close(1000, "Goodbye");
 //! ```
 //!

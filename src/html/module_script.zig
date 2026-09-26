@@ -395,16 +395,78 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     }
 }
 
-/// The essence of a Content-Type value: the type/subtype, lowercased, with
-/// parameters and whitespace dropped. Written into a thread-local buffer.
+/// The essence of the MIME type Fetch's "extract a MIME type" finds in a
+/// Content-Type value, lowercased - or "" for failure, which matches no MIME
+/// type. Written into a thread-local buffer.
+///
+/// Spec: https://fetch.spec.whatwg.org/#concept-header-extract-mime-type
+/// The value is split on commas outside quoted strings, every piece is
+/// parsed as a MIME type, and the last one that parses (and is not */*)
+/// wins. Only the essence matters here, so the charset bookkeeping of steps
+/// 6.4-6.5 is not needed.
 fn mimeEssence(content_type: []const u8) []const u8 {
+    var essence: []const u8 = "";
+    var start: usize = 0;
+    var in_quotes = false;
+    var i: usize = 0;
+    while (i <= content_type.len) : (i += 1) {
+        if (i < content_type.len) {
+            const c = content_type[i];
+            if (in_quotes and c == '\\') {
+                i += 1;
+                continue;
+            }
+            if (c == '"') in_quotes = !in_quotes;
+            if (in_quotes or c != ',') continue;
+        }
+        if (parseMimeEssence(content_type[start..i])) |parsed| {
+            if (!std.mem.eql(u8, parsed, "*/*")) essence = parsed;
+        }
+        start = i + 1;
+    }
+    return essence;
+}
+
+/// MIME Sniffing "parse a MIME type", as far as the essence: null for
+/// failure, else "type/subtype" lowercased into a thread-local buffer.
+///
+/// Spec: https://mimesniff.spec.whatwg.org/#parse-a-mime-type
+/// Steps 1-9: the type and the subtype must each be non-empty and made of
+/// HTTP token code points only - so a Content-Type of "text/json+x",
+/// "applic ation/x+json" or "application/vnd api+json" is no JSON MIME type,
+/// where taking everything before the first ";" would have made each one.
+fn parseMimeEssence(input: []const u8) ?[]const u8 {
     const S = struct {
-        threadlocal var buf: [128]u8 = undefined;
+        threadlocal var buf: [256]u8 = undefined;
     };
-    const end = std.mem.indexOfScalar(u8, content_type, ';') orelse content_type.len;
-    const trimmed = std.mem.trim(u8, content_type[0..end], " \t\r\n");
-    const len = @min(trimmed.len, S.buf.len);
-    return std.ascii.lowerString(S.buf[0..len], trimmed[0..len]);
+    // Step 1: strip leading and trailing HTTP whitespace.
+    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+    // Steps 2-5: the type runs to the first "/", which must exist.
+    const slash = std.mem.indexOfScalar(u8, trimmed, '/') orelse return null;
+    const type_part = trimmed[0..slash];
+    if (type_part.len == 0 or !isHttpTokenString(type_part)) return null;
+    // Steps 6-8: the subtype runs to the first ";", less trailing HTTP
+    // whitespace.
+    const rest = trimmed[slash + 1 ..];
+    const end = std.mem.indexOfScalar(u8, rest, ';') orelse rest.len;
+    const subtype = std.mem.trimEnd(u8, rest[0..end], " \t\r\n");
+    if (subtype.len == 0 or !isHttpTokenString(subtype)) return null;
+    // Step 9: both in ASCII lowercase.
+    const len = type_part.len + 1 + subtype.len;
+    if (len > S.buf.len) return null;
+    _ = std.ascii.lowerString(S.buf[0..type_part.len], type_part);
+    S.buf[type_part.len] = '/';
+    _ = std.ascii.lowerString(S.buf[type_part.len + 1 .. len], subtype);
+    return S.buf[0..len];
+}
+
+/// Spec: https://mimesniff.spec.whatwg.org/#http-token-code-point
+fn isHttpTokenString(s: []const u8) bool {
+    for (s) |c| {
+        if (std.ascii.isAlphanumeric(c)) continue;
+        if (std.mem.indexOfScalar(u8, "!#$%&'*+-.^_`|~", c) == null) return false;
+    }
+    return true;
 }
 
 /// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
@@ -877,6 +939,24 @@ test "mimeEssence strips parameters and case" {
     try std.testing.expectEqualStrings("text/javascript", mimeEssence("Text/JavaScript; charset=utf-8"));
     try std.testing.expectEqualStrings("application/json", mimeEssence(" application/json "));
     try std.testing.expectEqualStrings("", mimeEssence(""));
+}
+
+test "mimeEssence fails a type or subtype that is not all HTTP token code points" {
+    try std.testing.expectEqualStrings("", mimeEssence("applic ation/vnd.api+json"));
+    try std.testing.expectEqualStrings("", mimeEssence("application/vnd api+json"));
+    try std.testing.expectEqualStrings("", mimeEssence("application/vnd.api\"+json"));
+    try std.testing.expectEqualStrings("", mimeEssence("/vnd.api+json"));
+    try std.testing.expectEqualStrings("", mimeEssence("app\x00lication/vnd.api+json"));
+    try std.testing.expectEqualStrings("", mimeEssence("aplicaci\xc3\xb3n/vnd.api+json"));
+    try std.testing.expectEqualStrings("application/vnd", mimeEssence("application/vnd;api+json"));
+    try std.testing.expectEqualStrings("text/html", mimeEssence("text/html;+json"));
+}
+
+test "mimeEssence takes the last MIME type of a comma-separated value" {
+    try std.testing.expectEqualStrings("application/json", mimeEssence("text/plain, application/json"));
+    try std.testing.expectEqualStrings("text/plain", mimeEssence("text/plain, */*"));
+    try std.testing.expectEqualStrings("ation/vnd", mimeEssence("applic,ation/vnd,api+json"));
+    try std.testing.expectEqualStrings("text/html", mimeEssence("text/html;charset=\"a,b\""));
 }
 
 test "isJsonMimeTypeEssence accepts +json subtypes and nothing else" {

@@ -212,17 +212,21 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
     }
 
     // Step 4: Inline script - execute via script_execution module
-    if (script_content.len == 0) {
-        return; // Empty script
-    }
 
     // Mark as parser-inserted
     HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
 
-    // Cache the source text from the tree node
-    HTMLScriptElementImpl.cacheSourceText(script_element, script_content) catch {
-        return;
-    };
+    // Cache the source text from the tree node. An EMPTY script is still
+    // prepared: "prepare the script element" nulls its parser document (step
+    // 3) before returning at step 6, which leaves it a script that is neither
+    // parser-inserted nor started - one that runs when text is later put in
+    // it (the script children changed steps). Skipping the preparation left it
+    // parser-inserted for good, so it never could.
+    if (script_content.len > 0) {
+        HTMLScriptElementImpl.cacheSourceText(script_element, script_content) catch {
+            return;
+        };
+    }
 
     // Set the insertion point before script execution
     // This allows document.write() to insert content at the correct position
