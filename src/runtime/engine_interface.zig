@@ -160,6 +160,59 @@ pub const RealmSteps = *const fn (data: ?*anyopaque) void;
 // Lane regions for types the lanes' operations use (declarations cannot go
 // between container fields). Each lane declares only inside its own region.
 // ---- lane: page-realm ----
+
+/// The `this` value a callback function is invoked with - WebIDL "invoke a
+/// callback function", its callback this value.
+pub const CallbackThis = union(enum) {
+    /// undefined: WebIDL's value when the caller gives none.
+    undefined,
+    /// The realm's global this binding: for a Window realm its WindowProxy.
+    global_this,
+    /// This value, BORROWED for the call.
+    value: JSValue,
+};
+
+/// setTimeout's and setInterval's `TimerHandler` - `(TrustedScript or
+/// DOMString or Function)` - after WebIDL conversion. Either way an OWNED
+/// handle, which its holder releases with `releaseValue`.
+pub const WindowTimerHandler = union(enum) {
+    /// A callable: the union conversion picks the Function member.
+    function: JSValue,
+    /// Anything else, converted by ToString when setTimeout or setInterval was
+    /// called - which runs script, so it happens at the call and not when the
+    /// timer fires. (A TrustedScript converts the same way: its stringifier is
+    /// its data.) A string handle, so the source keeps every code unit until
+    /// it runs.
+    string: JSValue,
+};
+
+/// The host's steps behind a Window's native operations: its timers (HTML
+/// 8.6, "timers") and its animation frames (HTML 8.10). The engine binds the
+/// operations - WebIDL argument conversion, the return value - and calls
+/// these with the converted values; the host keeps the spec's state (the map
+/// of active timers, the map of animation frame callbacks). `realm` is the
+/// realm of the function that was called: the Window whose method it is.
+pub const WindowOperations = struct {
+    /// The timer initialization steps, for setTimeout (`repeat` false) and
+    /// setInterval (`repeat` true). `handler` and every element of
+    /// `arguments` are OWNED and handed over - the host releases each with
+    /// `releaseValue` - while the `arguments` slice itself is BORROWED for the
+    /// call. Returns the id script receives, or 0 when no timer was set.
+    initializeTimer: *const fn (realm: Context, handler: WindowTimerHandler, timeout: i32, arguments: []const JSValue, repeat: bool) i32,
+    /// clearTimeout(id) and clearInterval(id): `id` after ToInt32.
+    clearTimer: *const fn (realm: Context, id: i32) void,
+    /// requestAnimationFrame(callback), for a callable `callback`, OWNED and
+    /// handed over. Returns the handle, or 0 when none was registered.
+    requestAnimationFrame: *const fn (realm: Context, callback: JSValue) u32,
+    /// cancelAnimationFrame(handle), for a handle in 1..2^32-1.
+    cancelAnimationFrame: *const fn (realm: Context, handle: u32) void,
+    /// A frame's Window realm whose document is being destroyed (HTML
+    /// "unloading document cleanup steps": clear its map of active timers; its
+    /// animation frame callbacks go with it). Called while the realm is still
+    /// intact.
+    windowDestroyed: *const fn (realm: Context) void,
+};
+
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 // ---- end lane: runtime-impls ----
@@ -870,6 +923,42 @@ pub const EngineInterface = struct {
     // adds its operations only inside its own region, here and in every
     // engine's table, so parallel lanes never edit the same lines.
     // ---- lane: page-realm ----
+
+    /// WebIDL "invoke a callback function" with exception behavior "report":
+    /// call `callback` with `this_arg` and `args` in `realm`, discarding the
+    /// return value. Everything passed is BORROWED for the call. A `callback`
+    /// that is not callable is not called ([LegacyTreatNonObjectAsNull]).
+    /// What the call throws is handed to `report` (with `host`) after "clean
+    /// up after running script" - so after the microtask checkpoint that an
+    /// empty execution context stack performs, as WebIDL orders it - and is
+    /// not returned. `ErrorInfo.error_value` is the thrown value.
+    invokeCallbackFunction: ?*const fn (
+        realm: Context,
+        callback: JSValue,
+        this_arg: CallbackThis,
+        args: []const JSValue,
+        report: ReportExceptionFn,
+        host: ?*anyopaque,
+    ) EngineError!void,
+
+    /// Define a Window's native operations - setTimeout, clearTimeout,
+    /// setInterval, clearInterval, requestAnimationFrame and
+    /// cancelAnimationFrame - on `realm`'s global object, and on the global of
+    /// every Window realm created in its agent from now on (its frames), with
+    /// `operations` as their steps; a frame's `windowDestroyed` is called as
+    /// its document is destroyed. `operations` is BORROWED until the realm is
+    /// destroyed (a static table).
+    ///
+    /// Native because the WebIDL members' impl cannot serve them yet: they
+    /// belong to the WindowOrWorkerGlobalScope and AnimationFrameProvider
+    /// mixins, whose impl is held by the paused networking branch and still
+    /// stubs setTimeout. When that mixin impl owns these steps, the generated
+    /// binding replaces this operation.
+    installWindowOperations: ?*const fn (
+        realm: Context,
+        operations: *const WindowOperations,
+    ) EngineError!void,
+
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
     // ---- end lane: runtime-impls ----
@@ -1164,6 +1253,8 @@ pub const stub_engine: EngineInterface = .{
     .createSequenceOfPlatformObjects = null,
     .relevantGlobalObject = null,
     // ---- lane: page-realm ----
+    .invokeCallbackFunction = null,
+    .installWindowOperations = null,
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
     // ---- end lane: runtime-impls ----

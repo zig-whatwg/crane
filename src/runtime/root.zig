@@ -162,6 +162,9 @@ pub const ReportExceptionFn = @import("engine_interface.zig").ReportExceptionFn;
 pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
+pub const CallbackThis = @import("engine_interface.zig").CallbackThis;
+pub const WindowTimerHandler = @import("engine_interface.zig").WindowTimerHandler;
+pub const WindowOperations = @import("engine_interface.zig").WindowOperations;
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 // ---- end lane: runtime-impls ----

@@ -102,6 +102,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .createSequenceOfPlatformObjects = v8CreateSequenceOfPlatformObjects,
     .relevantGlobalObject = v8RelevantGlobalObject,
     // ---- lane: page-realm ----
+    .invokeCallbackFunction = @import("page_realm.zig").invokeCallbackFunction,
+    .installWindowOperations = @import("page_realm.zig").installWindowOperations,
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
     // ---- end lane: runtime-impls ----
