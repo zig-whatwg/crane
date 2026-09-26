@@ -119,7 +119,7 @@ progress = []
 
   [[infra.items]]
   name = "Navigation runs as tasks, not synchronously inside the caller"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Session history entries and traversal"
@@ -140,11 +140,12 @@ done_when = "Fetches complete on the event loop and response bodies stream."
 areas = ["fetch/", "xhr/"]
 progress = [
   "70278c0d1 - window fetch() completes on the event loop: a curl multi scheduler pumped each turn (networking lane, increment 1)",
+  "066da9ed2 - asynchronous XHR on the same scheduler, XHR handlers on EventTarget's map, fetch() abort steps (increment 2); worker fetch() async through the bound operation (9ec30ea8f)",
 ]
 
   [[infra.items]]
   name = "Fetches run on the event loop (curl multi), not blocking the thread"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Response bodies stream into ReadableStream as they arrive"
@@ -152,7 +153,7 @@ progress = [
 
   [[infra.items]]
   name = "XHR and navigation fetch through the same path"
-  status = "todo"
+  status = "doing"
 
 [[infra]]
 id = "origins"
@@ -258,6 +259,7 @@ why = "Mostly done; two gaps remain that every async feature eventually meets."
 done_when = "Idle workers run V8's posted tasks and task sources are spec-shaped."
 progress = [
   "5dbae790e - V8's platform tasks pumped each turn",
+  "9ec30ea8f - the worker global is a DedicatedWorkerGlobalScope; a terminated worker removes its context and disposes its isolate; an idle worker pumps V8's tasks (workers lane)",
 ]
 
   [[infra.items]]
@@ -270,15 +272,15 @@ progress = [
 
   [[infra.items]]
   name = "A worker with no timer of its own still runs V8's posted tasks"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "The worker global is a WorkerGlobalScope platform object with its mixin operations bound (not natives), so worker fetch() is the async one"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "A terminated worker removes its context and disposes its isolate"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"
@@ -333,7 +335,7 @@ name = "Object lifetime and V8 handle ownership"
 infra = "lifetime"
 owner = "integrator"
 status = "doing"
-paths = ["src/runtime/engines/v8/", "src/browser/", "src/webidl/impls/ (event handlers, timers)"]
+paths = ["src/runtime/ (bindings, conversions, wrapper cache, v8_wrapper.cpp)", "context_manager.zig outside the navigation lane's functions"]
 
 [[lane]]
 name = "Asynchronous networking"
@@ -347,9 +349,17 @@ paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "src/w
 name = "Workers as first-class realms"
 infra = "event-loop"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/workers"
 paths = ["src/html/workers/", "src/html/worker_v8_context.zig", "src/webidl/impls/{WorkerGlobalScope,DedicatedWorkerGlobalScope,Worker,AbstractWorker,WorkerLocation,WorkerNavigator}.zig", "installForScope in interface_bindings.zig", "the worker-global guard in template_registry.zig's cache hit", "tests/html/workers/", "tests/wpt/crane/wk-*"]
+
+[[lane]]
+name = "Navigation and document lifecycle"
+infra = "navigation"
+owner = "agent"
+status = "doing"
+branch = "lane/navigation"
+paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
