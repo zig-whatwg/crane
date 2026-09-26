@@ -195,7 +195,8 @@ done_when = """tools/engine_boundary_baseline.txt is empty, "v8" is gone from th
 non-adapter modules' imports in build.zig, and a non-V8 build fails only on \
 explicit NotSupported entries."""
 progress = [
-  "tools/lint_engine_boundary.zig in zig build test: a per-file, per-name ratchet that only goes down",
+  "1979a9892 - tools/lint_engine_boundary.zig in zig build test: a per-file, per-name ratchet that only goes down",
+  "b041d9024 - first Engine realm operations: runClassicScript, performMicrotaskCheckpoint, runTaskInRealm, runInRealm, createDOMException, releaseValue",
 ]
 
   [[infra.items]]
@@ -445,6 +446,14 @@ owner = "agent"
 status = "doing"
 branch = "lane/scripting"
 paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "increment 2: src/html/parser/, src/html/scripted_parser.zig, src/html/dom_tree_adapter.zig, src/webidl/impls/HTMLParser.zig, Document.call_write/call_writeln, the script registration in src/dom/attribute_change_steps.zig, html/syntax/ and html/webappapis/dynamic-markup-insertion/", "tests/html/script*", "tests/html/module*", "tests/html/parser*", "tests/wpt/crane/script-*", "tests/wpt/crane/parse-*"]
+
+[[lane]]
+name = "Engine boundary: workers and messaging"
+infra = "engine-adapter"
+owner = "agent"
+status = "doing"
+branch = "lane/engine-boundary"
+paths = ["src/html/worker_v8_context.zig", "src/html/workers/", "src/webidl/impls/{Worker,AbstractWorker,DedicatedWorkerGlobalScope,WorkerGlobalScope,MessagePort,MessageChannel,MessageEvent,WebSocket,AbortSignal}.zig", "new files under src/runtime/engines/v8/ for the moved engine parts", "additive Engine operations in engine_interface.zig and the jsc/quickjs tables, announced to the integrator", "tests/v8/ (new)", "tests/html/workers/", "tests/websocket/", "tests/wpt/crane/eb-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
