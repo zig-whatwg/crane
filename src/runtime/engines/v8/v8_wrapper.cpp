@@ -11445,6 +11445,106 @@ void v8_Isolate_SetHostCreateShadowRealmContextCallback(
 // Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
 // its functions only inside its own region, so parallel lanes never edit the same lines.
 // ---- lane: engine-boundary ----
+extern "C" {
+
+// The steps of WebIDL's record<K, V> conversion (3.2.23) that run script, each
+// under a TryCatch so the caller converts between them exactly as the spec
+// orders them. Each returns the completion the way v8_Function_CallCatching
+// does: on a throw the thrown value (caught, not left pending) with `*threw`
+// true - null only when there is nothing to report, a terminating isolate.
+// Every non-null result is a new Global the caller owns.
+
+/// O.[[OwnPropertyKeys]](): every own key - Symbols included, integer indices
+/// as Strings - in the spec's order, as an Array. For a Proxy, its ownKeys
+/// trap and nothing else (no filter, so no getOwnPropertyDescriptor calls).
+Global<Value>* v8_Object_OwnPropertyKeysCatching(Global<Context>* context, Global<Value>* object, bool* threw) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    if (!context || !object || object->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    if (!value->IsObject()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Array> keys = value.As<Object>()->GetOwnPropertyNames(
+        ctx, PropertyFilter::ALL_PROPERTIES, KeyConversionMode::kConvertToString);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (keys.IsEmpty()) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, keys.ToLocalChecked().As<Value>()));
+}
+
+/// O.[[GetOwnProperty]](key), answering what the record conversion asks of
+/// it: whether the property exists AND is enumerable (`*enumerable`). `key` is
+/// a String or Symbol from v8_Object_OwnPropertyKeysCatching. Returns the
+/// thrown value (owned) when script threw, else null; `*threw` says which.
+Global<Value>* v8_Object_IsOwnEnumerableCatching(
+    Global<Context>* context,
+    Global<Value>* object,
+    Global<Value>* key,
+    bool* enumerable,
+    bool* threw
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *enumerable = false;
+    *threw = true;
+    if (!context || !object || object->IsEmpty() || !key || key->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    Local<Value> name = key->Get(isolate);
+    if (!value->IsObject() || !name->IsName()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_desc = value.As<Object>()->GetOwnPropertyDescriptor(ctx, name.As<Name>());
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    Local<Value> desc;
+    if (!maybe_desc.ToLocal(&desc)) return nullptr;
+    *threw = false;
+    // Undefined: no such own property.
+    if (!desc->IsObject()) return nullptr;
+    // FromPropertyDescriptor's new ordinary object: its own `enumerable` data
+    // property, so reading it runs no script.
+    Local<Value> flag;
+    if (desc.As<Object>()->Get(ctx, String::NewFromUtf8Literal(isolate, "enumerable")).ToLocal(&flag)) {
+        *enumerable = flag->BooleanValue(isolate);
+    }
+    return nullptr;
+}
+
+/// Get(O, key) for a String or Symbol `key` - the property key itself, never
+/// its UTF-8 rendering, which would lose a lone surrogate.
+Global<Value>* v8_Object_GetByKeyCatching(Global<Context>* context, Global<Value>* object, Global<Value>* key, bool* threw) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    if (!context || !object || object->IsEmpty() || !key || key->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    if (!value->IsObject()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_value = value.As<Object>()->Get(ctx, key->Get(isolate));
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (maybe_value.IsEmpty()) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
+}
+
+} // extern "C"
 // ---- end lane: engine-boundary ----
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----

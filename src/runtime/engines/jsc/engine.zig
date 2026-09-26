@@ -67,6 +67,36 @@ pub const jsc_engine_interface: EngineInterface = .{
     .freeze = jscFreeze,
     .thaw = jscThaw,
     .isFrozen = jscIsFrozen,
+    // ---- lane: engine-boundary ----
+    // Values held across the seam (AGENTS.md, "The engine boundary"): not yet
+    // provided by this engine - explicit, so a build on it fails loudly.
+    .retainValue = notSupportedRetainValue,
+    .throwValue = notSupportedThrowValue,
+    .convertToSequenceOfPlatformObjects = notSupportedConvertToSequenceOfPlatformObjects,
+    .convertToSequenceOfObjects = notSupportedConvertToSequenceOfObjects,
+    .createFrozenArrayOfPlatformObjects = notSupportedCreateFrozenArrayOfPlatformObjects,
+    .structuredSerializeWithTransfer = notSupportedStructuredSerializeWithTransfer,
+    .structuredDeserializeWithTransfer = notSupportedStructuredDeserializeWithTransfer,
+    // Conversions and workers (AGENTS.md, "The engine boundary"): not yet
+    // provided by this engine.
+    .convertToSequenceOfDOMStrings = notSupportedConvertToSequenceOfDOMStrings,
+    .convertToDOMString = notSupportedConvertToString,
+    .convertToUSVString = notSupportedConvertToString,
+    .convertToRecordOfStrings = notSupportedConvertToRecordOfStrings,
+    .convertToPlatformObject = notSupportedConvertToPlatformObject,
+    .getCopyOfBufferSourceBytes = notSupportedGetCopyOfBufferSourceBytes,
+    .createSequenceOfValues = notSupportedCreateSequenceOfValues,
+    .createAgent = notSupportedCreateAgent,
+    .destroyAgent = notSupportedDestroyAgent,
+    .hasRunningScript = notSupportedAgentQuery,
+    .hasPendingEngineWork = notSupportedAgentQuery,
+    .runEngineTasks = notSupportedAgentQuery,
+    .createWorkerRealm = notSupportedCreateWorkerRealm,
+    .destroyWorkerRealm = notSupportedDestroyWorkerRealm,
+    .defineBuiltinFunction = notSupportedDefineBuiltinFunction,
+    .isCallable = notSupportedIsCallable,
+    .keepPlatformObjectAlive = notSupportedKeepPlatformObjectAlive,
+    // ---- end lane: engine-boundary ----
     .name = "JavaScriptCore",
     .version = "WebKit",
     // Realm operations (AGENTS.md, "The engine boundary"): not yet provided
@@ -696,6 +726,67 @@ fn jscIsFrozen(
 // ============================================================================
 // Tests
 // ============================================================================
+
+// ---- lane: engine-boundary ----
+// TODO(engine adapter): values held across the seam on this engine.
+fn notSupportedRetainValue(_: runtime.Context, _: runtime.JSValue) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedThrowValue(_: runtime.Context, _: runtime.JSValue) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToSequenceOfPlatformObjects(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError![]*runtime.Instance {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToSequenceOfObjects(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError![]runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateFrozenArrayOfPlatformObjects(_: runtime.Context, _: []const *runtime.Instance) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedStructuredSerializeWithTransfer(_: runtime.Context, _: runtime.JSValue, _: []const runtime.JSValue, _: runtime.TransferableCheck, _: ?*anyopaque, _: std.mem.Allocator) EngineError!runtime.SerializedWithTransfer {
+    return EngineError.NotSupported;
+}
+fn notSupportedStructuredDeserializeWithTransfer(_: runtime.Context, _: []const u8, _: []const []const u8) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToSequenceOfDOMStrings(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError!?[][]u8 {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToString(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError![]u8 {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToRecordOfStrings(_: runtime.Context, _: runtime.JSValue, _: runtime.StringConversion, _: runtime.StringConversion, _: std.mem.Allocator) EngineError![]runtime.StringRecordEntry {
+    return EngineError.NotSupported;
+}
+fn notSupportedConvertToPlatformObject(_: runtime.Context, _: runtime.JSValue) ?*runtime.Instance {
+    return null;
+}
+fn notSupportedGetCopyOfBufferSourceBytes(_: runtime.Context, _: runtime.JSValue, _: std.mem.Allocator) EngineError!?[]u8 {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateSequenceOfValues(_: runtime.Context, _: []const runtime.JSValue) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateAgent() EngineError!*runtime.Agent {
+    return EngineError.NotSupported;
+}
+fn notSupportedDestroyAgent(_: *runtime.Agent) void {}
+fn notSupportedAgentQuery(_: *runtime.Agent) bool {
+    return false;
+}
+fn notSupportedCreateWorkerRealm(_: *runtime.Agent, _: runtime.WorkerRealmOptions) EngineError!runtime.WorkerRealm {
+    return EngineError.NotSupported;
+}
+fn notSupportedDestroyWorkerRealm(_: runtime.Context, _: ?runtime.RealmSteps, _: ?*anyopaque) void {}
+fn notSupportedDefineBuiltinFunction(_: runtime.Context, _: []const u8, _: u32, _: *const runtime.BuiltinFunction) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedIsCallable(_: runtime.JSValue) bool {
+    return false;
+}
+fn notSupportedKeepPlatformObjectAlive(_: *runtime.Instance) void {}
+// ---- end lane: engine-boundary ----
 
 test "jsc_engine_interface - has all required functions" {
     const testing = std.testing;

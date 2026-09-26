@@ -167,6 +167,18 @@ pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEng
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 // ---- end lane: runtime-impls ----
+// ---- lane: engine-boundary ----
+pub const SerializedWithTransfer = @import("engine_interface.zig").SerializedWithTransfer;
+pub const TransferableState = @import("engine_interface.zig").TransferableState;
+pub const TransferableCheck = @import("engine_interface.zig").TransferableCheck;
+pub const Agent = @import("engine_interface.zig").Agent;
+pub const WorkerRealmOptions = @import("engine_interface.zig").WorkerRealmOptions;
+pub const WorkerRealm = @import("engine_interface.zig").WorkerRealm;
+pub const BuiltinSteps = @import("engine_interface.zig").BuiltinSteps;
+pub const BuiltinFunction = @import("engine_interface.zig").BuiltinFunction;
+pub const StringConversion = @import("engine_interface.zig").StringConversion;
+pub const StringRecordEntry = @import("engine_interface.zig").StringRecordEntry;
+// ---- end lane: engine-boundary ----
 pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 

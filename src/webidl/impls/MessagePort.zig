@@ -1,10 +1,21 @@
 //! Implementation for MessagePort interface
 //!
-//! Spec: HTML Standard § 9.3.2 Message ports
-//! https://html.spec.whatwg.org/#message-ports
+//! Spec: HTML Standard § 9.4.3 Message ports
+//! https://html.spec.whatwg.org/multipage/web-messaging.html#message-ports
 //!
-//! This implementation bridges the WebIDL interface to the streams internal
-//! MessagePort implementation for cross-realm stream transfer support.
+//! A MessagePort is one end of a channel. The channel's ends are the streams
+//! layer's internal ports (`streams_internal.MessagePort`): each holds the
+//! port message queue for its end - serialized messages, in order - and its
+//! entanglement. A MessagePort object wraps one end; transferring the port
+//! ships that end, queue and entanglement included, to a new MessagePort in
+//! the receiving realm (the transfer and transfer-receiving steps), so the
+//! channel keeps working across realms and agents.
+//!
+//! Every message goes the spec's way, whether the other end is in this realm,
+//! another window's or a worker's: StructuredSerializeWithTransfer at the
+//! sender, a task on the receiving end's port message queue, and there
+//! StructuredDeserializeWithTransfer into the receiver's realm and a `message`
+//! event fired at the port. Both halves go through the Engine table.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,14 +24,19 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MessagePort = interfaces.MessagePort;
 
-// Import streams internal MessagePort for implementation
+// A MessagePort is an EventTarget, and reaches its state through its impl.
+const EventTargetImpl = @import("EventTarget.zig");
+
+// The channel ends.
 const message_port = @import("streams_internal");
 const InternalMessagePort = message_port.MessagePort;
-// Import JSValue from streams common
-const streams_common = @import("streams_common");
-const JSValue = streams_common.JSValue;
+
+/// The hook other types transfer ports through (no IDL member runs the
+/// transfer steps).
+const message_ports = @import("dom").message_ports;
 
 pub const State = MessagePort.State;
 
@@ -31,88 +47,77 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Context for timer-based cross-isolate message dispatch
-/// Stored in the internal port's callback_user_data when onmessage is set
-const MessagePortDispatchContext = struct {
-    /// The WebIDL MessagePort instance to dispatch to
-    instance: *runtime.Instance,
-    /// Allocator for creating timer contexts
-    allocator: std.mem.Allocator,
-    /// Timer interface for scheduling dispatch on main event loop
-    timer: ?runtime.TimerInterface,
-
-    pub fn init(allocator: std.mem.Allocator, instance: *runtime.Instance, timer: ?runtime.TimerInterface) !*MessagePortDispatchContext {
-        const ctx = try allocator.create(MessagePortDispatchContext);
-        ctx.* = .{
-            .instance = instance,
-            .allocator = allocator,
-            .timer = timer,
-        };
-        return ctx;
-    }
-
-    pub fn deinit(self: *MessagePortDispatchContext) void {
-        self.allocator.destroy(self);
-    }
-};
-
-/// Context for timer callback - holds just the instance pointer
-/// This is allocated per-dispatch and freed by the callback
-const TimerDispatchContext = struct {
-    instance: *runtime.Instance,
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, instance: *runtime.Instance) !*TimerDispatchContext {
-        const ctx = try allocator.create(TimerDispatchContext);
-        ctx.* = .{
-            .instance = instance,
-            .allocator = allocator,
-        };
-        return ctx;
-    }
-
-    pub fn deinit(self: *TimerDispatchContext) void {
-        self.allocator.destroy(self);
-    }
-};
-
 /// Internal state for MessagePort implementation
-///
-/// Contains:
-/// - Pointer to streams internal MessagePort for actual message passing
-/// - Event handlers stored as WebIDL callbacks
-/// - Reference to entangled WebIDL port for message dispatch
 pub const InternalState = struct {
-    /// Backing implementation from streams internal
+    /// This port's end of its channel: its port message queue and its
+    /// entanglement.
     internal_port: *InternalMessagePort,
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
-    /// Reference to the entangled WebIDL MessagePort instance
-    /// Used for dispatching messages to JavaScript handlers
-    entangled_webidl_port: ?*runtime.Instance = null,
-
-    /// Whether this InternalState owns the internal_port
-    /// Set to false when port is transferred away (disentangled for transfer)
+    /// Whether this object owns `internal_port`. A transfer hands the end to
+    /// the port the receiving realm makes of it.
     owns_port: bool = true,
 
+    /// HTML: "has been shipped".
+    has_been_shipped: bool = false,
+
+    /// [[Detached]]: set by close(), and by the transfer steps.
+    detached: bool = false,
+
+    /// What `internal_port` calls when a message is queued on it, while this
+    /// object is the end's owner. Freed with this state.
+    receiver: ?*Receiver = null,
+
     pub fn deinit(self: *InternalState) void {
-        // Clean up the dispatch context if we created one
-        if (self.internal_port.callback_user_data) |user_data| {
-            const dispatch_ctx: *MessagePortDispatchContext = @ptrCast(@alignCast(user_data));
-            dispatch_ctx.deinit();
+        self.disconnect();
+        // Only deinit the port if we own it: a transferred port's end belongs
+        // to the port the receiving realm made of it.
+        if (self.owns_port) self.internal_port.deinit();
+    }
+
+    /// Stop hearing about messages queued on the end.
+    fn disconnect(self: *InternalState) void {
+        const receiver = self.receiver orelse return;
+        if (self.internal_port.callback_user_data == @as(?*anyopaque, @ptrCast(receiver))) {
             self.internal_port.callback_user_data = null;
             self.internal_port.on_serialized_message = null;
         }
+        self.allocator.destroy(receiver);
+        self.receiver = null;
+    }
 
-        // Only deinit the port if we own it
-        // When a port is transferred, ownership moves to the destination
-        if (self.owns_port) {
-            self.internal_port.deinit();
-        }
+    /// HTML's MessagePort transfer steps (value = this port): set its "has
+    /// been shipped" flag, and hand over its end - which carries the port
+    /// message queue ([[PortMessageQueue]]) and the entanglement
+    /// ([[RemotePort]]) - as the data holder. The port is detached; it no
+    /// longer hears its end's messages, and the end is no longer its to free.
+    pub fn transfer(self: *InternalState) *InternalMessagePort {
+        self.has_been_shipped = true;
+        self.detached = true;
+        self.disconnect();
+        self.owns_port = false;
+        return self.internal_port;
     }
 };
+
+/// The link from an end back to the MessagePort that owns it, held as
+/// (address, slab generation): a collected port's slot can be reissued.
+const Receiver = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+
+    fn get(self: Receiver) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        return self.instance;
+    }
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -121,29 +126,15 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Create internal MessagePort
     const internal_port = try InternalMessagePort.init(allocator);
     errdefer internal_port.deinit();
-
-    // Create internal state
-    const internal_state = try allocator.create(InternalState);
-    internal_state.* = .{
-        .internal_port = internal_port,
-        .allocator = allocator,
-    };
-
-    // Store internal state in instance
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
-
-    return instance;
+    return initWithInternal(allocator, StateType, vtable, ctx, internal_port);
 }
 
-/// Initialize instance with existing internal MessagePort
-/// Used by MessageChannel to create entangled ports
+/// A MessagePort for an existing end: MessageChannel's two, and a transferred
+/// port's in the receiving realm - HTML's transfer-receiving steps, which
+/// give the new port the end's queue and entanglement. The new port owns the
+/// end and hears its messages from now on.
 pub fn initWithInternal(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -151,21 +142,36 @@ pub fn initWithInternal(
     ctx: runtime.Context,
     internal_port: *InternalMessagePort,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // A MessagePort is an EventTarget: `message` is fired at it and heard.
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
 
-    // Create internal state with provided port
+    // Nobody can hold a port to transfer before one exists.
+    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive });
+
     const internal_state = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal_state);
     internal_state.* = .{
         .internal_port = internal_port,
         .allocator = allocator,
     };
+    instance.getState(StateType).own._internal = internal_state;
 
-    // Store internal state in instance
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
-
+    try connect(instance, internal_state);
+    // A queue that was enabled before the end was shipped (the sender's
+    // start()) is not the receiver's: HTML's transfer-receiving steps leave
+    // it disabled until this port's start() or onmessage.
+    internal_port.queue_enabled = false;
     return instance;
+}
+
+/// Make `instance` the owner that hears messages queued on its end.
+fn connect(instance: *runtime.Instance, internal: *InternalState) !void {
+    const receiver = try internal.allocator.create(Receiver);
+    receiver.* = .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
+    internal.receiver = receiver;
+    internal.internal_port.callback_user_data = receiver;
+    internal.internal_port.on_serialized_message = messageQueued;
 }
 
 /// Deinitialize instance
@@ -174,639 +180,432 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Get internal MessagePort (for streams integration)
 pub fn getInternalPort(instance: *runtime.Instance) ?*InternalMessagePort {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.internal_port;
-    }
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return internal.internal_port;
 }
 
-/// Getter for onclose
+// ============================================================================
+// Event handlers (HTML § 9.4.3: onmessage, onmessageerror, onclose). Their
+// values live in EventTarget's event handler map, where a `message` event
+// fired at this port finds them.
+// ============================================================================
+
 pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onclose;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "close");
 }
 
-/// Getter for onmessage
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessage;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
 }
 
-/// Getter for onmessageerror
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessageerror;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
 }
 
-/// Setter for onclose
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onclose = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "close", value);
 }
 
-/// Timer callback for cross-isolate message dispatch
-/// This runs on the main event loop and is safe to dispatch from
-fn timerDispatchCallback(context_ptr: ?*anyopaque) void {
-    const timer_ctx: *TimerDispatchContext = @ptrCast(@alignCast(context_ptr orelse return));
-    defer timer_ctx.deinit();
-
-    const instance = timer_ctx.instance;
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        std.log.info("[MessagePort] Timer callback: dispatching pending messages", .{});
-        dispatchPendingSerializedMessages(instance, internal);
-    }
-}
-
-/// Callback function for when serialized messages are queued
-/// This gets called from the internal MessagePort when a cross-isolate message arrives
-/// Instead of dispatching directly (which may be in wrong V8 context), schedule a timer
-fn onSerializedMessageCallback(internal_port: *InternalMessagePort) void {
-    // Get the dispatch context which contains the instance and timer interface
-    if (internal_port.callback_user_data) |user_data| {
-        const dispatch_ctx: *MessagePortDispatchContext = @ptrCast(@alignCast(user_data));
-
-        // Schedule a timer callback to dispatch on the main event loop
-        if (dispatch_ctx.timer) |timer| {
-            // Create a timer context for this dispatch
-            const timer_ctx = TimerDispatchContext.init(dispatch_ctx.allocator, dispatch_ctx.instance) catch {
-                std.log.warn("[MessagePort] Failed to allocate timer dispatch context", .{});
-                return;
-            };
-
-            std.log.info("[MessagePort] Scheduling timer callback for cross-isolate dispatch", .{});
-            _ = timer.setTimeout(0, timerDispatchCallback, timer_ctx);
-        } else {
-            std.log.warn("[MessagePort] No timer interface for cross-isolate dispatch", .{});
-        }
-    }
-}
-
-/// Setter for onmessage
-/// Spec: § 9.3.2.1 Setting onmessage implicitly calls start()
+/// "The first time a MessagePort object's onmessage IDL attribute is set, the
+/// port's port message queue must be enabled, as if the start() method had
+/// been called."
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessage = value;
-
-    // Per spec, setting onmessage implicitly enables the port's message queue
-    if (state.own._internal) |internal| {
-        internal.internal_port.enableQueue();
-
-        // Set up callback for when serialized messages arrive (cross-isolate messages)
-        // Create dispatch context with timer interface for scheduling on main event loop
-        if (internal.internal_port.callback_user_data == null) {
-            // Get the timer interface from the runtime context
-            const timer = instance.ctx.getOptionalTimer();
-            std.log.info("[MessagePort] Setting up cross-isolate callback, timer available: {}", .{timer != null});
-
-            // Create the dispatch context
-            const dispatch_ctx = MessagePortDispatchContext.init(internal.allocator, instance, timer) catch |err| {
-                std.log.warn("[MessagePort] Failed to create dispatch context: {}", .{err});
-                return;
-            };
-
-            internal.internal_port.on_serialized_message = onSerializedMessageCallback;
-            internal.internal_port.callback_user_data = dispatch_ctx;
-        }
-
-        // Check for pending cross-isolate messages and dispatch them
-        // This handles the case where messages were queued before the handler was set
-        dispatchPendingSerializedMessages(instance, internal);
-    }
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
+    enableQueue(instance);
 }
 
-/// Dispatch pending serialized messages from the cross-isolate queue
-/// Called when onmessage is set to process any messages that arrived before the handler
-fn dispatchPendingSerializedMessages(instance: *runtime.Instance, internal: *InternalState) void {
-    const v8_engine = @import("v8");
-
-    // Get V8 context and isolate
-    const engine_ctx = instance.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // Get the onmessage handler
-    const state = instance.getState(State);
-    const handler_bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&state.own.onmessage)).*;
-    const handler_addr: usize = @bitCast(handler_bytes);
-
-    if (handler_addr == 0) return;
-
-    const tag = handler_addr & 0x3;
-    const untagged_addr = handler_addr & ~@as(usize, 0x3);
-    if (tag != 1) return;
-    if (untagged_addr < 0x100000000 or untagged_addr > 0x7FFFFFFFFFFF) return;
-    if ((untagged_addr & 0x7) != 0) return;
-
-    const callback_global: *v8_engine.ffi.Value = @ptrFromInt(untagged_addr);
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
-
-    // Process all pending serialized messages
-    var dispatch_count: usize = 0;
-    while (internal.internal_port.popSerializedMessage()) |serialized_msg| {
-        defer serialized_msg.deinit();
-        dispatch_count += 1;
-
-        // Deserialize the message
-        var data_value: ?*v8_engine.ffi.Value = null;
-
-        // Check if it's our custom format or V8 structured clone
-        if (serialized_msg.data.len > 0 and serialized_msg.data[0] < 0x10) {
-            // Custom format: first byte is type marker (0x00-0x0F)
-            const type_marker = serialized_msg.data[0];
-            switch (type_marker) {
-                0x00 => {
-                    // Null/undefined
-                    data_value = v8_engine.ffi.v8_Undefined(v8_isolate);
-                },
-                0x01 => {
-                    // String: [type][4 bytes len][data]
-                    if (serialized_msg.data.len >= 5) {
-                        const str_len = @as(u32, @bitCast(serialized_msg.data[1..5].*));
-                        if (serialized_msg.data.len >= 5 + str_len) {
-                            const str_data = serialized_msg.data[5..][0..str_len];
-                            data_value = @ptrCast(v8_engine.ffi.v8_String_NewFromUtf8(v8_isolate, str_data.ptr, @intCast(str_len)));
-                        }
-                    }
-                },
-                0x02 => {
-                    // Number: [type][8 bytes f64]
-                    if (serialized_msg.data.len >= 9) {
-                        const num: f64 = @bitCast(serialized_msg.data[1..9].*);
-                        data_value = @ptrCast(v8_engine.ffi.v8_Number_New(v8_isolate, num));
-                    }
-                },
-                0x03 => {
-                    // Boolean: [type][1 byte value]
-                    if (serialized_msg.data.len >= 2) {
-                        const bool_val = serialized_msg.data[1] != 0;
-                        data_value = v8_engine.ffi.v8_Boolean_New(v8_isolate, bool_val);
-                    }
-                },
-                else => {},
-            }
-            std.log.info("[MessagePort] Custom deserialization: type={}, data_value={*}", .{ type_marker, data_value });
-        } else {
-            // V8 structured clone format
-            var error_code: c_int = 0;
-            var empty_arraybuffer: [0]v8_engine.ffi.ArrayBufferTransferData = undefined;
-            data_value = v8_engine.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(
-                serialized_msg.data.ptr,
-                serialized_msg.data.len,
-                &empty_arraybuffer,
-                0,
-                &error_code,
-            );
-
-            if (data_value == null or error_code != 0) {
-                std.log.warn("[MessagePort] Failed to deserialize V8 structured clone: error_code={}", .{error_code});
-            }
-        }
-
-        if (data_value == null) {
-            std.log.warn("[MessagePort] Failed to deserialize cross-isolate message", .{});
-            continue;
-        }
-
-        // Create a MessageEvent
-        const MessageEventInterface = interfaces.MessageEvent;
-        const MessageEventImpl = @import("MessageEvent.zig");
-
-        const msg_event = MessageEventImpl.call_constructor(
-            instance.ctx,
-            runtime.DOMString.initInterned("message"),
-            .notPassed(),
-        ) catch {
-            std.log.warn("[MessagePort] Failed to create MessageEvent", .{});
-            continue;
-        };
-
-        // Set the message data
-        var msg_event_state = msg_event.getState(MessageEventInterface.State);
-        msg_event_state.own.data = runtime.JSValue{
-            .handle = .{
-                .ptr = @ptrCast(data_value.?),
-                .needs_disposal = true,
-                .handle_scope = .global,
-            },
-        };
-        msg_event_state.base.own.target = instance;
-        msg_event_state.base.own.currentTarget = instance;
-
-        // Wrap the event as a V8 object
-        const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
-            msg_event,
-            "MessageEvent",
-            v8_isolate,
-            v8_context,
-        ) catch {
-            std.log.warn("[MessagePort] Failed to wrap MessageEvent", .{});
-            continue;
-        };
-
-        // Call the handler
-        const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
-        var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
-        const result = v8_engine.ffi.v8_Function_Call_Safe(
-            callback_global,
-            @ptrCast(v8_context),
-            @ptrCast(undefined_value),
-            1,
-            @ptrCast(&args),
-        );
-        v8_engine.ffi.v8_FreeFunctionCallResult(result);
-    }
-
-    if (dispatch_count > 0) {
-        std.log.info("[MessagePort] Dispatched {} pending cross-isolate messages", .{dispatch_count});
-    }
-}
-
-/// Setter for onmessageerror
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessageerror = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
 }
 
 /// Operation: start
-/// Spec: § 9.3.2.5 start() method
-///
-/// Enables the port's message queue. Messages received while the queue
-/// is disabled are queued and will be dispatched when start() is called.
+/// "The start() method steps are to enable this's port message queue, if it
+/// is not already enabled."
 pub fn call_start(instance: *runtime.Instance) anyerror!void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.internal_port.enableQueue();
-    }
+    enableQueue(instance);
+}
+
+/// Enable the port message queue: its tasks may run now, so the first is
+/// scheduled.
+fn enableQueue(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    // A shipped port's end is another port's now.
+    if (!internal.owns_port) return;
+    if (internal.internal_port.queue_enabled) return;
+    internal.internal_port.enableQueue();
+    scheduleDelivery(instance);
 }
 
 /// Operation: close
-/// Spec: § 9.3.2.6 close() method
-///
-/// Disconnects the port so it is no longer active.
+/// "1. Set this's [[Detached]] internal slot value to true.
+///  2. If this is entangled, disentangle it."
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.internal_port.close();
-    }
+    const internal = getInternal(instance) orelse return;
+    internal.detached = true;
+    // A shipped port is not entangled: its end is another port's now.
+    if (!internal.owns_port) return;
+    const other = internal.internal_port.entangled_port;
+    internal.internal_port.close();
+    // Disentangle step 4: fire an event named close at otherPort - from a
+    // task of its own realm, which may be another agent's.
+    if (other) |end| scheduleClose(end);
 }
 
-/// Post message for cross-isolate delivery
-/// Used when WebIDL entanglement is broken but internal entanglement exists
-/// (i.e., when communicating with a port transferred to a worker)
-fn postMessageCrossIsolate(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const v8_engine = @import("v8");
-    _ = transfer; // TODO: handle transfer list for cross-isolate
+// ============================================================================
+// Posting (HTML "message port post message steps")
+// ============================================================================
 
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-
-    // Get the current V8 context for serialization
-    const engine_ctx = instance.ctx.engine_ctx orelse return;
-    _ = engine_ctx;
-
-    // Serialize the message for cross-isolate transfer
-    var serialized_bytes: ?[]u8 = null;
-
-    // Debug: Log message type
-    std.log.info("[MessagePort] postMessageCrossIsolate: message type = {}", .{@as(std.meta.Tag(@TypeOf(message)), message)});
-
-    if (message == .handle) {
-        const msg_handle = message.handle;
-        const v8_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(msg_handle.ptr));
-
-        var serialized_size: usize = 0;
-        var error_code: c_int = 0;
-        var empty_transfer: [0]*v8_engine.ffi.Value = undefined;
-        var empty_arraybuffer: [0]v8_engine.ffi.ArrayBufferTransferData = undefined;
-
-        // Use simple serialization (no transfer for now)
-        const bytes_ptr = v8_engine.ffi.v8_Value_SerializeWithTransfer_CrossIsolate(
-            v8_value,
-            &empty_transfer,
-            0,
-            &serialized_size,
-            &empty_arraybuffer,
-            &error_code,
-        );
-
-        std.log.info("[MessagePort] V8 serialization: bytes_ptr={*}, size={}, error_code={}", .{ bytes_ptr, serialized_size, error_code });
-        if (bytes_ptr != null and error_code == 0) {
-            // Copy the bytes to our allocator
-            serialized_bytes = try internal.allocator.alloc(u8, serialized_size);
-            @memcpy(serialized_bytes.?, bytes_ptr.?[0..serialized_size]);
-            v8_engine.ffi.v8_Free_SerializedBuffer(bytes_ptr.?);
-            std.log.info("[MessagePort] V8 serialization succeeded: {} bytes", .{serialized_size});
-        } else {
-            std.log.warn("[MessagePort] V8 serialization failed: error_code={}", .{error_code});
-        }
-    } else {
-        // For non-handle values (primitives), we need to create a simple serialization
-        // For now, let's handle common primitives
-        var buf: [64]u8 = undefined;
-        var len: usize = 0;
-
-        switch (message) {
-            .string => |s| {
-                // Serialize as a string marker + length + data
-                // Simple format: [1 byte type][4 bytes len][data]
-                const str_data = s.data;
-                const total_len = 5 + str_data.len;
-                if (total_len <= buf.len) {
-                    buf[0] = 0x01; // String type
-                    const str_len: u32 = @intCast(str_data.len);
-                    buf[1..5].* = @bitCast(str_len);
-                    @memcpy(buf[5..][0..str_data.len], str_data);
-                    len = total_len;
-                }
-            },
-            .number => |n| {
-                // Serialize as number marker + f64
-                buf[0] = 0x02; // Number type
-                const num_bytes: [8]u8 = @bitCast(n);
-                buf[1..9].* = num_bytes;
-                len = 9;
-            },
-            .boolean => |b| {
-                buf[0] = 0x03; // Boolean type
-                buf[1] = if (b) 1 else 0;
-                len = 2;
-            },
-            else => {
-                // For undefined/null, use a marker
-                buf[0] = 0x00; // Null/undefined type
-                len = 1;
-            },
-        }
-
-        if (len > 0) {
-            serialized_bytes = try internal.allocator.alloc(u8, len);
-            @memcpy(serialized_bytes.?, buf[0..len]);
-        }
-    }
-
-    // Queue the serialized message to the entangled port
-    if (serialized_bytes) |bytes| {
-        defer internal.allocator.free(bytes);
-        try internal.internal_port.postSerializedMessage(bytes);
-        std.log.info("[MessagePort] Queued cross-isolate message: {} bytes", .{bytes.len});
-    }
-}
-
-/// Operation: postMessage
-/// Spec: § 9.3.2.1 postMessage(message, transfer)
-///
-/// Posts a message to the entangled port. Creates a MessageEvent and
-/// dispatches it to the entangled port's onmessage handler.
+/// Operation: postMessage(message, transfer)
+/// "2. Let options be «[ "transfer" → transfer ]». 3. Run the message port
+/// post message steps providing this, targetPort, message and options."
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const v8_engine = @import("v8");
+    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
+    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
+    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    defer {
+        if (engine.releaseValue) |release| for (list) |item| release(item);
+        instance.ctx.allocator.free(list);
+    }
+    return postMessageSteps(instance, message, list);
+}
 
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
+/// Operation: postMessage(message, options)
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
+    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
+    return postMessageSteps(instance, message, transfer);
+}
 
-    // Check if port is closed
-    if (internal.internal_port.closed) return ImplError.PortClosed;
+/// Whether a platform object in a transfer list from `source` (a MessagePort)
+/// can be transferred: HTML 2.7.5 steps 2.1 and 5.2, and the message port post
+/// message steps' step 2 ("If transfer contains sourcePort, then throw a
+/// DataCloneError").
+fn transferableFrom(source: ?*anyopaque, instance: *runtime.Instance) runtime.TransferableState {
+    if (source) |s| {
+        if (@as(*runtime.Instance, @ptrCast(@alignCast(s))) == instance) return .not_transferable;
+    }
+    return transferableState(instance);
+}
 
-    // Check for cross-isolate case: WebIDL entanglement is broken but internal entanglement exists
-    // This happens when a port is transferred to a worker
-    if (internal.entangled_webidl_port == null) {
-        // Check if internal entanglement exists (cross-isolate)
-        if (internal.internal_port.entangled_port != null) {
-            // Cross-isolate messaging: serialize and queue for the other isolate
-            return postMessageCrossIsolate(instance, message, transfer);
-        }
-        return ImplError.NotEntangled;
+// ============================================================================
+// The transfer steps, for other types (dom.message_ports)
+// ============================================================================
+
+/// Whether `instance` is a MessagePort that can be transferred.
+fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
+    const internal = getInternal(instance) orelse return .not_transferable;
+    if (internal.detached) return .detached;
+    return .transferable;
+}
+
+/// The transfer steps for `instance`: its end.
+fn ship(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return @ptrCast(internal.transfer());
+}
+
+/// The transfer-receiving steps: a new MessagePort of `realm` on `end`.
+fn receive(realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance {
+    const port = try initWithInternal(realm.allocator, State, &MessagePort.vtable, realm, @ptrCast(@alignCast(end)));
+    getInternal(port).?.has_been_shipped = true;
+    return port;
+}
+
+/// The message port post message steps, given this, the entangled port (if
+/// any), message and options["transfer"].
+fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
+    const internal = getInternal(source) orelse return;
+    const allocator = source.ctx.allocator;
+    const engine = source.ctx.getEngine() orelse return error.NoEngine;
+    const serialize = engine.structuredSerializeWithTransfer orelse return error.NotSupported;
+
+    // 1. targetPort: the end this one is entangled with, if any. A detached
+    // port (closed, or shipped - its end is another port's) has none.
+    const target = if (internal.detached or !internal.owns_port) null else internal.internal_port.entangled_port;
+
+    // Steps 2 and 5: StructuredSerializeWithTransfer(message, transfer) -
+    // which throws a DataCloneError when transfer contains sourcePort
+    // (`transferableFrom`), and ships every port in transfer.
+    var result = try serialize(source.ctx, message, transfer, transferableFrom, source, allocator);
+    defer result.deinit(allocator);
+    var ends: std.ArrayListUnmanaged(*InternalMessagePort) = .empty;
+    defer ends.deinit(allocator);
+    // Step 3-4: doomed when targetPort is in transfer: its end is shipped
+    // with the message posted to it, and the channel is lost.
+    var doomed = false;
+    for (result.platform_objects) |port| {
+        const port_internal = getInternal(port) orelse continue;
+        const end = port_internal.transfer();
+        if (target != null and end == target.?) doomed = true;
+        try ends.append(allocator, end);
     }
 
-    // Check the entangled port's state
-    const entangled_port = internal.entangled_webidl_port.?;
-    const entangled_state = entangled_port.getState(State);
-    const entangled_internal = entangled_state.own._internal orelse return;
+    // 6. If targetPort is null, or if doomed is true, then return.
+    if (target == null or doomed) return;
 
-    // Check if the entangled port has been transferred to another isolate
-    // If so, use cross-isolate messaging instead of direct WebIDL dispatch
-    if (entangled_internal.internal_port.transferred) {
-        // The entangled port was transferred - use cross-isolate messaging
-        return postMessageCrossIsolate(instance, message, transfer);
+    // 7. Add a task to targetPort's port message queue: the message waits on
+    // the entangled end, in order, until that end's port enables its queue.
+    const record = try frame(allocator, &result, ends.items);
+    defer allocator.free(record);
+    internal.internal_port.postSerializedMessage(record) catch |err| switch (err) {
+        error.PortClosed, error.NotEntangled => return,
+        else => return err,
+    };
+}
+
+// ============================================================================
+// The port message queue's task
+// ============================================================================
+
+/// A task queued for a port: the owner, held as (address, generation).
+const PortTask = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn target(self: *const PortTask) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        return self.instance;
     }
+};
 
-    // Same-isolate case: direct WebIDL dispatch
+/// `on_serialized_message`: a message was added to this end's queue.
+fn messageQueued(end: *InternalMessagePort) void {
+    const receiver: *Receiver = @ptrCast(@alignCast(end.callback_user_data orelse return));
+    const instance = receiver.get() orelse return;
+    scheduleDelivery(instance);
+}
 
-    // Only dispatch if queue is enabled (set when onmessage is assigned)
-    if (!entangled_internal.internal_port.queue_enabled) return;
+/// Arm one task on the owner's event loop to deliver the next message, while
+/// the queue is enabled and holds one.
+fn scheduleDelivery(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (!internal.owns_port) return;
+    if (!internal.internal_port.queue_enabled or !internal.internal_port.hasSerializedMessages()) return;
+    armTask(instance, deliverNext);
+}
 
-    // Get the onmessage handler - check if it's actually set (not undefined/garbage)
-    // The handler is stored as a tagged pointer to a V8 GlobalHandle, but it's stored
-    // in a function pointer type which has strict alignment requirements. We need to
-    // extract the raw address without triggering alignment checks.
-    //
-    // EventHandler type is ?*const fn(...) - we get the raw memory contents as usize
-    // using @as to read the bytes directly, avoiding Zig's alignment checks on optionals.
-    const handler_bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&entangled_state.own.onmessage)).*;
-    const handler_addr: usize = @bitCast(handler_bytes);
+fn armTask(instance: *runtime.Instance, comptime run: fn (?*anyopaque) void) void {
+    const timer = instance.ctx.getOptionalTimer() orelse return;
+    const task = instance.ctx.allocator.create(PortTask) catch return;
+    task.* = .{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .allocator = instance.ctx.allocator,
+    };
+    if (timer.setTimeout(0, run, task) == 0) task.allocator.destroy(task);
+}
 
-    // Check for null (0) - zero-initialized memory
-    if (handler_addr == 0) {
+/// One task of the port message queue: the message port post message steps'
+/// step 7, as a task of the receiving port's realm.
+fn deliverNext(data: ?*anyopaque) void {
+    const task: *PortTask = @ptrCast(@alignCast(data orelse return));
+    defer task.allocator.destroy(task);
+    const instance = task.target() orelse return;
+    const internal = getInternal(instance) orelse return;
+    if (!internal.owns_port or !internal.internal_port.queue_enabled) return;
+    const message = internal.internal_port.popSerializedMessage() orelse return;
+    defer message.deinit();
+
+    const engine = instance.ctx.getEngine() orelse return;
+    const run = engine.runTaskInRealm orelse return;
+    var delivery = Delivery{ .port = instance, .record = message.data };
+    run(instance.ctx, Delivery.steps, &delivery) catch {};
+
+    // One message per task: the next gets its own.
+    if (task.target() != null) scheduleDelivery(instance);
+}
+
+const Delivery = struct {
+    port: *runtime.Instance,
+    record: []const u8,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *Delivery = @ptrCast(@alignCast(data orelse return));
+        deliver(self.port, self.record);
+    }
+};
+
+/// Step 7 of the message port post message steps, in the receiving port's
+/// realm: deserialize, make the transferred ports, fire `message`.
+fn deliver(port: *runtime.Instance, record_bytes: []const u8) void {
+    const ctx = port.ctx;
+    const allocator = ctx.allocator;
+    const record = unframe(allocator, record_bytes) catch {
+        fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
+    };
+    defer record.deinit(allocator);
+
+    // 7.3-7.4: StructuredDeserializeWithTransfer(serializeWithTransferResult,
+    // targetRealm). The transferred ports first (their transfer-receiving
+    // steps): new MessagePorts of targetRealm on the shipped ends.
+    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer ports.deinit(allocator);
+    for (record.ends) |end| {
+        const received = receive(ctx, @ptrCast(end)) catch continue;
+        ports.append(allocator, received) catch continue;
     }
 
-    // Extract tag from low 2 bits and untagged address
-    const tag = handler_addr & 0x3;
-    const untagged_addr = handler_addr & ~@as(usize, 0x3);
-
-    // Verify it's a global_handle tag (tag == 1)
-    if (tag != 1) {
-        return; // Not a global_handle tag
-    }
-
-    // Sanity check: verify the untagged address looks like a valid heap pointer
-    // On 64-bit macOS, user-space heap is typically below 0x800000000000
-    // and above some minimum (e.g., 0x100000000)
-    if (untagged_addr < 0x100000000 or untagged_addr > 0x7FFFFFFFFFFF) {
-        return; // Invalid address range - corrupted pointer
-    }
-
-    // Verify alignment - Global<Value>* should be 8-byte aligned
-    if ((untagged_addr & 0x7) != 0) {
-        return; // Misaligned pointer
-    }
-
-    // Get V8 context and isolate
-    const engine_ctx = entangled_port.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // The untagged_addr IS the Global<Value>* - we can use it directly with v8_Function_Call_Safe
-    // which expects Global handles
-    const callback_global: *v8_engine.ffi.Value = @ptrFromInt(untagged_addr);
-
-    // Check if it's a function using the Global-accepting version
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) {
+    const engine = ctx.getEngine() orelse return;
+    const deserialize = engine.structuredDeserializeWithTransfer orelse return;
+    // On an exception, fire `messageerror` at messageEventTarget.
+    const clone = deserialize(ctx, record.serialized, record.array_buffers) catch {
+        fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
-    }
+    };
+    defer if (engine.releaseValue) |release| release(clone);
 
-    // Clone the message using V8's structured clone with transfer
-    // This properly handles ArrayBuffer transfer (copies data, then detaches original)
-    var cloned_message: runtime.JSValue = undefined;
+    // 7.5-7.7: fire `message` at messageEventTarget, with data messageClone
+    // and ports a frozen array of the transferred ports.
+    fire(port, "message", clone, ports.items);
+}
 
-    // Track transferred MessagePorts - store Zig instances (will be wrapped fresh in get_ports)
-    var transferred_port_instances: [16]*runtime.Instance = undefined;
-    var transferred_port_count: usize = 0;
-
-    // Track ArrayBuffers for structured clone transfer
-    var array_buffer_transfers: [64]*v8_engine.ffi.Value = undefined;
-    var array_buffer_count: usize = 0;
-
-    // FIRST: Process transfer list to extract MessagePorts and ArrayBuffers
-    // This must be done regardless of message type, as MessagePorts can be
-    // transferred even when the message itself is a primitive
-    if (transfer == .handle) {
-        const transfer_handle = transfer.handle;
-        const src_ctx = instance.ctx.engine_ctx orelse return;
-        const src_v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(src_ctx));
-
-        const transfer_value: *v8_engine.ffi.Value = @ptrCast(transfer_handle.ptr);
-        if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
-            const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
-            const length = v8_engine.ffi.v8_Array_Length(transfer_array);
-
-            // Separate MessagePorts from ArrayBuffers in the transfer list
-            for (0..length) |i| {
-                if (v8_engine.ffi.v8_Array_Get(src_v8_context, transfer_array, @intCast(i))) |item| {
-                    if (v8_engine.ffi.v8_Value_IsArrayBuffer(item)) {
-                        // ArrayBuffer - add to transfer list for structured clone
-                        if (array_buffer_count < 64) {
-                            array_buffer_transfers[array_buffer_count] = item;
-                            array_buffer_count += 1;
-                        }
-                    } else if (v8_engine.ffi.v8_Value_IsObject(item)) {
-                        // Check if it's a MessagePort by looking at internal fields
-                        const v8_obj: *v8_engine.ffi.Object = @ptrCast(item);
-                        const field_count = v8_engine.ffi.v8_Object_InternalFieldCount(v8_obj);
-                        if (field_count >= 2) {
-                            // Has internal fields - check if it's a MessagePort
-                            if (v8_engine.wrapper_type_info_mod.getTypeInfo(v8_obj)) |type_info| {
-                                if (std.mem.eql(u8, std.mem.span(type_info.interface_name), "MessagePort")) {
-                                    // It's a MessagePort - extract the Zig instance
-                                    // Instance is stored in internal field 0
-                                    if (v8_engine.ffi.v8_Object_GetAlignedPointerFromInternalField(v8_obj, 0)) |instance_ptr| {
-                                        if (transferred_port_count < 16) {
-                                            transferred_port_instances[transferred_port_count] = @ptrCast(@alignCast(instance_ptr));
-                                            transferred_port_count += 1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // SECOND: Clone the message appropriately based on type and ArrayBuffer transfers
-    if (message == .handle) {
-        const msg_handle = message.handle;
-        const v8_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(msg_handle.ptr));
-
-        // Clone message with ArrayBuffer transfers if needed
-        if (array_buffer_count > 0) {
-            var error_code: c_int = 0;
-            const cloned = v8_engine.ffi.v8_Value_StructuredCloneWithTransfer(
-                v8_value,
-                &array_buffer_transfers,
-                array_buffer_count,
-                &error_code,
-            );
-
-            if (cloned == null or error_code != 0) {
-                return; // Clone with transfer failed
-            }
-
-            cloned_message = runtime.JSValue{
-                .handle = .{
-                    .ptr = @ptrCast(cloned.?),
-                    .needs_disposal = true,
-                    .handle_scope = .global,
-                },
-            };
-        } else {
-            // No ArrayBuffers to transfer - use simple clone
-            const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
-            if (cloned == null) {
-                return; // Clone failed
-            }
-            cloned_message = runtime.JSValue{
-                .handle = .{
-                    .ptr = @ptrCast(cloned.?),
-                    .needs_disposal = true,
-                    .handle_scope = .global,
-                },
-            };
-        }
-    } else {
-        // For primitives, just clone directly
-        cloned_message = message.clone(entangled_port.ctx.allocator) catch return;
-    }
-
-    // Create a MessageEvent with the cloned message data
-    const MessageEventInterface = @import("interfaces").MessageEvent;
-    const MessageEventImpl = @import("MessageEvent.zig");
-
-    const msg_event = MessageEventImpl.call_constructor(
-        entangled_port.ctx,
-        runtime.DOMString.initInterned("message"),
-        .notPassed(),
+/// Fire a MessageEvent named `event_type` at `port`. `data` is borrowed: the
+/// event keeps its own.
+fn fire(port: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, ports: []const *runtime.Instance) void {
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{},
+        .data = data,
+        .ports = ports,
+    };
+    const event = interfaces.MessageEvent.call_constructor(
+        port.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
     ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    // Fired by the user agent: trusted (DOM 2.10).
+    _ = EventTargetImpl.dispatchTrusted(port, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
 
-    // Set the message data on the event
-    var msg_event_state = msg_event.getState(MessageEventInterface.State);
-    msg_event_state.own.data = cloned_message;
+/// Disentangle step 4, for the other end's port, from a task of its realm.
+fn scheduleClose(end: *InternalMessagePort) void {
+    const receiver: *Receiver = @ptrCast(@alignCast(end.callback_user_data orelse return));
+    const instance = receiver.get() orelse return;
+    armTask(instance, fireClose);
+}
 
-    // Set the target to the receiving port (entangled_port)
-    // This is per DOM spec: when an event is dispatched, its target should be set
-    msg_event_state.base.own.target = entangled_port;
-    msg_event_state.base.own.currentTarget = entangled_port;
+fn fireClose(data: ?*anyopaque) void {
+    const task: *PortTask = @ptrCast(@alignCast(data orelse return));
+    defer task.allocator.destroy(task);
+    const instance = task.target() orelse return;
+    const engine = instance.ctx.getEngine() orelse return;
+    const run = engine.runTaskInRealm orelse return;
+    run(instance.ctx, fireCloseSteps, instance) catch {};
+}
 
-    // Store the transferred port instances in the MessageEvent's internal state
-    // The get_ports getter will wrap them fresh when accessed, ensuring correct prototype chain
-    if (msg_event_state.own._internal) |msg_internal| {
-        msg_internal.transferred_port_count = transferred_port_count;
-        for (0..transferred_port_count) |i| {
-            msg_internal.transferred_ports[i] = transferred_port_instances[i];
-        }
-    }
-    // Also set ports to undefined initially (get_ports will create the array on access)
-    msg_event_state.own.ports = runtime.JSValue.jsUndefined;
-
-    // Wrap the event as a V8 object - this returns a Global<Object>*
-    const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
-        msg_event,
-        "MessageEvent",
-        v8_isolate,
-        v8_context,
+fn fireCloseSteps(data: ?*anyopaque) void {
+    const port: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+    const event = interfaces.Event.call_constructor(
+        port.ctx,
+        runtime.DOMString.initInterned("close"),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = EventTargetImpl.dispatchTrusted(port, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
 
-    // Create undefined value for the receiver
-    const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+// ============================================================================
+// The queued record
+// ============================================================================
 
-    // Call the handler function using the Safe version which takes Global handles
-    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        callback_global, // Global<Value>* function
-        @ptrCast(v8_context), // Global<Context>*
-        @ptrCast(undefined_value), // Global<Value>* receiver
-        1, // argc
-        @ptrCast(&args), // Global<Value>** argv
-    );
+/// A queued message as its end holds it: the serialization, the transferred
+/// ArrayBuffers' contents, and the shipped ends of the transferred ports.
+/// Laid out in one buffer, since an end queues bytes:
+///   u32 serialized length, the bytes; u32 buffer count, each a u64 length
+///   and its bytes; u32 port count, each the end's address as a u64.
+/// Within one process only - the ends are addresses.
+const Record = struct {
+    serialized: []const u8,
+    array_buffers: []const []const u8,
+    ends: []const *InternalMessagePort,
 
-    // Clean up the result
-    v8_engine.ffi.v8_FreeFunctionCallResult(result);
+    fn deinit(self: Record, allocator: std.mem.Allocator) void {
+        allocator.free(self.array_buffers);
+        allocator.free(self.ends);
+    }
+};
+
+fn frame(allocator: std.mem.Allocator, result: *const runtime.SerializedWithTransfer, ends: []const *InternalMessagePort) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try appendInt(allocator, &out, u32, @intCast(result.serialized.len));
+    try out.appendSlice(allocator, result.serialized);
+    try appendInt(allocator, &out, u32, @intCast(result.array_buffers.len));
+    for (result.array_buffers) |contents| {
+        try appendInt(allocator, &out, u64, contents.len);
+        try out.appendSlice(allocator, contents);
+    }
+    try appendInt(allocator, &out, u32, @intCast(ends.len));
+    for (ends) |end| try appendInt(allocator, &out, u64, @intFromPtr(end));
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendInt(allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), comptime T: type, value: T) !void {
+    var bytes: [@sizeOf(T)]u8 = undefined;
+    std.mem.writeInt(T, &bytes, value, .little);
+    try out.appendSlice(allocator, &bytes);
+}
+
+/// The record `bytes` holds. Its slices point into `bytes`; the two lists are
+/// allocated (`Record.deinit`).
+fn unframe(allocator: std.mem.Allocator, bytes: []const u8) !Record {
+    var reader = Reader{ .bytes = bytes };
+    const serialized = try reader.slice(try reader.int(u32));
+    const buffer_count = try reader.int(u32);
+    const buffers = try allocator.alloc([]const u8, buffer_count);
+    errdefer allocator.free(buffers);
+    for (buffers) |*buffer| buffer.* = try reader.slice(@intCast(try reader.int(u64)));
+    const end_count = try reader.int(u32);
+    const ends = try allocator.alloc(*InternalMessagePort, end_count);
+    errdefer allocator.free(ends);
+    for (ends) |*end| end.* = @ptrFromInt(@as(usize, @intCast(try reader.int(u64))));
+    return .{ .serialized = serialized, .array_buffers = buffers, .ends = ends };
+}
+
+const Reader = struct {
+    bytes: []const u8,
+    at: usize = 0,
+
+    fn int(self: *Reader, comptime T: type) !T {
+        const data = try self.slice(@sizeOf(T));
+        return std.mem.readInt(T, data[0..@sizeOf(T)], .little);
+    }
+
+    fn slice(self: *Reader, len: usize) ![]const u8 {
+        if (self.bytes.len - self.at < len) return error.Truncated;
+        defer self.at += len;
+        return self.bytes[self.at..][0..len];
+    }
+};
+
+test "a queued record round-trips" {
+    const allocator = std.testing.allocator;
+    var buffers = [_][]u8{ @constCast("abc"), @constCast("") };
+    const result = runtime.SerializedWithTransfer{
+        .serialized = @constCast("serialized"),
+        .array_buffers = &buffers,
+        .platform_objects = &.{},
+    };
+    const fake: *InternalMessagePort = @ptrFromInt(0x1000);
+    const bytes = try frame(allocator, &result, &.{fake});
+    defer allocator.free(bytes);
+    const record = try unframe(allocator, bytes);
+    defer record.deinit(allocator);
+    try std.testing.expectEqualStrings("serialized", record.serialized);
+    try std.testing.expectEqual(@as(usize, 2), record.array_buffers.len);
+    try std.testing.expectEqualStrings("abc", record.array_buffers[0]);
+    try std.testing.expectEqual(@as(usize, 0), record.array_buffers[1].len);
+    try std.testing.expectEqual(fake, record.ends[0]);
+    try std.testing.expectError(error.Truncated, unframe(allocator, bytes[0 .. bytes.len - 1]));
 }

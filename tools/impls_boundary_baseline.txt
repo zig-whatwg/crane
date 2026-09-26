@@ -287,7 +287,6 @@ src/webidl/impls/HTMLSelectElement.zig HTMLOptionElement.setSelectedness 4
 src/webidl/impls/HTMLTextAreaElement.zig CharacterData.getData 1
 src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
 src/webidl/impls/MessageChannel.zig MessagePort.initWithInternal 2
-src/webidl/impls/MessagePort.zig MessageEvent.call_constructor 4
 src/webidl/impls/Node.zig CharacterData.getData 9
 src/webidl/impls/Node.zig CharacterData.set_data 2
 src/webidl/impls/Node.zig NodeList.createLiveChildNodes 1

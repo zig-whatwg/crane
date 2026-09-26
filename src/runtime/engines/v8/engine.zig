@@ -24,6 +24,10 @@ const EngineError = runtime.EngineError;
 // V8 FFI and helpers
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
+const value_operations = @import("value_operations.zig");
+const webidl_conversions = @import("webidl_conversions.zig");
+const structured_serialization = @import("structured_serialization.zig");
+const worker_realm = @import("worker_realm.zig");
 const v8_conversions = @import("conversions.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
@@ -141,6 +145,36 @@ pub const v8_engine_interface: EngineInterface = .{
     .invokeForEach = v8InvokeForEach,
     .getCollectionLength = v8GetCollectionLength,
     .getCollectionElement = v8GetCollectionElement,
+    // ---- lane: engine-boundary ----
+    // Values held across the seam (value_operations.zig).
+    .retainValue = value_operations.retainValue,
+    .throwValue = value_operations.throwValue,
+    .convertToSequenceOfPlatformObjects = webidl_conversions.convertToSequenceOfPlatformObjects,
+    .convertToSequenceOfObjects = webidl_conversions.convertToSequenceOfObjects,
+    .createFrozenArrayOfPlatformObjects = value_operations.createFrozenArrayOfPlatformObjects,
+    // Messages (structured_serialization.zig).
+    .structuredSerializeWithTransfer = structured_serialization.structuredSerializeWithTransfer,
+    .structuredDeserializeWithTransfer = structured_serialization.structuredDeserializeWithTransfer,
+    // WebIDL conversions (webidl_conversions.zig).
+    .convertToSequenceOfDOMStrings = webidl_conversions.convertToSequenceOfDOMStrings,
+    .convertToDOMString = webidl_conversions.convertToDOMString,
+    .convertToUSVString = webidl_conversions.convertToUSVString,
+    .convertToRecordOfStrings = webidl_conversions.convertToRecordOfStrings,
+    .convertToPlatformObject = webidl_conversions.convertToPlatformObject,
+    .getCopyOfBufferSourceBytes = webidl_conversions.getCopyOfBufferSourceBytes,
+    .createSequenceOfValues = webidl_conversions.createSequenceOfValues,
+    // Workers (worker_realm.zig).
+    .createAgent = worker_realm.createAgent,
+    .destroyAgent = worker_realm.destroyAgent,
+    .hasRunningScript = worker_realm.hasRunningScript,
+    .hasPendingEngineWork = worker_realm.hasPendingEngineWork,
+    .runEngineTasks = worker_realm.runEngineTasks,
+    .createWorkerRealm = worker_realm.createWorkerRealm,
+    .destroyWorkerRealm = worker_realm.destroyWorkerRealm,
+    .defineBuiltinFunction = worker_realm.defineBuiltinFunction,
+    .isCallable = worker_realm.isCallable,
+    .keepPlatformObjectAlive = worker_realm.keepPlatformObjectAlive,
+    // ---- end lane: engine-boundary ----
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -336,27 +370,29 @@ fn v8GetPropertyTruthy(
 
 /// A realm entered: its agent (isolate), when it was not the current one, and
 /// a scope on its context.
-const EnteredRealm = struct {
+pub const EnteredRealm = struct {
     isolate: *ffi.Isolate,
     entered_isolate: bool,
     scope: js_scope.JsScope,
 
-    fn leaveScope(self: EnteredRealm) void {
+    pub fn leaveScope(self: EnteredRealm) void {
         self.scope.deinit();
     }
 
-    fn leaveAgent(self: EnteredRealm) void {
+    pub fn leaveAgent(self: EnteredRealm) void {
         if (self.entered_isolate) ffi.v8_Isolate_Exit(self.isolate);
     }
 };
 
 /// Enter `realm`: its isolate - recorded on the realm, which a worker realm on
 /// this thread needs, else the current one - then a HandleScope and its context.
-fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
+pub fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
     const engine_ctx = realm.engine_ctx orelse return EngineError.OperationFailed;
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const current = ffi.v8_Isolate_GetCurrent();
-    const recorded: ?*ffi.Isolate = if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
+    // The realm's own agent - a worker realm's is never the page's - as the
+    // context manager recorded it; else its Realm's; else the current one.
+    const recorded: ?*ffi.Isolate = if (realm.agent) |agent| @ptrCast(@alignCast(agent)) else if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
     const isolate = recorded orelse current orelse return EngineError.OperationFailed;
     const entered = current != isolate;
     if (entered) ffi.v8_Isolate_Enter(isolate);
@@ -421,7 +457,7 @@ const PendingReport = struct {
 /// Hand a thrown value to the host's "report an exception", with V8's
 /// automatic microtask checkpoints held off until it returns: the spec
 /// reports before "clean up after running script" performs the checkpoint.
-fn reportException(isolate: *ffi.Isolate, info: *const ffi.V8ErrorInfo, report: runtime.ReportExceptionFn, host: ?*anyopaque) void {
+pub fn reportException(isolate: *ffi.Isolate, info: *const ffi.V8ErrorInfo, report: runtime.ReportExceptionFn, host: ?*anyopaque) void {
     var pending = PendingReport{ .info = info, .report = report, .host = host };
     ffi.v8_RunWithMicrotasksSuppressed(isolate, runPendingReport, &pending);
 }
