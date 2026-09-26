@@ -1293,7 +1293,7 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!vo
     // Step 2. Read the payload out of the argument. `send` accepts
     // (USVString or Blob or ArrayBuffer or ArrayBufferView); anything else has
     // already been rejected by the binding layer.
-    var scratch: ?[]u8 = null;
+    var scratch: ?[]const u8 = null;
     defer if (scratch) |s| internal.allocator.free(s);
 
     const payload = try payloadOf(internal, data, &scratch);
@@ -1320,27 +1320,47 @@ const Payload = struct {
 
 /// The bytes a `send` argument stands for, and whether they are a text frame.
 ///
+/// `send` takes `(BufferSource or Blob or USVString)`, and the argument
+/// reaches the impl unconverted, so this is WebIDL's union conversion
+/// (§ 3.2.24): an ArrayBuffer or a view of one is binary; a Blob is binary;
+/// ANYTHING else - null, a number, a function, the window - is converted to a
+/// USVString with ToString and sent as text. `ws.send(null)` sends "null".
+/// This used to send an empty frame for anything that was not a string or a
+/// buffer, and `interfaces/WebSocket/send/010.html` round-trips ten of them.
+///
 /// `scratch` receives an allocation only when one was needed; everything else
 /// is a view into V8's own backing store, valid for this call only - which is
-/// all `curl_ws_send` needs, since it copies.
+/// all the connection needs, since it copies what it queues.
 fn payloadOf(
     internal: *InternalState,
     data: runtime.JSValue,
-    scratch: *?[]u8,
+    scratch: *?[]const u8,
 ) !Payload {
     const v8 = v8_engine.ffi;
+    const allocator = internal.allocator;
 
-    // A string that the binding layer already converted for us.
-    if (data == .string) return .{ .bytes = data.string.data, .is_text = true };
-
-    if (data != .handle) return .{ .bytes = "", .is_text = true };
+    switch (data) {
+        // A string that the binding layer already converted for us.
+        .string => |s| return .{ .bytes = s.data, .is_text = true },
+        .null => return .{ .bytes = "null", .is_text = true },
+        .undefined => return .{ .bytes = "undefined", .is_text = true },
+        .boolean => |b| return .{ .bytes = if (b) "true" else "false", .is_text = true },
+        .number => |n| {
+            const text = try numberToString(allocator, n);
+            scratch.* = text;
+            return .{ .bytes = text, .is_text = true };
+        },
+        // Not what the binding makes of an argument; nothing to send.
+        .instance => return .{ .bytes = "", .is_text = true },
+        .handle => {},
+    }
     const value: *v8.Value = @ptrCast(@alignCast(data.handle.ptr));
 
     if (v8.v8_Value_IsString(value)) {
         const str: *v8.String = @ptrCast(value);
         const utf8_len = v8.v8_String_Utf8Length(str);
         if (utf8_len <= 0) return .{ .bytes = "", .is_text = true };
-        const buffer = try internal.allocator.alloc(u8, @intCast(utf8_len));
+        const buffer = try allocator.alloc(u8, @intCast(utf8_len));
         scratch.* = buffer;
         _ = v8.v8_String_WriteUtf8(str, buffer.ptr, utf8_len);
         return .{ .bytes = buffer, .is_text = true };
@@ -1358,25 +1378,69 @@ fn payloadOf(
     if (v8.v8_Value_IsArrayBufferView(value)) {
         // A view sends the bytes it describes, NOT its whole buffer - which is
         // the entire point of `Send-binary-arraybufferview-*-offset-length`.
-        const ab = v8.v8_TypedArray_Buffer(value) orelse return .{ .bytes = "", .is_text = false };
-        const offset = v8.v8_TypedArray_ByteOffset(value);
-        const len = v8.v8_TypedArray_ByteLength(value);
-        if (len == 0) return .{ .bytes = "", .is_text = false };
-        const ptr = v8.v8_ArrayBuffer_Data(ab) orelse return .{ .bytes = "", .is_text = false };
+        // Any view: a typed array or a DataView.
+        var info: v8.ViewInfo = undefined;
+        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return error.TypeError;
+        // BufferSource is not [AllowShared].
+        if (info.buffer_shared) return error.TypeError;
+        if (info.byte_length == 0 or info.buffer_detached) return .{ .bytes = "", .is_text = false };
+        // An owned Global: dispose it. The view holds the buffer, so its bytes
+        // outlive the handle for as long as this call needs them. The typed
+        // array accessor this used before leaked one Global per send.
+        const buffer = v8.v8_ArrayBufferView_Buffer(value) orelse return .{ .bytes = "", .is_text = false };
+        defer v8.v8_Value_Dispose(buffer);
+        const ptr = v8.v8_ArrayBuffer_Data(@ptrCast(buffer)) orelse return .{ .bytes = "", .is_text = false };
         const bytes: [*]const u8 = @ptrCast(ptr);
-        return .{ .bytes = bytes[offset..][0..len], .is_text = false };
+        return .{ .bytes = bytes[info.byte_offset..][0..info.byte_length], .is_text = false };
     }
 
-    // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
-    // BlobData, and `interfaces.Blob` exposes no synchronous accessor for them
-    // - only `arrayBuffer()`, `text()` and `bytes()`, which all return
-    // promises. Reading them directly would be a new impls-boundary call, which
-    // AGENTS.md lists as non-negotiable; doing it properly needs a delegate on
-    // Blob's (generated) interface plus the spec's asynchronous "queue the
-    // data" step. Until then a Blob counts toward bufferedAmount and is not
-    // transmitted, so `Send-binary-blob.any.js` reports a failure rather than
-    // hiding one.
-    return .{ .bytes = "", .is_text = false };
+    if (isBlob(value)) {
+        // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
+        // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
+        // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
+        // promises. Reading them directly would be a new impls-boundary call;
+        // doing it properly needs a hook Blob installs (src/dom/, the shape of
+        // fetch_objects.zig) plus the spec's asynchronous read, holding back
+        // every later frame until the Blob's bytes are in the queue. Until then
+        // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
+        // reports a failure rather than hiding one.
+        return .{ .bytes = "", .is_text = false };
+    }
+
+    // Everything else is the USVString member: ToString, which throws for a
+    // Symbol and propagates whatever a `toString` throws.
+    if (v8.v8_Value_IsSymbol(value)) return error.TypeError;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
+    defer v8.v8_Context_Dispose(context);
+    const result = v8.v8_Value_ToString_Safe(value, context);
+    defer v8.v8_FreeToStringResult(result);
+    if (result.exception) |exception| {
+        v8.v8_Isolate_ThrowException(isolate, exception);
+        return error.ExceptionPending;
+    }
+    const str = result.value orelse return error.TypeError;
+    const utf8_len = v8.v8_String_Utf8Length(str);
+    if (utf8_len <= 0) return .{ .bytes = "", .is_text = true };
+    const buffer = try allocator.alloc(u8, @intCast(utf8_len));
+    scratch.* = buffer;
+    _ = v8.v8_String_WriteUtf8(str, buffer.ptr, utf8_len);
+    return .{ .bytes = buffer, .is_text = true };
+}
+
+/// Is `value` a Blob (or a File, which is one)? Its wrapper's first internal
+/// field is the Instance, whose vtable names its interface. Asked of an
+/// object only, and only once it has internal fields: reading field 0 of an
+/// object without one is a V8 CHECK.
+fn isBlob(value: *v8_engine.ffi.Value) bool {
+    const v8 = v8_engine.ffi;
+    if (!v8.v8_Value_IsObject(value)) return false;
+    const object: *v8.Object = @ptrCast(value);
+    if (v8.v8_Object_InternalFieldCount(object) < 1) return false;
+    const raw = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return false;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const name = instance.vtable.name;
+    return std.mem.eql(u8, name, "Blob") or std.mem.eql(u8, name, "File");
 }
 
 // =============================================================================
