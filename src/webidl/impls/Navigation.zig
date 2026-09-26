@@ -313,6 +313,9 @@ pub fn call_entries(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// using NavigationCurrentEntryChangeEvent, with its navigationType attribute
 /// initialized to null and its from initialized to current."
 pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionaries.NavigationUpdateCurrentEntryOptions) anyerror!void {
+    // `state` is a required dictionary member: WebIDL throws a TypeError when
+    // it is missing, and for `any`, a missing member and undefined are one.
+    if (options.state == .undefined) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const current = (try currentEntryObject(instance, internal)) orelse return error.InvalidStateError;
     const scope = scopeOf(instance, internal) orelse return error.InvalidStateError;
@@ -336,6 +339,12 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         return earlyError(instance, "SyntaxError", "The URL could not be parsed.");
     defer internal.allocator.free(url_record);
 
+    // Step 2: "If urlRecord's scheme is "javascript", then return an early
+    // error result for a "NotSupportedError" DOMException."
+    if (std.ascii.startsWithIgnoreCase(url_record, "javascript:")) {
+        return earlyError(instance, "NotSupportedError", "navigate() does not run javascript: URLs.");
+    }
+
     // Step 3: "If options["history"] is "push", and the navigation must be a
     // replace given urlRecord and document, then return an early error
     // result for a "NotSupportedError" DOMException."
@@ -344,9 +353,7 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         ._push_ => .push,
         ._replace_ => .replace,
     } else .auto;
-    if (behavior == .push and (std.ascii.startsWithIgnoreCase(url_record, "javascript:") or
-        dom.document_lifecycle.isInitialAboutBlank(scope.document)))
-    {
+    if (behavior == .push and dom.document_lifecycle.isInitialAboutBlank(scope.document)) {
         return earlyError(instance, "NotSupportedError", "A push is not possible here.");
     }
 
@@ -381,8 +388,18 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
 /// reload(options): reload the navigable. A new document, so the promises
 /// stay pending; the state option is not carried into it, stated.
 pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationReloadOptions)) anyerror!dictionaries.NavigationResult {
-    _ = options;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Steps 1-2: "Let serializedState be StructuredSerializeForStorage(undefined).
+    // If options["state"] exists, then set serializedState to
+    // StructuredSerializeForStorage(options["state"]). If this throws an
+    // exception, then return an early error result for that exception."
+    if (options.was_passed) {
+        if (options.value.state) |value| {
+            var state = navigation_entries.serialize(internal.allocator, value) catch
+                return earlyError(instance, "DataCloneError", "The state could not be serialized.");
+            state.deinit(internal.allocator);
+        }
+    }
     const scope = scopeOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
     if (dom.document_lifecycle.isUnloading(scope.document)) return earlyError(instance, "InvalidStateError", "The document is unloading.");
     const result = try track(instance, internal, .{ .kind = .non_traverse });
