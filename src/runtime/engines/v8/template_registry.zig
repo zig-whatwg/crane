@@ -387,6 +387,15 @@ pub fn wrapInstanceAsV8Object(
 
             // Cache hit? Return existing wrapper (same V8 object)
             if (cache.get(instance)) |cached_wrapper| {
+                // A worker's global scope is cached as its context's global
+                // PROXY (worker_v8_context binds it there, as a Window is
+                // bound to its global). The V1 SetPrototype below is V8's
+                // from_javascript=false path, which on a JSGlobalProxy works
+                // on the proxy's own map - not immutable-proto, so the call
+                // succeeds - and replaces the proxy's hidden prototype, which
+                // is the global object itself. Every `self.x` would then miss
+                // the global.
+                if (instance.stateAs(@import("interfaces").WorkerGlobalScope.State) != null) return cached_wrapper;
                 // IMPORTANT: Still update the prototype chain on cached wrappers
                 // This ensures instanceof works even for wrappers created before the fix
                 // Create null-terminated string for C function
