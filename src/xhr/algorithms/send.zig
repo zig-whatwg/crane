@@ -189,15 +189,21 @@ pub fn sendDispatch(
 }
 
 /// Steps 11.7-11.10 of an asynchronous send(), once req's fetch - run on the
-/// event loop by the WebIDL impl - has its outcome. The impl calls this from a
-/// task, with the body `sendPrologue` returned. The timeout is the impl's: it
-/// ends a fetch still running at the deadline, so an outcome here was in time.
+/// event loop by the WebIDL impl - has its response. The impl calls this
+/// from a task, with the body `sendPrologue` returned and a processor it
+/// keeps for the body's pieces. The timeout is the impl's: it ends a fetch
+/// still running at the deadline, so an outcome here was in time.
+///
+/// The response is handed on at its headers, so its body is usually still
+/// arriving: that pipe comes back, to read with `sendAsyncBodyChunk` as
+/// pieces arrive and `sendAsyncEndOfBody` or `sendAsyncBodyFailed` at its
+/// end. Null: there is nothing left to read.
 pub fn sendAsyncFinish(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
     result: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult,
-) !void {
-    var processor = ResponseProcessor.init(state);
+    processor: *ResponseProcessor,
+) !?*fetch_mod.internal.BodyPipe {
     // As `sendAsync` does: the upload's accounting, when there is an upload
     // to report. Neither flag changes while the request is in flight - an
     // `abort()` or `open()` ends the fetch, and this never runs.
@@ -205,14 +211,34 @@ pub fn sendAsyncFinish(
     if (!state.upload_complete_flag and state.upload_listener_flag) {
         upload_tracker = UploadTracker.init(if (body) |b| b.len else 0, state.event_sink);
     }
-    try FetchIntegration.processFetchResult(
+    return FetchIntegration.processFetchResult(
         state,
         body,
         result,
         null,
-        &processor,
+        processor,
         if (upload_tracker) |*ut| ut else null,
     );
+}
+
+/// Step 11.9.13's processBodyChunk: another piece of the body.
+pub fn sendAsyncBodyChunk(state: *XMLHttpRequestState, processor: *ResponseProcessor, bytes: []const u8) !void {
+    _ = state;
+    try processor.processResponseBodyChunk(bytes);
+}
+
+/// Step 11.9.11's processEndOfBody: "handle response end-of-body".
+pub fn sendAsyncEndOfBody(state: *XMLHttpRequestState, processor: *ResponseProcessor) void {
+    _ = state;
+    processor.processResponseEndOfBody();
+}
+
+/// Step 11.9.12's processBodyError: the body failed while arriving -
+/// "set this's response to a network error", then "run handle errors",
+/// which finds the network error and runs the request error steps.
+pub fn sendAsyncBodyFailed(state: *XMLHttpRequestState, processor: *ResponseProcessor) void {
+    state.setResponseToNetworkError();
+    processor.handleNetworkError();
 }
 
 /// Send request asynchronously, waiting for the response - for a realm with

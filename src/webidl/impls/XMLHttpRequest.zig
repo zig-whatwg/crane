@@ -86,15 +86,7 @@ pub const InternalState = struct {
     fn cancelFetch(self: *InternalState) void {
         const pending = self.pending_fetch orelse return;
         self.pending_fetch = null;
-        if (pending.fetch) |f| {
-            // In flight: the fetch owned it, and the fetch is over.
-            pending.fetch = null;
-            f.terminate(.{ .kind = .aborted });
-            pending.destroy();
-        } else {
-            // Its task is queued, and frees it.
-            pending.cancelled = true;
-        }
+        pending.cancel();
     }
 
     pub fn deinitState(self: *InternalState) void {
@@ -907,11 +899,10 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
-    pending.fetch = fetch_mod.algorithms.AsyncFetch.startWith(
+    pending.fetch = fetch_mod.algorithms.AsyncFetch.start(
         allocator,
         request,
         .{},
-        .{ .collect = true },
         fetch_mod.network.scheduler.threadScheduler(),
         pending.client(),
     ) catch |err| {
@@ -930,20 +921,26 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     pending.armTimeout(xhr_state.timeout);
 }
 
-/// One asynchronous send()'s fetch, from `send()` until its task has run.
+/// One asynchronous send()'s fetch, from `send()` until its body has been
+/// read to its end.
 ///
-/// The XMLHttpRequest's `InternalState.pending_fetch` points at it, and
-/// exactly one other thing owns it at a time:
+/// The response comes at its headers (the headers-received steps run in a
+/// task), and its body after, through the response's pipe: each time the
+/// pipe has news, a task feeds what arrived to step 11.9.13's
+/// processBodyChunk, and its end to processEndOfBody. Nothing is read until
+/// a task runs, so events fire only at the top of a task.
 ///
-///   in flight      the fetch - `done`/`gone`, `timedOut`, or `cancelFetch`
-///                  (abort(), open(), a later send(), deinit) ends it
-///   task queued    the task - `run`, or `drop` if its loop goes first
+/// Two things hold it, each letting go once: the fetch, until it is over
+/// (`finished`), gone (`gone`) or ended here; and a queued task, until it
+/// runs (or its `drop`). The XMLHttpRequest's `pending_fetch` points at it
+/// while it is the XHR's current request; `cancel` (abort(), open(), a later
+/// send(), deinit) ends that - the fetch is terminated and nothing more
+/// reaches the XHR.
 ///
 /// The instance is read only while nothing has cancelled this: the XHR's
 /// `deinitState` cancels it before the instance can go, and the slab
 /// recycles addresses, so a bare `*Instance` held across turns would
-/// otherwise run into whatever took its place (see the SendToken this
-/// replaced, which carried the same rule).
+/// otherwise run into whatever took its place.
 const PendingFetch = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
@@ -951,13 +948,24 @@ const PendingFetch = struct {
     /// task can run from the page's loop.
     isolate: *v8_engine.ffi.Isolate,
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
+    /// The fetch's outcome, from `done` until a task processes it.
     outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
+    /// The response's body, while it is being read: borrowed from the
+    /// response, which the XHR state owns - `cancel` lets go of it before
+    /// anything can replace that response.
+    pipe: ?*fetch_mod.internal.BodyPipe = null,
+    /// Step 11.9's processor, kept from the headers to the body's end: it
+    /// carries the progress throttle.
+    processor: ?xhr.response.ResponseProcessor = null,
     /// The request body, owned: req's body borrows it, and a redirect
     /// re-sends it, so it lives as long as this does.
     body: ?[]u8 = null,
-    /// Set by `cancelFetch` while the task is queued: the task frees this
-    /// and touches nothing else.
+    /// No longer the XHR's request: touch nothing but this.
     cancelled: bool = false,
+    /// The response has been processed and its body read to the end.
+    complete: bool = false,
+    fetch_holds: bool = true,
+    task_queued: bool = false,
     /// When the fetch began, which is what `timeout` counts from.
     started_ms: i64,
     /// The XMLHttpRequest's wrapper, held strongly while this exists. XHR
@@ -968,12 +976,12 @@ const PendingFetch = struct {
     /// cancels the fetch, and no event ever fired. Blink's
     /// XMLHttpRequest::HasPendingActivity is the same rule.
     keep_alive: same_object.Pin = .{},
-    /// The pending timeout, while the fetch is in flight.
+    /// The pending timeout, until the body has ended.
     timeout_timer: ?runtime.TimerInterface = null,
     timeout_id: runtime.TimerId = 0,
 
     fn client(self: *PendingFetch) fetch_mod.algorithms.AsyncFetch.Client {
-        return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
     }
 
     /// Whether the XHR's realm is still there. A page that ends retires its
@@ -987,105 +995,214 @@ const PendingFetch = struct {
     fn gone(context: *anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context));
         self.fetch = null;
-        self.detach();
-        self.destroy();
+        self.fetch_holds = false;
+        if (!self.cancelled) {
+            self.cancelled = true;
+            self.releasePipe();
+            self.detach();
+        }
+        self.maybeFree();
     }
 
-    /// req's fetch has its outcome: queue the task that processes it, on the
-    /// realm's event loop - or, in a worker, whose realm has none and runs
-    /// its tasks as timers on the page's, as a timer.
-    fn done(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+    /// The fetch is over: its body has ended (and said so through the pipe),
+    /// or nobody was left to read it.
+    fn finished(context: *anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context));
         self.fetch = null;
-        self.disarmTimeout();
+        self.fetch_holds = false;
+        self.maybeFree();
+    }
+
+    /// req's fetch has its response - its headers; its body still arriving.
+    fn done(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
         self.outcome = outcome;
+        self.queueTask();
+    }
+
+    /// The body's pipe has news.
+    fn notify(context: *anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        self.queueTask();
+    }
+
+    /// Queue the task that acts on what has arrived, on the realm's event
+    /// loop - or, in a worker, whose realm has none and runs its tasks as
+    /// timers on the page's, as a timer.
+    fn queueTask(self: *PendingFetch) void {
+        if (self.task_queued or self.cancelled) return;
         const ctx = self.instance.ctx;
         if (ctx.getOptionalEventLoop()) |loop| {
+            self.task_queued = true;
             loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
             return;
         }
         if (ctx.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, run, self) != 0) return;
+            if (timer.setTimeout(0, run, self) != 0) {
+                self.task_queued = true;
+                return;
+            }
         }
-        run(self);
     }
 
-    /// The task: send() steps 11.9 onwards, given the fetch's outcome.
+    /// The task: send() steps 11.9 onwards - the response's headers once,
+    /// then whatever of its body has arrived.
     fn run(context: ?*anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
-        defer self.destroy();
-        if (self.cancelled) return;
+        self.task_queued = false;
+        if (self.cancelled) return self.maybeFree();
         const instance = self.instance;
-        self.detach();
-
-        const outcome = self.outcome orelse return;
-        self.outcome = null;
 
         // A task runs from the event loop, not from script: it enters the
         // realm itself - and in a worker, the worker's isolate.
-        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
-        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
-        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        const isolate = self.isolate;
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(isolate);
         {
-            const scope = v8_engine.JsScope.init(instance.ctx) orelse {
-                freeOutcome(outcome);
-                return;
-            };
+            const scope = v8_engine.JsScope.init(instance.ctx) orelse return self.maybeFree();
             defer scope.deinit();
-            send_algo.sendAsyncFinish(getXHRState(instance), self.body, outcome) catch |err| {
-                log.debug("async send failed: {s}", .{@errorName(err)});
-            };
+            const state = getXHRState(instance);
+            if (self.outcome) |outcome| {
+                self.outcome = null;
+                self.processor = xhr.response.ResponseProcessor.init(state);
+                const pipe = send_algo.sendAsyncFinish(state, self.body, outcome, &self.processor.?) catch |err| blk: {
+                    log.debug("async send failed: {s}", .{@errorName(err)});
+                    break :blk null;
+                };
+                // A listener may have ended this request (abort(), open()).
+                if (!self.cancelled) {
+                    if (pipe) |p| {
+                        self.pipe = p;
+                        p.consumer = .{ .context = self, .notify = notify };
+                    } else self.finishRequest();
+                }
+            }
+            if (!self.cancelled) self.readBody(state);
         }
+        self.maybeFree();
         // In a worker, the task's end is the worker's to run.
-        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+        @import("html").worker_v8_context.finishTaskIn(isolate);
+    }
+
+    /// Feed the body that has arrived to processBodyChunk, and its end to
+    /// processEndOfBody - stopping the moment a listener ends the request.
+    fn readBody(self: *PendingFetch, state: *XMLHttpRequestState) void {
+        const pipe = self.pipe orelse return;
+        if (pipe.hasBytes()) {
+            const bytes = pipe.take() catch return;
+            defer self.allocator.free(bytes);
+            send_algo.sendAsyncBodyChunk(state, &self.processor.?, bytes) catch |err| {
+                log.debug("body chunk failed: {s}", .{@errorName(err)});
+            };
+            if (self.cancelled) return;
+        }
+        const p = self.pipe orelse return;
+        switch (p.state) {
+            .open => {},
+            .closed => {
+                if (p.hasBytes()) return self.queueTask();
+                self.releasePipe();
+                self.finishRequest();
+                send_algo.sendAsyncEndOfBody(state, &self.processor.?);
+            },
+            .errored => {
+                self.releasePipe();
+                self.finishRequest();
+                send_algo.sendAsyncBodyFailed(state, &self.processor.?);
+            },
+        }
+    }
+
+    /// The response has been read: this is no longer the XHR's request in
+    /// flight, and its timeout is over.
+    fn finishRequest(self: *PendingFetch) void {
+        self.complete = true;
+        self.disarmTimeout();
+        self.detach();
     }
 
     /// A task that will never run: its loop is going.
     fn drop(context: ?*anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
-        if (!self.cancelled) self.detach();
-        self.destroy();
+        self.task_queued = false;
+        if (!self.cancelled) {
+            self.cancelled = true;
+            self.releasePipe();
+            self.detach();
+        }
+        self.maybeFree();
+    }
+
+    /// This is no longer the XHR's request (abort(), open(), a later send(),
+    /// deinit): the fetch is terminated, and nothing more reaches the XHR.
+    fn cancel(self: *PendingFetch) void {
+        self.cancelled = true;
+        self.releasePipe();
+        self.disarmTimeout();
+        if (self.fetch) |f| {
+            self.fetch = null;
+            f.terminate(.{ .kind = .aborted });
+            self.fetch_holds = false;
+        }
+        self.maybeFree();
+    }
+
+    /// Stop listening to the body; the pipe itself is the response's.
+    fn releasePipe(self: *PendingFetch) void {
+        const pipe = self.pipe orelse return;
+        self.pipe = null;
+        pipe.consumer = null;
     }
 
     /// Step 11.11's timer: the fetch has run for this's timeout. Set the
     /// timed out flag and terminate the fetch; its processResponse would then
-    /// run the timeout steps, which this does instead - there is no response
-    /// to wait for.
+    /// run the timeout steps, which this does instead.
     fn timedOut(context: ?*anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
         self.timeout_id = 0;
         // The response may be in and unread: a long task can hold the loop
         // past the deadline with it waiting in the socket. The fetch and the
         // timer race in parallel, and the fetch finished first, so give the
-        // network its step before calling it a timeout. A fetch that ends
-        // here queues its task and is no longer this timer's. (Only while the
-        // realm lives: a sweep inside the pump would end this very call.)
+        // network its step before calling it a timeout. (Only while the realm
+        // lives: a sweep inside the pump would end this very call.)
         if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
-        const f = self.fetch orelse return;
-        self.fetch = null;
-        f.terminate(.{ .kind = .network });
+        if (self.cancelled or self.complete) return;
+        // A response in, and its body not yet all read: in time only if the
+        // body has arrived.
+        if (self.pipe) |pipe| {
+            if (pipe.state == .closed) return;
+        } else if (self.outcome != null and self.fetch == null) return;
 
         const instance = self.instance;
+        self.cancelled = true;
+        self.releasePipe();
         self.detach();
-        defer self.destroy();
+        if (self.fetch) |f| {
+            self.fetch = null;
+            f.terminate(.{ .kind = .network });
+            self.fetch_holds = false;
+        }
+        const isolate = self.isolate;
+        defer self.maybeFree();
 
-        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
-        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
-        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(isolate);
         {
             const scope = v8_engine.JsScope.init(instance.ctx) orelse return;
             defer scope.deinit();
             var processor = xhr.response.ResponseProcessor.init(getXHRState(instance));
             processor.handleTimeout();
         }
-        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+        @import("html").worker_v8_context.finishTaskIn(isolate);
     }
 
     /// Arm the timeout for a fetch that began at `started_ms`, `timeout_ms`
     /// after it began - at once if that is already past. 0 is no timeout.
     fn armTimeout(self: *PendingFetch, timeout_ms: u32) void {
         self.disarmTimeout();
-        if (timeout_ms == 0 or self.fetch == null) return;
+        if (timeout_ms == 0 or self.cancelled or self.complete) return;
         const timer = self.instance.ctx.getOptionalTimer() orelse return;
         const elapsed = clock.monotonicMillis() - self.started_ms;
         const remaining: u64 = @intCast(@max(0, @as(i64, timeout_ms) - elapsed));
@@ -1107,7 +1224,12 @@ const PendingFetch = struct {
         if (internal.pending_fetch == self) internal.pending_fetch = null;
     }
 
-    fn destroy(self: *PendingFetch) void {
+    /// Free once nothing holds this: the fetch has let go, no task is
+    /// queued, and there is nothing more to read.
+    fn maybeFree(self: *PendingFetch) void {
+        if (self.fetch_holds or self.task_queued) return;
+        if (!self.cancelled and !self.complete) return;
+        self.releasePipe();
         self.keep_alive.release();
         self.disarmTimeout();
         if (self.outcome) |outcome| freeOutcome(outcome);
