@@ -1235,11 +1235,20 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
     }
 
     // Validate reason length if present
+    //
+    // `reason` is a USVString, so a lone surrogate in it is U+FFFD - which the
+    // binding's string conversion does not do yet, so it is done here; the
+    // byte length is the same either way.
+    const scalar_reason: ?[]u8 = if (reason.was_passed)
+        try websocket.utf8.toScalarValues(internal.allocator, reason.value)
+    else
+        null;
+    defer if (scalar_reason) |r| internal.allocator.free(r);
     const reason_str: ?[]const u8 = if (reason.was_passed) blk: {
         if (reason.value.len > 123) {
             return error.SyntaxError;
         }
-        break :blk reason.value;
+        break :blk scalar_reason orelse reason.value;
     } else null;
 
     // Get the connection
@@ -1296,7 +1305,19 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!vo
     var scratch: ?[]const u8 = null;
     defer if (scratch) |s| internal.allocator.free(s);
 
-    const payload = try payloadOf(internal, data, &scratch);
+    var payload = try payloadOf(internal, data, &scratch);
+
+    // "If data is a string: let data be the result of converting data to a
+    // sequence of Unicode scalar values." A lone surrogate becomes U+FFFD
+    // rather than bytes that are not UTF-8 - which the peer would answer by
+    // failing the connection.
+    if (payload.is_text) {
+        if (try websocket.utf8.toScalarValues(internal.allocator, payload.bytes)) |converted| {
+            if (scratch) |old| internal.allocator.free(old);
+            scratch = converted;
+            payload.bytes = converted;
+        }
+    }
 
     // Steps 3-4. Send if the connection is established and its closing
     // handshake has not started; otherwise the data is discarded, silently.

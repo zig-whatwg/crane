@@ -113,6 +113,25 @@ test "UTF8 - invalid sequences" {
     try testing.expect(!websocket.isValidUtf8(&[_]u8{ 0xC0, 0x80 }));
 }
 
+test "scalar values: a lone surrogate becomes U+FFFD, three bytes for three" {
+    // A USVString is a sequence of scalar values (WebIDL § 3.2.12), and
+    // send()'s step 2 converts its string to one. V8 writes a lone surrogate
+    // - "\uD807" - as its three-byte generalized encoding, ED A0 87, which is
+    // not UTF-8: sent as a text frame, the peer fails the connection (1007).
+    const out = (try websocket.utf8.toScalarValues(testing.allocator, "a\xED\xA0\x87b")).?;
+    defer testing.allocator.free(out);
+    try testing.expectEqualSlices(u8, "a\xEF\xBF\xBDb", out);
+
+    // Low surrogates too, and several.
+    const two = (try websocket.utf8.toScalarValues(testing.allocator, "\xED\xBF\xBF\xED\xB0\x80")).?;
+    defer testing.allocator.free(two);
+    try testing.expectEqualSlices(u8, "\xEF\xBF\xBD\xEF\xBF\xBD", two);
+
+    // Nothing to replace - U+D7FF, the last scalar value before the
+    // surrogates, the euro sign and a four-byte character - is no copy.
+    try testing.expect((try websocket.utf8.toScalarValues(testing.allocator, "\xED\x9F\xBF \xE2\x82\xAC \xF0\x9F\x98\x80")) == null);
+}
+
 test "Utf8Validator - streaming" {
     var validator = websocket.Utf8Validator{};
 
