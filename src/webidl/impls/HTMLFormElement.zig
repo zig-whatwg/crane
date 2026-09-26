@@ -21,7 +21,6 @@ const log = std.log.scoped(.forms);
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
-const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 pub const State = HTMLFormElement.State;
 
@@ -37,9 +36,6 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
-    /// Cached relList DOMTokenList instance
-    rel_list: ?*runtime.Instance = null,
-
     /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
     /// that will navigate, or 0 for null.
     planned_navigation: u64 = 0,
@@ -106,22 +102,14 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // exception - so `form.method` THREW rather than returning its default. Every
 // form test died on the first property read.
 //
-// Three kinds of reflection appear here and they are not interchangeable:
-//   * plain      - return the attribute, or "" when absent (name, target, rel)
-//   * URL        - resolve against the document base URL (action)
+// Plain [Reflect] attributes (acceptCharset, name, noValidate, target, rel)
+// and the [ReflectSetter] action setter are the generated interface's own
+// (src/webidl/impls/reflection.zig). What is left here is not plain:
+//   * action     - a URL getter with the document URL as its fallback
 //   * enumerated - "limited to only known values": an unrecognised value maps
 //                  to the INVALID VALUE DEFAULT, and a missing attribute to the
 //                  MISSING VALUE DEFAULT, which are not always the same thing
 // ---------------------------------------------------------------------------
-
-/// The attribute's literal value, or "" when it is absent.
-fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, attr)) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-    return runtime.DOMString.initEmpty();
-}
 
 /// Enumerated reflection. `known` is matched ASCII-case-insensitively; anything
 /// unmatched yields `invalid_default`, and an absent attribute `missing_default`.
@@ -142,13 +130,6 @@ fn reflectEnumerated(
         }
     }
     return runtime.DOMString.initInterned(invalid_default);
-}
-
-/// Getter for acceptCharset
-pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Reflects "accept-charset", NOT "acceptcharset" - the content attribute
-    // name differs from the IDL name.
-    return reflectString(instance, "accept-charset");
 }
 
 /// Getter for action
@@ -202,79 +183,6 @@ pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Missing and invalid both default to "get".
     return reflectEnumerated(instance, "method", &.{ "get", "post", "dialog" }, "get", "get");
-}
-
-/// Getter for name
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
-/// Reflects the name attribute.
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Use Element's attribute access
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Look for the "name" attribute
-    if (elem_internal.findAttribute(null, "name")) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-
-    return runtime.DOMString.initEmpty();
-}
-
-/// Getter for noValidate
-pub fn get_noValidate(instance: *runtime.Instance) anyerror!bool {
-    // A boolean attribute: presence is true regardless of value, so even
-    // novalidate="false" is true.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    return elem_internal.findAttribute(null, "novalidate") != null;
-}
-
-/// Getter for target
-pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "target");
-}
-
-/// Getter for rel
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rel
-/// Reflects the rel attribute.
-pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Use Element's attribute access
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Look for the "rel" attribute
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-
-    return runtime.DOMString.initEmpty();
-}
-
-/// Getter for relList
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rellist
-/// Returns a DOMTokenList reflecting the rel attribute.
-pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Return cached DOMTokenList if it exists
-    if (internal.rel_list) |existing| {
-        return existing;
-    }
-
-    // Create a new DOMTokenList
-    const token_list = interfaces.DOMTokenList.init(elem_internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    errdefer interfaces.DOMTokenList.deinit(token_list);
-
-    // Initialize with current rel attribute value
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
-        interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
-    }
-
-    // Associate with this element and the "rel" attribute
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("rel"));
-
-    // Cache for future access
-    internal.rel_list = token_list;
-
-    return token_list;
 }
 
 /// The form's "listed elements", per
@@ -337,22 +245,6 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return interfaces.HTMLCollection.get_length(collection);
 }
 
-/// Setter for acceptCharset
-pub fn set_acceptCharset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("accept-charset"), value);
-}
-
-/// Setter for action
-pub fn set_action(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    // USVString is a plain []const u8. setAttribute copies into the attribute
-    // store, so a borrowed view of the caller's bytes is safe here.
-    try interfaces.Element.call_setAttribute(
-        instance,
-        runtime.DOMString.initInterned("action"),
-        runtime.DOMString.initInterned(value),
-    );
-}
-
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("autocomplete"), value);
@@ -372,39 +264,6 @@ pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyer
 /// Setter for method
 pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("method"), value);
-}
-
-/// Setter for name
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
-/// Sets the name attribute.
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Use Element's setAttribute through the interface
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("name"), value);
-}
-
-/// Setter for noValidate
-pub fn set_noValidate(instance: *runtime.Instance, value: bool) anyerror!void {
-    // Boolean attribute: true adds it with the empty string, false removes it.
-    // Setting it to "false" would still read back as true.
-    const name = runtime.DOMString.initInterned("novalidate");
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
-}
-
-/// Setter for target
-pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("target"), value);
-}
-
-/// Setter for rel
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rel
-/// Sets the rel attribute.
-pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Use Element's setAttribute through the interface
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), value);
 }
 
 /// Operation: requestSubmit
@@ -813,14 +672,11 @@ fn submitForm(form: *runtime.Instance) !void {
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
 
-    // Steps 18-23: the target, and a navigable for it. Chosen again when the
-    // planned navigation runs; if there is none now, there is nothing to plan.
+    // Steps 18-23: the target. The navigable for it is chosen when the
+    // planned navigation runs (dom.navigables), which opens a new one for
+    // "_blank" or a name nothing has.
     const target = (try attributeValue(allocator, form, "target")) orelse try allocator.dupe(u8, "");
     errdefer allocator.free(target);
-    if (chooseNavigable(document, target) == null) {
-        allocator.free(target);
-        return;
-    }
 
     // Step 26: the scheme and method pick the behaviour.
     const scheme = parsed_action.scheme();
@@ -849,63 +705,6 @@ fn submitForm(form: *runtime.Instance) !void {
     planNavigation(form, url, target);
 }
 
-/// "The rules for choosing a navigable" (HTML § 7.3.1.7), for the names this
-/// engine can reach, as the chosen navigable's Location. A new top-level
-/// traversable ("_blank", or a name nothing has) is never created.
-fn chooseNavigable(document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
-    // Step 4: "" or "_self": the current navigable.
-    if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) return locationOf(window);
-    // Step 5: "_parent": the parent, if any, else the current navigable.
-    if (std.ascii.eqlIgnoreCase(name, "_parent")) {
-        return locationOf((interfaces.Window.get_parent(window) catch null) orelse window);
-    }
-    const top = (interfaces.Window.get_top(window) catch null) orelse window;
-    // Step 6: "_top".
-    if (std.ascii.eqlIgnoreCase(name, "_top")) return locationOf(top);
-    if (std.ascii.eqlIgnoreCase(name, "_blank")) return null;
-    // Step 7: a navigable whose target name is `name`, searched from the top.
-    const top_document = interfaces.Window.get_document(top) catch return null;
-    return findNamedNavigable(top_document, name, 0);
-}
-
-fn locationOf(window: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Window.get_location(window) catch null;
-}
-
-/// A child navigable of `document`, or of one of its descendants' documents,
-/// whose container's name is `name`. Depth-first in tree order. The tree is
-/// walked directly: a getElementsByTagName collection made here would be an
-/// instance nothing ever frees.
-fn findNamedNavigable(document: *runtime.Instance, name: []const u8, depth: u8) ?*runtime.Instance {
-    if (depth > 16) return null;
-    var next = nextInTree(document, document, false);
-    while (next) |node| : (next = nextInTree(node, document, false)) {
-        if (!isElementNamed(node, "iframe")) continue;
-        if (containerNameIs(node, name)) {
-            const content_window = (interfaces.HTMLIFrameElement.get_contentWindow(node) catch null) orelse continue;
-            return locationOf(content_window);
-        }
-        const child_document = (interfaces.HTMLIFrameElement.get_contentDocument(node) catch null) orelse continue;
-        if (findNamedNavigable(child_document, name, depth + 1)) |location| return location;
-    }
-    return null;
-}
-
-/// Whether an iframe's content navigable has the target name `name`. That
-/// name comes from the `name` content attribute; the IDL setter keeps its
-/// own copy without writing the attribute, and the parser writes only the
-/// attribute, so either may hold it.
-fn containerNameIs(iframe: *runtime.Instance, name: []const u8) bool {
-    var idl_name = interfaces.HTMLIFrameElement.get_name(iframe) catch return false;
-    defer idl_name.deinit(iframe.ctx.allocator);
-    if (std.mem.eql(u8, idl_name.asSlice(), name)) return true;
-    if (!hasAttribute(iframe, "name")) return false;
-    var attribute = (interfaces.Element.call_getAttribute(iframe, runtime.DOMString.initInterned("name")) catch return false) orelse return false;
-    defer attribute.deinit(iframe.ctx.allocator);
-    return std.mem.eql(u8, attribute.asSlice(), name);
-}
-
 /// A planned navigation (§ 4.10.22.3 "plan to navigate"): the queued task's
 /// data. The form is held by address, so it is identified by its slab
 /// generation and its planned-navigation token before anything touches it.
@@ -915,6 +714,9 @@ const PlannedNavigation = struct {
     token: u64,
     url: []const u8,
     target: []const u8,
+    /// Submit step 22's condition, taken when the form was submitted: the
+    /// form document had not completely loaded.
+    source_not_completely_loaded: bool,
     allocator: std.mem.Allocator,
 
     fn destroy(self: *PlannedNavigation) void {
@@ -935,12 +737,18 @@ fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8) 
         allocator.free(target);
         return;
     };
+    // Submit step 22: "If form document equals targetNavigable's active
+    // document, and form document has not yet completely loaded, then set
+    // historyHandling to "replace"" - the load state now, at submission.
+    const document = interfaces.Node.get_ownerDocument(form) catch null;
+    const not_loaded = if (document) |d| !@import("dom").document_lifecycle.isCompletelyLoaded(d) else false;
     task.* = .{
         .form = form,
         .form_generation = runtime.SlabAllocator.generationOf(form),
         .token = next_navigation_token,
         .url = url,
         .target = target,
+        .source_not_completely_loaded = not_loaded,
         .allocator = allocator,
     };
     next_navigation_token += 1;
@@ -970,12 +778,22 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     const scope = v8.JsScope.init(task.form.ctx) orelse return;
     defer scope.deinit();
 
-    // Step 4.2: Navigate targetNavigable to url.
+    // Step 4.2: "Navigate targetNavigable to url using the form element's
+    // node document, with historyHandling set to historyHandling" - which
+    // submit step 22 made "replace" when the form document is the target's
+    // active document and has not completely loaded. The rules for choosing
+    // a navigable and the navigation are the navigables' (dom.navigables).
     const document = (interfaces.Node.get_ownerDocument(task.form) catch null) orelse return;
-    const location = chooseNavigable(document, task.target) orelse return;
-    interfaces.Location.call_assign(location, task.url) catch |err| {
-        log.debug("planned navigation to {s} failed: {s}", .{ task.url, @errorName(err) });
-    };
+    const navigables = @import("dom").navigables;
+    if (!navigables.isInstalled()) {
+        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    navigables.navigateByTarget(document, .{
+        .target = task.target,
+        .url = task.url,
+        .source_not_completely_loaded = task.source_not_completely_loaded,
+    });
 }
 
 /// Operation: reportValidity

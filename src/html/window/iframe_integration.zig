@@ -74,12 +74,15 @@ pub const NavigateRequest = struct {
 };
 
 /// An engine context this integration made for a content navigable it no
-/// longer has - the iframe was removed and inserted again, which makes a new
-/// one. Destroyed with the integration: script may still be running in it,
-/// or hold its window, when the replacement is made.
+/// longer has - the iframe was removed and inserted again, or a navigation
+/// made a new Window. Destroyed with the integration: script may still be
+/// running in it, or hold its window, when the replacement is made.
 pub const RetiredRealm = struct {
     data: *anyopaque,
-    destroy: *const fn (data: *anyopaque, allocator: Allocator) void,
+    /// The realm's own global object, when its global proxy went on to a new
+    /// realm (an engine handle, owned): the context no longer reaches it.
+    global: ?*anyopaque = null,
+    destroy: *const fn (data: *anyopaque, global: ?*anyopaque, allocator: Allocator) void,
 };
 
 /// State of the iframe's nested browsing context
@@ -319,7 +322,7 @@ pub const IFrameIntegration = struct {
 
     /// How a retired context's cleanup data is destroyed; see
     /// `retireRealmContext`. Set with the context.
-    retired_realm_destroy: ?*const fn (data: *anyopaque, allocator: Allocator) void = null,
+    retired_realm_destroy: ?*const fn (data: *anyopaque, global: ?*anyopaque, allocator: Allocator) void = null,
 
     /// Guard flag to prevent recursive cleanup during context teardown
     /// Set to true when cleanupRealmContext is entered
@@ -394,6 +397,19 @@ pub const IFrameIntegration = struct {
     busy: u32 = 0,
     deinit_pending: bool = false,
 
+    /// Told as the integration is deinited, by the engine that set it.
+    deinit_callback: ?*const fn (*IFrameIntegration) void = null,
+
+    /// HTML "create and initialize a Document object" steps 5-7, for a
+    /// document of the given origin about to become the active document:
+    /// keep the active window, or make a new realm and Window around the same
+    /// WindowProxy. Set by the engine; false when no realm could be made.
+    realm_for_document_callback: ?*const fn (*IFrameIntegration, Origin) bool = null,
+
+    /// The origin (serialized) the navigable's Windows are created with - the
+    /// creator's - or null for an opaque one. Owned.
+    window_origin: ?[]u8 = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -429,14 +445,17 @@ pub const IFrameIntegration = struct {
 
     /// Clean up resources
     pub fn deinit(self: *IFrameIntegration) void {
+        if (self.deinit_callback) |gone| gone(self);
         // A navigation in flight holds this integration; it ends first.
         if (self.abandon_navigations_callback) |abandon| abandon(self);
         self.ongoing_navigation = .none;
 
         // Clean up engine-specific context (Phase 3)
         self.cleanupRealmContext();
-        for (self.retired_realms.items) |retired| retired.destroy(retired.data, self.allocator);
+        for (self.retired_realms.items) |retired| retired.destroy(retired.data, retired.global, self.allocator);
         self.retired_realms.deinit(self.allocator);
+        if (self.window_origin) |o| self.allocator.free(o);
+        self.window_origin = null;
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -576,6 +595,38 @@ pub const IFrameIntegration = struct {
         self.ongoing_navigation = .none;
         self.window_proxy = null;
         self.state = .uninitialized;
+    }
+
+    /// Record the origin the navigable's Windows are created with.
+    pub fn setWindowOrigin(self: *IFrameIntegration, origin: ?[]const u8) !void {
+        const copy: ?[]u8 = if (origin) |o| try self.allocator.dupe(u8, o) else null;
+        if (self.window_origin) |old| self.allocator.free(old);
+        self.window_origin = copy;
+    }
+
+    /// Detach the current engine context from the integration without
+    /// destroying it - a navigation is replacing the navigable's Window - and
+    /// keep it until the integration goes (`retired_realms`): its document,
+    /// nodes and functions may still be held by script elsewhere. The caller
+    /// attaches the new context. `global` is the realm's global object, which
+    /// the retired realm keeps (see `RetiredRealm.global`).
+    pub fn retireCurrentRealm(self: *IFrameIntegration, global: ?*anyopaque) IFrameError!void {
+        const data = self.context_cleanup_data orelse return;
+        const destroy = self.retired_realm_destroy orelse return IFrameError.ContextCreationFailed;
+        self.retired_realms.append(self.allocator, .{ .data = data, .global = global, .destroy = destroy }) catch return IFrameError.OutOfMemory;
+        self.engine_context = null;
+        self.realm = null;
+        self.context_cleanup_data = null;
+        self.runtime_context = null;
+    }
+
+    /// Make sure the realm the next document goes in is the right one: see
+    /// `realm_for_document_callback`. Called before the document is
+    /// committed, while the recorded document origin is still the active
+    /// document's.
+    pub fn realmForDocument(self: *IFrameIntegration, new_origin: Origin) IFrameError!void {
+        const decide = self.realm_for_document_callback orelse return;
+        if (!decide(self, new_origin)) return IFrameError.ContextCreationFailed;
     }
 
     /// HTML "navigate" this navigable to `url` (serialized, absolute), through
@@ -961,6 +1012,14 @@ pub const IFrameIntegration = struct {
 
         try self.recordCommit(final_url, computed);
         self.state = .ready;
+    }
+
+    /// The origin of the document committing `response` - the fetch of `url`
+    /// - would make: opaque for a network error, else the final URL's.
+    pub fn responseOrigin(self: *IFrameIntegration, url: []const u8, response: *const navigation_fetch.NavigationFetchResult) Origin {
+        if (response.is_network_error) return Origin.createOpaque();
+        const final_url = if (response.final_url.len > 0) response.final_url else url;
+        return self.parseOriginFromURL(final_url);
     }
 
     /// Whether committing `response` makes a document: a network error does

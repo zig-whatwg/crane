@@ -218,17 +218,28 @@ pub fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) !vo
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
 
-    // Free old URL if exists
+    const parsed_url = try allocator.create(url_record.URLRecord);
+    errdefer allocator.destroy(parsed_url);
+    parsed_url.* = try basic_parser.parse(allocator, url_string, null);
+    errdefer parsed_url.deinit();
+    // The string the record was parsed from, which `refreshFromDocument`
+    // compares the document's URL with. Left behind, a later document URL
+    // equal to the stale source - a traversal back over a fragment
+    // navigation - was taken for "unchanged", and the record kept the
+    // fragment.
+    const source = try allocator.dupe(u8, url_string);
+
     if (internal.url) |old_url| {
         old_url.deinit();
         allocator.destroy(old_url);
     }
-
-    // Parse new URL
-    const parsed_url = try allocator.create(url_record.URLRecord);
-    errdefer allocator.destroy(parsed_url);
-    parsed_url.* = try basic_parser.parse(allocator, url_string, null);
     internal.url = parsed_url;
+    if (internal.url_source) |src| allocator.free(src);
+    internal.url_source = source;
+    if (internal.cached_href) |href| {
+        allocator.free(href);
+        internal.cached_href = null;
+    }
 }
 
 /// Get internal state (exposed for Window impl to set URL)
@@ -645,13 +656,27 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 ///
 /// Not modelled, stated: the navigate event, the session history entry and
 /// scrolling.
-fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8) !bool {
+fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !bool {
     const window = internal.window orelse return false;
     const allocator = internal.allocator;
     const document = interfaces.Window.get_document(window) catch return false;
     const old_url = interfaces.Document.get_URL(document) catch return false;
     defer document.ctx.allocator.free(old_url);
     if (!navigate_steps.isFragmentNavigation(url, old_url, false)) return false;
+
+    // Steps 6-13 and 17: the new entry on the same document, pushed or
+    // replacing the current one in the traversable's history ("navigate"
+    // steps 12-13 resolve "auto": a URL equal to the document's replaces).
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
+        const handling: html_core.navigation.joint_history.HistoryHandling = switch (behavior) {
+            .replace => .replace,
+            .push => .push,
+            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
+        };
+        if (bc.ensureHistoryEntries(&historyUrlOf)) |history| {
+            history.commitSameDocument(bc.id, url, .null, handling) catch {};
+        } else |_| {}
+    }
 
     // Step 12: "Set navigable's active document's URL to url." A document
     // with a window reads its URL from its context's record.
@@ -665,6 +690,14 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8) !bool {
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
     return true;
+}
+
+/// BrowsingContext.ensureHistoryEntries's `url_of`.
+fn historyUrlOf(document_ptr: *anyopaque, allocator: Allocator) anyerror![]u8 {
+    const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+    const url = interfaces.Document.get_URL(document) catch return allocator.dupe(u8, "about:blank");
+    defer document.ctx.allocator.free(url);
+    return allocator.dupe(u8, if (url.len == 0) "about:blank" else url);
 }
 
 /// A queued hashchange at a window, held with its slab generation.
@@ -723,7 +756,7 @@ fn runHashChange(context: ?*anyopaque) void {
         webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(task.window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -779,7 +812,7 @@ fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: n
     const callback = internal.navigate_callback orelse {
         // The top-level page: this engine cannot replace its document, but
         // a fragment navigation keeps the document, and that it can do.
-        if (try topLevelFragmentNavigation(internal, url)) return;
+        if (try topLevelFragmentNavigation(internal, url, behavior)) return;
         return error.NotImplemented;
     };
     const source = entryDocument();

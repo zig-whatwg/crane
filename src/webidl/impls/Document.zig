@@ -2239,6 +2239,11 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         return instance; // Return document unchanged
     }
 
+    // Step 8: "If document's node navigable is non-null and document's node
+    // navigable's ongoing navigation is a navigation ID, then stop loading
+    // document's node navigable."
+    @import("dom").content_navigables.stopLoading(instance);
+
     // Steps 9-14: Remove all nodes from document
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
@@ -2250,6 +2255,9 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Reset document element and doctype references
     internal.document_element = null;
     internal.doctype = null;
+
+    // Step 13: "Set document's is initial about:blank to false."
+    internal.is_initial_about_blank = false;
 
     // Step 16: Create new HTML parser (script-created)
     internal.is_script_created_parser = true;
@@ -3717,10 +3725,10 @@ fn lifecycleIsUnloading(document: *runtime.Instance) bool {
 /// task source - so it opens the scope an event needs.
 ///
 /// Step 6's prompt needs sticky activation, which nothing in this engine
-/// grants, so no prompt is shown and nothing is cancelled. Deviation, stated:
-/// the event is a plain Event named beforeunload, cancelable - the
-/// BeforeUnloadEvent impl is a stub that never creates Event's state, so an
-/// instance of it cannot be dispatched. `returnValue` is not modelled.
+/// grants, so no prompt is shown and nothing is cancelled: a handler that
+/// cancels the event or sets its returnValue is recorded in the result's
+/// `prompt_requested` and changes nothing else, as in a browser whose user
+/// never interacted with the page.
 fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").document_lifecycle.BeforeUnloadResult {
     const internal = getInternal(document) orelse return .{};
     const window = (get_defaultView(document) catch null) orelse return .{};
@@ -3735,11 +3743,20 @@ fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").documen
     // event - window.open() returns null inside it.
     const termination_nesting = @import("html_core").navigation.termination_nesting;
     termination_nesting.enter();
-    // Step 4: fire beforeunload at the relevant global object, cancelable.
-    fireEventWith(document, window, "beforeunload", .{ .cancelable = true });
-    termination_nesting.leave();
-    // Steps 6 and 8: no prompt, so not shown and not cancelled.
-    return .{};
+    defer termination_nesting.leave();
+
+    // Step 4: "Let eventFiringResult be the result of firing an event named
+    // beforeunload at document's relevant global object, using
+    // BeforeUnloadEvent, with the cancelable attribute initialized to true."
+    const event = interfaces.BeforeUnloadEvent.init(document.ctx.allocator, document.ctx) catch return .{};
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
+    const not_canceled = @import("EventTarget.zig").dispatchTrusted(window, event) catch true;
+    // Step 6's condition, less sticky activation: "eventFiringResult is
+    // false, or the returnValue attribute of event is not the empty string".
+    const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
+    return .{ .prompt_requested = !not_canceled or return_value.asSlice().len > 0 };
 }
 
 /// dom.document_lifecycle: "unload" `document` (HTML §7.5.9) with no new
@@ -3865,7 +3882,14 @@ fn runLifecycleTask(context: ?*anyopaque) void {
 /// Whether `document` is still its window's document - false once a
 /// navigation has put another in its place. A document with no window is
 /// not replaced by anything.
+///
+/// A navigation that makes a new Window leaves the old one's document in
+/// place, so asking the Window is not enough: an unloaded document - not
+/// salvageable, since Crane keeps no bfcache - is never fully active again.
 fn isShownByItsWindow(document: *runtime.Instance) bool {
+    if (getInternal(document)) |internal| {
+        if (!internal.salvageable) return false;
+    }
     const window = (get_defaultView(document) catch null) orelse return true;
     const shown = interfaces.Window.get_document(window) catch return true;
     return shown == document;
@@ -3897,7 +3921,7 @@ fn completeLoading(document: *runtime.Instance) void {
 }
 
 /// Fire an event named `event_type` at `target`, created in `realm_of`'s
-/// realm. Script-facing dispatch, so it reads isTrusted false.
+/// realm - the user agent's, so trusted (DOM 2.10).
 fn fireEvent(realm_of: *runtime.Instance, target: *runtime.Instance, event_type: []const u8, bubbles: bool) void {
     fireEventWith(realm_of, target, event_type, .{ .bubbles = bubbles });
 }
@@ -3909,7 +3933,7 @@ fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_t
         webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch {};
     // A listener that kept the event keeps it alive; otherwise it is done.
     event.releaseIfUnwrapped(generation);
 }
@@ -3929,7 +3953,7 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = interfaces.EventTarget.call_dispatchEvent(window, event) catch {};
+    _ = @import("EventTarget.zig").dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

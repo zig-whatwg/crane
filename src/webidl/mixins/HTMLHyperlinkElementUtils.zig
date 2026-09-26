@@ -14,6 +14,8 @@ const USVString = @import("typedefs").USVString;
 
 pub const impl = @import("impls").HTMLHyperlinkElementUtils;
 
+const reflection = @import("impls").reflection;
+
 /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     return try HTMLHyperlinkElementUtilsImpl.get_href(instance);
@@ -25,7 +27,8 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     runtime.CEReactions.begin();
     defer runtime.CEReactions.end();
 
-    try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+    if (comptime @hasDecl(HTMLHyperlinkElementUtilsImpl, "set_href")) return try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+    try reflection.set(runtime.USVString, instance, .{ .name = "href" }, value);
 }
 
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {

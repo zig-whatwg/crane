@@ -66,6 +66,10 @@ pub const InternalState = struct {
     /// Whether this element has been focused programmatically
     was_focused_by_script: bool = false,
 
+    /// HTML "click in progress flag" (click() steps 2-5): a click() reached
+    /// again from its own event's handlers does nothing.
+    click_in_progress: bool = false,
+
     // === Element Internals ===
     /// ElementInternals instance if attachInternals() was called
     element_internals: ?*runtime.Instance = null,
@@ -284,12 +288,6 @@ fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: run
     try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
 }
 
-/// Check if a content attribute exists
-fn hasContentAttribute(instance: *runtime.Instance, name: []const u8) bool {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
-    return elem_internal.findAttribute(null, name) != null;
-}
-
 /// Remove content attribute `name` - DOM "remove an attribute by namespace
 /// and local name" with a null namespace.
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
@@ -300,20 +298,6 @@ fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
 // Content Attribute Reflection Properties
 // Spec: https://html.spec.whatwg.org/multipage/dom.html#reflecting-content-attributes-in-idl-attributes
 // =============================================================================
-
-/// Getter for title
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-title
-/// Reflects the title content attribute
-pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "title") orelse runtime.DOMString.initEmpty();
-}
-
-/// Getter for lang
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-lang
-/// Reflects the lang content attribute
-pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "lang") orelse runtime.DOMString.initEmpty();
-}
 
 /// Getter for translate
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-translate
@@ -361,19 +345,6 @@ pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return runtime.JSValue.fromBoolean(true);
     }
     return null; // Not hidden
-}
-
-/// Getter for inert
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
-/// Boolean attribute
-pub fn get_inert(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "inert");
-}
-
-/// Getter for accessKey
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-accesskey-attribute
-pub fn get_accessKey(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "accesskey") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for accessKeyLabel
@@ -490,24 +461,6 @@ pub fn get_popover(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return runtime.DOMString.initInterned("auto");
     }
     return null; // Not a popover
-}
-
-/// Getter for headingOffset
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-headingoffset
-pub fn get_headingOffset(instance: *runtime.Instance) anyerror!u32 {
-    if (getContentAttribute(instance, "headingoffset")) |value| {
-        const s = value.asSlice();
-        // Parse as unsigned integer
-        return std.fmt.parseInt(u32, s, 10) catch 0;
-    }
-    return 0;
-}
-
-/// Getter for headingReset
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-headingreset
-/// Boolean attribute
-pub fn get_headingReset(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "headingreset");
 }
 
 /// Getter for editContext
@@ -689,12 +642,6 @@ pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return getContentAttribute(instance, "nonce") orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for autofocus
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-fe-autofocus
-pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-    return hasContentAttribute(instance, "autofocus");
-}
-
 /// Getter for tabIndex
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
@@ -708,16 +655,6 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
 // =============================================================================
 // Content Attribute Reflection Setters
 // =============================================================================
-
-/// Setter for title
-pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "title", value);
-}
-
-/// Setter for lang
-pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "lang", value);
-}
 
 /// Setter for translate
 pub fn set_translate(instance: *runtime.Instance, value: bool) anyerror!void {
@@ -744,20 +681,6 @@ pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror
     try setContentAttribute(instance, "hidden", runtime.DOMString.initEmpty());
 }
 
-/// Setter for inert
-pub fn set_inert(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "inert", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "inert");
-    }
-}
-
-/// Setter for accessKey
-pub fn set_accessKey(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "accesskey", value);
-}
-
 /// Setter for draggable
 pub fn set_draggable(instance: *runtime.Instance, value: bool) anyerror!void {
     if (value) {
@@ -774,16 +697,6 @@ pub fn set_spellcheck(instance: *runtime.Instance, value: bool) anyerror!void {
     } else {
         try setContentAttribute(instance, "spellcheck", runtime.DOMString.initInterned("false"));
     }
-}
-
-/// Setter for writingSuggestions
-pub fn set_writingSuggestions(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "writingsuggestions", value);
-}
-
-/// Setter for autocapitalize
-pub fn set_autocapitalize(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "autocapitalize", value);
 }
 
 /// Setter for autocorrect
@@ -826,22 +739,6 @@ pub fn set_popover(instance: *runtime.Instance, value: ?runtime.DOMString) anyer
     }
 }
 
-/// Setter for headingOffset
-pub fn set_headingOffset(instance: *runtime.Instance, value: u32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "headingoffset", runtime.DOMString.initInterned(str));
-}
-
-/// Setter for headingReset
-pub fn set_headingReset(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "headingreset", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "headingreset");
-    }
-}
-
 /// Setter for editContext
 pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // EditContext is not yet widely implemented
@@ -875,20 +772,6 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try setContentAttribute(instance, "nonce", value);
-}
-
-pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
-    if (value) {
-        try setContentAttribute(instance, "autofocus", runtime.DOMString.initEmpty());
-    } else {
-        removeContentAttribute(instance, "autofocus");
-    }
-}
-
-pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "tabindex", runtime.DOMString.initInterned(str));
 }
 
 // =============================================================================
@@ -934,16 +817,62 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 /// Operation: click
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-click
 pub fn call_click(instance: *runtime.Instance) anyerror!void {
-    // Fire a click event at this element
-    // In a full implementation, this would:
-    // 1. Create a MouseEvent with type "click"
-    // 2. Set bubbles=true, cancelable=true
-    // 3. Dispatch the event via EventTarget.dispatchEvent()
+    const internal = getInternalState(instance) orelse return;
+    // Step 1: "If this element is a form control that is disabled, then
+    // return."
+    if (isDisabledFormControl(instance)) return;
+    // Step 2: "If this element's click in progress flag is set, then return."
+    if (internal.click_in_progress) return;
+    // Step 3: "Set this element's click in progress flag."
+    internal.click_in_progress = true;
+    // Step 5, however the dispatch leaves. The state is looked up again: the
+    // handlers can run anything.
+    defer if (getInternalState(instance)) |after| {
+        after.click_in_progress = false;
+    };
+    // Step 4: "Fire a synthetic pointer event named click at this element,
+    // with the not trusted flag set."
+    fireSyntheticPointerEvent(instance, "click");
+}
 
-    // TODO(events): "fire a synthetic pointer event named click" at the
-    // element, with activation behaviour - nothing is dispatched yet. (This
-    // used to read the onclick handler and drop it.)
-    _ = instance;
+/// HTML "fire a synthetic pointer event named `event_type` at target, with
+/// the not trusted flag set": a PointerEvent that bubbles, is cancelable and
+/// composed, whose view is the target's node document's Window, with no
+/// modifier keys - dispatched, so a click runs the activation behaviour of
+/// its target or an ancestor (dom.activation).
+fn fireSyntheticPointerEvent(target: *runtime.Instance, comptime event_type: []const u8) void {
+    const view: ?*runtime.Instance = blk: {
+        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse break :blk null;
+        break :blk interfaces.Document.get_defaultView(document) catch null;
+    };
+    // Steps 3-4: bubbles, cancelable, composed; step 7: view.
+    const init_dict: dictionaries.PointerEventInit = .{ .base = .{ .base = .{ .base = .{
+        .base = .{ .bubbles = true, .cancelable = true, .composed = true },
+        .view = view,
+    } } } };
+    const event = interfaces.PointerEvent.call_constructor(
+        target.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.PointerEventInit).passed(init_dict),
+    ) catch return;
+    // A listener can keep the event; otherwise it is done after dispatch.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    // Step 5: isTrusted stays false (the not trusted flag). Step 9: dispatch.
+    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch {};
+}
+
+/// Whether `instance` is a disabled form control: a button, input, select or
+/// textarea with a disabled attribute. Deviation, stated: a control disabled
+/// only through a disabled fieldset ancestor is not recognised here.
+fn isDisabledFormControl(instance: *runtime.Instance) bool {
+    const element = ElementImpl.getInternal(instance) orelse return false;
+    const name = element.local_name.asSlice();
+    const controls = [_][]const u8{ "button", "input", "select", "textarea" };
+    for (controls) |control| {
+        if (std.mem.eql(u8, name, control)) return element.findAttribute(null, "disabled") != null;
+    }
+    return false;
 }
 
 /// Operation: showPopover

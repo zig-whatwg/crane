@@ -1,0 +1,12 @@
+# Debugging: A build artifact tracked in git shadows the one the build makes
+
+**Date**: 2026-09-26
+**Lesson**: `whatwg_snapshot.bin` in the repo root is tracked in git (an automated sync committed it on 2026-01-13), and `Browser.zig` looks for the snapshot in the current directory before `zig-out/bin/`. So every run started from the repo root - `zig build wpt`, every sweep, every lane's A/B - restored a nine-month-old snapshot, never the one its own build had just generated.
+
+**Why**: V8 serializes each callback in a snapshot as an index into the embedder's external-reference table. A snapshot restored against a different build's table wires its objects' callbacks to whatever sits at those indices now. Pages rebuild every interface object in `registerAllTemplatesOnly`, which is why most of the engine worked: only objects that came from the snapshot itself - the global's own properties, its prototype placeholder, Window.prototype's accessors - were stale.
+
+**What Happened**: `new Image()` still threw "Illegal invocation" after the legacy factory functions were rewritten, and a probe showed `Image` was an enumerable own property holding a function named HTMLImageElement - the old alias, from January. The same stale objects are behind the documented "Window.prototype accessors are mis-wired after a snapshot restore" and a crash where V8 called an HTMLElement setter as a named interceptor (`load of misaligned address ... for type 'Isolate *'`). Comparing the generator's and the runtime's reference counts (11,506 each) ruled out a table mismatch in the CURRENT build; `ls -la` of the mirror's root found the January file. An A/B with one binary, stale file present versus moved aside, over 432 worklist files: stale 61 blocking / 85,537 passing, fresh 83 / 12,334 - the fresh snapshot has its own defect (named access on the global shadows global functions), which the stale one had been hiding.
+
+**Fix**: the generator no longer puts a named handler on the global itself (6c8657329) - the fresh snapshot then measured level with the January one - and the file is untracked and ignored (9e3a5ad32). Every blob now ends in a stamp, "CRANESNP" and the generator's reference count; the loader refuses a blob without one or with another count (07cdb8eea), so a stray copy anywhere is refused loudly instead of restored.
+
+**Takeaway**: **When a result makes no sense, check which artifact the process actually loaded, and from where.** A lookup path that prefers the current directory turns any stray copy into the one that runs, and nothing reports it.

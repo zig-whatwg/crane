@@ -888,9 +888,12 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLElementImpl.get_title(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_title")) return try HTMLElementImpl.get_title(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "title" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -899,12 +902,14 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_title(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_title")) return try HTMLElementImpl.set_title(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "title" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLElementImpl.get_lang(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_lang")) return try HTMLElementImpl.get_lang(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "lang" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -913,7 +918,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_lang(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_lang")) return try HTMLElementImpl.set_lang(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "lang" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -960,7 +966,8 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_inert(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLElementImpl.get_inert(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_inert")) return try HTMLElementImpl.get_inert(instance);
+        return try reflection.get(bool, instance, .{ .name = "inert" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -969,12 +976,14 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_inert(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_inert")) return try HTMLElementImpl.set_inert(instance, value);
+        try reflection.set(bool, instance, .{ .name = "inert" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_accessKey(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLElementImpl.get_accessKey(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_accessKey")) return try HTMLElementImpl.get_accessKey(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "accesskey" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -983,7 +992,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_accessKey(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_accessKey")) return try HTMLElementImpl.set_accessKey(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "accesskey" }, value);
     }
 
     pub fn get_accessKeyLabel(instance: *runtime.Instance) anyerror!DOMString {
@@ -1029,7 +1039,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_writingSuggestions(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_writingSuggestions")) return try HTMLElementImpl.set_writingSuggestions(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "writingsuggestions" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -1043,7 +1054,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_autocapitalize(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_autocapitalize")) return try HTMLElementImpl.set_autocapitalize(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "autocapitalize" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -1104,7 +1116,8 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectRange=(0,8)]
     pub fn get_headingOffset(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLElementImpl.get_headingOffset(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_headingOffset")) return try HTMLElementImpl.get_headingOffset(instance);
+        return try reflection.get(u32, instance, .{ .name = "headingoffset", .range = .{ 0, 8 } });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectRange=(0,8)]
@@ -1113,12 +1126,14 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_headingOffset(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_headingOffset")) return try HTMLElementImpl.set_headingOffset(instance, value);
+        try reflection.set(u32, instance, .{ .name = "headingoffset", .range = .{ 0, 8 } }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_headingReset(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLElementImpl.get_headingReset(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_headingReset")) return try HTMLElementImpl.get_headingReset(instance);
+        return try reflection.get(bool, instance, .{ .name = "headingreset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1127,7 +1142,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_headingReset(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_headingReset")) return try HTMLElementImpl.set_headingReset(instance, value);
+        try reflection.set(bool, instance, .{ .name = "headingreset" }, value);
     }
 
     pub fn get_editContext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -1597,7 +1613,8 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLElementImpl.get_autofocus(instance);
+        if (comptime @hasDecl(HTMLElementImpl, "get_autofocus")) return try HTMLElementImpl.get_autofocus(instance);
+        return try reflection.get(bool, instance, .{ .name = "autofocus" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1606,7 +1623,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_autofocus(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_autofocus")) return try HTMLElementImpl.set_autofocus(instance, value);
+        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -1620,7 +1638,8 @@ pub const HTMLElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLElementImpl.set_tabIndex(instance, value);
+        if (comptime @hasDecl(HTMLElementImpl, "set_tabIndex")) return try HTMLElementImpl.set_tabIndex(instance, value);
+        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
     }
 
     pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {

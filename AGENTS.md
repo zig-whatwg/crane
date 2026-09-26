@@ -679,6 +679,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [V8 13.1 resolves static imports synchronously](docs/lessons/architecture-v8-13-1-resolves-static-imports-synchronously.md) - There is no HostLoadImportedModule for static imports in V8 13.1: imports resolve during `InstantiateModule`, so the loader (`src/html/module_script.zig`, 0a3e4fac4) walks and fetches the whole...
 - [A timer's user_data must be cancelled by whoever frees it](docs/lessons/architecture-a-timer-s-user-data-must-be-cancelled-by-whoever.md) - A crash that moves between files in a sharded run and never reproduces alone is a callback from the previous file.
 - [Every iframe had no event loop and no timer](docs/lessons/architecture-every-iframe-had-no-event-loop-and-no-timer.md) - A "no loop, run it now" fallback is a silent mode switch.
+- [A build artifact tracked in git shadows the one the build makes](docs/lessons/debugging-a-tracked-build-artifact-shadows-the-build.md) - When a result makes no sense, check which artifact the process actually loaded, and from where.
 - [Brand-check the receiver once, in the binding layer](docs/lessons/architecture-brand-check-the-receiver-once-in-the-binding.md) - An impl cannot tell it was handed another interface's state; only the binding can.
 - [`SuppressMicrotaskExecutionScope` must live on the C++ stack](docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md) - When a V8 scope object keys off its own address, the FFI takes a callback, not a handle.
 - [A timer that keeps a Global<Context> keeps the whole page](docs/lessons/architecture-a-timer-that-keeps-a-global-context-keeps-the.md) - Growth that crosses pages is a leaked handle to something the next page does not need; a file that crashes only after N others is accumulated state, not the file.
@@ -709,6 +710,18 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An object the engine makes for a Zig holder must be wrapped or pinned](docs/lessons/architecture-an-object-the-engine-makes-for-a-zig-holder-must-be-pinned.md) - Before you store a pointer to an Instance, decide whether the wrapper cache or a pin keeps it alive.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
+- [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
+- [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
+- ["Is this still its Window's document?" stops working once navigations make new Windows](docs/lessons/architecture-ask-the-document-whether-it-is-fully-active-not-its-window.md) - Ask the document whether it is fully active, not its Window.
+- [A cache keyed on its source string must update the source on every write path](docs/lessons/architecture-a-cache-keyed-on-its-source-string-must-update-it-on-every-write.md) - Every writer of the value must also write its key.
+- [A USVString getter's result is freed by the binding](docs/lessons/architecture-a-usvstring-getter-s-result-is-freed-by-the-binding.md) - A USVString getter returns memory the binding will free - always a copy, never a view.
+- [A named setter interceptor on a prototype never runs for an instance](docs/lessons/architecture-a-named-setter-interceptor-on-a-prototype-never-runs-for-an-instance.md) - An interceptor on a prototype can serve reads; it cannot serve writes.
+- [A task run into a worker needs the worker's isolate entered](docs/lessons/architecture-a-task-run-into-a-worker-needs-the-worker-s-isolate-entered.md) - A dead end written in a comment is a hypothesis; grep `docs/lessons/` for the symptom first.
+- [A blocking handshake inside a timer turn stops the whole page](docs/lessons/architecture-a-blocking-handshake-inside-a-timer-turn-stops-the-whole-page.md) - Anything "in parallel" must advance one non-blocking step per turn.
+- [A short `curl_ws_send` is the middle of a frame](docs/lessons/architecture-a-short-curl-ws-send-is-the-middle-of-a-frame.md) - A partial write is state, not an error.
+- [An errdefer that outlives the handoff frees what the new owner will free](docs/lessons/architecture-an-errdefer-that-outlives-the-handoff-frees-what-the-new-owner-will-free.md) - End the errdefer scope where ownership moves.
+- [An EventTarget subclass must init and deinit through EventTarget's impl](docs/lessons/architecture-an-eventtarget-subclass-must-init-and-deinit-through-eventtarget-s-impl.md) - An address-keyed side table needs its owner's deinit.
+- [Frames and the top-level page parse through different drivers](docs/lessons/architecture-frames-and-the-top-level-page-parse-through-different-drivers.md) - When a feature works in a frame but not at top level, compare the two parser drivers first.
 
 ### Spec Compliance
 
@@ -722,6 +735,12 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A relative iframe `src` never loaded, and three bugs hid behind it](docs/lessons/spec-compliance-a-relative-iframe-src-never-loaded-and-three.md) - Test a feature with the URL shapes the corpus actually uses.
 - [A frame's parse skipped "the end" step 5, so no module script ran in a frame](docs/lessons/spec-compliance-a-frame-s-parse-skipped-the-end-step-5-so-no.md) - Every parser driver owes the whole of "the end".
 - [A body that is always a pipe needs main fetch step 20](docs/lessons/spec-compliance-a-body-that-is-always-a-pipe-needs-main-fetch-step-20.md) - When bytes become a stream, "no body" and "empty body" become different states.
+- [Evaluate a spec condition when the spec does](docs/lessons/spec-compliance-evaluate-a-spec-condition-when-the-spec-does.md) - A queued task sees the world after the event that queued it; record what the spec reads at the moment it reads it.
+- [Infra's ASCII whitespace is not `std.ascii.isWhitespace`](docs/lessons/spec-compliance-infra-ascii-whitespace-is-not-std-ascii-iswhitespace.md) - Use Infra's whitespace set for web microsyntaxes; the standard library's includes VT.
+- [A union argument reaches the impl in every JSValue shape](docs/lessons/spec-compliance-a-union-argument-reaches-the-impl-in-every-jsvalue-shape.md) - An impl that takes a raw JSValue owns the whole union conversion.
+- [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
+- [A result the spec hands over from onComplete arrives in a task](docs/lessons/spec-compliance-a-result-handed-over-from-oncomplete-arrives-in-a-task.md) - A synchronous fetch does not make the spec's task synchronous; deliver the result where the spec does.
+- ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
 
 ### Codegen
 
@@ -732,6 +751,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An API name nothing binds is a bug report, not only dead code](docs/lessons/codegen-an-api-name-nothing-binds-is-a-bug-report-not.md) - Before deleting an unbound function, ask why the map does not reach it.
 - [WebIDL identifiers drop a leading underscore](docs/lessons/codegen-webidl-identifiers-drop-a-leading-underscore.md) - Grep the generated tables for names starting with `_` after any parser change.
 - [Deduplicating operations by name deleted every overload](docs/lessons/codegen-deduplicating-operations-by-name-deleted-every.md) - Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.
+- [Generated behaviour is only as complete as the IDL](docs/lessons/codegen-generated-behaviour-is-only-as-complete-as-the-idl.md) - Before trusting generated behaviour, read the prose the IDL summarises.
 
 ### Testing
 
@@ -759,6 +779,9 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Synchronous I/O behind an async API reorders script against the parser](docs/lessons/testing-synchronous-i-o-behind-an-async-api-reorders.md) - Before chasing a feature a whole file seems to lack, check what an API that should be asynchronous is doing synchronously.
 - [A polyfill hides its impl's bugs until the day it is removed](docs/lessons/testing-a-polyfill-hides-its-impl-s-bugs-until-the-day.md) - When a native or polyfill gives way to a bound impl, read each of its getters twice before trusting it.
 - [wpt serve: a file added after it starts 404s, and stopping it means stopping all of it](docs/lessons/testing-wpt-serve-a-file-added-after-it-starts-404s-and.md) - `lsof -t -iTCP:8000 | xargs kill` (the advice in the 404 lesson above) kills only the :8000 child.
+- [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
+- [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
+- [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
 
 ### Debugging
 
@@ -771,6 +794,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [`ctx.getEngineContextAs(Isolate)` is a context cast to an isolate](docs/lessons/debugging-ctx-getenginecontextas-isolate-is-a-context-cast.md) - Three more impls survived the WebSocket and XHR fixes still casting a context pointer to an isolate (046399d52).
 - [Redirect the runner's output into a pipe, never a file](docs/lessons/debugging-redirect-the-runner-s-output-into-a-pipe-never-a.md) - Before concluding instrumentation did not run, pipe the output.
 - [Find what keeps a page alive: count native contexts, snapshot, attribute handles by site](docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) - Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.
+- [A 101 response's headers are filed under `CURLH_1XX`](docs/lessons/debugging-a-101-response-s-headers-are-filed-under-curlh-1xx.md) - A header curl says is missing may be filed under another origin bit.
+- [When one subtest in a file hangs and its siblings pass, compare what triggers each one](docs/lessons/debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
 
 ### Workflow
 

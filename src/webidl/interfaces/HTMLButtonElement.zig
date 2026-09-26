@@ -353,6 +353,8 @@ pub const HTMLButtonElement = struct {
         return try HTMLButtonElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_command(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLButtonElementImpl.get_command(instance);
@@ -364,7 +366,8 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_command(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_command")) return try HTMLButtonElementImpl.set_command(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "command" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -383,7 +386,8 @@ pub const HTMLButtonElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLButtonElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "get_disabled")) return try HTMLButtonElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -392,7 +396,8 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_disabled")) return try HTMLButtonElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -410,7 +415,8 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_formAction(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_formAction")) return try HTMLButtonElementImpl.set_formAction(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "formaction" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -443,7 +449,8 @@ pub const HTMLButtonElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_formNoValidate(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLButtonElementImpl.get_formNoValidate(instance);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "get_formNoValidate")) return try HTMLButtonElementImpl.get_formNoValidate(instance);
+        return try reflection.get(bool, instance, .{ .name = "formnovalidate" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -452,12 +459,14 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_formNoValidate(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_formNoValidate")) return try HTMLButtonElementImpl.set_formNoValidate(instance, value);
+        try reflection.set(bool, instance, .{ .name = "formnovalidate" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_formTarget(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLButtonElementImpl.get_formTarget(instance);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "get_formTarget")) return try HTMLButtonElementImpl.get_formTarget(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "formtarget" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -466,12 +475,14 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_formTarget(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_formTarget")) return try HTMLButtonElementImpl.set_formTarget(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "formtarget" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLButtonElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "get_name")) return try HTMLButtonElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -480,7 +491,8 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_name")) return try HTMLButtonElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -494,12 +506,14 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_type")) return try HTMLButtonElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLButtonElementImpl.get_value(instance);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "get_value")) return try HTMLButtonElementImpl.get_value(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -508,7 +522,8 @@ pub const HTMLButtonElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLButtonElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLButtonElementImpl, "set_value")) return try HTMLButtonElementImpl.set_value(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
     }
 
     pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {

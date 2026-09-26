@@ -335,9 +335,12 @@ pub const HTMLTrackElement = struct {
         try HTMLTrackElementImpl.set_kind(instance, value);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLTrackElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "get_src")) return try HTMLTrackElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -346,12 +349,14 @@ pub const HTMLTrackElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTrackElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "set_src")) return try HTMLTrackElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_srclang(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTrackElementImpl.get_srclang(instance);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "get_srclang")) return try HTMLTrackElementImpl.get_srclang(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "srclang" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -360,12 +365,14 @@ pub const HTMLTrackElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTrackElementImpl.set_srclang(instance, value);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "set_srclang")) return try HTMLTrackElementImpl.set_srclang(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "srclang" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTrackElementImpl.get_label(instance);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "get_label")) return try HTMLTrackElementImpl.get_label(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "label" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -374,12 +381,14 @@ pub const HTMLTrackElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTrackElementImpl.set_label(instance, value);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "set_label")) return try HTMLTrackElementImpl.set_label(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "label" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_default(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTrackElementImpl.get_default(instance);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "get_default")) return try HTMLTrackElementImpl.get_default(instance);
+        return try reflection.get(bool, instance, .{ .name = "default" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -388,7 +397,8 @@ pub const HTMLTrackElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTrackElementImpl.set_default(instance, value);
+        if (comptime @hasDecl(HTMLTrackElementImpl, "set_default")) return try HTMLTrackElementImpl.set_default(instance, value);
+        try reflection.set(bool, instance, .{ .name = "default" }, value);
     }
 
     pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {

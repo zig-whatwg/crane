@@ -285,6 +285,8 @@ pub const HTMLMeterElement = struct {
         return try HTMLMeterElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
         return try HTMLMeterElementImpl.get_value(instance);
@@ -296,7 +298,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_value")) return try HTMLMeterElementImpl.set_value(instance, value);
+        try reflection.set(f64, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -310,7 +313,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_min(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_min")) return try HTMLMeterElementImpl.set_min(instance, value);
+        try reflection.set(f64, instance, .{ .name = "min" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -324,7 +328,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_max(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_max")) return try HTMLMeterElementImpl.set_max(instance, value);
+        try reflection.set(f64, instance, .{ .name = "max" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -338,7 +343,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_low(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_low")) return try HTMLMeterElementImpl.set_low(instance, value);
+        try reflection.set(f64, instance, .{ .name = "low" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -352,7 +358,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_high(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_high")) return try HTMLMeterElementImpl.set_high(instance, value);
+        try reflection.set(f64, instance, .{ .name = "high" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -366,7 +373,8 @@ pub const HTMLMeterElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLMeterElementImpl.set_optimum(instance, value);
+        if (comptime @hasDecl(HTMLMeterElementImpl, "set_optimum")) return try HTMLMeterElementImpl.set_optimum(instance, value);
+        try reflection.set(f64, instance, .{ .name = "optimum" }, value);
     }
 
     pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {

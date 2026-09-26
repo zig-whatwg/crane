@@ -256,9 +256,12 @@ pub const HTMLDirectoryElement = struct {
         return try HTMLDirectoryElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLDirectoryElementImpl.get_compact(instance);
+        if (comptime @hasDecl(HTMLDirectoryElementImpl, "get_compact")) return try HTMLDirectoryElementImpl.get_compact(instance);
+        return try reflection.get(bool, instance, .{ .name = "compact" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLDirectoryElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLDirectoryElementImpl.set_compact(instance, value);
+        if (comptime @hasDecl(HTMLDirectoryElementImpl, "set_compact")) return try HTMLDirectoryElementImpl.set_compact(instance, value);
+        try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
 };

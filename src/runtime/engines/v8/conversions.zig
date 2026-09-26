@@ -150,26 +150,35 @@ pub fn fromV8Boolean(
     return v8.v8_Value_BooleanValue(value, isolate);
 }
 
-/// Convert V8 Value to Zig i32 (long)
+/// WebIDL ToNumber, the first step of converting to every numeric type: a
+/// string, an object or a boolean is a number, not a TypeError. ToNumber
+/// throws a TypeError for a Symbol or a BigInt. An object's valueOf can
+/// throw too; NumberValue then answers NaN and V8 rethrows the pending
+/// exception when the binding returns, so the call runs with that first - a
+/// known gap.
+fn toNumber(context: *v8.Context, value: *v8.Value) ConversionError!f64 {
+    if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
+        return ConversionError.TypeError;
+    }
+    return v8.v8_Value_NumberValue(value, context);
+}
+
+/// WebIDL `long`: ToNumber, then ConvertToInt. These helpers used to reject
+/// anything that was not already a number, which made `el.colSpan = "3"` a
+/// TypeError on the attribute-setter path.
 pub fn fromV8Long(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!runtime.Long {
-    if (!v8.v8_Value_IsNumber(value)) {
-        return ConversionError.TypeError;
-    }
-    return v8.v8_Value_Int32Value(value, context);
+    return convertToInt(runtime.Long, try toNumber(context, value));
 }
 
-/// Convert V8 Value to Zig u32 (unsigned long)
+/// WebIDL `unsigned long`: ToNumber, then ConvertToInt.
 pub fn fromV8UnsignedLong(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!runtime.UnsignedLong {
-    if (!v8.v8_Value_IsNumber(value)) {
-        return ConversionError.TypeError;
-    }
-    return v8.v8_Value_Uint32Value(value, context);
+    return convertToInt(runtime.UnsignedLong, try toNumber(context, value));
 }
 
 /// WebIDL § 3.2.4 ConvertToInt, steps 6-10, for a number `x` already
@@ -196,42 +205,31 @@ pub fn convertToInt(comptime T: type, x: f64) T {
     return @bitCast(bits);
 }
 
-/// Convert V8 Value to Zig i64 (long long)
+/// WebIDL `long long`: ToNumber, then ConvertToInt (modulo 2^64).
 pub fn fromV8LongLong(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!runtime.LongLong {
-    if (!v8.v8_Value_IsNumber(value)) {
-        return ConversionError.TypeError;
-    }
-    return v8.v8_Value_IntegerValue(value, context);
+    return convertToInt(runtime.LongLong, try toNumber(context, value));
 }
 
-/// Convert V8 Value to Zig u64 (unsigned long long)
+/// WebIDL `unsigned long long`: ToNumber, then ConvertToInt - a negative
+/// number wraps, it does not throw.
 pub fn fromV8UnsignedLongLong(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!runtime.UnsignedLongLong {
-    if (!v8.v8_Value_IsNumber(value)) {
-        return ConversionError.TypeError;
-    }
-    const int_val = v8.v8_Value_IntegerValue(value, context);
-    // JavaScript numbers can be negative, but unsigned long long should be >= 0
-    if (int_val < 0) {
-        return ConversionError.TypeError;
-    }
-    return @intCast(int_val);
+    return convertToInt(runtime.UnsignedLongLong, try toNumber(context, value));
 }
 
-/// Convert V8 Value to Zig f64 (double)
+/// WebIDL `double` and `unrestricted double`: ToNumber. Codegen maps both to
+/// f64, so a restricted double's TypeError for NaN and the infinities is not
+/// raised - it was not before either, since NaN is a number.
 pub fn fromV8Double(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!runtime.Double {
-    if (!v8.v8_Value_IsNumber(value)) {
-        return ConversionError.TypeError;
-    }
-    return v8.v8_Value_NumberValue(value, context);
+    return toNumber(context, value);
 }
 
 /// Convert V8 Value to Zig f32 (float)
@@ -802,6 +800,27 @@ fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v
         }
     }
     return null;
+}
+
+/// WebIDL 3.2.18 steps 4-5: a dictionary's members are read least-derived
+/// dictionary first, and within one dictionary "in lexicographical order" of
+/// their identifiers. Codegen emits a dictionary as its inherited dictionary
+/// (`base`, converted by recursion) followed by its own members in IDL
+/// declaration order, so the order is imposed here: `base`, then the rest by
+/// code unit. Reading `view` before `detail` is observable to a getter.
+fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.Type.StructField {
+    comptime {
+        @setEvalBranchQuota(20_000);
+        var fields = std.meta.fields(T)[0..std.meta.fields(T).len].*;
+        std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
+            fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
+                if (std.mem.eql(u8, b.name, "base")) return false;
+                if (std.mem.eql(u8, a.name, "base")) return true;
+                return std.mem.lessThan(u8, a.name, b.name);
+            }
+        }.lessThan);
+        return fields;
+    }
 }
 
 /// Generic V8 Value to Zig type conversion
@@ -1505,7 +1524,7 @@ pub fn fromV8Value(
         const object = @as(*v8.Object, @ptrCast(value));
 
         var result: T = undefined;
-        inline for (std.meta.fields(T)) |field| {
+        inline for (comptime dictionaryMemberOrder(T)) |field| {
             // Special handling for 'base' field in dictionary inheritance
             // In WebIDL, child dictionaries inherit parent fields directly on the object
             // e.g., { bubbles: true, oldVersion: 1 } not { base: { bubbles: true }, oldVersion: 1 }

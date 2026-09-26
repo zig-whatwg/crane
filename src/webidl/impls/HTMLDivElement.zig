@@ -50,16 +50,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     errdefer deinit(instance);
     return instance;
 }
-
-/// Getter for align
-pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

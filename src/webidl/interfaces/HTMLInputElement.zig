@@ -543,9 +543,12 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_accept(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_accept(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_accept")) return try HTMLInputElementImpl.get_accept(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "accept" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -554,12 +557,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_accept(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_accept")) return try HTMLInputElementImpl.set_accept(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "accept" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alpha(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_alpha(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_alpha")) return try HTMLInputElementImpl.get_alpha(instance);
+        return try reflection.get(bool, instance, .{ .name = "alpha" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -568,12 +573,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_alpha(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_alpha")) return try HTMLInputElementImpl.set_alpha(instance, value);
+        try reflection.set(bool, instance, .{ .name = "alpha" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alt(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_alt(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_alt")) return try HTMLInputElementImpl.get_alt(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "alt" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -582,7 +589,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_alt(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_alt")) return try HTMLInputElementImpl.set_alt(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "alt" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -596,12 +604,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_autocomplete(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_autocomplete")) return try HTMLInputElementImpl.set_autocomplete(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="checked"]
     pub fn get_defaultChecked(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_defaultChecked(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_defaultChecked")) return try HTMLInputElementImpl.get_defaultChecked(instance);
+        return try reflection.get(bool, instance, .{ .name = "checked" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="checked"]
@@ -610,7 +620,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_defaultChecked(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_defaultChecked")) return try HTMLInputElementImpl.set_defaultChecked(instance, value);
+        try reflection.set(bool, instance, .{ .name = "checked" }, value);
     }
 
     pub fn get_checked(instance: *runtime.Instance) anyerror!bool {
@@ -637,7 +648,8 @@ pub const HTMLInputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_dirName(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_dirName(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_dirName")) return try HTMLInputElementImpl.get_dirName(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "dirname" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -646,12 +658,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_dirName(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_dirName")) return try HTMLInputElementImpl.set_dirName(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "dirname" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_disabled")) return try HTMLInputElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -660,7 +674,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_disabled")) return try HTMLInputElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -686,7 +701,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_formAction(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_formAction")) return try HTMLInputElementImpl.set_formAction(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "formaction" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -719,7 +735,8 @@ pub const HTMLInputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_formNoValidate(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_formNoValidate(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_formNoValidate")) return try HTMLInputElementImpl.get_formNoValidate(instance);
+        return try reflection.get(bool, instance, .{ .name = "formnovalidate" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -728,12 +745,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_formNoValidate(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_formNoValidate")) return try HTMLInputElementImpl.set_formNoValidate(instance, value);
+        try reflection.set(bool, instance, .{ .name = "formnovalidate" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_formTarget(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_formTarget(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_formTarget")) return try HTMLInputElementImpl.get_formTarget(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "formtarget" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -742,7 +761,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_formTarget(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_formTarget")) return try HTMLInputElementImpl.set_formTarget(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "formtarget" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -756,7 +776,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_height")) return try HTMLInputElementImpl.set_height(instance, value);
+        try reflection.set(u32, instance, .{ .name = "height" }, value);
     }
 
     pub fn get_indeterminate(instance: *runtime.Instance) anyerror!bool {
@@ -773,7 +794,8 @@ pub const HTMLInputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_max(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_max(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_max")) return try HTMLInputElementImpl.get_max(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "max" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -782,12 +804,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_max(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_max")) return try HTMLInputElementImpl.set_max(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "max" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLInputElementImpl.get_maxLength(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_maxLength")) return try HTMLInputElementImpl.get_maxLength(instance);
+        return try reflection.get(i32, instance, .{ .name = "maxlength", .limit = .non_negative });
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
@@ -796,12 +820,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_maxLength(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_maxLength")) return try HTMLInputElementImpl.set_maxLength(instance, value);
+        try reflection.set(i32, instance, .{ .name = "maxlength", .limit = .non_negative }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_min(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_min(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_min")) return try HTMLInputElementImpl.get_min(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "min" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -810,12 +836,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_min(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_min")) return try HTMLInputElementImpl.set_min(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "min" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLInputElementImpl.get_minLength(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_minLength")) return try HTMLInputElementImpl.get_minLength(instance);
+        return try reflection.get(i32, instance, .{ .name = "minlength", .limit = .non_negative });
     }
 
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
@@ -824,12 +852,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_minLength(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_minLength")) return try HTMLInputElementImpl.set_minLength(instance, value);
+        try reflection.set(i32, instance, .{ .name = "minlength", .limit = .non_negative }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_multiple(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_multiple(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_multiple")) return try HTMLInputElementImpl.get_multiple(instance);
+        return try reflection.get(bool, instance, .{ .name = "multiple" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -838,12 +868,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_multiple(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_multiple")) return try HTMLInputElementImpl.set_multiple(instance, value);
+        try reflection.set(bool, instance, .{ .name = "multiple" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_name")) return try HTMLInputElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -852,12 +884,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_name")) return try HTMLInputElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_pattern(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_pattern(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_pattern")) return try HTMLInputElementImpl.get_pattern(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "pattern" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -866,12 +900,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_pattern(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_pattern")) return try HTMLInputElementImpl.set_pattern(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "pattern" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_placeholder(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_placeholder(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_placeholder")) return try HTMLInputElementImpl.get_placeholder(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "placeholder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -880,12 +916,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_placeholder(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_placeholder")) return try HTMLInputElementImpl.set_placeholder(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "placeholder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_readOnly(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_readOnly(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_readOnly")) return try HTMLInputElementImpl.get_readOnly(instance);
+        return try reflection.get(bool, instance, .{ .name = "readonly" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -894,12 +932,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_readOnly(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_readOnly")) return try HTMLInputElementImpl.set_readOnly(instance, value);
+        try reflection.set(bool, instance, .{ .name = "readonly" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_required(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_required")) return try HTMLInputElementImpl.get_required(instance);
+        return try reflection.get(bool, instance, .{ .name = "required" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -908,12 +948,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_required(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_required")) return try HTMLInputElementImpl.set_required(instance, value);
+        try reflection.set(bool, instance, .{ .name = "required" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLInputElementImpl.get_size(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_size")) return try HTMLInputElementImpl.get_size(instance);
+        return try reflection.get(u32, instance, .{ .name = "size" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -922,12 +964,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_size(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_size")) return try HTMLInputElementImpl.set_size(instance, value);
+        try reflection.set(u32, instance, .{ .name = "size" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLInputElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_src")) return try HTMLInputElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -936,12 +980,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_src")) return try HTMLInputElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_step(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_step(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_step")) return try HTMLInputElementImpl.get_step(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "step" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -950,7 +996,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_step(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_step")) return try HTMLInputElementImpl.set_step(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "step" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -969,7 +1016,8 @@ pub const HTMLInputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect="value"]
     pub fn get_defaultValue(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_defaultValue(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_defaultValue")) return try HTMLInputElementImpl.get_defaultValue(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="value"]
@@ -978,7 +1026,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_defaultValue(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_defaultValue")) return try HTMLInputElementImpl.set_defaultValue(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
@@ -1022,7 +1071,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_width")) return try HTMLInputElementImpl.set_width(instance, value);
+        try reflection.set(u32, instance, .{ .name = "width" }, value);
     }
 
     pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
@@ -1093,7 +1143,8 @@ pub const HTMLInputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_align")) return try HTMLInputElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1102,12 +1153,14 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_align")) return try HTMLInputElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_useMap(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLInputElementImpl.get_useMap(instance);
+        if (comptime @hasDecl(HTMLInputElementImpl, "get_useMap")) return try HTMLInputElementImpl.get_useMap(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "usemap" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1116,7 +1169,8 @@ pub const HTMLInputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLInputElementImpl.set_useMap(instance, value);
+        if (comptime @hasDecl(HTMLInputElementImpl, "set_useMap")) return try HTMLInputElementImpl.set_useMap(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "usemap" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

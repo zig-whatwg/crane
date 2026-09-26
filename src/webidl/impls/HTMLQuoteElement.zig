@@ -55,16 +55,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     return instance;
 }
-
-/// Getter for cite
-pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for cite
-pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

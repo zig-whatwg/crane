@@ -19,10 +19,14 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 
 /// An abort algorithm: `run(ctx)` once, when the signal is aborted. `ctx`
-/// identifies it for removal.
+/// identifies it for removal. The signal holds the algorithm until it runs
+/// or is removed; `drop(ctx)`, when given, is called instead of `run` for an
+/// algorithm the signal discards unrun because the signal itself is going
+/// away - the one place that can free a `ctx` nobody else holds.
 pub const Algorithm = struct {
     ctx: *anyopaque,
     run: *const fn (ctx: *anyopaque) void,
+    drop: ?*const fn (ctx: *anyopaque) void = null,
 };
 
 /// What AbortSignal supplies.

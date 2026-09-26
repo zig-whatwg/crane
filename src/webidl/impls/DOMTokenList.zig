@@ -92,7 +92,28 @@ pub fn init(
     state.own.length = 0;
     state.own.value = runtime.DOMString.initEmpty();
 
+    // Code outside this impl associates a list through dom.token_lists.
+    @import("dom").token_lists.install(.{ .associate = &associateWithAttribute });
+
     return instance;
+}
+
+/// `dom.token_lists`' association: make `list` - just created, empty -
+/// `element`'s token list for its `local_name` attribute (null namespace), as
+/// a reflected DOMTokenList attribute's getter returns it (HTML 2.6.1). The
+/// token set is the attribute's current value parsed; from then on the list
+/// updates the attribute.
+fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, local_name: []const u8) anyerror!void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    var name = try runtime.DOMString.initDupe(internal.allocator, local_name);
+    errdefer name.deinit(internal.allocator);
+    // The token set first, while there is no element to write it back to.
+    if (try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(local_name))) |found| {
+        var value = found;
+        defer value.deinit(element.ctx.allocator);
+        try set_value(list, value);
+    }
+    setElement(list, element, name);
 }
 
 /// Deinitialize instance

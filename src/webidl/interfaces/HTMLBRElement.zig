@@ -256,9 +256,12 @@ pub const HTMLBRElement = struct {
         return try HTMLBRElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_clear(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBRElementImpl.get_clear(instance);
+        if (comptime @hasDecl(HTMLBRElementImpl, "get_clear")) return try HTMLBRElementImpl.get_clear(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "clear" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLBRElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBRElementImpl.set_clear(instance, value);
+        if (comptime @hasDecl(HTMLBRElementImpl, "set_clear")) return try HTMLBRElementImpl.set_clear(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "clear" }, value);
     }
 };

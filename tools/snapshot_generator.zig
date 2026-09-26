@@ -179,24 +179,13 @@ pub fn main(init: std.process.Init) !void {
     );
     log(allocator, io, "  Global template configured with indexed handlers for frames[index]\\n", .{});
 
-    // Add named property handlers for frames['name'] and named element access
-    // Per HTML spec §7.4.3, Window supports named property access for:
-    // 1. Child browsing contexts (iframe names) - frames['name'] returns contentWindow
-    // 2. Named elements in the document (elements with id/name attributes)
-    //
-    // IMPORTANT: Use kNone flag to intercept all named property access
-    // The getter checks isBuiltinWindowProperty() to skip built-in Window properties
-    v8.ffi.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
-        global_template,
-        context_manager.windowNamedPropertyGetter,
-        null, // setter - not needed for read-only frames access
-        context_manager.windowNamedPropertyQuery,
-        null, // deleter - not needed
-        null, // enumerator - not needed (named frame properties are not enumerable)
-        null, // descriptor - not needed
-        .kNone, // No flags - intercept all named properties
-    );
-    log(allocator, io, "  Global template configured with named handlers for frames['name']\\n", .{});
+    // No named property handler on the global itself. WebIDL puts a [Global]
+    // interface's named properties on its named properties object
+    // (WindowProperties, window_properties.zig), which sits in the global's
+    // prototype chain - below its own properties. An interceptor here answered
+    // BEFORE them, so `<div id=log>` shadowed the page's `log` function, and it
+    // ran on every global identifier lookup. Named elements and child
+    // navigable names are both WindowProperties' job.
 
     // Step 5b: Create default context with global template
     log(allocator, io, "  5b: Creating default context with global template...\\n", .{});
@@ -321,6 +310,11 @@ pub fn main(init: std.process.Init) !void {
     const file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
     defer file.close(io);
     try file.writeStreamingAll(io, blob_data);
+    // The build stamp: the loader restores only a blob made against its own
+    // external-reference table (snapshot_loader.splitStamp).
+    var stamp: [v8.snapshot_loader.stamp_len]u8 = undefined;
+    v8.snapshot_loader.writeStamp(&stamp, stats.count);
+    try file.writeStreamingAll(io, &stamp);
 
     // Free snapshot data
     v8.ffi.v8_Snapshot_FreeData(out_data);

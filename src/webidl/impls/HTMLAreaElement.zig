@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLAreaElement = interfaces.HTMLAreaElement;
 
 // Import related impls for attribute access
@@ -49,6 +50,9 @@ pub fn init(
 ) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
+    // Its activation behaviour: following its hyperlink (dom.activation).
+    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
@@ -87,40 +91,34 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for alt
+/// Getter for alt: reflects the alt content attribute.
 pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGet(instance, "alt");
 }
 
-/// Getter for coords
+/// Getter for coords: reflects the coords content attribute.
 pub fn get_coords(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGet(instance, "coords");
 }
 
-/// Getter for shape
+/// Getter for shape: reflects the shape content attribute.
 pub fn get_shape(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGet(instance, "shape");
 }
 
-/// Getter for target
+/// Getter for target: reflects the target content attribute.
 pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGet(instance, "target");
 }
 
-/// Getter for download
+/// Getter for download: reflects the download content attribute.
 pub fn get_download(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGet(instance, "download");
 }
 
-/// Getter for ping
+/// Getter for ping: reflects the ping content attribute.
 pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectGetUsv(instance, "ping");
 }
 
 /// Getter for rel
@@ -168,16 +166,14 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return token_list;
 }
 
-/// Getter for referrerPolicy
+/// Getter for referrerPolicy: reflects the referrerpolicy content attribute.
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectReferrerPolicy(instance);
 }
 
-/// Getter for noHref
+/// Getter for noHref: reflects the nohref content attribute.
 pub fn get_noHref(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return reflectHas(instance, "nohref");
 }
 
 /// Getter for attributionSrc
@@ -186,46 +182,34 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
     return error.NotImplemented;
 }
 
-/// Setter for alt
+/// Setter for alt: sets the alt content attribute.
 pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "alt", value);
 }
 
-/// Setter for coords
+/// Setter for coords: sets the coords content attribute.
 pub fn set_coords(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "coords", value);
 }
 
-/// Setter for shape
+/// Setter for shape: sets the shape content attribute.
 pub fn set_shape(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "shape", value);
 }
 
-/// Setter for target
+/// Setter for target: sets the target content attribute.
 pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "target", value);
 }
 
-/// Setter for download
+/// Setter for download: sets the download content attribute.
 pub fn set_download(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "download", value);
 }
 
-/// Setter for ping
+/// Setter for ping: sets the ping content attribute.
 pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "ping", runtime.DOMString.initInterned(value));
 }
 
 /// Setter for rel
@@ -236,18 +220,14 @@ pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), value);
 }
 
-/// Setter for referrerPolicy
+/// Setter for referrerPolicy: sets the referrerpolicy content attribute.
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSet(instance, "referrerpolicy", value);
 }
 
-/// Setter for noHref
+/// Setter for noHref: sets the nohref content attribute.
 pub fn set_noHref(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflectSetBool(instance, "nohref", value);
 }
 
 /// Setter for attributionSrc
@@ -255,4 +235,85 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
     _ = instance;
     _ = value;
     return error.NotImplemented;
+}
+
+// =============================================================================
+// Reflection (HTML 2.6.1) and activation behaviour
+// =============================================================================
+
+/// A DOMString attribute reflecting content attribute `name`: its value, or
+/// the empty string. A copy - the binding frees what a getter returns.
+fn reflectGet(instance: *runtime.Instance, comptime name: []const u8) !runtime.DOMString {
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    if (elem_internal.findAttribute(null, name)) |entry| {
+        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value);
+    }
+    return runtime.DOMString.initEmpty();
+}
+
+/// The USVString form of `reflectGet`, owned by the context allocator.
+fn reflectGetUsv(instance: *runtime.Instance, comptime name: []const u8) ![]const u8 {
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const value = if (elem_internal.findAttribute(null, name)) |entry| entry.value else "";
+    return instance.ctx.allocator.dupe(u8, value);
+}
+
+/// A boolean attribute: whether content attribute `name` is present.
+fn reflectHas(instance: *runtime.Instance, comptime name: []const u8) !bool {
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    return elem_internal.findAttribute(null, name) != null;
+}
+
+/// Set content attribute `name` to `value`.
+fn reflectSet(instance: *runtime.Instance, comptime name: []const u8, value: runtime.DOMString) !void {
+    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned(name), value);
+}
+
+/// A boolean attribute's setter: add the content attribute, or remove it.
+fn reflectSetBool(instance: *runtime.Instance, comptime name: []const u8, value: bool) !void {
+    if (value) {
+        try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned(name), runtime.DOMString.initInterned(""));
+    } else {
+        try ElementImpl.call_removeAttribute(instance, runtime.DOMString.initInterned(name));
+    }
+}
+
+/// referrerPolicy: an enumerated attribute limited to the referrer policy
+/// keywords, with no missing or invalid value default (the empty string).
+fn reflectReferrerPolicy(instance: *runtime.Instance) !runtime.DOMString {
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const entry = elem_internal.findAttribute(null, "referrerpolicy") orelse return runtime.DOMString.initEmpty();
+    const keywords = [_][]const u8{
+        "no-referrer",                     "no-referrer-when-downgrade", "same-origin",
+        "origin",                          "strict-origin",              "origin-when-cross-origin",
+        "strict-origin-when-cross-origin", "unsafe-url",
+    };
+    for (keywords) |keyword| {
+        if (std.ascii.eqlIgnoreCase(entry.value, keyword)) return runtime.DOMString.initInterned(keyword);
+    }
+    return runtime.DOMString.initEmpty();
+}
+
+/// dom.activation: every area element has activation behaviour.
+fn hasActivationBehavior(target: *runtime.Instance) bool {
+    return target.stateAs(State) != null;
+}
+
+/// dom.activation: the area element's activation behaviour (HTML 4.6.4): "if
+/// element has no href attribute, then return"; otherwise follow the
+/// hyperlink (dom.navigables). Downloading (the download attribute) and the
+/// image map coordinates of an ismap image are not modelled.
+fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
+    _ = event;
+    const elem_internal = ElementImpl.getInternal(target) orelse return;
+    if (elem_internal.findAttribute(null, "href") == null) return;
+    const navigables = @import("dom").navigables;
+    // The navigables are the iframe's to run; a page that never made an
+    // iframe has not installed them yet.
+    if (!navigables.isInstalled()) {
+        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return;
+        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    navigables.followHyperlink(target);
 }

@@ -261,9 +261,12 @@ pub const HTMLLIElement = struct {
         return try HTMLLIElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLLIElementImpl.get_value(instance);
+        if (comptime @hasDecl(HTMLLIElementImpl, "get_value")) return try HTMLLIElementImpl.get_value(instance);
+        return try reflection.get(i32, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -272,12 +275,14 @@ pub const HTMLLIElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLIElementImpl.set_value(instance, value);
+        if (comptime @hasDecl(HTMLLIElementImpl, "set_value")) return try HTMLLIElementImpl.set_value(instance, value);
+        try reflection.set(i32, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLLIElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLLIElementImpl, "get_type")) return try HTMLLIElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +291,7 @@ pub const HTMLLIElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLLIElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLLIElementImpl, "set_type")) return try HTMLLIElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 };

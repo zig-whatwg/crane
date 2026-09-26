@@ -287,9 +287,12 @@ pub const HTMLEmbedElement = struct {
         return try HTMLEmbedElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLEmbedElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_src")) return try HTMLEmbedElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -298,12 +301,14 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_src")) return try HTMLEmbedElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLEmbedElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_type")) return try HTMLEmbedElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -312,12 +317,14 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_type")) return try HTMLEmbedElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLEmbedElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_width")) return try HTMLEmbedElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -326,12 +333,14 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_width")) return try HTMLEmbedElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLEmbedElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_height")) return try HTMLEmbedElementImpl.get_height(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -340,12 +349,14 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_height")) return try HTMLEmbedElementImpl.set_height(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLEmbedElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_align")) return try HTMLEmbedElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -354,12 +365,14 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_align")) return try HTMLEmbedElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLEmbedElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "get_name")) return try HTMLEmbedElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -368,7 +381,8 @@ pub const HTMLEmbedElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLEmbedElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLEmbedElementImpl, "set_name")) return try HTMLEmbedElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {

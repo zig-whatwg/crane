@@ -391,7 +391,7 @@ pub fn processDirectory(
             if (type_kind.kind == .mixin) {
                 // Find the mixin definition in interfaces (mixins are stored as interfaces)
                 if (ir.interfaces.get(type_name)) |mixin| {
-                    try generator.generateMixin(allocator, mixins_path, mixin, &ir.type_registry);
+                    try generator.generateMixin(allocator, mixins_path, mixin, &ir);
 
                     const name_copy = try allocator.dupe(u8, type_name);
                     try mixin_names.append(allocator, name_copy);

@@ -181,13 +181,10 @@ src/webidl/impls/HTMLAttributionSrcElementUtils.zig get_attributionSrc 1
 src/webidl/impls/HTMLAttributionSrcElementUtils.zig set_attributionSrc 1
 src/webidl/impls/HTMLOrSVGElement.zig call_blur 1
 src/webidl/impls/HTMLOrSVGElement.zig call_focus 1
-src/webidl/impls/HTMLOrSVGElement.zig get_autofocus 1
 src/webidl/impls/HTMLOrSVGElement.zig get_dataset 1
 src/webidl/impls/HTMLOrSVGElement.zig get_nonce 1
 src/webidl/impls/HTMLOrSVGElement.zig get_tabIndex 1
-src/webidl/impls/HTMLOrSVGElement.zig set_autofocus 1
 src/webidl/impls/HTMLOrSVGElement.zig set_nonce 1
-src/webidl/impls/HTMLOrSVGElement.zig set_tabIndex 1
 src/webidl/impls/HTMLSharedStorageWritableElementUtils.zig get_sharedStorageWritable 1
 src/webidl/impls/HTMLSharedStorageWritableElementUtils.zig set_sharedStorageWritable 1
 src/webidl/impls/MessageEventTarget.zig get_onmessage 1

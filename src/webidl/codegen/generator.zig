@@ -12,6 +12,7 @@ const refs = @import("refs.zig");
 const ir_mod = @import("ir.zig");
 const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
+const reflect = @import("reflect.zig");
 const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
@@ -652,6 +653,41 @@ fn inheritsMember(mixin: ?[]const u8) bool {
     return @import("inherited_mixins.zig").isInherited(name);
 }
 
+/// Whether the interface or mixin `name`'s instances are elements, and so the
+/// reflected target (HTML 2.6.1) of its [Reflect*] attributes: an interface
+/// that is Element or inherits from it, or a mixin every includer of which is
+/// one. ARIAMixin is not: ElementInternals includes it too, and an
+/// ElementInternals reflects into its target element's internal content
+/// attribute map, not the element's attributes.
+pub fn reflectsOnElement(model: *const ir_mod.IR, name: []const u8) bool {
+    const iface = model.interfaces.get(name) orelse return false;
+    if (!iface.mixin) return isElementInterface(model, name);
+    var included = false;
+    var it = model.interfaces.iterator();
+    while (it.next()) |entry| {
+        for (entry.value_ptr.mixins.items) |mixin| {
+            if (!std.mem.eql(u8, mixin, name)) continue;
+            if (!isElementInterface(model, entry.key_ptr.*)) return false;
+            included = true;
+        }
+    }
+    return included;
+}
+
+/// Whether `name` is Element or inherits from it.
+fn isElementInterface(model: *const ir_mod.IR, name: []const u8) bool {
+    var current: ?[]const u8 = name;
+    // Bounded: a malformed IDL set could make the chain a cycle.
+    var depth: usize = 0;
+    while (current) |n| : (depth += 1) {
+        if (depth > 64) return false;
+        if (std.mem.eql(u8, n, "Element")) return true;
+        const iface = model.interfaces.get(n) orelse return false;
+        current = iface.inheritance;
+    }
+    return false;
+}
+
 /// Generate a mixin's module: its members' delegates to the mixin's impl.
 ///
 /// An interface that includes the mixin inherits these functions by alias
@@ -663,8 +699,9 @@ pub fn generateMixin(
     allocator: std.mem.Allocator,
     mixins_path: []const u8,
     mixin: @import("ir.zig").Interface,
-    type_registry: *const @import("ir.zig").TypeRegistry,
+    model: *const ir_mod.IR,
 ) !void {
+    const type_registry = &model.type_registry;
     const mixin_name = mixin.name;
 
     const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
@@ -722,7 +759,10 @@ pub fn generateMixin(
 
     const impl_name = try std.fmt.allocPrint(allocator, "{s}Impl", .{mixin_name});
     defer allocator.free(impl_name);
-    try writer.writeDelegateFunctions(w, impl_name, type_registry, attrs.items, ops.items, overload_ops.items, .{ .same_object_cache = false });
+    try writer.writeDelegateFunctions(w, impl_name, type_registry, attrs.items, ops.items, overload_ops.items, .{
+        .same_object_cache = false,
+        .reflect_on_element = reflectsOnElement(model, mixin_name),
+    });
 
     try w.flush();
 }
@@ -1131,8 +1171,17 @@ fn generateImplFile(
         }
     }
 
+    // A [Reflect*] accessor on an element is the generated interface's own
+    // (HTML 2.6): a stub here would override it with NotImplemented.
+    const reflects = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false;
+
     // Generate getter stubs
     for (all_attrs.items) |attr| {
+        if (reflects) if (try reflect.of(allocator, attr)) |r| {
+            defer r.deinit(allocator);
+            if (r.reflectsGetter()) continue;
+        };
+
         // Sanitize attribute name for function names (convert hyphens to underscores)
         const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
         const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
@@ -1158,6 +1207,10 @@ fn generateImplFile(
 
     // Generate setter stubs
     for (all_attrs.items) |attr| {
+        if (reflects) if (try reflect.of(allocator, attr)) |r| {
+            r.deinit(allocator);
+            continue;
+        };
         if (!attr.readonly) {
             // Sanitize attribute name for function names (convert hyphens to underscores)
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
@@ -1708,7 +1761,9 @@ fn generateInterfaceFile(
 
     // Generate delegate functions (ONLY for own attributes/operations, not inherited)
     const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
-    try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items, own_overload_ops.items, .{});
+    try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items, own_overload_ops.items, .{
+        .reflect_on_element = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false,
+    });
 
     // Generate iterable support if interface has iterable declaration
     if (iterable_member) |iterable| {

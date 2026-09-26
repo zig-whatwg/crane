@@ -608,7 +608,7 @@ def render_roadmap(roadmap, worklist, records):
 
     lane_rows = []
     for lane in roadmap.get('lane', []):
-        a = area_stats(next((p.get('areas', []) for p in infra if p['id'] == lane.get('infra')), []),
+        a = area_stats([lane['area']] if lane.get('area') else next((p.get('areas', []) for p in infra if p['id'] == lane.get('infra')), []),
                        worklist, records)
         st = lane.get('status', 'todo')
         branch = f'<div class="dim rm-paths">{html.escape(lane["branch"])}</div>' if lane.get('branch') else ''

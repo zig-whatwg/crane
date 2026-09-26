@@ -57,19 +57,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: assignedElements
 pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!runtime.JSValue {
     _ = instance;

@@ -62,12 +62,6 @@ pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
-/// Getter for max
-pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for position
 pub fn get_position(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
@@ -77,19 +71,5 @@ pub fn get_position(instance: *runtime.Instance) anyerror!f64 {
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for max
-pub fn set_max(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }

@@ -51,12 +51,6 @@ pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for src
-pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for srcObject
 pub fn get_srcObject(instance: *runtime.Instance) anyerror!?typedefs.MediaProvider {
     _ = instance;
@@ -169,24 +163,6 @@ pub fn get_ended(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Getter for autoplay
-pub fn get_autoplay(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for loop
-pub fn get_loop(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for controls
-pub fn get_controls(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for volume
 pub fn get_volume(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
@@ -195,12 +171,6 @@ pub fn get_volume(instance: *runtime.Instance) anyerror!f64 {
 
 /// Getter for muted
 pub fn get_muted(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for defaultMuted
-pub fn get_defaultMuted(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
@@ -259,13 +229,6 @@ pub fn get_onwaitingforkey(instance: *runtime.Instance) anyerror!typedefs.EventH
     return error.NotImplemented;
 }
 
-/// Setter for src
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for srcObject
 pub fn set_srcObject(instance: *runtime.Instance, value: ?typedefs.MediaProvider) anyerror!void {
     _ = instance;
@@ -315,27 +278,6 @@ pub fn set_preservesPitch(instance: *runtime.Instance, value: bool) anyerror!voi
     return error.NotImplemented;
 }
 
-/// Setter for autoplay
-pub fn set_autoplay(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for loop
-pub fn set_loop(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for controls
-pub fn set_controls(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for volume
 pub fn set_volume(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
@@ -345,13 +287,6 @@ pub fn set_volume(instance: *runtime.Instance, value: f64) anyerror!void {
 
 /// Setter for muted
 pub fn set_muted(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for defaultMuted
-pub fn set_defaultMuted(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

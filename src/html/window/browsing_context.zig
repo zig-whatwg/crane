@@ -38,6 +38,7 @@ pub const InstancePtr = *anyopaque;
 
 // Import security policy types for COOP/COEP
 const security_policies = @import("../navigation/security_policies.zig");
+const JointHistory = @import("../navigation/joint_history.zig").JointHistory;
 const CoopValue = security_policies.CoopValue;
 const CoepValue = security_policies.CoepValue;
 
@@ -274,6 +275,9 @@ pub const SandboxFlags = packed struct {
 /// them (`BrowsingContext.discard`); freed together by `freeRetired`.
 var retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
 
+/// Every browsing context not yet freed, for `ofWindow` and `byId`.
+threadlocal var live: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -361,9 +365,15 @@ pub const BrowsingContext = struct {
     /// was retired rather than freed. See `discard` and `freeRetired`.
     orphaned: bool = false,
 
+    /// The traversable navigable's session history, on a top-level context
+    /// (see `jointHistory`). Owned.
+    joint_history: ?*JointHistory = null,
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
+        errdefer allocator.destroy(ctx);
+        try live.append(std.heap.page_allocator, ctx);
         ctx.* = .{
             .allocator = allocator,
             .id = @atomicRmw(u64, &next_context_id, .Add, 1, .monotonic),
@@ -507,7 +517,83 @@ pub const BrowsingContext = struct {
         self.active_document = null;
         self.active_window = null;
 
+        if (self.joint_history) |history| {
+            history.deinit();
+            self.allocator.destroy(history);
+            self.joint_history = null;
+        }
+        for (live.items, 0..) |ctx, i| {
+            if (ctx == self) {
+                _ = live.swapRemove(i);
+                break;
+            }
+        }
+
         self.allocator.destroy(self);
+    }
+
+    /// The browsing context whose active window is `window`, if one is live.
+    /// A Window a navigation replaced is no browsing context's active window:
+    /// its document is not fully active.
+    pub fn ofWindow(window: InstancePtr) ?*BrowsingContext {
+        for (live.items) |ctx| {
+            if (ctx.active_window == window and !ctx.orphaned) return ctx;
+        }
+        return null;
+    }
+
+    /// The live browsing context with this id, if any.
+    pub fn byId(id: u64) ?*BrowsingContext {
+        for (live.items) |ctx| {
+            if (ctx.id == id) return ctx;
+        }
+        return null;
+    }
+
+    /// The session history of this context's traversable navigable - its top
+    /// - made on first use.
+    pub fn jointHistory(self: *BrowsingContext) !*JointHistory {
+        const top = self.getTop();
+        if (top.joint_history) |history| return history;
+        const history = try top.allocator.create(JointHistory);
+        history.* = JointHistory.init(top.allocator);
+        top.joint_history = history;
+        return history;
+    }
+
+    /// The session history of this context's traversable, with an entry for
+    /// this context and every context from it up to its traversable ("initialize
+    /// the navigable"): each one missing gets an entry for its active
+    /// document, at the current step. `url_of` gives a document's URL, owned
+    /// by the allocator it is given.
+    pub fn ensureHistoryEntries(
+        self: *BrowsingContext,
+        url_of: *const fn (document: InstancePtr, allocator: Allocator) anyerror![]u8,
+    ) !*JointHistory {
+        const history = try self.jointHistory();
+        var current: ?*BrowsingContext = self;
+        var depth: usize = 0;
+        while (current) |ctx| : (depth += 1) {
+            if (depth > 64) break;
+            if (!history.hasNavigable(ctx.id)) {
+                if (ctx.getActiveDocument()) |document| {
+                    const url = try url_of(document, history.allocator);
+                    defer history.allocator.free(url);
+                    try history.addInitialEntry(ctx.id, url, document);
+                }
+            }
+            current = ctx.parent;
+        }
+        return history;
+    }
+
+    /// The live descendants of this context, parents first, into `out`.
+    pub fn collectDescendants(self: *BrowsingContext, allocator: Allocator, out: *std.ArrayListUnmanaged(*BrowsingContext)) !void {
+        var index = out.items.len;
+        try out.append(allocator, self);
+        while (index < out.items.len and out.items.len < 1024) : (index += 1) {
+            for (out.items[index].children.items) |child| try out.append(allocator, child);
+        }
     }
 
     /// Check if this browsing context is a top-level browsing context (§7.1)

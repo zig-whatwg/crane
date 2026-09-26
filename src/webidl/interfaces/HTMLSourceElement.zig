@@ -286,9 +286,12 @@ pub const HTMLSourceElement = struct {
         return try HTMLSourceElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLSourceElementImpl.get_src(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_src")) return try HTMLSourceElementImpl.get_src(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -297,12 +300,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_src(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_src")) return try HTMLSourceElementImpl.set_src(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLSourceElementImpl.get_type(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_type")) return try HTMLSourceElementImpl.get_type(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -311,12 +316,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_type(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_type")) return try HTMLSourceElementImpl.set_type(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_srcset(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLSourceElementImpl.get_srcset(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_srcset")) return try HTMLSourceElementImpl.get_srcset(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "srcset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -325,12 +332,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_srcset(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_srcset")) return try HTMLSourceElementImpl.set_srcset(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "srcset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_sizes(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLSourceElementImpl.get_sizes(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_sizes")) return try HTMLSourceElementImpl.get_sizes(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "sizes" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -339,12 +348,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_sizes(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_sizes")) return try HTMLSourceElementImpl.set_sizes(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "sizes" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLSourceElementImpl.get_media(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_media")) return try HTMLSourceElementImpl.get_media(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -353,12 +364,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_media(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_media")) return try HTMLSourceElementImpl.set_media(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLSourceElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_width")) return try HTMLSourceElementImpl.get_width(instance);
+        return try reflection.get(u32, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -367,12 +380,14 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_width")) return try HTMLSourceElementImpl.set_width(instance, value);
+        try reflection.set(u32, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLSourceElementImpl.get_height(instance);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "get_height")) return try HTMLSourceElementImpl.get_height(instance);
+        return try reflection.get(u32, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -381,6 +396,7 @@ pub const HTMLSourceElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSourceElementImpl.set_height(instance, value);
+        if (comptime @hasDecl(HTMLSourceElementImpl, "set_height")) return try HTMLSourceElementImpl.set_height(instance, value);
+        try reflection.set(u32, instance, .{ .name = "height" }, value);
     }
 };

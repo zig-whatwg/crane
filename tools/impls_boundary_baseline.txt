@@ -249,7 +249,6 @@ src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLElement.zig CSSStyleDeclaration.initForInlineStyle 1
 src/webidl/impls/HTMLElement.zig DOMStringMap.create 1
 src/webidl/impls/HTMLElement.zig Document.setActiveElement 1
-src/webidl/impls/HTMLFormElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLFormElement.zig HTMLCollection.addElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.get_value 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
@@ -267,7 +266,6 @@ src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 18
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 3
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 10
 src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 3
-src/webidl/impls/HTMLLinkElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLOptionElement.zig CharacterData.getData 1
 src/webidl/impls/HTMLOrSVGElement.zig Document.getInternal 1
 src/webidl/impls/HTMLOrSVGElement.zig HTMLElement.deinit 2

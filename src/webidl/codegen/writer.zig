@@ -6,6 +6,7 @@ const std = @import("std");
 const inherited_mixins = @import("inherited_mixins.zig");
 const types = @import("types.zig");
 const overload = @import("overload.zig");
+const reflect = @import("reflect.zig");
 const property_classifier = @import("property_classifier.zig");
 const ir = @import("ir.zig");
 
@@ -3474,6 +3475,12 @@ pub const DelegateOptions = struct {
     /// The mixins whose members an includer inherits rather than delegates
     /// (inherited_mixins.zig).
     inherited_mixins: []const []const u8 = &inherited_mixins.names,
+    /// The file's instances are elements - the reflected target of HTML 2.6.1
+    /// - so a [Reflect*] attribute the impl does not implement is reflected
+    /// by `src/webidl/impls/reflection.zig` (see `reflect.zig`). False for
+    /// anything else, ElementInternals included: its reflected target is its
+    /// element's internal content attribute map, not the element's attributes.
+    reflect_on_element: bool = false,
 };
 
 /// Whether a delegate file has a setter for `attr`: the conditions
@@ -3509,6 +3516,9 @@ pub fn writeDelegateFunctions(
 ) !void {
     const allocator = std.heap.page_allocator;
 
+    // `reflection` is declared once, before the first accessor that uses it.
+    var reflection_declared = false;
+
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
         // Check if this is an interface type - if so, use *runtime.Instance
@@ -3541,18 +3551,32 @@ pub fn writeDelegateFunctions(
         const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
         defer if (name_was_sanitized) allocator.free(sanitized_name);
 
-        // Write extended attributes as comment
-        try writeExtendedAttributesComment(writer, attr.extAttrs);
-
-        const get_prefix = getterPrefix(attr);
-        const set_prefix = setterPrefix(attr);
-
         // An inherited mixin member is the includer's by inheritance (WebIDL
         // `includes`): it takes the mixin module's function, the one place the
         // member reaches the mixin's impl. Only a [SameObject] one is written
         // out below, to cache in this interface's own State around the
         // inherited getter.
         const inherited = inheritedFrom(options, attr.mixin);
+
+        // HTML 2.6: a [Reflect*] attribute reflects its content attribute
+        // unless the impl implements it. An inherited member reflects in its
+        // mixin's own module, which this one calls.
+        const reflection: ?reflect.Reflection = if (options.reflect_on_element and inherited == null)
+            try reflect.of(allocator, attr)
+        else
+            null;
+        defer if (reflection) |r| r.deinit(allocator);
+        if (reflection != null and !reflection_declared) {
+            try writer.writeAll("    const reflection = @import(\"impls\").reflection;\n\n");
+            reflection_declared = true;
+        }
+
+        // Write extended attributes as comment
+        try writeExtendedAttributesComment(writer, attr.extAttrs);
+
+        const get_prefix = getterPrefix(attr);
+        const set_prefix = setterPrefix(attr);
+
         const caches = has_same_object and !attr.static and options.same_object_cache;
         if (inherited) |mixin| if (!caches) {
             try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
@@ -3564,6 +3588,13 @@ pub fn writeDelegateFunctions(
         };
         const member_impl = if (inherited) |mixin| try std.fmt.allocPrint(allocator, "mixins.{s}", .{mixin}) else impl_name;
         defer if (inherited != null) allocator.free(member_impl);
+        // The Zig type the getter returns and the setter takes.
+        const value_type = if (is_nullable)
+            try std.fmt.allocPrint(allocator, "?{s}", .{return_type})
+        else
+            try allocator.dupe(u8, return_type);
+        defer allocator.free(value_type);
+        const reflect_getter = if (reflection) |r| r.reflectsGetter() else false;
 
         // For nullable types, return ?T instead of T (allows returning null instead of error)
         if (is_nullable) {
@@ -3581,9 +3612,20 @@ pub fn writeDelegateFunctions(
             try writer.print("        if (state.own.cached_{s}) |cached| {{\n", .{sanitized_name});
             try writer.writeAll("            return cached;\n");
             try writer.writeAll("        }\n");
-            try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
+            if (reflect_getter) {
+                try writer.print("        const value = if (comptime @hasDecl({s}, \"get_{s}\")) try {s}.get_{s}(instance) else try reflection.get({s}, instance, ", .{ member_impl, sanitized_name, member_impl, sanitized_name, value_type });
+                try reflect.writeSpec(writer, reflection.?);
+                try writer.writeAll(");\n");
+            } else {
+                try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
+            }
             try writer.print("        state.own.cached_{s} = value;\n", .{sanitized_name});
             try writer.writeAll("        return value;\n");
+        } else if (reflect_getter) {
+            try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name, member_impl, get_prefix, sanitized_name });
+            try writer.print("        return try reflection.get({s}, instance, ", .{value_type});
+            try reflect.writeSpec(writer, reflection.?);
+            try writer.writeAll(");\n");
         } else {
             // Static attributes or non-[SameObject] - delegate directly to impl
             try writer.print("        return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name });
@@ -3700,7 +3742,16 @@ pub fn writeDelegateFunctions(
                 try writer.print("        state.own.cached_{s} = null; // Invalidate [SameObject] cache\n", .{sanitized_name});
             }
 
-            try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name });
+            if (reflection) |r| {
+                // Every primary reflection extended attribute, [ReflectSetter]
+                // included, reflects on setting.
+                try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name, member_impl, set_prefix, sanitized_name });
+                try writer.print("        try reflection.set({s}, instance, ", .{value_type});
+                try reflect.writeSpec(writer, r);
+                try writer.writeAll(", value);\n");
+            } else {
+                try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name });
+            }
             try writer.writeAll("    }\n\n");
         }
     }

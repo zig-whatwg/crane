@@ -2729,6 +2729,13 @@ pub extern fn v8_Isolate_NewFromSnapshot(
 /// @return New context with snapshot state
 pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 
+/// Create a context from the snapshot's context 0 around an existing,
+/// detached global proxy (v8_Context_DetachGlobal), which keeps its identity:
+/// a navigable's WindowProxy across the Windows its navigations create
+/// (Blink's LocalWindowProxy::CreateContext). The returned context is the
+/// caller's; `global_proxy` is not consumed.
+pub extern fn v8_Context_NewFromSnapshotWithGlobal(isolate: *Isolate, global_proxy: *Object) ?*Context;
+
 /// Create a NEW context for an isolate that was created from a snapshot
 ///
 /// Unlike v8_Context_NewFromSnapshot which restores a specific context from the

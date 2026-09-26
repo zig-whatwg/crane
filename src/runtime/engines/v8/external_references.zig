@@ -277,6 +277,9 @@ pub fn registerAllExternalReferences() void {
     const context_manager = @import("context_manager.zig");
     context_manager.registerExternalReferences();
 
+    // Register the legacy factory functions (Image, Audio, Option)
+    @import("legacy_factory_functions.zig").registerExternalReferences();
+
     // Register all interface callbacks in deterministic order
     registerAllInterfaceCallbacks();
 

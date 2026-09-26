@@ -62,3 +62,7 @@ data/
 # The regression baseline is tests/wpt_expectations.jsonl, not anything here.
 /wpt-results/
 /zig-pkg/
+
+# The snapshot is a build output (zig-out/bin/whatwg_snapshot.bin). A copy here was
+# tracked from 2026-01 to 2026-09 and every run from the repo root loaded it first.
+/whatwg_snapshot.bin

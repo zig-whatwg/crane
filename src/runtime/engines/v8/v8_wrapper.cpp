@@ -9581,6 +9581,46 @@ return nullptr;
     return trackHandle(new Global<Context>(isolate, context));
 }
 
+/// Create a context from the snapshot's context 0 around an EXISTING global
+/// proxy - one whose previous context was detached with
+/// v8_Context_DetachGlobal. The proxy keeps its identity: every reference to
+/// it (iframe.contentWindow, window.open()'s return value, a parent's
+/// window[name]) now reaches the new context's global object.
+///
+/// This is how a navigable's WindowProxy survives the Window it proxies being
+/// replaced: HTML "create and initialize a Document object" makes a new realm
+/// for the new document, "with the global this binding" the browsing
+/// context's WindowProxy. Blink does the same in LocalWindowProxy::
+/// CreateContext, which passes its detached global_proxy_ to
+/// v8::Context::New (third_party/blink/renderer/bindings/core/v8/
+/// local_window_proxy.cc). V8 (bootstrapper.cc, Genesis) hooks the snapshot's
+/// native context up to the supplied proxy (HookUpGlobalProxy).
+///
+/// @param isolate      - Isolate created from a snapshot
+/// @param global_proxy - The detached global proxy to reuse (not consumed)
+/// @return A new context, owned by the caller (dispose with
+///         v8_Context_Dispose), or null on failure
+Global<Context>* v8_Context_NewFromSnapshotWithGlobal(Isolate* isolate, Global<Object>* global_proxy) {
+    if (!isolate || !global_proxy) return nullptr;
+
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope handle_scope(isolate);
+    TryCatch try_catch(isolate);
+
+    Local<Object> proxy = global_proxy->Get(isolate);
+    MaybeLocal<Context> maybe_context = Context::FromSnapshot(
+        isolate, 0,
+        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr),
+        nullptr,
+        MaybeLocal<Value>(proxy));
+
+    Local<Context> context;
+    if (!maybe_context.ToLocal(&context)) return nullptr;
+    // Counted, since v8_Context_Dispose uncounts it.
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
 /// Create a context from a specific index in the snapshot
 ///
 /// This creates a new context based on the context that was added at the

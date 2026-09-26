@@ -420,9 +420,12 @@ pub const HTMLTableElement = struct {
         return value;
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_align")) return try HTMLTableElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -431,12 +434,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_align")) return try HTMLTableElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_border(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_border(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_border")) return try HTMLTableElementImpl.get_border(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "border" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -445,12 +450,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_border(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_border")) return try HTMLTableElementImpl.set_border(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "border" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_frame(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_frame(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_frame")) return try HTMLTableElementImpl.get_frame(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "frame" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -459,12 +466,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_frame(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_frame")) return try HTMLTableElementImpl.set_frame(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "frame" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_rules(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_rules(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_rules")) return try HTMLTableElementImpl.get_rules(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "rules" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -473,12 +482,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_rules(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_rules")) return try HTMLTableElementImpl.set_rules(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "rules" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_summary(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_summary(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_summary")) return try HTMLTableElementImpl.get_summary(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "summary" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -487,12 +498,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_summary(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_summary")) return try HTMLTableElementImpl.set_summary(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "summary" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_width(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_width")) return try HTMLTableElementImpl.get_width(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -501,12 +514,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_width(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_width")) return try HTMLTableElementImpl.set_width(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_bgColor(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_bgColor")) return try HTMLTableElementImpl.get_bgColor(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -515,12 +530,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_bgColor(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_bgColor")) return try HTMLTableElementImpl.set_bgColor(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_cellPadding(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_cellPadding(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_cellPadding")) return try HTMLTableElementImpl.get_cellPadding(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "cellpadding" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -529,12 +546,14 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_cellPadding(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_cellPadding")) return try HTMLTableElementImpl.set_cellPadding(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "cellpadding" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_cellSpacing(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLTableElementImpl.get_cellSpacing(instance);
+        if (comptime @hasDecl(HTMLTableElementImpl, "get_cellSpacing")) return try HTMLTableElementImpl.get_cellSpacing(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "cellspacing" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
@@ -543,7 +562,8 @@ pub const HTMLTableElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLTableElementImpl.set_cellSpacing(instance, value);
+        if (comptime @hasDecl(HTMLTableElementImpl, "set_cellSpacing")) return try HTMLTableElementImpl.set_cellSpacing(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "cellspacing" }, value);
     }
 
     pub fn call_createTFoot(instance: *runtime.Instance) anyerror!*runtime.Instance {

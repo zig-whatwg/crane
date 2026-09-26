@@ -29,9 +29,12 @@ pub fn set_nonce(instance: *runtime.Instance, value: DOMString) anyerror!void {
     try HTMLOrSVGElementImpl.set_nonce(instance, value);
 }
 
+const reflection = @import("impls").reflection;
+
 /// Extended attributes: [CEReactions], [Reflect]
 pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-    return try HTMLOrSVGElementImpl.get_autofocus(instance);
+    if (comptime @hasDecl(HTMLOrSVGElementImpl, "get_autofocus")) return try HTMLOrSVGElementImpl.get_autofocus(instance);
+    return try reflection.get(bool, instance, .{ .name = "autofocus" });
 }
 
 /// Extended attributes: [CEReactions], [Reflect]
@@ -40,7 +43,8 @@ pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
     runtime.CEReactions.begin();
     defer runtime.CEReactions.end();
 
-    try HTMLOrSVGElementImpl.set_autofocus(instance, value);
+    if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_autofocus")) return try HTMLOrSVGElementImpl.set_autofocus(instance, value);
+    try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
 }
 
 /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -54,7 +58,8 @@ pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
     runtime.CEReactions.begin();
     defer runtime.CEReactions.end();
 
-    try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
+    if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_tabIndex")) return try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
+    try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
 }
 
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {

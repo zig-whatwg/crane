@@ -16,8 +16,9 @@ const runtime = @import("runtime");
 test "snapshot validation - valid snapshot" {
     const allocator = std.testing.allocator;
 
-    // Check if snapshot file exists
-    const snapshot_path = "whatwg_snapshot.bin";
+    // The snapshot this build generated - not a copy in the current
+    // directory, which is what a stale one looks like.
+    const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
     const io = std.testing.io;
     std.Io.Dir.cwd().access(io, snapshot_path, .{}) catch |err| {
         std.log.warn("Skipping snapshot test - file not found: {}", .{err});

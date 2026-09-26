@@ -1639,7 +1639,6 @@ fn attributeChangeSteps(
     value: ?[]const u8,
     namespace: ?[]const u8,
 ) void {
-    _ = old_value;
     // Every step below concerns attributes in no namespace.
     if (namespace != null) return;
     const internal = getInternal(instance) orelse return;
@@ -1658,6 +1657,10 @@ fn attributeChangeSteps(
 
     // HTML §8.1.8.1: event handler content attributes.
     eventHandlerAttributeChangeSteps(instance, local_name, value);
+
+    // The steps the element's own type defines (an iframe's src and srcdoc),
+    // which its impl installs (dom.attribute_change_steps).
+    dom.attribute_change_steps.run(instance, internal.local_name.asSlice(), local_name, old_value, value, namespace);
 
     // HTML "update the image data", for an img whose src is set.
     if (value) |v| {

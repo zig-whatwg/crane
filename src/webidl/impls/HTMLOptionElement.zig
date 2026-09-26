@@ -491,38 +491,9 @@ fn optionText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // Reflection helpers
 // ---------------------------------------------------------------------------
 
-fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, attr)) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-    return runtime.DOMString.initEmpty();
-}
-
-fn setBoolAttr(instance: *runtime.Instance, comptime attr: []const u8, value: bool) anyerror!void {
-    const name = runtime.DOMString.initInterned(attr);
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
-}
-
-fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(attr), value);
-}
-
 // ---------------------------------------------------------------------------
 // IDL attributes
 // ---------------------------------------------------------------------------
-
-/// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    // The IDL attribute is a plain reflection of the content attribute. The
-    // richer "is disabled" concept (which inherits from an ancestor optgroup)
-    // drives the reset algorithm, not this getter - see `optionIsDisabled`.
-    return hasAttr(instance, "disabled");
-}
 
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -541,11 +512,6 @@ pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return runtime.DOMString.initDupe(instance.ctx.allocator, value) catch return error.OutOfMemory;
     }
     return optionText(instance);
-}
-
-/// Getter for defaultSelected
-pub fn get_defaultSelected(instance: *runtime.Instance) anyerror!bool {
-    return hasAttr(instance, "selected");
 }
 
 /// Getter for selected
@@ -601,32 +567,12 @@ pub fn get_index(instance: *runtime.Instance) anyerror!i32 {
     return 0;
 }
 
-/// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "disabled", value);
-}
-
-/// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "label", value);
-}
-
-/// Setter for defaultSelected
-pub fn set_defaultSelected(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "selected", value);
-}
-
 /// Setter for selected
 pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     // Sets selectedness AND dirtiness, then asks for a reset - which is why
     // `false` maps to `.off` rather than `.off_no_reset`: a single select
     // re-selects its first enabled option immediately afterwards.
     try setSelectedness(instance, if (value) .on else .off);
-}
-
-/// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "value", value);
 }
 
 /// Setter for text

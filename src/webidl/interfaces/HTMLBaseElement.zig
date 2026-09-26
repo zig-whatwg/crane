@@ -261,6 +261,8 @@ pub const HTMLBaseElement = struct {
         return try HTMLBaseElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLBaseElementImpl.get_href(instance);
@@ -272,12 +274,14 @@ pub const HTMLBaseElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBaseElementImpl.set_href(instance, value);
+        if (comptime @hasDecl(HTMLBaseElementImpl, "set_href")) return try HTMLBaseElementImpl.set_href(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "href" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLBaseElementImpl.get_target(instance);
+        if (comptime @hasDecl(HTMLBaseElementImpl, "get_target")) return try HTMLBaseElementImpl.get_target(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -286,6 +290,7 @@ pub const HTMLBaseElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLBaseElementImpl.set_target(instance, value);
+        if (comptime @hasDecl(HTMLBaseElementImpl, "set_target")) return try HTMLBaseElementImpl.set_target(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
 };

@@ -256,9 +256,12 @@ pub const HTMLHeadingElement = struct {
         return try HTMLHeadingElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLHeadingElementImpl.get_align(instance);
+        if (comptime @hasDecl(HTMLHeadingElementImpl, "get_align")) return try HTMLHeadingElementImpl.get_align(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -267,6 +270,7 @@ pub const HTMLHeadingElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLHeadingElementImpl.set_align(instance, value);
+        if (comptime @hasDecl(HTMLHeadingElementImpl, "set_align")) return try HTMLHeadingElementImpl.set_align(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
     }
 };

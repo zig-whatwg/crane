@@ -109,6 +109,9 @@ pub const EngineError = error{
     AsyncIteratorError,
     /// Interface registration failed
     RegistrationFailed,
+    /// Script threw (a getter, a conversion) and the exception is pending
+    /// in the engine: return without throwing another.
+    ExceptionPending,
     /// V8 object creation from template failed
     ObjectCreationFailed,
 };
@@ -234,6 +237,28 @@ pub const EngineInterface = struct {
         name: []const u8,
         default: bool,
     ) EngineError!bool,
+
+    /// Read a `boolean` dictionary member off a JS object (WebIDL 3.2.18):
+    /// null when the member is absent (the property reads as undefined),
+    /// otherwise its ToBoolean. Unlike `getPropertyTruthy` it tells an
+    /// absent member from a false one, which "if options[passive] exists"
+    /// needs, and it reports a throwing getter as `ExceptionPending`.
+    getPropertyBoolean: ?*const fn (
+        engine_ctx: *anyopaque,
+        object: *anyopaque,
+        name: []const u8,
+    ) EngineError!?bool,
+
+    /// Read an interface-typed dictionary member off a JS object: null when
+    /// absent, the platform object's Instance when it is one, `TypeError`
+    /// for any other value (null included - a nullable member would say
+    /// so), `ExceptionPending` when the getter threw. Which interface the
+    /// Instance implements is the caller's check (`stateAs`).
+    getPropertyInstance: ?*const fn (
+        engine_ctx: *anyopaque,
+        object: *anyopaque,
+        name: []const u8,
+    ) EngineError!?*anyopaque,
 
     /// Create a JavaScript ArrayBuffer from bytes
     ///
@@ -919,6 +944,8 @@ pub const stub_engine: EngineInterface = .{
     .destroyPromiseHandle = null,
     .createString = null,
     .getPropertyTruthy = null,
+    .getPropertyBoolean = null,
+    .getPropertyInstance = null,
     .createArrayBuffer = null,
     .createUint8Array = null,
     .parseJson = null,

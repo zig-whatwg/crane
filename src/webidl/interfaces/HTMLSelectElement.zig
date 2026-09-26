@@ -361,6 +361,8 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLSelectElementImpl.get_autocomplete(instance);
@@ -372,12 +374,14 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_autocomplete(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_autocomplete")) return try HTMLSelectElementImpl.set_autocomplete(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLSelectElementImpl.get_disabled(instance);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "get_disabled")) return try HTMLSelectElementImpl.get_disabled(instance);
+        return try reflection.get(bool, instance, .{ .name = "disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -386,7 +390,8 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_disabled(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_disabled")) return try HTMLSelectElementImpl.set_disabled(instance, value);
+        try reflection.set(bool, instance, .{ .name = "disabled" }, value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -395,7 +400,8 @@ pub const HTMLSelectElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_multiple(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLSelectElementImpl.get_multiple(instance);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "get_multiple")) return try HTMLSelectElementImpl.get_multiple(instance);
+        return try reflection.get(bool, instance, .{ .name = "multiple" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -404,12 +410,14 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_multiple(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_multiple")) return try HTMLSelectElementImpl.set_multiple(instance, value);
+        try reflection.set(bool, instance, .{ .name = "multiple" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLSelectElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "get_name")) return try HTMLSelectElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -418,12 +426,14 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_name")) return try HTMLSelectElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLSelectElementImpl.get_required(instance);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "get_required")) return try HTMLSelectElementImpl.get_required(instance);
+        return try reflection.get(bool, instance, .{ .name = "required" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -432,12 +442,14 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_required(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_required")) return try HTMLSelectElementImpl.set_required(instance, value);
+        try reflection.set(bool, instance, .{ .name = "required" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=0]
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-        return try HTMLSelectElementImpl.get_size(instance);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "get_size")) return try HTMLSelectElementImpl.get_size(instance);
+        return try reflection.get(u32, instance, .{ .name = "size", .default = 0 });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=0]
@@ -446,7 +458,8 @@ pub const HTMLSelectElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLSelectElementImpl.set_size(instance, value);
+        if (comptime @hasDecl(HTMLSelectElementImpl, "set_size")) return try HTMLSelectElementImpl.set_size(instance, value);
+        try reflection.set(u32, instance, .{ .name = "size", .default = 0 }, value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {

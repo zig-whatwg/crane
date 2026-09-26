@@ -1263,38 +1263,9 @@ pub const Context = struct {
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(loc_key), @ptrCast(v8_location));
         }
 
-        // Register History singleton (stored in __internal.history)
-        {
-            const History = interfaces.History;
-            const hist_instance = History.init(self.allocator, runtime_ctx) catch |err| {
-                log.debug("Warning: Failed to create history: {}\n", .{err});
-                return;
-            };
-            self.history_instance = hist_instance;
-
-            // Link the history to the Window instance so window.history accessor works
-            if (self.window_instance) |win| {
-                impls.Window.setHistory(win, hist_instance);
-            }
-
-            const v8_history = v8.template_registry.wrapInstanceAsV8Object(
-                hist_instance,
-                "History",
-                isolate,
-                v8_ctx,
-            ) catch |err| {
-                log.debug("Warning: Failed to wrap history: {}\n", .{err});
-                // Clean up the instance we just created to avoid memory leak
-                History.deinit(hist_instance);
-                self.history_instance = null;
-                return;
-            };
-
-            const hist_key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
-
-            defer v8.ffi.v8_String_Dispose(hist_key);
-            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(hist_key), @ptrCast(v8_history));
-        }
+        // History is made by Window.get_history on first use, linked to the
+        // window's browsing context, whose traversable keeps the session
+        // history (HTML 7.2.5).
 
         // Register Performance singleton (stored in __internal.performance)
         {

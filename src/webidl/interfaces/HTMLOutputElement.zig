@@ -316,6 +316,8 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.call_constructor(ctx);
     }
 
+    const reflection = @import("impls").reflection;
+
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -323,7 +325,7 @@ pub const HTMLOutputElement = struct {
         if (state.own.cached_htmlFor) |cached| {
             return cached;
         }
-        const value = try HTMLOutputElementImpl.get_htmlFor(instance);
+        const value = if (comptime @hasDecl(HTMLOutputElementImpl, "get_htmlFor")) try HTMLOutputElementImpl.get_htmlFor(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "for" });
         state.own.cached_htmlFor = value;
         return value;
     }
@@ -345,7 +347,8 @@ pub const HTMLOutputElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLOutputElementImpl.get_name(instance);
+        if (comptime @hasDecl(HTMLOutputElementImpl, "get_name")) return try HTMLOutputElementImpl.get_name(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -354,7 +357,8 @@ pub const HTMLOutputElement = struct {
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        try HTMLOutputElementImpl.set_name(instance, value);
+        if (comptime @hasDecl(HTMLOutputElementImpl, "set_name")) return try HTMLOutputElementImpl.set_name(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
