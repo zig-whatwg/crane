@@ -25,7 +25,6 @@ const Response = interfaces.Response;
 const same_object = @import("same_object.zig");
 const js = @import("streams_js.zig");
 const srd = @import("streams_readable.zig");
-const v8 = @import("v8");
 const BodyPipe = fetch.internal.BodyPipe;
 const fetch_body = @import("fetch_body.zig");
 const abort_algorithms = @import("dom").abort_algorithms;

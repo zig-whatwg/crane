@@ -392,6 +392,7 @@ pub fn consume(o: Owner, method: Method) anyerror!runtime.JSValue {
         if (rejection(instance, realm)) |reason| {
             defer js.dispose(reason);
             deferred.reject(realm, reason);
+            deferred_taken = true;
             return finishReturn(deferred);
         }
     }
@@ -402,12 +403,14 @@ pub fn consume(o: Owner, method: Method) anyerror!runtime.JSValue {
         const e = try realm.typeError("Body is unusable: it has been read or is locked");
         defer js.dispose(e);
         deferred.reject(realm, e);
+        deferred_taken = true;
         return finishReturn(deferred);
     }
 
     const stream = (try bodyStream(o)) orelse {
         // Step 5: a null body reads as no bytes.
         try settleWithBytes(instance, o.kind, method, &.{}, realm, deferred);
+        deferred_taken = true;
         return finishReturn(deferred);
     };
     const reader = try srd.acquireDefaultReader(realm, stream);
@@ -441,10 +444,11 @@ pub fn consume(o: Owner, method: Method) anyerror!runtime.JSValue {
     return js.toReturnOwned(promise);
 }
 
-fn finishReturn(deferred: js.Deferred) runtime.JSValue {
-    const result = deferred.returnOwned();
-    v8.ffi.v8_PromiseResolver_Dispose(deferred.resolver);
-    return result;
+/// The promise of a Deferred settled already, as the method's return value:
+/// ours to hand over, and its resolver let go.
+fn finishReturn(deferred: js.Deferred) js.Error!runtime.JSValue {
+    defer deferred.deinit();
+    return js.toReturnOwned(try js.clone(deferred.promise));
 }
 
 /// The method's own steps - what it does to a body that is its bytes - on
