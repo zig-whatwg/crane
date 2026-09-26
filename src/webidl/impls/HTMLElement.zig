@@ -459,17 +459,6 @@ pub fn get_popover(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return null; // Not a popover
 }
 
-/// Getter for headingOffset
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-headingoffset
-pub fn get_headingOffset(instance: *runtime.Instance) anyerror!u32 {
-    if (getContentAttribute(instance, "headingoffset")) |value| {
-        const s = value.asSlice();
-        // Parse as unsigned integer
-        return std.fmt.parseInt(u32, s, 10) catch 0;
-    }
-    return 0;
-}
-
 /// Getter for editContext
 /// Spec: https://w3c.github.io/edit-context/#dom-htmlelement-editcontext
 pub fn get_editContext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -746,13 +735,6 @@ pub fn set_popover(instance: *runtime.Instance, value: ?runtime.DOMString) anyer
     }
 }
 
-/// Setter for headingOffset
-pub fn set_headingOffset(instance: *runtime.Instance, value: u32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "headingoffset", runtime.DOMString.initInterned(str));
-}
-
 /// Setter for editContext
 pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // EditContext is not yet widely implemented
@@ -786,12 +768,6 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try setContentAttribute(instance, "nonce", value);
-}
-
-pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return;
-    try setContentAttribute(instance, "tabindex", runtime.DOMString.initInterned(str));
 }
 
 // =============================================================================

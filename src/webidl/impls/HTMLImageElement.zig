@@ -252,18 +252,6 @@ pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString
     return error.NotImplemented;
 }
 
-/// Getter for hspace
-pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for vspace
-pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for x
 pub fn get_x(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
@@ -520,20 +508,6 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
     return error.NotImplemented;
 }
 
-/// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for referrerPolicy
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
@@ -557,20 +531,6 @@ pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 
 /// Setter for fetchPriority
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for hspace
-pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for vspace
-pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

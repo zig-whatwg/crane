@@ -117,10 +117,6 @@ fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!
     return elem_internal.findAttribute(null, attr) != null;
 }
 
-fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(attr), value);
-}
-
 /// The list of options, owned by the caller.
 fn optionList(instance: *runtime.Instance) anyerror!std.ArrayListUnmanaged(*runtime.Instance) {
     const allocator = instance.ctx.allocator;
@@ -159,16 +155,6 @@ pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // here for the same reason.
     _ = instance;
     return null;
-}
-
-/// Getter for size
-pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-    // Reflects, limited to only non-negative numbers, default 0. Note this is NOT
-    // the DISPLAY size, which is 1 when the attribute is absent or zero - see
-    // HTMLOptionElement.displaySize, which the reset algorithm uses.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, "size") orelse return 0;
-    return std.fmt.parseInt(u32, std.mem.trim(u8, entry.value, " \t\n\r\x0C"), 10) catch 0;
 }
 
 /// Getter for type
@@ -282,13 +268,6 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Setter for size
-pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
-    var buf: [16]u8 = undefined;
-    const text = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
-    try setStringAttr(instance, "size", runtime.DOMString.initInterned(text));
 }
 
 /// Setter for length

@@ -55,16 +55,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     return instance;
 }
-
-/// Getter for start
-pub fn get_start(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for start
-pub fn set_start(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

@@ -55,16 +55,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     return instance;
 }
-
-/// Getter for span
-pub fn get_span(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for span
-pub fn set_span(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

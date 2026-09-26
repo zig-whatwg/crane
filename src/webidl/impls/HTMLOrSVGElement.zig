@@ -70,13 +70,6 @@ pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     return error.NotImplemented;
 }
 
-/// Setter for tabIndex
-pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: blur
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     _ = instance;

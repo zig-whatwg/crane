@@ -92,32 +92,6 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
     return error.NotImplemented;
 }
 
-/// Getter for hspace
-pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for vspace
-pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for hspace
-pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for vspace
-pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     _ = instance;

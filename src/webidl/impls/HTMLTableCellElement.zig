@@ -56,18 +56,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for colSpan
-pub fn get_colSpan(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for rowSpan
-pub fn get_rowSpan(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for cellIndex
 pub fn get_cellIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
@@ -77,20 +65,6 @@ pub fn get_cellIndex(instance: *runtime.Instance) anyerror!i32 {
 /// Getter for scope
 pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for colSpan
-pub fn set_colSpan(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for rowSpan
-pub fn set_rowSpan(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }
 

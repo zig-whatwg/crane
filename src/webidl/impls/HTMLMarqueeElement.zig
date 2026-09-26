@@ -56,66 +56,14 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for hspace
-pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for loop
 pub fn get_loop(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Getter for scrollAmount
-pub fn get_scrollAmount(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for scrollDelay
-pub fn get_scrollDelay(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for vspace
-pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for hspace
-pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for loop
 pub fn set_loop(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for scrollAmount
-pub fn set_scrollAmount(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for scrollDelay
-pub fn set_scrollDelay(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for vspace
-pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

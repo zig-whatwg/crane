@@ -248,18 +248,6 @@ pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for maxLength
-pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for minLength
-pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for size
 pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
@@ -415,29 +403,8 @@ pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) any
     return error.NotImplemented;
 }
 
-/// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for indeterminate
 pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for maxLength
-pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for minLength
-pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -479,13 +446,6 @@ pub fn set_valueAsDate(instance: *runtime.Instance, value: ?runtime.JSValue) any
 
 /// Setter for valueAsNumber
 pub fn set_valueAsNumber(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
