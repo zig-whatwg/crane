@@ -711,6 +711,9 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
 - [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
+- [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
+- ["Is this still its Window's document?" stops working once navigations make new Windows](docs/lessons/architecture-ask-the-document-whether-it-is-fully-active-not-its-window.md) - Ask the document whether it is fully active, not its Window.
+- [A cache keyed on its source string must update the source on every write path](docs/lessons/architecture-a-cache-keyed-on-its-source-string-must-update-it-on-every-write.md) - Every writer of the value must also write its key.
 
 ### Spec Compliance
 
@@ -724,6 +727,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A relative iframe `src` never loaded, and three bugs hid behind it](docs/lessons/spec-compliance-a-relative-iframe-src-never-loaded-and-three.md) - Test a feature with the URL shapes the corpus actually uses.
 - [A frame's parse skipped "the end" step 5, so no module script ran in a frame](docs/lessons/spec-compliance-a-frame-s-parse-skipped-the-end-step-5-so-no.md) - Every parser driver owes the whole of "the end".
 - [A body that is always a pipe needs main fetch step 20](docs/lessons/spec-compliance-a-body-that-is-always-a-pipe-needs-main-fetch-step-20.md) - When bytes become a stream, "no body" and "empty body" become different states.
+- [Evaluate a spec condition when the spec does](docs/lessons/spec-compliance-evaluate-a-spec-condition-when-the-spec-does.md) - A queued task sees the world after the event that queued it; record what the spec reads at the moment it reads it.
 
 ### Codegen
 
@@ -761,6 +765,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Synchronous I/O behind an async API reorders script against the parser](docs/lessons/testing-synchronous-i-o-behind-an-async-api-reorders.md) - Before chasing a feature a whole file seems to lack, check what an API that should be asynchronous is doing synchronously.
 - [A polyfill hides its impl's bugs until the day it is removed](docs/lessons/testing-a-polyfill-hides-its-impl-s-bugs-until-the-day.md) - When a native or polyfill gives way to a bound impl, read each of its getters twice before trusting it.
 - [wpt serve: a file added after it starts 404s, and stopping it means stopping all of it](docs/lessons/testing-wpt-serve-a-file-added-after-it-starts-404s-and.md) - `lsof -t -iTCP:8000 | xargs kill` (the advice in the 404 lesson above) kills only the :8000 child.
+- [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
+- [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
 
 ### Debugging
 
