@@ -30,6 +30,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 const api_parser = @import("api_parser");
 const url_serializer = @import("url_serializer");
 const URLRecord = @import("url_record").URLRecord;
@@ -77,6 +78,7 @@ pub fn get(comptime T: type, instance: *runtime.Instance, comptime spec: Spec) !
         i32 => getLong(instance, spec),
         u32 => getUnsignedLong(instance, spec),
         f64 => getDouble(instance, spec),
+        *runtime.Instance => getTokenList(instance, spec),
         else => @compileError("HTML 2.6.1 reflection of Zig type " ++ @typeName(T) ++ " is not implemented"),
     };
 }
@@ -411,6 +413,25 @@ fn setDouble(instance: *runtime.Instance, comptime spec: Spec, value: f64) !void
     // number".
     var buffer: [32]u8 = undefined;
     try setContentAttribute(instance, spec.name, numberToString(&buffer, value));
+}
+
+// ---------------------------------------------------------------------------
+// DOMTokenList
+// ---------------------------------------------------------------------------
+
+/// DOMTokenList getter: "a DOMTokenList object whose associated element is
+/// this and associated attribute's local name is the reflected content
+/// attribute name". Its setter is [PutForwards=value], which the generated
+/// interface writes, so there is none here.
+///
+/// A new list per call: every such attribute is [SameObject], and the
+/// generated getter caches the first one it is handed.
+fn getTokenList(instance: *runtime.Instance, comptime spec: Spec) !*runtime.Instance {
+    const list = try interfaces.DOMTokenList.init(instance.ctx.allocator, instance.ctx);
+    errdefer interfaces.DOMTokenList.deinit(list);
+    // DOMTokenList.init installed the association this needs.
+    try dom.token_lists.associate(list, instance, spec.name);
+    return list;
 }
 
 // ---------------------------------------------------------------------------
