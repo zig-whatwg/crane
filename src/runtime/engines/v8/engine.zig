@@ -587,6 +587,7 @@ fn v8DefineOwnPropertyOnObject(
     // Create V8 String for property name
     const v8_key = ffi.v8_String_NewFromUtf8(isolate, property_name.ptr, @intCast(property_name.len)) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_String_Dispose(v8_key);
 
     // Use v8_Object_DefineProperty with [[DefineOwnProperty]] semantics
     // For [Replaceable]: writable=true, enumerable=true, configurable=true
