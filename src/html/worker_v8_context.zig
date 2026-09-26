@@ -931,9 +931,6 @@ pub const WorkerV8Context = struct {
     /// `async_fetch.sweep()` cannot reach it, and when it runs it finds the
     /// realm gone and releases its promise resolver - a Global in THIS
     /// isolate. Every such timer was armed before this one, so it runs first.
-    /// And never from inside a page collection: v8_Isolate_Dispose frees every
-    /// detached weak-callback record in the process, including the page's,
-    /// whose callbacks V8 would then run on freed records.
     fn disposeIsolateLater(self: *Self) void {
         const timer = getTimerInterface() orelse return;
         const id = timer.setTimeout(0, disposeIsolateCallback, self);
