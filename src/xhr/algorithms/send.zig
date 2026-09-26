@@ -2,25 +2,24 @@
 //!
 //! WHATWG XHR Spec: https://xhr.spec.whatwg.org/#the-send()-method
 //!
-//! ## Sync and async are the same code path
+//! ## Sync and async share their steps, not their wait
 //!
-//! `fetch_integration.fetch` is BLOCKING - `fetch.algorithms.fetch` runs the
-//! whole exchange through libcurl and returns a complete response. That is
-//! exactly right for a synchronous request, and for an asynchronous one the
-//! difference that matters to script is not that the transfer overlaps, it is
-//! that `send()` RETURNS before any event fires, so a handler assigned after
-//! `send()` still sees them.
-//!
-//! So `send()` itself never defers: the impl that owns the JS object decides
-//! when to call it. `src/webidl/impls/XMLHttpRequest.zig` calls it directly for
-//! a sync request and from an event-loop TASK for an async one. This module
-//! stays synchronous and testable, and the readyState/event sequence is
-//! identical either way - which is what the WPT event-order tests check.
+//! A synchronous request waits for its response inside `send()`
+//! (`sendDispatch`, through `fetch_integration.fetch`), which is what sync
+//! means. An asynchronous one fetches in parallel: the WebIDL impl
+//! (`src/webidl/impls/XMLHttpRequest.zig`) builds the request with
+//! `fetch_integration.createRequest`, runs it on the event loop, and hands the
+//! outcome to `sendAsyncFinish` from a task - so `send()` returns before any
+//! of the response's events fire, the loop keeps turning while the response
+//! is on its way, and a timeout or `abort()` can end a request that has not
+//! been answered. Both paths run the same `processFetchResult`, so the
+//! readyState/event sequence is identical either way - which is what the WPT
+//! event-order tests check.
 //!
 //! The remaining deviation is that `progress` fires once rather than per
 //! 50ms window, because the body arrives in one piece. Event ORDER and the
 //! final `loaded`/`total` are spec-correct; the number of intermediate
-//! `progress` events is not, and needs incremental reads in the fetch backend.
+//! `progress` events is not, and needs the response body streamed.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -34,6 +33,10 @@ const event_support = @import("../internal/event_support.zig");
 
 // Fetch integration
 const FetchIntegration = @import("fetch_integration.zig");
+const fetch_mod = @import("fetch");
+
+/// send() step 6: req, for the WebIDL impl to fetch on the event loop.
+pub const createRequest = FetchIntegration.createRequest;
 
 /// Errors `send()` can report to script.
 pub const SendError = error{
@@ -167,10 +170,13 @@ pub fn sendStart(state: *XMLHttpRequestState, body: ?[]const u8) bool {
     return state.ready_state == .OPENED and state.send_flag;
 }
 
-/// Steps 11.7-11.10 (async) or step 12 (sync) of send(): run the fetch.
+/// Steps 11.7-11.10 (async) or step 12 (sync) of send(): run the fetch,
+/// waiting for it.
 ///
-/// For an async request the caller has already run `sendStart`; this is the
-/// part that blocks, and the impl runs it from an event-loop task.
+/// For an async request the caller has already run `sendStart`. The impl
+/// waits like this only for a synchronous request, or an asynchronous one in
+/// a realm with no event loop; otherwise it runs the fetch on the loop and
+/// finishes with `sendAsyncFinish`.
 pub fn sendDispatch(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
@@ -182,7 +188,35 @@ pub fn sendDispatch(
     }
 }
 
-/// Send request asynchronously
+/// Steps 11.7-11.10 of an asynchronous send(), once req's fetch - run on the
+/// event loop by the WebIDL impl - has its outcome. The impl calls this from a
+/// task, with the body `sendPrologue` returned. The timeout is the impl's: it
+/// ends a fetch still running at the deadline, so an outcome here was in time.
+pub fn sendAsyncFinish(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+    result: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult,
+) !void {
+    var processor = ResponseProcessor.init(state);
+    // As `sendAsync` does: the upload's accounting, when there is an upload
+    // to report. Neither flag changes while the request is in flight - an
+    // `abort()` or `open()` ends the fetch, and this never runs.
+    var upload_tracker: ?UploadTracker = null;
+    if (!state.upload_complete_flag and state.upload_listener_flag) {
+        upload_tracker = UploadTracker.init(if (body) |b| b.len else 0, state.event_sink);
+    }
+    try FetchIntegration.processFetchResult(
+        state,
+        body,
+        result,
+        null,
+        &processor,
+        if (upload_tracker) |*ut| ut else null,
+    );
+}
+
+/// Send request asynchronously, waiting for the response - for a realm with
+/// no event loop to run the fetch on.
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method steps 11.7-11.10
 fn sendAsync(

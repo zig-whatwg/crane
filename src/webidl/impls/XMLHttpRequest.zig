@@ -30,29 +30,16 @@ const EventTargetKind = xhr.EventTargetKind;
 const ProgressEventData = xhr.ProgressEventData;
 
 const log = std.log.scoped(.xhr);
+const clock = @import("clock");
+const fetch_mod = @import("fetch");
 
 const same_object = @import("same_object.zig");
 
-/// The parent interface's generated State. `xhr.onload` and friends are
-/// declared on XMLHttpRequestEventTarget, so the fields live here for BOTH an
-/// XMLHttpRequest and an XMLHttpRequestUpload; `instance.getState` of this type
-/// reaches them on either, because `FlattenedState` puts `base` first.
-///
-/// This reads the generated INTERFACE's State, not the sibling impl - the same
-/// thing every impl does when it touches `state.base.own.*`.
-const EventTargetState = interfaces.XMLHttpRequestEventTarget.State;
-
-comptime {
-    // The aliasing above is load-bearing and silent if it ever stops holding:
-    // a wrong offset would read some other field as a function pointer and
-    // call it. Pin it here rather than discover it in a crash.
-    std.debug.assert(@offsetOf(XMLHttpRequest.State, "base") == 0);
-    std.debug.assert(@offsetOf(interfaces.XMLHttpRequestUpload.State, "base") == 0);
-    std.debug.assert(@offsetOf(EventTargetState, "base") == 0);
-}
-
-// Import pointer_tag for V8 pointer untagging (via v8 module)
-const pointer_tag = @import("v8").pointer_tag;
+/// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
+/// its event handlers, `onreadystatechange` among them, live in EventTarget's
+/// event handler map, and its events are dispatched there.
+const XMLHttpRequestEventTargetImpl = @import("XMLHttpRequestEventTarget.zig");
+const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = XMLHttpRequest.State;
 
@@ -71,72 +58,51 @@ pub const InternalState = struct {
     xhr_state: XMLHttpRequestState,
     allocator: std.mem.Allocator,
 
-    /// Event handler stored as V8 Global handle.
-    ///
-    /// This MUST be a Global handle (not raw pointer) because:
-    /// 1. The JavaScript callback needs to survive past the setter's HandleScope
-    /// 2. Local handles become invalid when the HandleScope that created them is destroyed
-    /// 3. Without Global handles, invoking the handler would crash due to dangling pointers
-    ///
-    /// See: src/runtime/engines/v8/global_handles.zig for Global handle management.
-    onreadystatechange: v8_engine.OptionalGlobalHandle,
-
     /// V8 isolate for creating/disposing Global handles
     isolate: ?*v8_engine.ffi.Isolate,
 
-    /// The token shared with a queued send task, if one is outstanding.
-    send_token: ?*SendToken,
+    /// The asynchronous send()'s fetch, from send() until its task has run.
+    pending_fetch: ?*PendingFetch,
 
     /// Keeps `this.upload` alive for as long as this XHR - see
     /// `same_object.zig`. The upload object carries the upload event handlers,
     /// which script sets on it and then never touches again.
     upload_pin: same_object.Pin,
 
-    /// The request body, owned for the lifetime of one send().
-    ///
-    /// An async send() hands the bytes to an event-loop TASK, which runs after
-    /// `call_send` has returned and the WebIDL conversion layer has freed its
-    /// copy of the argument. Borrowing it would be a use-after-free by the time
-    /// the request goes out.
-    pending_body: ?[]u8,
-
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
-            .onreadystatechange = null,
             .isolate = null,
-            .send_token = null,
+            .pending_fetch = null,
             .upload_pin = .{},
-            .pending_body = null,
         };
     }
 
-    /// Cancel and release the outstanding send task's token, if any.
-    fn cancelPendingSend(self: *InternalState) void {
-        if (self.send_token) |token| {
-            token.cancelled = true;
-            token.release();
-            self.send_token = null;
-        }
-    }
-
-    fn releasePendingBody(self: *InternalState) void {
-        if (self.pending_body) |b| {
-            self.allocator.free(b);
-            self.pending_body = null;
+    /// End the asynchronous send()'s fetch, if there is one: "terminate"
+    /// (open(), a later send(), the XHR going) or "abort" (abort()) this's
+    /// fetch controller. Its transfer is cancelled and nothing it received
+    /// reaches the XHR.
+    fn cancelFetch(self: *InternalState) void {
+        const pending = self.pending_fetch orelse return;
+        self.pending_fetch = null;
+        if (pending.fetch) |f| {
+            // In flight: the fetch owned it, and the fetch is over.
+            pending.fetch = null;
+            f.terminate();
+            pending.destroy();
+        } else {
+            // Its task is queued, and frees it.
+            pending.cancelled = true;
         }
     }
 
     pub fn deinitState(self: *InternalState) void {
-        // Dispose V8 Global handle to prevent memory leaks
-        v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_pin.release();
-        // Before anything else: a task queued by an async send() is about to
-        // run against an instance that is going away.
-        self.cancelPendingSend();
-        self.releasePendingBody();
+        // Before anything else: a fetch in flight, or its queued task, would
+        // otherwise reach an instance that is going away.
+        self.cancelFetch();
         self.xhr_state.deinit();
     }
 };
@@ -148,8 +114,8 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    const instance = try XMLHttpRequestEventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer XMLHttpRequestEventTargetImpl.deinit(instance);
 
     // Create internal state
     const internal = try allocator.create(InternalState);
@@ -170,7 +136,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinitState();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    // The event handlers and listeners go with EventTarget's state.
+    XMLHttpRequestEventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit here - GC layer handles it
 }
 
@@ -184,7 +153,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store V8 isolate for Global handle management.
+    // The isolate this XHR's script runs in.
     //
     // NOT `ctx.getEngineContextAs(Isolate)`: `engine_ctx` is a
     // `Global<Context>*`, and that call just reinterprets it, so `internal
@@ -216,15 +185,8 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// Getter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance);
-    const isolate = internal.isolate orelse return null;
-    if (internal.onreadystatechange) |global| {
-        // Use GlobalHandle's get() method to retrieve Local handle
-        return @ptrCast(@alignCast(global.get(isolate)));
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "readystatechange");
 }
 
 /// Getter for readyState
@@ -454,24 +416,8 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// Setter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance);
-
-    // Dispose old Global handle first to prevent memory leaks
-    v8_engine.disposeOptionalGlobalHandle(&internal.onreadystatechange);
-
-    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
-    if (value) |handler| {
-        const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(handler));
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            internal.onreadystatechange = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        } else {
-            internal.onreadystatechange = null;
-        }
-    } else {
-        internal.onreadystatechange = null;
-    }
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "readystatechange", value);
 }
 
 /// Setter for timeout
@@ -489,6 +435,10 @@ pub fn set_timeout(instance: *runtime.Instance, value: u32) anyerror!void {
 
     // Step 2: Set timeout
     xhr_state.timeout = value;
+
+    // "This implies that the timeout attribute can be set while fetching is
+    // in progress" - and it still counts from when fetching began.
+    if (getInternal(instance).pending_fetch) |pending| pending.armTimeout(value);
 }
 
 /// Setter for withCredentials
@@ -641,6 +591,10 @@ fn openSteps(
         };
     };
 
+    // Step 10 (with 11, which open_algo ran): Terminate this's fetch
+    // controller. Nothing observable happens between the two.
+    getInternal(instance).cancelFetch();
+
     // Step 12: If this's state is not opened, set it to opened and fire an
     // event named readystatechange at this.
     if (!was_opened) fireReadyStateChangeEvent(instance);
@@ -704,16 +658,10 @@ fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
 //
 // `src/xhr/` cannot reach JavaScript - it has no `runtime` import and no V8
 // link. It fires events through an `EventSink`, a two-field vtable, and this is
-// the implementation of it. Each event goes to both places a listener can be:
-//
-//   1. the event listener list, via `EventTarget.dispatchEvent` - this is what
-//      `xhr.addEventListener("load", f)` registers into;
-//   2. the event handler IDL attribute (`xhr.onload = f`), which Crane keeps in
-//      a separate field rather than as a listener.
-//
-// `EventTarget.invokeIdlEventHandler` does (2) for HTMLElement and Window only,
-// by looking in those two impls' own maps, so an XHR handler is invisible to
-// it. Hence the second half here.
+// the implementation of it: dispatch at the XHR or its upload object. The
+// event listener list holds both kinds of listener - `addEventListener`'s and
+// the event handlers' (`xhr.onload = f`), in activation order - so dispatch
+// alone reaches every one.
 // =============================================================================
 
 /// Install the sink so the algorithms in `src/xhr/` can fire at this object.
@@ -739,7 +687,7 @@ fn fireFromAlgorithms(
         .upload => uploadObjectIfCreated(instance) orelse return,
     };
 
-    fireAt(target_instance, instance, event_type, progress);
+    fireAt(target_instance, event_type, progress);
 }
 
 /// This's upload object, but only if it already exists.
@@ -752,13 +700,12 @@ fn uploadObjectIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
     return state.own.cached_upload;
 }
 
-/// Build the event object and deliver it to both kinds of listener.
+/// Build the event object and dispatch it at `target`.
 ///
 /// The event instance is released when - and only when - nothing wrapped it.
 /// See `releaseEventIfUnwrapped`.
 fn fireAt(
     target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
     event_type: XHREventType,
     progress: ?ProgressEventData,
 ) void {
@@ -801,13 +748,10 @@ fn fireAt(
         webidl.Opt(bool).passed(false),
     ) catch return;
 
-    // (1) the event listener list.
+    // Every listener, the event handlers among them.
     _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
     };
-
-    // (2) the event handler IDL attribute.
-    invokeIdlHandler(target, xhr_instance, event, event_type);
 
     releaseEventIfUnwrapped(event, progress != null);
 }
@@ -851,122 +795,9 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, is_progress_event: bool) vo
     }
 }
 
-/// The raw, still-tagged handler pointer for `event_type` on `target`.
-///
-/// `readystatechange` is XMLHttpRequest's own attribute and is stored as a
-/// Global handle on the impl's internal state; the other seven come from
-/// XMLHttpRequestEventTarget and are stored in the generated State as
-/// `typedefs.EventHandler` - a `*const fn` that is really a TAGGED V8 Global
-/// handle pointer, because that is what the conversion layer produces for a
-/// callback function.
-fn rawIdlHandler(
-    target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
-    event_type: XHREventType,
-) ?*anyopaque {
-    if (event_type == .readystatechange) {
-        // Only the XHR itself has onreadystatechange.
-        if (target != xhr_instance) return null;
-        const internal = getInternal(xhr_instance);
-        const global = internal.onreadystatechange orelse return null;
-        return @ptrCast(global.ptr);
-    }
-
-    const state = target.getState(EventTargetState);
-    const handler: typedefs.EventHandler = switch (event_type) {
-        .loadstart => state.own.onloadstart,
-        .progress => state.own.onprogress,
-        .abort => state.own.onabort,
-        .@"error" => state.own.onerror,
-        .load => state.own.onload,
-        .timeout => state.own.ontimeout,
-        .loadend => state.own.onloadend,
-        .readystatechange => unreachable,
-    };
-
-    // Read the bits WITHOUT materialising the pointer. The stored address has
-    // tag bits in its low two bits, so it is deliberately misaligned, and
-    // @ptrCast/@alignCast on it panics with "incorrect alignment" in a safe
-    // build. A byte copy has no alignment check. Same approach as
-    // `MessagePort.zig` and `HTMLElement.getEventHandler`.
-    const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
-    const addr: usize = @bitCast(bytes);
-    if (addr == 0) return null;
-    // `*anyopaque` has alignment 1, so the tag bits survive the round trip and
-    // `untagPointer` can still read them.
-    return @ptrFromInt(addr);
-}
-
-/// Call `xhr.onload = f` and friends with the event.
-///
-/// The previous version of this - `fireReadyStateChangeEvent` - crashed:
-///
-///     panic: load of misaligned address ...
-///     v8_Value_IsFunction -> PersistentBase<Value>::Get(isolate)
-///
-/// It did `global.get(isolate)` to get a LOCAL and passed that to
-/// `v8_Value_IsFunction`, which takes a `Global<Value>*` and calls `Get` on it.
-/// A Local reinterpreted as a Global is read at the wrong offset. Pass the
-/// Global straight through, as `EventTarget.invokeIdlEventHandler` does.
-fn invokeIdlHandler(
-    target: *runtime.Instance,
-    xhr_instance: *runtime.Instance,
-    event: *runtime.Instance,
-    event_type: XHREventType,
-) void {
-    const raw = rawIdlHandler(target, xhr_instance, event_type) orelse return;
-
-    const untagged = pointer_tag.untagPointer(raw);
-    if (untagged.tag != .global_handle and untagged.tag != .untagged) return;
-
-    const callback_global: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
-
-    const engine_ctx = target.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // A Local handle is only valid inside a HandleScope, and wrapping the event
-    // creates several.
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
-
-    // Wrap with the event's ACTUAL interface, so a ProgressEvent handler sees
-    // `.loaded` and `.total` rather than a bare Event.
-    //
-    // Borrowed: whichever way `wrapInstanceAsV8Object` finds or makes the
-    // wrapper, the handle it returns is the one the wrapper cache (or the
-    // node's bound wrapper) keeps, and the cache releases it when the wrapper
-    // is collected. Disposing it here would free the cache's own entry.
-    const interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
-    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-        event,
-        interface_name,
-        v8_isolate,
-        v8_context,
-    ) catch return;
-
-    // Owned: `v8_Undefined` allocates a Global per call, and this runs once
-    // per handler per event - one leaked for every XHR event a handler heard.
-    // Released after the call, which only reads it.
-    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_Value_Dispose(undefined_recv);
-    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_global)};
-
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        callback_global,
-        v8_context,
-        @ptrCast(undefined_recv),
-        1,
-        @ptrCast(&args),
-    );
-    v8_engine.ffi.v8_FreeFunctionCallResult(result);
-}
-
 /// Fire readystatechange at this XHR.
 fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
-    fireAt(instance, instance, .readystatechange, null);
+    fireAt(instance, .readystatechange, null);
 }
 
 /// Operation: abort
@@ -978,6 +809,8 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
 pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     const xhr_state = getXHRState(instance);
     installEventSink(instance);
+    // Step 1: Abort this's fetch controller.
+    getInternal(instance).cancelFetch();
     xhr.abort.abort(xhr_state);
 }
 
@@ -985,25 +818,21 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method
 ///
-/// ## Async is a task, not a thread
+/// ## Sync waits; async fetches in parallel
 ///
-/// `fetch.algorithms.fetch` blocks. Running it inline for an async request
-/// would fire `loadstart` .. `loadend` BEFORE `send()` returned, so
+/// Steps 1-10, which script can observe immediately (a second `send()` must
+/// throw), and 11.1-11.6 (`loadstart`) run inline. A synchronous request then
+/// waits for its response (step 12), as sync means. An asynchronous one hands
+/// req to the event loop (`fetch.algorithms.AsyncFetch`) and returns; a task
+/// runs steps 11.9 onwards once the response is in (`PendingFetch`). So
+/// handlers assigned after `send()` see every event, the loop keeps turning
+/// while the response is on its way, requests complete in the order the
+/// server answers them, and `timeout` and `abort()` end one still in flight.
 ///
-///     xhr.send();
-///     xhr.onload = () => { ... };   // assigned after send(), as tests do
+/// The fetch used to run inside that task, blocked in curl, so none of the
+/// last three held.
 ///
-/// would miss every event. So steps 1-10, which script can observe immediately
-/// (a second `send()` must throw), run inline, and step 11 - loadstart, the
-/// fetch and everything downstream - runs from an event-loop TASK.
-///
-/// That gets ordering right for the common case and is still wrong in one
-/// respect: the task occupies the loop for the duration of the transfer, so two
-/// concurrent XHRs complete in the order they were sent rather than the order
-/// the server answers. Fixing that needs an incremental fetch backend, not a
-/// change here.
-///
-/// With no event loop - a bare realm, or a unit test - it falls back to running
+/// With no event loop and no timer - a bare realm, or a unit test - it waits
 /// inline, which is better than dropping the request.
 pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
     const xhr_state = getXHRState(instance);
@@ -1013,24 +842,25 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // object, then set this's upload listener flag.
     xhr_state.upload_listener_flag = uploadHasListeners(instance);
 
-    // Own the body for the life of the request: an async send() reads it from a
-    // task, long after the conversion layer has freed its copy.
-    internal.releasePendingBody();
-    if (extractBodyBytes(instance, body)) |bytes| {
-        internal.pending_body = internal.allocator.dupe(u8, bytes) catch return error.OutOfMemory;
-    }
+    // Own the body for the life of the request: the conversion layer frees
+    // its copy when this returns, and an asynchronous request's fetch - a
+    // redirect re-sends it - runs long after. The body is THIS send()'s: a
+    // handler that runs during it can send again, with a body of its own.
+    const allocator = internal.allocator;
+    const owned_body: ?[]u8 = if (extractBodyBytes(instance, body)) |bytes|
+        allocator.dupe(u8, bytes) catch return error.OutOfMemory
+    else
+        null;
+    var body_taken = false;
+    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
 
     installEventSink(instance);
 
     // Steps 1-10, inline and synchronously observable.
-    const effective_body = send_algo.sendPrologue(xhr_state, internal.pending_body) catch |err| {
-        internal.releasePendingBody();
-        return err;
-    };
+    const effective_body = try send_algo.sendPrologue(xhr_state, owned_body);
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
-        defer internal.releasePendingBody();
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
             return switch (err) {
                 error.TimeoutError => error.TimeoutError,
@@ -1046,164 +876,260 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // the rest of step 11 put it after whatever the caller did next, so
     // `xhr.send(); xhr.abort();` emitted `readystatechange(4)` first and
     // `loadstart` never.
-    if (!send_algo.sendStart(xhr_state, effective_body)) {
-        internal.releasePendingBody();
-        return;
-    }
+    if (!send_algo.sendStart(xhr_state, effective_body)) return;
 
-    // Steps 11.7-11.10 - the part that blocks - from a task.
-    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
-        defer internal.releasePendingBody();
+    // A realm with no event loop and no timer to run the fetch's task on - a
+    // bare realm, or a unit test - waits for it here, which is better than
+    // dropping the request.
+    if (instance.ctx.getOptionalEventLoop() == null and instance.ctx.getOptionalTimer() == null) {
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
             log.debug("inline send failed: {s}", .{@errorName(err)});
         };
         return;
-    };
+    }
 
-    // One reference for the task, one for the InternalState that can cancel it.
-    internal.cancelPendingSend();
-    const token = internal.allocator.create(SendToken) catch return error.OutOfMemory;
-    token.* = .{
-        .refs = 2,
-        .cancelled = false,
-        .instance = instance,
-        .allocator = internal.allocator,
+    // Steps 11.7-11.10: fetch req in parallel, on the event loop. Step 3 may
+    // have discarded the body (GET, HEAD); then none is sent.
+    internal.cancelFetch();
+    const request = try send_algo.createRequest(allocator, xhr_state, effective_body);
+    const pending = allocator.create(PendingFetch) catch {
+        request.deinit();
+        return error.OutOfMemory;
     };
-    internal.send_token = token;
-    event_loop.queueTask(.{ .callback = &runSendTask, .context = @ptrCast(token) });
+    pending.* = .{
+        .allocator = allocator,
+        .instance = instance,
+        .isolate = internal.isolate orelse v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+            allocator.destroy(pending);
+            request.deinit();
+            return error.InvalidStateError;
+        },
+        .body = if (effective_body != null) owned_body else null,
+        .started_ms = clock.monotonicMillis(),
+    };
+    pending.fetch = fetch_mod.algorithms.AsyncFetch.start(
+        allocator,
+        request,
+        .{},
+        fetch_mod.network.scheduler.threadScheduler(),
+        pending.client(),
+    ) catch |err| {
+        // The fetch owned the request, and freed it.
+        allocator.destroy(pending);
+        return err;
+    };
+    // The request's body is these bytes, borrowed; the pending fetch keeps
+    // them for as long as the fetch can read them.
+    if (pending.body != null) body_taken = true;
+    internal.pending_fetch = pending;
+    pending.keep_alive.hold(instance);
+
+    // Step 11.11: If this's timeout is not 0, end the fetch once it has run
+    // that long.
+    pending.armTimeout(xhr_state.timeout);
 }
 
-/// The handle a queued send task holds on its XMLHttpRequest.
+/// One asynchronous send()'s fetch, from `send()` until its task has run.
 ///
-/// The task runs AFTER `call_send` returns, and nothing keeps the XHR alive
-/// across that gap - the spec's "an XHR with an outstanding request stays
-/// alive" is not something this GC knows. If V8 collects the wrapper first, the
-/// Instance handle goes back to the slab and is REUSED, so a task holding a
-/// bare `*Instance` would run `send()` against whatever object took its place.
-/// A recycled Instance still LOOKS like one, which is the failure mode
-/// AGENTS.md records for `InstanceRegistry.createIn`: the read succeeds and
-/// corrupts a neighbour.
+/// The XMLHttpRequest's `InternalState.pending_fetch` points at it, and
+/// exactly one other thing owns it at a time:
 ///
-/// So the instance pointer is only ever dereferenced through a token that both
-/// sides own. `deinitState` sets `cancelled` and drops its reference; the task
-/// checks the flag before touching anything and drops its own. Whichever runs
-/// second frees the token. Single-threaded - the event loop - so a plain
-/// counter is enough.
+///   in flight      the fetch - `done`/`gone`, `timedOut`, or `cancelFetch`
+///                  (abort(), open(), a later send(), deinit) ends it
+///   task queued    the task - `run`, or `drop` if its loop goes first
 ///
-/// One bounded leak remains that cannot be closed from here: if the event loop
-/// is destroyed before it runs the task - a worker terminated with a request
-/// outstanding, which `xhr/close-worker-with-xhr-in-progress.html` does
-/// deliberately - the task's reference is never released, so the token (four
-/// words) survives. Closing it needs a cancellable task, which
-/// `EventLoop.queueTask` does not offer. One token per XHR terminated
-/// mid-request.
-const SendToken = struct {
-    refs: u8,
-    cancelled: bool,
-    instance: *runtime.Instance,
+/// The instance is read only while nothing has cancelled this: the XHR's
+/// `deinitState` cancels it before the instance can go, and the slab
+/// recycles addresses, so a bare `*Instance` held across turns would
+/// otherwise run into whatever took its place (see the SendToken this
+/// replaced, which carried the same rule).
+const PendingFetch = struct {
     allocator: std.mem.Allocator,
+    instance: *runtime.Instance,
+    /// The XMLHttpRequest's isolate - a worker's is not the page's, and the
+    /// task can run from the page's loop.
+    isolate: *v8_engine.ffi.Isolate,
+    fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
+    outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
+    /// The request body, owned: req's body borrows it, and a redirect
+    /// re-sends it, so it lives as long as this does.
+    body: ?[]u8 = null,
+    /// Set by `cancelFetch` while the task is queued: the task frees this
+    /// and touches nothing else.
+    cancelled: bool = false,
+    /// When the fetch began, which is what `timeout` counts from.
+    started_ms: i64,
+    /// The XMLHttpRequest's wrapper, held strongly while this exists. XHR
+    /// §3.2: an XMLHttpRequest whose request is outstanding "must not be
+    /// garbage collected" - its events are still to come, and script need not
+    /// hold it to hear them (`xhr.onloadend = () => t.done()` closes over
+    /// nothing). Without this a collection mid-fetch deinitialised it, which
+    /// cancels the fetch, and no event ever fired. Blink's
+    /// XMLHttpRequest::HasPendingActivity is the same rule.
+    keep_alive: same_object.Pin = .{},
+    /// The pending timeout, while the fetch is in flight.
+    timeout_timer: ?runtime.TimerInterface = null,
+    timeout_id: runtime.TimerId = 0,
 
-    fn release(self: *SendToken) void {
-        self.refs -= 1;
-        if (self.refs == 0) self.allocator.destroy(self);
+    fn client(self: *PendingFetch) fetch_mod.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+    }
+
+    /// Whether the XHR's realm is still there. A page that ends retires its
+    /// context and empties its `engine_ctx`.
+    fn alive(context: *anyopaque) bool {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        return self.instance.ctx.engine_ctx != null;
+    }
+
+    /// The realm went away with the fetch in flight; the fetch is over.
+    fn gone(context: *anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        self.detach();
+        self.destroy();
+    }
+
+    /// req's fetch has its outcome: queue the task that processes it, on the
+    /// realm's event loop - or, in a worker, whose realm has none and runs
+    /// its tasks as timers on the page's, as a timer.
+    fn done(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        self.disarmTimeout();
+        self.outcome = outcome;
+        const ctx = self.instance.ctx;
+        if (ctx.getOptionalEventLoop()) |loop| {
+            loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
+            return;
+        }
+        if (ctx.getOptionalTimer()) |timer| {
+            if (timer.setTimeout(0, run, self) != 0) return;
+        }
+        run(self);
+    }
+
+    /// The task: send() steps 11.9 onwards, given the fetch's outcome.
+    fn run(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
+        if (self.cancelled) return;
+        const instance = self.instance;
+        self.detach();
+
+        const outcome = self.outcome orelse return;
+        self.outcome = null;
+
+        // A task runs from the event loop, not from script: it enters the
+        // realm itself - and in a worker, the worker's isolate.
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        {
+            const scope = v8_engine.JsScope.init(instance.ctx) orelse {
+                freeOutcome(outcome);
+                return;
+            };
+            defer scope.deinit();
+            send_algo.sendAsyncFinish(getXHRState(instance), self.body, outcome) catch |err| {
+                log.debug("async send failed: {s}", .{@errorName(err)});
+            };
+        }
+        // In a worker, the task's end is the worker's to run.
+        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+    }
+
+    /// A task that will never run: its loop is going.
+    fn drop(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        if (!self.cancelled) self.detach();
+        self.destroy();
+    }
+
+    /// Step 11.11's timer: the fetch has run for this's timeout. Set the
+    /// timed out flag and terminate the fetch; its processResponse would then
+    /// run the timeout steps, which this does instead - there is no response
+    /// to wait for.
+    fn timedOut(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        self.timeout_id = 0;
+        // The response may be in and unread: a long task can hold the loop
+        // past the deadline with it waiting in the socket. The fetch and the
+        // timer race in parallel, and the fetch finished first, so give the
+        // network its step before calling it a timeout. A fetch that ends
+        // here queues its task and is no longer this timer's. (Only while the
+        // realm lives: a sweep inside the pump would end this very call.)
+        if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
+        const f = self.fetch orelse return;
+        self.fetch = null;
+        f.terminate();
+
+        const instance = self.instance;
+        self.detach();
+        defer self.destroy();
+
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        {
+            const scope = v8_engine.JsScope.init(instance.ctx) orelse return;
+            defer scope.deinit();
+            var processor = xhr.response.ResponseProcessor.init(getXHRState(instance));
+            processor.handleTimeout();
+        }
+        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+    }
+
+    /// Arm the timeout for a fetch that began at `started_ms`, `timeout_ms`
+    /// after it began - at once if that is already past. 0 is no timeout.
+    fn armTimeout(self: *PendingFetch, timeout_ms: u32) void {
+        self.disarmTimeout();
+        if (timeout_ms == 0 or self.fetch == null) return;
+        const timer = self.instance.ctx.getOptionalTimer() orelse return;
+        const elapsed = clock.monotonicMillis() - self.started_ms;
+        const remaining: u64 = @intCast(@max(0, @as(i64, timeout_ms) - elapsed));
+        const id = timer.setTimeout(remaining, timedOut, self);
+        if (id == 0) return;
+        self.timeout_timer = timer;
+        self.timeout_id = id;
+    }
+
+    fn disarmTimeout(self: *PendingFetch) void {
+        if (self.timeout_id == 0) return;
+        if (self.timeout_timer) |timer| _ = timer.clearTimeout(self.timeout_id);
+        self.timeout_id = 0;
+    }
+
+    /// Unhook from the XMLHttpRequest, which is still there.
+    fn detach(self: *PendingFetch) void {
+        const internal = getInternal(self.instance);
+        if (internal.pending_fetch == self) internal.pending_fetch = null;
+    }
+
+    fn destroy(self: *PendingFetch) void {
+        self.keep_alive.release();
+        self.disarmTimeout();
+        if (self.outcome) |outcome| freeOutcome(outcome);
+        if (self.body) |b| self.allocator.free(b);
+        self.allocator.destroy(self);
+    }
+
+    fn freeOutcome(outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        var result = outcome catch return;
+        result.deinit();
     }
 };
 
-fn runSendTask(context: ?*anyopaque) void {
-    const token: *SendToken = @ptrCast(@alignCast(context orelse return));
-    defer token.release();
-
-    // The XHR was collected, or a later send() superseded this one.
-    if (token.cancelled) return;
-
-    const instance = token.instance;
-    const xhr_state = getXHRState(instance);
-    const internal = getInternal(instance);
-
-    // This token has now been consumed, so `deinitState` must not cancel it a
-    // second time.
-    if (internal.send_token == token) {
-        internal.send_token = null;
-        token.release();
-    }
-
-    defer internal.releasePendingBody();
-
-    // Step 11.6, hoisted: between `send()` returning and this task running,
-    // script has had a turn. `abort()` unsets the send() flag and `open()`
-    // resets the state, and either means this request is no longer wanted.
-    if (!xhr_state.send_flag or xhr_state.ready_state != .OPENED) return;
-
-    // A task runs from the event loop, where no V8 context is entered - unlike
-    // every other entry point here, which V8 calls into from JavaScript.
-    // `Context.timerHandler` enters the context for the same reason.
-    //
-    // This is DEFENSIVE, and the measurement says so. It was committed as the
-    // fix for three crashes that appeared with async send:
-    //
-    //     xhr/abort-during-readystatechange.any.js    TIMEOUT -> CRASH
-    //     xhr/abort-event-order.htm                   OK      -> CRASH
-    //     xhr/access-control-and-redirects-async-...  OK      -> CRASH
-    //
-    // all of them `# Fatal error in v8::HandleScope::CreateHandle()`. They are
-    // gone. But removing this again - context enter only, HandleScope only, and
-    // NEITHER - leaves `abort-event-order.htm` crash-free in all three
-    // configurations, 3 runs each. So something else fixed them, most likely
-    // the nine Event subclasses gaining their inherited `InternalState` in the
-    // same window (before that, dispatching a ProgressEvent threw
-    // InvalidStateError and the listener path was never reached).
-    //
-    // Kept anyway, for a reason that does not depend on the crash: without an
-    // entered context, anything downstream that asks V8 for the CURRENT context
-    // gets whatever was entered last, which on a page with iframes is not
-    // necessarily this XHR's. Most `v8_*` wrappers open their own HandleScope,
-    // so that half is belt and braces.
-    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
-        log.debug("async send dropped: no V8 context", .{});
-        return;
-    };
-    v8_engine.ffi.v8_Context_Enter(v8_context);
-    defer v8_engine.ffi.v8_Context_Exit(v8_context);
-
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        log.debug("async send dropped: no current isolate", .{});
-        return;
-    };
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
-        log.debug("async send dropped: could not open a HandleScope", .{});
-        return;
-    };
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    send_algo.sendDispatch(xhr_state, internal.pending_body) catch |err| {
-        log.debug("async send failed: {s}", .{@errorName(err)});
-    };
-}
-
 /// Step 5: "If one or more event listeners are registered on this's upload
-/// object, then set this's upload listener flag."
-///
-/// KNOWN GAP: this sees the event handler IDL attributes
-/// (`xhr.upload.onprogress = f`) but NOT `xhr.upload.addEventListener(...)`,
-/// because the event listener list lives in EventTarget's private registry and
-/// no interface exposes "does this target have listeners". The flag only
-/// affects whether upload progress events fire and whether a CORS preflight is
-/// forced, so the failure mode is missing upload events, not wrong ones.
+/// object, then set this's upload listener flag." An event handler's listener
+/// is one of them, so `xhr.upload.onprogress = f` and
+/// `xhr.upload.addEventListener("progress", f)` both count - the second used
+/// not to, when the handlers lived outside the listener list.
 fn uploadHasListeners(instance: *runtime.Instance) bool {
     const upload = uploadObjectIfCreated(instance) orelse return false;
-    const state = upload.getState(EventTargetState);
-    inline for (.{
-        state.own.onloadstart,
-        state.own.onprogress,
-        state.own.onabort,
-        state.own.onerror,
-        state.own.onload,
-        state.own.ontimeout,
-        state.own.onloadend,
-    }) |handler| {
-        const bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&handler)).*;
-        const addr: usize = @bitCast(bytes);
-        if (addr != 0) return true;
+    // Every listener, whether `addEventListener` or an event handler added it.
+    for (EventTargetImpl.getEventListenersForType(upload, "")) |listener| {
+        if (!listener.removed) return true;
     }
     return false;
 }

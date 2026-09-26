@@ -3,29 +3,13 @@
 //! XMLHttpRequestEventTarget provides event handler properties for XHR events.
 //! Spec: https://xhr.spec.whatwg.org/#xmlhttprequesteventtarget
 //!
-//! ## What these fields actually hold
-//!
-//! `typedefs.EventHandler` is `?*const fn (*Instance) JSValue`, but nothing of
-//! that shape is ever stored in it. The V8 conversion layer creates a
-//! `Global<Value>` for the assigned function and TAGS the pointer, so the field
-//! holds a deliberately misaligned address whose low two bits are a tag.
-//! Reading it back needs a byte copy - `@ptrCast`/`@alignCast` panic with
-//! "incorrect alignment" in a safe build.
-//!
-//! `src/webidl/impls/XMLHttpRequest.zig` is what invokes them, through
-//! `interfaces.XMLHttpRequestEventTarget.State`, which reaches these fields on
-//! an XMLHttpRequest and on an XMLHttpRequestUpload alike.
-//!
-//! ## Known leak, deliberately not fixed here
-//!
-//! Overwriting one of these fields drops the previous Global without disposing
-//! it, so `xhr.onload = a; xhr.onload = b` leaks one handle.
-//! `WebSocket.set_onopen` disposes the old one; `HTMLElement.setEventHandler`
-//! does not. Adding disposal needs PROOF that nothing else holds that Global -
-//! the conversion layer hands the same tagged pointer back out of the getter -
-//! and AGENTS.md is explicit that guessing here has shipped use-after-frees
-//! twice. Recorded rather than guessed at.
-
+//! Its seven attributes are event handler IDL attributes (HTML §8.1.8.1), and
+//! like every other one they keep their values in EventTarget's event handler
+//! map - an XMLHttpRequestEventTarget is an EventTarget. They used to live in
+//! this interface's generated state, which nothing disposed and dispatch could
+//! not see: the XHR impl invoked them itself, after every listener and with
+//! `this` undefined, and each one pinned its page for the rest of the process.
+//! The map owns its values, and dispatch runs them where they were activated.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -34,6 +18,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const XMLHttpRequestEventTarget = interfaces.XMLHttpRequestEventTarget;
+const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = XMLHttpRequestEventTarget.State;
 
@@ -51,95 +36,84 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    // An XMLHttpRequestEventTarget is an EventTarget: its handlers live in
+    // EventTarget's map, and events are dispatched at it.
+    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Releases the event handler map's values with the rest of EventTarget's
+    // state. GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    EventTargetImpl.deinit(instance);
 }
 
 /// Getter for onloadstart
 pub fn get_onloadstart(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onloadstart;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "loadstart");
 }
 
 /// Getter for onprogress
 pub fn get_onprogress(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onprogress;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "progress");
 }
 
 /// Getter for onabort
 pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onabort;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "abort");
 }
 
 /// Getter for onerror
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onerror;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
 }
 
 /// Getter for onload
 pub fn get_onload(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onload;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "load");
 }
 
 /// Getter for ontimeout
 pub fn get_ontimeout(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.ontimeout;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "timeout");
 }
 
 /// Getter for onloadend
 pub fn get_onloadend(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onloadend;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "loadend");
 }
 
 /// Setter for onloadstart
 pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onloadstart = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "loadstart", value);
 }
 
 /// Setter for onprogress
 pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onprogress = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "progress", value);
 }
 
 /// Setter for onabort
 pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onabort = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "abort", value);
 }
 
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onerror = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
 }
 
 /// Setter for onload
 pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onload = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "load", value);
 }
 
 /// Setter for ontimeout
 pub fn set_ontimeout(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.ontimeout = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "timeout", value);
 }
 
 /// Setter for onloadend
 pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onloadend = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "loadend", value);
 }

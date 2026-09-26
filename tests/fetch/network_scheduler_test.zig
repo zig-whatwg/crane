@@ -98,6 +98,31 @@ test "a transfer completes through pump, and no pump waits for the response" {
     try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
 }
 
+test "a transfer is under way from start, not from the first pump" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/delay/1"));
+    var outcome: Outcome = .{};
+    const started_at = clock.monotonicMillis();
+    _ = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+
+    // Script runs for longer than the server takes, and nothing pumps: the
+    // request must already have gone out, as it would from a browser's
+    // network thread, or the second only starts counting now.
+    clock.sleep(1_200 * std.time.ns_per_ms);
+    _ = pumpUntil(&scheduler, 5_000, outcomeDone, &outcome);
+
+    try testing.expectEqual(@as(u16, 200), outcome.status);
+    try testing.expect(outcome.finished_at_ms - started_at < 1_900);
+}
+
 test "transfers to two servers are in flight at once" {
     try network.globalInit();
     defer network.globalCleanup();

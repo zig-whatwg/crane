@@ -84,9 +84,9 @@ pub const NetworkScheduler = struct {
     }
 
     /// Start a transfer for `request`, whose response `on_complete` receives.
-    /// The transfer and the response are made with `allocator`. Nothing is
-    /// sent before the next `pump`, and `request` is not needed after this
-    /// returns - the transfer copies what curl reads.
+    /// The transfer and the response are made with `allocator`. It is under
+    /// way when this returns, but only `pump` delivers its end; and `request`
+    /// is not needed after this returns - the transfer copies what curl reads.
     pub fn start(
         self: *NetworkScheduler,
         allocator: Allocator,
@@ -119,7 +119,37 @@ pub const NetworkScheduler = struct {
         transfer.prepareAttempt();
         if (curl.multi_add_handle(multi, transfer.handle) != curl.CURLM_OK) return NetworkError.OutOfMemory;
         job.running = true;
+
+        kick(multi, transfer);
         return job;
+    }
+
+    /// Rounds `kick` gives a new transfer to put its request on the wire, and
+    /// the longest each waits for its sockets.
+    const kick_rounds = 4;
+    const kick_wait_ms = 1;
+
+    /// Get a new transfer under way - resolve, connect, send its request - as
+    /// far as that goes without waiting. A browser's network thread would;
+    /// left for the next pump, the request would not leave until the script
+    /// that made it had finished, and a long task would count against a
+    /// timeout time the server never had (xhr/xhr-timeout-longtask.any.js).
+    /// A non-blocking connect is not writable within the `perform` that
+    /// started it, so this goes a few rounds - perform, then ask the sockets
+    /// without waiting - and stops once the request is sent. Across a DNS
+    /// lookup or a TLS handshake it gets no further than those allow. What
+    /// ends here is delivered by `pump`: nothing is read from the queue.
+    fn kick(multi: *curl.CURLM, transfer: *Transfer) void {
+        var round: usize = 0;
+        while (round < kick_rounds) : (round += 1) {
+            var still_running: c_int = 0;
+            _ = curl.multi_perform(multi, &still_running);
+            var sent: c_long = 0;
+            _ = curl.easy_getinfo(transfer.handle, curl.c.CURLINFO_REQUEST_SIZE, &sent);
+            if (sent > 0 or still_running == 0) return;
+            var ready: c_int = 0;
+            _ = curl.multi_poll(multi, kick_wait_ms, &ready);
+        }
     }
 
     /// End `job` now. Its callback never runs, and what it received is
