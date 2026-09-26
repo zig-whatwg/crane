@@ -223,6 +223,18 @@ progress = [
   status = "todo"
 
   [[infra.items]]
+  name = "A promise-returning operation rejects, not throws, on an argument-conversion exception"
+  status = "done"
+
+  [[infra.items]]
+  name = "A union's interface arms match only what implements them (WebIDL 3.2.24 step 4)"
+  status = "doing"
+
+  [[infra.items]]
+  name = "A nullable dictionary member tells absent from null"
+  status = "todo"
+
+  [[infra.items]]
   name = "An interface-level way to fire a trusted event"
   status = "todo"
 
@@ -346,7 +358,7 @@ infra = "networking"
 owner = "agent"
 status = "doing"
 branch = "lane/networking"
-paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
+paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "conversions.zig: convertBodyInit and the union Instance-arm implements check", "interface.zig: the argument-cleanup predicates' BodyInit entries", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
 
 [[lane]]
 name = "Workers as first-class realms"
@@ -362,7 +374,7 @@ infra = "navigation"
 owner = "agent"
 status = "doing"
 branch = "lane/navigation"
-paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
+paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "Document.call_open steps 8 and 13", "src/dom/attribute_change_steps.zig and its call in Element.attributeChangeSteps", "BeforeUnloadEvent.zig", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
 
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
