@@ -551,38 +551,6 @@ pub const ContextData = struct {
     pub fn clearRealm(self: *Self) void {
         self.realm = null;
     }
-
-    /// Create a TypeError from this context's realm
-    ///
-    /// If a full Realm is available, creates the error from that realm.
-    /// Otherwise returns null.
-    pub fn createTypeError(self: *const Self, message: []const u8) ?*anyopaque {
-        if (self.realm) |realm| {
-            return realm.createTypeError(message);
-        }
-        return null;
-    }
-
-    /// Throw a TypeError from this context's realm
-    ///
-    /// If a full Realm is available, throws from that realm.
-    /// Otherwise does nothing.
-    pub fn throwTypeError(self: *const Self, message: []const u8) void {
-        if (self.realm) |realm| {
-            realm.throwTypeError(message);
-        }
-    }
-
-    /// Create a plain object in this context's realm
-    ///
-    /// If a full Realm is available, creates the object in that realm
-    /// (with correct prototype chain). Otherwise returns null.
-    pub fn createObject(self: *const Self) ?*anyopaque {
-        if (self.realm) |realm| {
-            return realm.createObject();
-        }
-        return null;
-    }
 };
 
 /// Runtime context - pointer to ContextData
@@ -827,22 +795,4 @@ test "ContextData - init with realm option" {
 
     try testing.expect(ctx.hasRealm());
     try testing.expect(ctx.getRealm() == realm);
-}
-
-test "ContextData - createTypeError without realm returns null" {
-    var ctx = try ContextData.init(testing.allocator, .{});
-    defer ctx.deinit();
-
-    // No realm, should return null
-    const error_obj = ctx.createTypeError("test error");
-    try testing.expect(error_obj == null);
-}
-
-test "ContextData - createObject without realm returns null" {
-    var ctx = try ContextData.init(testing.allocator, .{});
-    defer ctx.deinit();
-
-    // No realm, should return null
-    const obj = ctx.createObject();
-    try testing.expect(obj == null);
 }

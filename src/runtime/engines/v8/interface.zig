@@ -34,7 +34,6 @@ const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
 const overload_resolver = @import("overload_resolver.zig");
-const async_iterator = @import("async_iterator.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
