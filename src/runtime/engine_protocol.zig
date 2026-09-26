@@ -42,6 +42,9 @@
 //! Ownership is in the types. A `JSValue` PARAMETER is BORROWED for the call;
 //! a result the caller must release is `Owned`; `realm: Context` is BORROWED.
 //! Slices an operation returns are allocated with the allocator it was given.
+//! Every operation that reads a value takes the realm to read it in: an
+//! adapter never depends on whichever agent happens to be entered. Engine
+//! failures are never swallowed: an operation that can fail says so.
 //!
 //! Status: phase 3 step A - every operation of the design
 //! (tmp/plans/engine-protocol-design.md section 4) is declared and checked;
@@ -585,11 +588,17 @@ pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []cons
 }
 
 /// A classic script's completion value - for host scripts (the harness,
-/// WebDriver, the REPL) and HTML "evaluate a javascript: URL". ToString'd
-/// when `to_string` (the string allocated with `allocator`). What it throws
-/// is reported, and the call fails.
-pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: []const u8, to_string: bool, allocator: std.mem.Allocator, reporter: Reporter) Error!Owned {
-    return impl.evaluateClassicScript(realm, source, url, to_string, allocator, reporter);
+/// WebDriver, the REPL) and HTML "evaluate a javascript: URL". What it throws
+/// is reported, and the call fails. OWNED.
+pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: []const u8, reporter: Reporter) Error!Owned {
+    return impl.evaluateClassicScript(realm, source, url, reporter);
+}
+
+/// As evaluateClassicScript, the completion value then ECMAScript
+/// ToString'd: OWNED, allocated with `allocator`. What the script or ToString
+/// throws is reported, and the call fails.
+pub inline fn evaluateClassicScriptToString(realm: Context, source: ScriptSource, url: []const u8, allocator: std.mem.Allocator, reporter: Reporter) Error![]u8 {
+    return impl.evaluateClassicScriptToString(realm, source, url, allocator, reporter);
 }
 
 /// HTML "getting the current value of the event handler", step 3: the
@@ -624,8 +633,8 @@ pub inline fn runTaskInRealm(realm: Context, steps: RealmSteps, data: ?*anyopaqu
 /// HTML "perform a microtask checkpoint" for `realm`'s agent. Where the engine
 /// lacks `microtask_checkpoint_control` it drains on its own, and this does
 /// nothing.
-pub inline fn performMicrotaskCheckpoint(realm: Context) void {
-    impl.performMicrotaskCheckpoint(realm);
+pub inline fn performMicrotaskCheckpoint(realm: Context) Error!void {
+    return impl.performMicrotaskCheckpoint(realm);
 }
 
 /// HTML "queue a microtask": `steps(data)` at `realm`'s agent's next
@@ -690,21 +699,23 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 // 4.4 Invoking callbacks (WebIDL 3.x)
 // ============================================================================
 
-/// WebIDL "invoke a callback function": prepare to run a callback in the
-/// callback's realm (the incumbent realm), call, clean up.
-pub inline fn invokeCallbackFunction(callback: JSValue, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
-    return impl.invokeCallbackFunction(callback, this_arg, args, behavior);
+/// WebIDL "invoke a callback function". `realm` is where the callback is read
+/// - a realm of its agent; the call runs in the callback's own associated
+/// realm (prepare to run script there, call, clean up).
+pub inline fn invokeCallbackFunction(realm: Context, callback: JSValue, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+    return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
 /// WebIDL "call a user object's operation": a callback interface value
-/// called as a function, or through its `operation`.
-pub inline fn callUserObjectOperation(callback: JSValue, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
-    return impl.callUserObjectOperation(callback, operation, this_arg, args, behavior);
+/// called as a function, or through its `operation`. `realm` as for
+/// invokeCallbackFunction.
+pub inline fn callUserObjectOperation(realm: Context, callback: JSValue, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+    return impl.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
 /// ECMAScript IsCallable(`value`).
-pub inline fn isCallable(value: JSValue) bool {
-    return impl.isCallable(value);
+pub inline fn isCallable(realm: Context, value: JSValue) bool {
+    return impl.isCallable(realm, value);
 }
 
 /// A callback-function argument as the binding hands it over, as an OWNED
@@ -738,13 +749,13 @@ pub inline fn hasProperty(realm: Context, object: JSValue, property: []const u8)
 }
 
 /// Type(V).
-pub inline fn typeOf(value: JSValue) ValueType {
-    return impl.typeOf(value);
+pub inline fn typeOf(realm: Context, value: JSValue) ValueType {
+    return impl.typeOf(realm, value);
 }
 
 /// SameValue(x, y).
-pub inline fn sameValue(a: JSValue, b: JSValue) bool {
-    return impl.sameValue(a, b);
+pub inline fn sameValue(realm: Context, a: JSValue, b: JSValue) bool {
+    return impl.sameValue(realm, a, b);
 }
 
 /// Hold `value` past the call. OWNED.
@@ -922,13 +933,13 @@ pub inline fn createPromise(realm: Context) Error!PromiseCapability {
 
 /// WebIDL "resolve" with `value` (BORROWED; a platform object resolves with
 /// its wrapper in the promise's realm).
-pub inline fn resolvePromise(capability: *PromiseCapability, value: JSValue) void {
-    impl.resolvePromise(capability, value);
+pub inline fn resolvePromise(capability: *PromiseCapability, value: JSValue) Error!void {
+    return impl.resolvePromise(capability, value);
 }
 
 /// WebIDL "reject" with `reason` (BORROWED).
-pub inline fn rejectPromise(capability: *PromiseCapability, reason: JSValue) void {
-    impl.rejectPromise(capability, reason);
+pub inline fn rejectPromise(capability: *PromiseCapability, reason: JSValue) Error!void {
+    return impl.rejectPromise(capability, reason);
 }
 
 pub inline fn releasePromiseCapability(capability: *PromiseCapability) void {
@@ -951,15 +962,15 @@ pub inline fn reactToPromise(realm: Context, promise: JSValue, steps: *const Pro
 }
 
 /// WebIDL "mark as handled". A value that is not a promise is left alone.
-pub inline fn markPromiseAsHandled(promise: JSValue) void {
-    impl.markPromiseAsHandled(promise);
+pub inline fn markPromiseAsHandled(realm: Context, promise: JSValue) void {
+    impl.markPromiseAsHandled(realm, promise);
 }
 
 /// [[PromiseIsHandled]] of `promise` - what HTML's "notify about rejected
 /// promises" reads. False for a value that is not a promise.
-pub inline fn promiseIsHandled(promise: JSValue) bool {
+pub inline fn promiseIsHandled(realm: Context, promise: JSValue) bool {
     comptime gate(.promise_rejection_tracking, "promiseIsHandled");
-    return impl.promiseIsHandled(promise);
+    return impl.promiseIsHandled(realm, promise);
 }
 
 // ============================================================================
@@ -983,29 +994,29 @@ pub inline fn createArrayBufferView(realm: Context, view_type: ViewType, buffer:
 }
 
 /// The ArrayBufferView `value` is, or null.
-pub inline fn describeArrayBufferView(value: JSValue) ?ArrayBufferViewDescription {
-    return impl.describeArrayBufferView(value);
+pub inline fn describeArrayBufferView(realm: Context, value: JSValue) ?ArrayBufferViewDescription {
+    return impl.describeArrayBufferView(realm, value);
 }
 
 /// WebIDL "write" `bytes` into `view` from `starting_offset`.
-pub inline fn writeIntoArrayBufferView(view: JSValue, bytes: []const u8, starting_offset: usize) Error!void {
-    return impl.writeIntoArrayBufferView(view, bytes, starting_offset);
+pub inline fn writeIntoArrayBufferView(realm: Context, view: JSValue, bytes: []const u8, starting_offset: usize) Error!void {
+    return impl.writeIntoArrayBufferView(realm, view, bytes, starting_offset);
 }
 
 /// An ArrayBuffer's bytes, BORROWED until script next runs or the buffer is
 /// detached; null when detached or not an ArrayBuffer.
-pub inline fn borrowArrayBufferBytes(buffer: JSValue) ?[]u8 {
-    return impl.borrowArrayBufferBytes(buffer);
+pub inline fn borrowArrayBufferBytes(realm: Context, buffer: JSValue) ?[]u8 {
+    return impl.borrowArrayBufferBytes(realm, buffer);
 }
 
 /// IsDetachedBuffer(`buffer`).
-pub inline fn isDetachedBuffer(buffer: JSValue) bool {
-    return impl.isDetachedBuffer(buffer);
+pub inline fn isDetachedBuffer(realm: Context, buffer: JSValue) bool {
+    return impl.isDetachedBuffer(realm, buffer);
 }
 
 /// Streams CanTransferArrayBuffer(`buffer`).
-pub inline fn canTransferArrayBuffer(buffer: JSValue) bool {
-    return impl.canTransferArrayBuffer(buffer);
+pub inline fn canTransferArrayBuffer(realm: Context, buffer: JSValue) bool {
+    return impl.canTransferArrayBuffer(realm, buffer);
 }
 
 /// Streams TransferArrayBuffer(`buffer`): `buffer` detached, a new one over

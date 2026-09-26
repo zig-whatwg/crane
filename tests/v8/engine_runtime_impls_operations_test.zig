@@ -449,15 +449,15 @@ test "protocol: currentRealm is the context manager's realm for the entered cont
 }
 
 test "protocol: isCallable is ECMAScript IsCallable" {
-    _ = try realm();
+    const ctx = try realm();
     const function = try evalOwned("(function () {})");
     defer function.release();
     const object = try evalOwned("({})");
     defer object.release();
-    try std.testing.expect(protocol.isCallable(function.value));
-    try std.testing.expect(!protocol.isCallable(object.value));
-    try std.testing.expect(!protocol.isCallable(runtime.JSValue.fromNumber(1)));
-    try std.testing.expect(!protocol.isCallable(runtime.JSValue.jsUndefined));
+    try std.testing.expect(protocol.isCallable(ctx, function.value));
+    try std.testing.expect(!protocol.isCallable(ctx, object.value));
+    try std.testing.expect(!protocol.isCallable(ctx, runtime.JSValue.fromNumber(1)));
+    try std.testing.expect(!protocol.isCallable(ctx, runtime.JSValue.jsUndefined));
 }
 
 test "protocol: createResolvedPromise is an Owned promise of the realm, fulfilled with the value" {
@@ -490,8 +490,8 @@ test "protocol: runTaskInRealm runs the steps as a task inside the realm" {
 
 /// A caller of a capability-gated operation, written as every caller must be:
 /// on an engine without the capability the call is compiled out.
-fn handledOrUnknown(promise: runtime.JSValue) ?bool {
-    if (protocol.capabilities.promise_rejection_tracking != .unsupported) return protocol.promiseIsHandled(promise);
+fn handledOrUnknown(ctx: runtime.Context, promise: runtime.JSValue) ?bool {
+    if (protocol.capabilities.promise_rejection_tracking != .unsupported) return protocol.promiseIsHandled(ctx, promise);
     return null;
 }
 
@@ -499,12 +499,12 @@ test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[Prom
     const ctx = try realm();
     const promise = try protocol.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
     defer promise.release();
-    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(promise.value));
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(ctx, promise.value));
     try expose("watched", promise.value);
     try std.testing.expectEqual(@as(i32, 1), try eval("watched.then(() => {}); 1"));
-    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(promise.value));
+    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(ctx, promise.value));
     // Not a promise: false.
-    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(runtime.JSValue.fromNumber(1)));
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(ctx, runtime.JSValue.fromNumber(1)));
 }
 
 test "protocol: requestGarbageCollection collects the agent's heap" {
@@ -532,22 +532,22 @@ test "protocol: a new promise is resolved with a primitive, a value or a platfor
     var numeric = try protocol.createPromise(ctx);
     defer protocol.releasePromiseCapability(&numeric);
     try expose("numeric", numeric.promise);
-    protocol.resolvePromise(&numeric, runtime.JSValue.fromNumber(7));
+    try protocol.resolvePromise(&numeric, runtime.JSValue.fromNumber(7));
     try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(numeric.promise.handle.ptr))));
 
     var texty = try protocol.createPromise(ctx);
     defer protocol.releasePromiseCapability(&texty);
     try expose("texty", texty.promise);
-    protocol.resolvePromise(&texty, runtime.JSValue.fromStringRef("seven"));
+    try protocol.resolvePromise(&texty, runtime.JSValue.fromStringRef("seven"));
 
     var rejected = try protocol.createPromise(ctx);
     defer protocol.releasePromiseCapability(&rejected);
     const reason = try protocol.createSimpleException(ctx, .RangeError, "no");
     defer reason.release();
     try expose("rejected", rejected.promise);
-    protocol.rejectPromise(&rejected, reason.value);
-    protocol.markPromiseAsHandled(rejected.promise);
-    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(rejected.promise));
+    try protocol.rejectPromise(&rejected, reason.value);
+    protocol.markPromiseAsHandled(ctx, rejected.promise);
+    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(ctx, rejected.promise));
 
     try std.testing.expectEqual(@as(i32, 1), try eval(
         \\globalThis.settled = 0;
@@ -611,14 +611,14 @@ test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
     const ctx = try realm();
     const buffer = try protocol.allocateArrayBuffer(ctx, 8);
     defer buffer.release();
-    const bytes = protocol.borrowArrayBufferBytes(buffer.value) orelse return error.NoBytes;
+    const bytes = protocol.borrowArrayBufferBytes(ctx, buffer.value) orelse return error.NoBytes;
     try std.testing.expectEqual(@as(usize, 8), bytes.len);
     try std.testing.expect(std.mem.allEqual(u8, bytes, 0));
     bytes[3] = 42;
 
     const view = try protocol.createArrayBufferView(ctx, .uint8_array, buffer.value, 2, 4);
     defer view.release();
-    const description = protocol.describeArrayBufferView(view.value) orelse return error.NotAView;
+    const description = protocol.describeArrayBufferView(ctx, view.value) orelse return error.NotAView;
     try std.testing.expectEqual(runtime.arraybuffer_view.ViewType.uint8_array, description.view_type);
     try std.testing.expectEqual(@as(usize, 2), description.byte_offset);
     try expose("protocolView", view.value);
@@ -626,17 +626,17 @@ test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
 
     const viewed = try protocol.getViewedArrayBuffer(ctx, view.value);
     defer viewed.release();
-    try std.testing.expect(protocol.canTransferArrayBuffer(viewed.value));
+    try std.testing.expect(protocol.canTransferArrayBuffer(ctx, viewed.value));
     const moved = try protocol.transferArrayBuffer(ctx, viewed.value);
     defer moved.release();
-    try std.testing.expect(protocol.isDetachedBuffer(buffer.value));
-    try std.testing.expect(!protocol.isDetachedBuffer(moved.value));
-    try std.testing.expectEqual(@as(?[]u8, null), protocol.borrowArrayBufferBytes(buffer.value));
-    try std.testing.expectEqual(@as(u8, 42), (protocol.borrowArrayBufferBytes(moved.value) orelse return error.NoBytes)[3]);
+    try std.testing.expect(protocol.isDetachedBuffer(ctx, buffer.value));
+    try std.testing.expect(!protocol.isDetachedBuffer(ctx, moved.value));
+    try std.testing.expectEqual(@as(?[]u8, null), protocol.borrowArrayBufferBytes(ctx, buffer.value));
+    try std.testing.expectEqual(@as(u8, 42), (protocol.borrowArrayBufferBytes(ctx, moved.value) orelse return error.NoBytes)[3]);
 
     const copied = try protocol.createArrayBuffer(ctx, "abc");
     defer copied.release();
-    try std.testing.expectEqualStrings("abc", protocol.borrowArrayBufferBytes(copied.value) orelse return error.NoBytes);
+    try std.testing.expectEqualStrings("abc", protocol.borrowArrayBufferBytes(ctx, copied.value) orelse return error.NoBytes);
 }
 
 test "protocol: the diagnostics tier reports the agent's heap and the adapter's counters" {
