@@ -706,6 +706,27 @@ fn convertBodyInit(
     return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
 }
 
+/// WebIDL 3.2.18 steps 4-5: a dictionary's members are read least-derived
+/// dictionary first, and within one dictionary "in lexicographical order" of
+/// their identifiers. Codegen emits a dictionary as its inherited dictionary
+/// (`base`, converted by recursion) followed by its own members in IDL
+/// declaration order, so the order is imposed here: `base`, then the rest by
+/// code unit. Reading `view` before `detail` is observable to a getter.
+fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.Type.StructField {
+    comptime {
+        @setEvalBranchQuota(20_000);
+        var fields = std.meta.fields(T)[0..std.meta.fields(T).len].*;
+        std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
+            fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
+                if (std.mem.eql(u8, b.name, "base")) return false;
+                if (std.mem.eql(u8, a.name, "base")) return true;
+                return std.mem.lessThan(u8, a.name, b.name);
+            }
+        }.lessThan);
+        return fields;
+    }
+}
+
 /// Generic V8 Value to Zig type conversion
 ///
 /// Dispatches to the appropriate conversion function based on target type.
@@ -1399,7 +1420,7 @@ pub fn fromV8Value(
         const object = @as(*v8.Object, @ptrCast(value));
 
         var result: T = undefined;
-        inline for (std.meta.fields(T)) |field| {
+        inline for (comptime dictionaryMemberOrder(T)) |field| {
             // Special handling for 'base' field in dictionary inheritance
             // In WebIDL, child dictionaries inherit parent fields directly on the object
             // e.g., { bubbles: true, oldVersion: 1 } not { base: { bubbles: true }, oldVersion: 1 }
