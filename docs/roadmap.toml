@@ -235,6 +235,10 @@ progress = [
   status = "doing"
 
   [[infra.items]]
+  name = "The runtime restores the snapshot its own build generated (a January one is tracked in git and loaded first), with the global built as Window's"
+  status = "todo"
+
+  [[infra.items]]
   name = "Dictionary members read in WebIDL order (inherited first, then lexicographic)"
   status = "done"
 
