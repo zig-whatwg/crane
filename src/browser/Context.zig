@@ -26,7 +26,6 @@ const log = std.log.scoped(.browser_context);
 const v8 = @import("v8");
 const clock = @import("clock");
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 const fetch = @import("fetch");
@@ -1360,42 +1359,6 @@ pub const Context = struct {
         // the same natives every frame's window gets.
         try installNativeGlobals(isolate, v8_ctx, global_obj, &window_native_globals);
 
-        // addEventListener
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            defer v8.ffi.v8_Function_Dispose(func);
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "addEventListener", 16) orelse return error.StringCreateFailed;
-            defer v8.ffi.v8_String_Dispose(key);
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // removeEventListener
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, removeEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            defer v8.ffi.v8_Function_Dispose(func);
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "removeEventListener", 19) orelse return error.StringCreateFailed;
-            defer v8.ffi.v8_String_Dispose(key);
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // dispatchEvent
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, dispatchEventCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            defer v8.ffi.v8_FunctionTemplate_Dispose(template);
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            defer v8.ffi.v8_Function_Dispose(func);
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
-            defer v8.ffi.v8_String_Dispose(key);
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
         // NOTE: console object is registered via WebIDL namespace binding in snapshot
         // (see bindings.zig initializeNamespaces -> Console.registerGlobal)
         // The native binding provides proper console.log/error/etc with output to stderr
@@ -1405,6 +1368,12 @@ pub const Context = struct {
         // with named property handlers for CSS property access (e.g., style.borderStyle).
         // Do NOT register a stub here - it would shadow the proper implementation.
 
+        // addEventListener, removeEventListener and dispatchEvent are EventTarget's
+        // WebIDL operations, own properties of the global (WebIDL 3.8, [Global]) as
+        // on every frame's window. Native bindings used to overwrite them here -
+        // from before those operations were on the global - and they resolved the
+        // Window from the realm rather than `this`, returned true for a
+        // dispatchEvent argument that is no Event, and swallowed InvalidStateError.
     }
 
     /// Set up global aliases via JavaScript
@@ -2276,271 +2245,6 @@ fn timerInitializationFromCall(info: *const v8.ffi.FunctionCallbackInfo, repeat:
     setIntegerReturn(info, isolate, @intCast(@as(u32, @truncate(id))));
 }
 
-/// addEventListener callback - delegates to EventTarget WebIDL implementation
-/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
-fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Return undefined by default. SetReturnValue copies the value, so the
-    // handle is released at once.
-    const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
-    info.setReturnValue(return_undefined);
-    v8.ffi.v8_Value_Dispose(return_undefined);
-
-    // Get V8 context. Owned, and released on every path: the listener's
-    // wrapper keeps a context handle of its own. Each one leaked kept the
-    // page's whole native context alive.
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Context_Dispose(v8_ctx);
-
-    // Get global object (which has the window instance)
-    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
-    defer v8.ffi.v8_Object_Dispose(global);
-
-    // Get window instance from internal field 0
-    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
-    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-
-    // `type` and `callback` are required.
-    if (info.v8_FunctionCallbackInfo_Length() < 2) {
-        return throwTypeError(isolate, info, "Failed to execute 'addEventListener' on 'EventTarget': 2 arguments required.");
-    }
-
-    const allocator = std.heap.page_allocator;
-    var event_type = listenerType(isolate, info, v8_ctx, allocator) orelse return;
-    defer event_type.deinit(allocator);
-    var options = listenerOptions(info, isolate, v8_ctx, allocator);
-    defer options.deinit(allocator);
-
-    // Get callback argument (second arg)
-    const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
-    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) {
-        v8.ffi.v8_Global_Dispose(@ptrCast(callback_arg));
-        return;
-    }
-
-    // Create V8 CallbackWrapper from the callback value
-    const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(
-        allocator,
-        isolate,
-        v8_ctx,
-        @ptrCast(callback_arg),
-        "handleEvent",
-    ) catch return orelse return;
-
-    // Create runtime.CallbackWrapper that wraps the V8 callback
-    // (per conversions.zig pattern for proper engine interface setup)
-    const runtime_wrapper = allocator.create(runtime.CallbackWrapper) catch {
-        v8_wrapper.deinit();
-        return;
-    };
-    runtime_wrapper.* = .{
-        .engine_handle = v8_wrapper,
-        .engine = &v8.v8_engine_interface,
-        .engine_ctx = v8_wrapper.callback_context.?,
-        .allocator = allocator,
-    };
-
-    // Call the EventTarget implementation with double-optional callback
-    const EventTargetImpl = impls.EventTarget;
-    EventTargetImpl.call_addEventListener(
-        window_instance,
-        event_type,
-        @as(?*runtime.CallbackWrapper, runtime_wrapper),
-        options.argument(),
-    ) catch |err| {
-        log.debug("[addEventListener] Error: {}\n", .{err});
-        runtime_wrapper.deinit();
-        allocator.destroy(runtime_wrapper);
-    };
-}
-
-/// `DOMString type`, the first argument of add- and removeEventListener:
-/// ToString, so `null` is the type "null" and "" is a type like any other.
-/// Null when the conversion threw - a Symbol, or a toString() that throws -
-/// with the exception pending.
-fn listenerType(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, v8_ctx: *v8.ffi.Context, allocator: std.mem.Allocator) ?runtime.DOMString {
-    const arg = info.get(0);
-    defer v8.ffi.v8_Global_Dispose(arg);
-    return v8.conversions.fromV8Value(runtime.DOMString, allocator, isolate, v8_ctx, arg) catch |err| {
-        if (err != error.ExceptionPending) throwTypeError(isolate, info, "Failed to convert the event type to a string.");
-        return null;
-    };
-}
-
-/// The third argument of add- and removeEventListener: `options`, a boolean
-/// (capture) or a dictionary, for EventTarget to flatten as the WebIDL
-/// binding would hand it over. Owns the argument's handle, which EventTarget
-/// only reads during the call.
-const ListenerOptions = struct {
-    handle: ?*v8.ffi.Value = null,
-    value: ?runtime.JSValue = null,
-
-    fn argument(self: *const ListenerOptions) webidl.Opt(runtime.JSValue) {
-        return if (self.value) |v| webidl.Opt(runtime.JSValue).passed(v) else webidl.Opt(runtime.JSValue).notPassed();
-    }
-
-    fn deinit(self: *ListenerOptions, allocator: std.mem.Allocator) void {
-        if (self.value) |*v| v.deinit(allocator);
-        if (self.handle) |h| v8.ffi.v8_Global_Dispose(h);
-    }
-};
-
-fn listenerOptions(info: *const v8.ffi.FunctionCallbackInfo, isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, allocator: std.mem.Allocator) ListenerOptions {
-    if (info.v8_FunctionCallbackInfo_Length() < 3) return .{};
-    const handle = info.get(2);
-    const value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate, v8_ctx, handle) catch null;
-    return .{ .handle = handle, .value = value };
-}
-
-/// removeEventListener callback - delegates to EventTarget WebIDL implementation
-/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
-fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Return undefined by default. SetReturnValue copies the value, so the
-    // handle is released at once.
-    const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
-    info.setReturnValue(return_undefined);
-    v8.ffi.v8_Value_Dispose(return_undefined);
-
-    // Get V8 context. Owned, and nothing keeps it: the wrapper built below
-    // exists only to compare against, and removeEventListener frees it.
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Context_Dispose(v8_ctx);
-
-    // Get global object (which has the window instance)
-    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
-    defer v8.ffi.v8_Object_Dispose(global);
-
-    // Get window instance from internal field 0
-    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
-    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-
-    // `type` and `callback` are required.
-    if (info.v8_FunctionCallbackInfo_Length() < 2) {
-        return throwTypeError(isolate, info, "Failed to execute 'removeEventListener' on 'EventTarget': 2 arguments required.");
-    }
-
-    const allocator = std.heap.page_allocator;
-    var event_type = listenerType(isolate, info, v8_ctx, allocator) orelse return;
-    defer event_type.deinit(allocator);
-    var options = listenerOptions(info, isolate, v8_ctx, allocator);
-    defer options.deinit(allocator);
-
-    // Get callback argument (second arg)
-    const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
-    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) {
-        v8.ffi.v8_Global_Dispose(@ptrCast(callback_arg));
-        return;
-    }
-
-    // Create V8 CallbackWrapper from the callback value for comparison
-    const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(
-        allocator,
-        isolate,
-        v8_ctx,
-        @ptrCast(callback_arg),
-        "handleEvent",
-    ) catch return orelse return;
-
-    // Create runtime.CallbackWrapper that wraps the V8 callback
-    const runtime_wrapper = allocator.create(runtime.CallbackWrapper) catch {
-        v8_wrapper.deinit();
-        return;
-    };
-    runtime_wrapper.* = .{
-        .engine_handle = v8_wrapper,
-        .engine = &v8.v8_engine_interface,
-        .engine_ctx = v8_wrapper.callback_context.?,
-        .allocator = allocator,
-    };
-
-    // Call the EventTarget implementation with double-optional callback
-    const EventTargetImpl = impls.EventTarget;
-    EventTargetImpl.call_removeEventListener(
-        window_instance,
-        event_type,
-        @as(?*runtime.CallbackWrapper, runtime_wrapper),
-        options.argument(),
-    ) catch |err| {
-        log.debug("[removeEventListener] Error: {}\n", .{err});
-    };
-    // Note: removeEventListener cleans up its own callback wrapper via deinit
-}
-
-/// dispatchEvent callback - delegates to EventTarget WebIDL implementation
-/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
-fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Get V8 context
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    };
-
-    // Get global object (which has the window instance)
-    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    };
-
-    // Get window instance from internal field 0
-    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    };
-    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-
-    // Need at least event argument
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    }
-
-    // Get event argument (first arg)
-    const event_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
-    if (!v8.ffi.v8_Value_IsObject(@ptrCast(event_arg))) {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    }
-
-    // Get Event instance from internal field 0
-    const event_obj: *v8.ffi.Object = @ptrCast(event_arg);
-    const event_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(event_obj, 0) orelse {
-        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-            info.setReturnValue(result);
-        }
-        return;
-    };
-    const event_instance: *runtime.Instance = @ptrCast(@alignCast(event_ptr));
-
-    // Call the EventTarget implementation
-    const EventTargetImpl = impls.EventTarget;
-    const result = EventTargetImpl.call_dispatchEvent(window_instance, event_instance) catch {
-        if (v8.ffi.v8_Boolean_New(isolate, false)) |res| {
-            info.setReturnValue(res);
-        }
-        return;
-    };
-
-    // Return result
-    if (v8.ffi.v8_Boolean_New(isolate, result)) |res| {
-        info.setReturnValue(res);
-    }
-}
-
 /// Helper to throw TypeError
 fn throwTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
     _ = info;
@@ -2550,11 +2254,4 @@ fn throwTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallback
     const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
     defer v8.ffi.v8_Global_Dispose(error_val);
     v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-}
-
-/// Helper to reject a promise with TypeError
-fn rejectWithTypeError(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, resolver: *v8.ffi.PromiseResolver, msg: []const u8) void {
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_ctx, error_val);
 }

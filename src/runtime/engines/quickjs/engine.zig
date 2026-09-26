@@ -116,6 +116,8 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .createSequenceOfPlatformObjects = notSupportedCreateSequenceOfPlatformObjects,
     .relevantGlobalObject = notSupportedRelevantGlobalObject,
     // ---- lane: page-realm ----
+    .invokeCallbackFunction = notSupportedInvokeCallbackFunction,
+    .installWindowOperations = notSupportedInstallWindowOperations,
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
     .createObservableArray = notSupportedCreateObservableArray,
@@ -135,6 +137,12 @@ pub const quickjs_engine_interface: EngineInterface = .{
 
 // Lane regions for this engine's NotSupported entries (see engine_interface.zig).
 // ---- lane: page-realm ----
+fn notSupportedInvokeCallbackFunction(_: runtime.Context, _: runtime.JSValue, _: runtime.CallbackThis, _: []const runtime.JSValue, _: runtime.ReportExceptionFn, _: ?*anyopaque) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedInstallWindowOperations(_: runtime.Context, _: *const runtime.WindowOperations) EngineError!void {
+    return EngineError.NotSupported;
+}
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 // TODO(engine adapter): the runtime-impls lane's operations on this engine.

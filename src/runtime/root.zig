@@ -164,6 +164,9 @@ pub const configuredEngine = @import("engine_interface.zig").configuredEngine;
 pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEngine;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
+pub const CallbackThis = @import("engine_interface.zig").CallbackThis;
+pub const WindowTimerHandler = @import("engine_interface.zig").WindowTimerHandler;
+pub const WindowOperations = @import("engine_interface.zig").WindowOperations;
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 pub const SimpleExceptionKind = @import("engine_interface.zig").SimpleExceptionKind;

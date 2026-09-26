@@ -1,17 +1,14 @@
-//! Navigation - URL Fetching, HTML Parsing, and Script Execution
+//! Navigation - URL Fetching
 //!
-//! Implements the navigation algorithm for the browser module.
-//! Handles fetching URL content, parsing HTML, and executing scripts.
+//! Fetches a navigation's response for the browser module: HTTP(S), file:,
+//! data: and about: URLs, as a `NavigationResult`.
 //!
-//! ## Navigation Flow
-//!
-//! 1. Parse URL and determine scheme
-//! 2. Fetch content (HTTP, file://, data:, about:blank)
-//! 3. Parse HTML into DOM tree
-//! 4. Execute inline and external scripts
-//! 5. Fire DOMContentLoaded event
-//! 6. Load external resources (stylesheets, images)
-//! 7. Fire load event
+//! Parsing the response and running its scripts is not here: `Context.loadHTML`
+//! hands the body to the HTML parser (`HTMLParser.parseHTMLWithScripting`),
+//! which runs scripts as it inserts them and queues DOMContentLoaded and load
+//! itself ("the end", HTML 13.2.7). This file used to carry a second, V8-bound
+//! copy of those steps - a script walker and two event-firing scripts - that
+//! nothing called.
 //!
 //! ## Specification References
 //!
@@ -20,10 +17,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const v8 = @import("v8");
 const runtime = @import("runtime");
 
-const html_parser = @import("html").parser;
 const host = @import("host");
 
 const log = std.log.scoped(.navigation);
@@ -369,153 +364,6 @@ fn fetchHttpUrl(
 /// perfectly good navigations and an emptiness test would have swallowed them.
 fn isNetworkErrorResponse(response_type: ResponseType, status: u16) bool {
     return response_type == .@"error" or status == 0;
-}
-
-/// Parse HTML content and return a document tree
-pub fn parseHtml(
-    allocator: Allocator,
-    html: []const u8,
-    base_url: []const u8,
-) !*html_parser.TreeBuilder {
-    _ = base_url; // TODO: Use for resolving relative URLs
-
-    // Create tokenizer
-    var tokenizer = html_parser.Tokenizer.init(allocator);
-    defer tokenizer.deinit();
-
-    // Feed HTML to tokenizer
-    tokenizer.feed(html);
-
-    // Create tree builder
-    var tree_builder = try html_parser.TreeBuilder.init(allocator);
-    errdefer tree_builder.deinit();
-
-    // Process tokens
-    while (tokenizer.next()) |token| {
-        try tree_builder.processToken(token);
-    }
-
-    return tree_builder;
-}
-
-/// Execute scripts in the parsed document
-pub fn executeScripts(
-    allocator: Allocator,
-    tree_builder: *html_parser.TreeBuilder,
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-) !void {
-    _ = allocator;
-
-    // Find all script elements
-    const doc = tree_builder.document orelse return;
-
-    // Process script elements in document order
-    try executeScriptsInSubtree(doc, isolate, context);
-}
-
-fn executeScriptsInSubtree(
-    node: *html_parser.TreeNode,
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-) !void {
-    // Check if this is a script element
-    if (node.node_type == .element) {
-        if (node.local_name) |name| {
-            if (std.mem.eql(u8, name, "script")) {
-                try executeScriptElement(node, isolate, context);
-            }
-        }
-    }
-
-    // Recurse to children
-    var child = node.first_child;
-    while (child) |c| {
-        try executeScriptsInSubtree(c, isolate, context);
-        child = c.next_sibling;
-    }
-}
-
-fn executeScriptElement(
-    script_node: *html_parser.TreeNode,
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-) !void {
-    // Get script content from child text nodes
-    var script_content = std.ArrayList(u8).init(script_node.allocator);
-    defer script_content.deinit();
-
-    var child = script_node.first_child;
-    while (child) |c| {
-        if (c.node_type == .text) {
-            const text = c.text_content.items;
-            try script_content.appendSlice(text);
-        }
-        child = c.next_sibling;
-    }
-
-    if (script_content.items.len == 0) return;
-
-    // Execute the script
-    const source_str = v8.ffi.v8_String_NewFromUtf8(
-        isolate,
-        script_content.items.ptr,
-        @intCast(script_content.items.len),
-    ) orelse return;
-
-    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse return;
-    _ = v8.ffi.v8_Script_Run(context, compiled);
-
-    // Run microtasks
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-}
-
-/// Fire DOMContentLoaded event
-pub fn fireDOMContentLoaded(
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-) void {
-    // Execute JavaScript to dispatch DOMContentLoaded
-    const script =
-        \\(function() {
-        \\  if (typeof document !== 'undefined' && document.dispatchEvent) {
-        \\    var event = new Event('DOMContentLoaded', { bubbles: true, cancelable: false });
-        \\    document.dispatchEvent(event);
-        \\  }
-        \\})();
-    ;
-
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
-    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse return;
-    _ = v8.ffi.v8_Script_Run(context, compiled);
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-}
-
-/// Fire load event
-pub fn fireLoad(
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-) void {
-    // Dispatch load at the Window. Dispatch alone runs the onload event
-    // handler: EventTarget's invoke step calls the Window's event handler
-    // IDL attribute along with its listeners. This used to call
-    // `window.onload(event)` again afterwards, so every onload handler ran
-    // TWICE - harmless while `window.onload = f` handlers tolerated it, fatal
-    // once `<body onload="...">` started working: a handler that registers
-    // tests and calls done() registered everything twice and the file ended
-    // in ERROR (encoding/remove-only-one-bom.html).
-    const script =
-        \\(function() {
-        \\  if (typeof window !== 'undefined' && window.dispatchEvent) {
-        \\    window.dispatchEvent(new Event('load', { bubbles: false, cancelable: false }));
-        \\  }
-        \\})();
-    ;
-
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
-    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse return;
-    _ = v8.ffi.v8_Script_Run(context, compiled);
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
 // =============================================================================
