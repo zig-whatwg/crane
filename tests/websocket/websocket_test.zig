@@ -491,6 +491,37 @@ test "the peer starting the closing handshake moves OPEN to CLOSING and queues t
     try testing.expectEqual(@as(u64, 4), conn.bufferedAmount());
 }
 
+test "a transport lost before the peer's Close fails the connection" {
+    // RFC 6455 § 7.2.1: "If at any point the underlying transport layer
+    // connection is unexpectedly lost, the client MUST _Fail the WebSocket
+    // Connection_." Failing is what makes the close task fire `error`.
+    var conn = try websocket.WebSocketConnection.init(testing.allocator, "ws://example.com/echo");
+    defer conn.deinit();
+    conn.state = .OPEN;
+
+    conn.transportClosed();
+    try testing.expect(conn.closed);
+    try testing.expect(conn.failed);
+    try testing.expect(!conn.wasClean());
+    try testing.expectEqual(@as(?u16, 1006), conn.close_code);
+}
+
+test "a transport lost after the peer's Close is a close, not a failure" {
+    // The peer announced it: the code is its Close frame's. Not clean - ours
+    // never went out - but nothing this side was required to fail.
+    var conn = try websocket.WebSocketConnection.init(testing.allocator, "ws://example.com/echo");
+    defer conn.deinit();
+    conn.state = .OPEN;
+
+    conn.handleCloseFrame(&.{ 0x0B, 0xB8 });
+    try testing.expect(!conn.closed);
+    conn.transportClosed();
+    try testing.expect(conn.closed);
+    try testing.expect(!conn.failed);
+    try testing.expect(!conn.wasClean());
+    try testing.expectEqual(@as(?u16, 3000), conn.close_code);
+}
+
 test "a one-byte Close frame fails the connection" {
     var conn = try websocket.WebSocketConnection.init(testing.allocator, "ws://example.com/echo");
     defer conn.deinit();

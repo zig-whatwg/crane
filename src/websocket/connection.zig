@@ -587,8 +587,19 @@ pub const WebSocketConnection = struct {
         while (true) {
             const chunk = backend.receive(scratch) catch |err| switch (err) {
                 error.WouldBlock => return null,
-                else => {
+                // The peer closed the TCP connection - expected after its
+                // Close frame, a failure before it (§ 7.2.1).
+                error.ConnectionLost => {
                     self.transportClosed();
+                    return null;
+                },
+                // libcurl refused what arrived - a reserved opcode, a
+                // malformed or unmasked frame: § 7.1.7, fail the WebSocket
+                // connection, so the close task fires `error` first.
+                // websockets/interfaces/WebSocket/events/018.html sends
+                // opcode 3 and waits for exactly that.
+                else => {
+                    self.failWith(CloseCodes.PROTOCOL_ERROR);
                     return null;
                 },
             };
@@ -699,13 +710,18 @@ pub const WebSocketConnection = struct {
         self.markClosed();
     }
 
-    /// The TCP connection went - by error, or the peer closing it. Clean only
-    /// if the closing handshake had finished; the code is 1006 unless a Close
-    /// frame arrived first (§ 7.1.5).
-    fn transportClosed(self: *Self) void {
+    /// The TCP connection went - by error, or the peer closing it.
+    ///
+    /// Before the peer's Close frame that is unexpected, and RFC 6455 § 7.2.1
+    /// says: "If at any point the underlying transport layer connection is
+    /// unexpectedly lost, the client MUST _Fail the WebSocket Connection_" -
+    /// 1006, and the close task fires `error`. After it, the peer announced
+    /// the close: its code stands (§ 7.1.5), and the close is clean only if
+    /// ours went out too.
+    pub fn transportClosed(self: *Self) void {
         if (self.closed) return;
-        self.close_was_clean = self.close_sent and self.close_received;
-        if (!self.close_received) self.close_code = CloseCodes.ABNORMAL_CLOSURE;
+        if (!self.close_received) return self.fail();
+        self.close_was_clean = self.close_sent;
         self.markClosed();
     }
 
