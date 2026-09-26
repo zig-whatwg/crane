@@ -60,12 +60,35 @@ const clock = @import("clock");
 const host = @import("host");
 const Storage = storage_mod.Storage;
 
-/// Default snapshot file paths to check (in order of priority)
+/// Where a snapshot is looked for, first to last. The build's own output
+/// comes first: a `whatwg_snapshot.bin` in the current directory - one that
+/// was tracked in git from January to September 2026 - won over it, and
+/// every run from the repository root restored that stale snapshot against
+/// the running build's callback table. A candidate the loader refuses (no
+/// build stamp, or not a valid blob) is skipped, not taken because it exists.
 const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
-    "whatwg_snapshot.bin", // Current directory (highest priority)
-    "zig-out/bin/whatwg_snapshot.bin", // Zig build output
+    "zig-out/bin/whatwg_snapshot.bin", // Zig build output (highest priority)
+    "whatwg_snapshot.bin", // Current directory
     "../whatwg_snapshot.bin", // Parent directory (for tests run from subdirs)
 };
+
+/// The first of `candidates` that `usable` accepts, in order, or null.
+fn firstUsableSnapshot(
+    context: anytype,
+    candidates: []const []const u8,
+    comptime usable: fn (@TypeOf(context), []const u8) bool,
+) ?[]const u8 {
+    for (candidates) |path| {
+        if (usable(context, path)) return path;
+    }
+    return null;
+}
+
+/// Whether `path` is a snapshot the loader will take: it exists, carries the
+/// build stamp and holds a valid blob (snapshot_loader.hasValidSnapshot).
+fn isUsableSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
+    return v8.snapshot_loader.hasValidSnapshot(allocator, path);
+}
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
@@ -125,7 +148,7 @@ pub const Browser = struct {
         v8.initializePlatformForRuntime();
 
         // Determine snapshot path to use
-        const snapshot_path = resolveSnapshotPath(config.snapshot_path);
+        const snapshot_path = resolveSnapshotPath(allocator, config.snapshot_path);
         const use_snapshot = snapshot_path != null;
 
         // Create V8 isolate (from snapshot if available)
@@ -260,30 +283,15 @@ pub const Browser = struct {
         return browser;
     }
 
-    /// Resolve snapshot path from config or auto-detect
-    fn resolveSnapshotPath(config_path: ?[]const u8) ?[]const u8 {
-        // If explicitly set in config, use that
+    /// Resolve snapshot path from config or auto-detect: the configured path,
+    /// or the first of DEFAULT_SNAPSHOT_PATHS, if the loader will take it.
+    fn resolveSnapshotPath(allocator: std.mem.Allocator, config_path: ?[]const u8) ?[]const u8 {
         if (config_path) |path| {
             // Empty string means explicitly disabled
             if (path.len == 0) return null;
-            // Check if the file exists
-            if (host.cwd().access(host.io(), path, .{})) |_| {
-                return path;
-            } else |_| {
-                return null;
-            }
+            return if (isUsableSnapshot(allocator, path)) path else null;
         }
-
-        // Auto-detect: check default paths
-        for (DEFAULT_SNAPSHOT_PATHS) |path| {
-            if (host.cwd().access(host.io(), path, .{})) |_| {
-                return path;
-            } else |_| {
-                continue;
-            }
-        }
-
-        return null;
+        return firstUsableSnapshot(allocator, &DEFAULT_SNAPSHOT_PATHS, isUsableSnapshot);
     }
 
     /// Register external references required for snapshot loading
@@ -594,6 +602,25 @@ pub const Browser = struct {
         return self.used_snapshot;
     }
 };
+
+test "the build's own snapshot is looked for first, and a refused candidate is skipped" {
+    try std.testing.expectEqualStrings("zig-out/bin/whatwg_snapshot.bin", DEFAULT_SNAPSHOT_PATHS[0]);
+    const Only = struct {
+        fn accepts(accepted: []const u8, path: []const u8) bool {
+            return std.mem.eql(u8, accepted, path);
+        }
+    };
+    // The build output is refused here, so the next candidate is taken.
+    try std.testing.expectEqualStrings(
+        "whatwg_snapshot.bin",
+        firstUsableSnapshot(@as([]const u8, "whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
+    );
+    try std.testing.expectEqualStrings(
+        "zig-out/bin/whatwg_snapshot.bin",
+        firstUsableSnapshot(@as([]const u8, "zig-out/bin/whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
+    );
+    try std.testing.expect(firstUsableSnapshot(@as([]const u8, "nowhere.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts) == null);
+}
 
 test "Browser - basic lifecycle" {
     const testing = std.testing;
