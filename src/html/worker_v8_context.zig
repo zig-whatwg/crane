@@ -293,6 +293,16 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
 
 /// DedicatedWorkerGlobalScope close() for the global scope whose realm's
 /// runtime context is `ctx`.
+/// The worker's end of a task, as its realm's `end_of_task`: what
+/// `finishTaskIn` does, found by the realm instead of the isolate.
+fn endTaskOfRealm(ctx: runtime.Context) void {
+    const wctx = forScope(ctx) orelse return;
+    const prev_context = current_worker_context;
+    current_worker_context = wctx;
+    defer current_worker_context = prev_context;
+    wctx.endTask();
+}
+
 pub fn closeScope(ctx: runtime.Context) void {
     const wctx = forScope(ctx) orelse return;
     wctx.closeFromScript();
@@ -1259,6 +1269,9 @@ pub const WorkerV8Context = struct {
             null, // Event loop not needed - workers use thread-local timers
             self.allocator,
         );
+        // Tasks the engine runs into this realm from outside it end the way
+        // the worker's own turns do.
+        self.scope_ctx.?.end_of_task = endTaskOfRealm;
 
         // Record the worker's script URL as this context's document URL.
         //
