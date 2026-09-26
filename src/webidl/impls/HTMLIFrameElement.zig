@@ -237,12 +237,22 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 fn destroyRetiredRealm(data: *anyopaque, global: ?*anyopaque, allocator: std.mem.Allocator) void {
     const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
     if (global) |handle| {
-        const global_object: *v8.ffi.Object = @ptrCast(@alignCast(handle));
-        if (entry.window_instance) |window| severWindow(global_object, window);
-        v8.ffi.v8_Object_Dispose(global_object);
+        const value: *v8.ffi.Value = @ptrCast(@alignCast(handle));
+        // Weak (see replaceRealm): empty once V8 has collected the global,
+        // and then nothing can run in it and there is nothing to sever.
+        if (!v8.ffi.v8_Global_IsEmpty(value)) {
+            if (entry.window_instance) |window| {
+                if (v8.helpers.asObject(value)) |global_object| severWindow(global_object, window);
+            }
+        }
+        v8.ffi.v8_Global_Dispose(value);
     }
     context_manager.destroyChildContext(entry, allocator);
 }
+
+/// A retired realm's global object was collected: its weak handle is empty
+/// now, which is all destroyRetiredRealm needs to know.
+fn retiredGlobalCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 
 /// Clear `window` from a retired realm's global object and the prototype
 /// objects behind it (the placeholder, WindowProperties) before the Window is
@@ -2222,15 +2232,24 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     // retired realm keeps it, to sever it from its Window when the Window
     // goes (`destroyRetiredRealm`). V8's V1 GetPrototype on a global proxy
     // answers the hidden global object.
-    const old_global: ?*v8.ffi.Object = if (v8.ffi.v8_Object_GetPrototype(proxy)) |value| v8.helpers.asObject(value) orelse blk: {
-        v8.ffi.v8_Value_Dispose(value);
-        break :blk null;
-    } else null;
+    //
+    // Held weakly: a strong handle would keep the old global - and its whole
+    // native context - alive after the context's entry has let it go, for as
+    // long as the integration lives, which on a page that leaks is forever.
+    const old_global: ?*v8.ffi.Value = blk: {
+        const value = v8.ffi.v8_Object_GetPrototype(proxy) orelse break :blk null;
+        if (v8.helpers.asObject(value) == null) {
+            v8.ffi.v8_Global_Dispose(value);
+            break :blk null;
+        }
+        v8.ffi.v8_Global_SetWeak(@ptrCast(value), null, &retiredGlobalCollected);
+        break :blk value;
+    };
 
     // Detach, then retire the old context with its Window and documents.
     v8.ffi.v8_Context_DetachGlobal(old_entry.v8_ctx);
     integration.retireCurrentRealm(if (old_global) |g| @ptrCast(g) else null) catch {
-        if (old_global) |g| v8.ffi.v8_Object_Dispose(g);
+        if (old_global) |g| v8.ffi.v8_Global_Dispose(g);
         return false;
     };
 
