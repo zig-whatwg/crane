@@ -650,9 +650,11 @@ fn v8CreateUint8Array(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    // Create a backing ArrayBuffer
+    // Create a backing ArrayBuffer. Its Global is ours: the view keeps the
+    // buffer alive in V8's heap, and v8_Uint8Array_New does not retain it.
     const array_buffer = ffi.v8_ArrayBuffer_New(isolate, bytes.len) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_ArrayBuffer_Dispose(array_buffer);
 
     // Copy the bytes into the ArrayBuffer's backing store
     if (bytes.len > 0) {

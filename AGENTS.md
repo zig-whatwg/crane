@@ -855,6 +855,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
 - [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
 - [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
+- [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
 
 ### Debugging
 
