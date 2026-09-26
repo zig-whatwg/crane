@@ -813,14 +813,11 @@ fn submitForm(form: *runtime.Instance) !void {
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
 
-    // Steps 18-23: the target, and a navigable for it. Chosen again when the
-    // planned navigation runs; if there is none now, there is nothing to plan.
+    // Steps 18-23: the target. The navigable for it is chosen when the
+    // planned navigation runs (dom.navigables), which opens a new one for
+    // "_blank" or a name nothing has.
     const target = (try attributeValue(allocator, form, "target")) orelse try allocator.dupe(u8, "");
     errdefer allocator.free(target);
-    if (chooseNavigable(document, target) == null) {
-        allocator.free(target);
-        return;
-    }
 
     // Step 26: the scheme and method pick the behaviour.
     const scheme = parsed_action.scheme();
@@ -847,63 +844,6 @@ fn submitForm(form: *runtime.Instance) !void {
 
     const url = try url_serializer.serialize(allocator, &parsed_action, false);
     planNavigation(form, url, target);
-}
-
-/// "The rules for choosing a navigable" (HTML § 7.3.1.7), for the names this
-/// engine can reach, as the chosen navigable's Location. A new top-level
-/// traversable ("_blank", or a name nothing has) is never created.
-fn chooseNavigable(document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
-    // Step 4: "" or "_self": the current navigable.
-    if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) return locationOf(window);
-    // Step 5: "_parent": the parent, if any, else the current navigable.
-    if (std.ascii.eqlIgnoreCase(name, "_parent")) {
-        return locationOf((interfaces.Window.get_parent(window) catch null) orelse window);
-    }
-    const top = (interfaces.Window.get_top(window) catch null) orelse window;
-    // Step 6: "_top".
-    if (std.ascii.eqlIgnoreCase(name, "_top")) return locationOf(top);
-    if (std.ascii.eqlIgnoreCase(name, "_blank")) return null;
-    // Step 7: a navigable whose target name is `name`, searched from the top.
-    const top_document = interfaces.Window.get_document(top) catch return null;
-    return findNamedNavigable(top_document, name, 0);
-}
-
-fn locationOf(window: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Window.get_location(window) catch null;
-}
-
-/// A child navigable of `document`, or of one of its descendants' documents,
-/// whose container's name is `name`. Depth-first in tree order. The tree is
-/// walked directly: a getElementsByTagName collection made here would be an
-/// instance nothing ever frees.
-fn findNamedNavigable(document: *runtime.Instance, name: []const u8, depth: u8) ?*runtime.Instance {
-    if (depth > 16) return null;
-    var next = nextInTree(document, document, false);
-    while (next) |node| : (next = nextInTree(node, document, false)) {
-        if (!isElementNamed(node, "iframe")) continue;
-        if (containerNameIs(node, name)) {
-            const content_window = (interfaces.HTMLIFrameElement.get_contentWindow(node) catch null) orelse continue;
-            return locationOf(content_window);
-        }
-        const child_document = (interfaces.HTMLIFrameElement.get_contentDocument(node) catch null) orelse continue;
-        if (findNamedNavigable(child_document, name, depth + 1)) |location| return location;
-    }
-    return null;
-}
-
-/// Whether an iframe's content navigable has the target name `name`. That
-/// name comes from the `name` content attribute; the IDL setter keeps its
-/// own copy without writing the attribute, and the parser writes only the
-/// attribute, so either may hold it.
-fn containerNameIs(iframe: *runtime.Instance, name: []const u8) bool {
-    var idl_name = interfaces.HTMLIFrameElement.get_name(iframe) catch return false;
-    defer idl_name.deinit(iframe.ctx.allocator);
-    if (std.mem.eql(u8, idl_name.asSlice(), name)) return true;
-    if (!hasAttribute(iframe, "name")) return false;
-    var attribute = (interfaces.Element.call_getAttribute(iframe, runtime.DOMString.initInterned("name")) catch return false) orelse return false;
-    defer attribute.deinit(iframe.ctx.allocator);
-    return std.mem.eql(u8, attribute.asSlice(), name);
 }
 
 /// A planned navigation (§ 4.10.22.3 "plan to navigate"): the queued task's
@@ -970,12 +910,22 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     const scope = v8.JsScope.init(task.form.ctx) orelse return;
     defer scope.deinit();
 
-    // Step 4.2: Navigate targetNavigable to url.
+    // Step 4.2: "Navigate targetNavigable to url using the form element's
+    // node document, with historyHandling set to historyHandling" - which
+    // submit step 22 made "replace" when the form document is the target's
+    // active document and has not completely loaded. The rules for choosing
+    // a navigable and the navigation are the navigables' (dom.navigables).
     const document = (interfaces.Node.get_ownerDocument(task.form) catch null) orelse return;
-    const location = chooseNavigable(document, task.target) orelse return;
-    interfaces.Location.call_assign(location, task.url) catch |err| {
-        log.debug("planned navigation to {s} failed: {s}", .{ task.url, @errorName(err) });
-    };
+    const navigables = @import("dom").navigables;
+    if (!navigables.isInstalled()) {
+        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    navigables.navigateByTarget(document, .{
+        .target = task.target,
+        .url = task.url,
+        .replace_if_source_not_loaded = true,
+    });
 }
 
 /// Operation: reportValidity
