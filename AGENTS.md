@@ -714,6 +714,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
 - ["Is this still its Window's document?" stops working once navigations make new Windows](docs/lessons/architecture-ask-the-document-whether-it-is-fully-active-not-its-window.md) - Ask the document whether it is fully active, not its Window.
 - [A cache keyed on its source string must update the source on every write path](docs/lessons/architecture-a-cache-keyed-on-its-source-string-must-update-it-on-every-write.md) - Every writer of the value must also write its key.
+- [A USVString getter's result is freed by the binding](docs/lessons/architecture-a-usvstring-getter-s-result-is-freed-by-the-binding.md) - A USVString getter returns memory the binding will free - always a copy, never a view.
+- [A named setter interceptor on a prototype never runs for an instance](docs/lessons/architecture-a-named-setter-interceptor-on-a-prototype-never-runs-for-an-instance.md) - An interceptor on a prototype can serve reads; it cannot serve writes.
 
 ### Spec Compliance
 
@@ -728,6 +730,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A frame's parse skipped "the end" step 5, so no module script ran in a frame](docs/lessons/spec-compliance-a-frame-s-parse-skipped-the-end-step-5-so-no.md) - Every parser driver owes the whole of "the end".
 - [A body that is always a pipe needs main fetch step 20](docs/lessons/spec-compliance-a-body-that-is-always-a-pipe-needs-main-fetch-step-20.md) - When bytes become a stream, "no body" and "empty body" become different states.
 - [Evaluate a spec condition when the spec does](docs/lessons/spec-compliance-evaluate-a-spec-condition-when-the-spec-does.md) - A queued task sees the world after the event that queued it; record what the spec reads at the moment it reads it.
+- [Infra's ASCII whitespace is not `std.ascii.isWhitespace`](docs/lessons/spec-compliance-infra-ascii-whitespace-is-not-std-ascii-iswhitespace.md) - Use Infra's whitespace set for web microsyntaxes; the standard library's includes VT.
 
 ### Codegen
 
@@ -738,6 +741,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An API name nothing binds is a bug report, not only dead code](docs/lessons/codegen-an-api-name-nothing-binds-is-a-bug-report-not.md) - Before deleting an unbound function, ask why the map does not reach it.
 - [WebIDL identifiers drop a leading underscore](docs/lessons/codegen-webidl-identifiers-drop-a-leading-underscore.md) - Grep the generated tables for names starting with `_` after any parser change.
 - [Deduplicating operations by name deleted every overload](docs/lessons/codegen-deduplicating-operations-by-name-deleted-every.md) - Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.
+- [Generated behaviour is only as complete as the IDL](docs/lessons/codegen-generated-behaviour-is-only-as-complete-as-the-idl.md) - Before trusting generated behaviour, read the prose the IDL summarises.
 
 ### Testing
 
