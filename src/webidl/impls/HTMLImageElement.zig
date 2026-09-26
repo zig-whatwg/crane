@@ -460,22 +460,22 @@ fn fireEventTaskCallback(data: ?*anyopaque) void {
         return; // Cancelled
     }
 
-    // CRITICAL: Create JsScope for V8 operations.
-    // Timer callbacks run outside V8's call stack, so there's no HandleScope.
-    // We must create one before any V8 operations (event creation, dispatch).
-    const v8_engine = @import("v8");
-    const js_scope = v8_engine.JsScope.init(instance.ctx) orelse {
-        // Context is invalid (e.g., page navigated away) - silently abort
-        return;
-    };
-    defer js_scope.deinit();
+    // The task runs from the event loop, not from script: it is run as a task
+    // of the element's realm, which enters it. A realm that has gone (the page
+    // navigated away) runs nothing - silently abort.
+    const engine = instance.ctx.getEngine() orelse return;
+    const run_task = engine.runTaskInRealm orelse return;
+    run_task(instance.ctx, fireEventTaskSteps, ctx) catch {};
+}
 
-    // Fire the event
+/// The task's steps, inside the element's realm: fire the event.
+fn fireEventTaskSteps(data: ?*anyopaque) void {
+    const ctx: *FireEventTaskContext = @ptrCast(@alignCast(data.?));
     const event_name = switch (ctx.event_type) {
         .load => "load",
         .@"error" => "error",
     };
-    fireEventOnElement(instance, event_name) catch {};
+    fireEventOnElement(ctx.instance, event_name) catch {};
 }
 
 /// Helper function to create and dispatch an event on an element

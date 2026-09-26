@@ -232,3 +232,23 @@ test "a realm records its document URL, replacing and forgetting it" {
     ctx.clearDocumentUrl();
     try std.testing.expect(ctx.documentUrl() == null);
 }
+
+test "the adapter registers its table as the build's configured engine" {
+    v8.snapshot_loader.registerConfiguredEngine();
+    try std.testing.expect(runtime.configuredEngine() == engine);
+}
+
+test "a Uint8Array leaves no handle behind but its own" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    // V8's own live count, so a leak shows whoever allocated it. Many rounds,
+    // so one leaked handle per call cannot hide in anything else's churn.
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..32) |_| {
+        const made = try engine.createUint8Array.?(context_once.?, "crane");
+        const array: *ffi.Value = @ptrCast(@alignCast(made));
+        try std.testing.expectEqual(@as(usize, 5), ffi.v8_TypedArray_Length(array));
+        ffi.v8_Value_Dispose(array);
+    }
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= before);
+}

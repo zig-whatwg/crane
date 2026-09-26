@@ -692,6 +692,10 @@ pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
 /// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
 /// nearly all of them. Read it as a rate: N per element on a create-and-discard
 /// loop is N leaked per element.
+///
+/// Always 0 unless the wrapper is built with -DCRANE_TRACK_GLOBALS=1, and only
+/// gc_bench is. A test asserting that nothing leaked wants
+/// `v8_Isolate_GetGlobalHandleBytes`, which every build has.
 pub extern fn v8_Debug_CreatedGlobals() i64;
 
 /// Read slot `index` of the Global-creation site histogram. Returns false past the
@@ -704,6 +708,10 @@ pub extern fn v8_Isolate_GetHeapUsage(
     total: ?*usize,
     external: ?*usize,
 ) void;
+/// Bytes of V8's global handle table in use - every live `Global<T>`, counted
+/// by V8 and updated as each is created or reset. In every build: the measure
+/// for a test asserting that an operation leaves no handle behind.
+pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
 /// Native contexts alive in the heap, and how many of those V8 counts as
 /// detached. A page whose contexts outlive it shows here exactly.
 pub extern fn v8_Isolate_GetContextCounts(
@@ -3245,4 +3253,10 @@ pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key:
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+/// Create ReferenceError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ReferenceErrorInContext(context: *Context, message: *String) ?*Value;
+/// WebIDL "write" `length` bytes into an ArrayBufferView, `starting_offset`
+/// bytes into the view, an ArrayBuffer or SharedArrayBuffer alike. False when
+/// `view` is not an ArrayBufferView, is detached, or the bytes do not fit.
+pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, length: usize, starting_offset: usize) bool;
 // ---- end lane: runtime-impls ----

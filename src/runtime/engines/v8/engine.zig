@@ -106,8 +106,22 @@ pub const v8_engine_interface: EngineInterface = .{
     .createSequenceOfPlatformObjects = v8CreateSequenceOfPlatformObjects,
     .relevantGlobalObject = v8RelevantGlobalObject,
     // ---- lane: page-realm ----
+    .invokeCallbackFunction = @import("page_realm.zig").invokeCallbackFunction,
+    .installWindowOperations = @import("page_realm.zig").installWindowOperations,
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    .createObservableArray = @import("observable_array.zig").createObservableArray,
+    .queueMicrotask = @import("value_construction.zig").queueMicrotask,
+    .createResolvedPromise = @import("value_construction.zig").createResolvedPromise,
+    .createRejectedPromise = @import("value_construction.zig").createRejectedPromise,
+    .createSimpleException = @import("value_construction.zig").createSimpleException,
+    .createDictionaryObject = @import("value_construction.zig").createDictionaryObject,
+    .currentRealm = @import("current_realm.zig").currentRealm,
+    .describeArrayBufferView = @import("array_buffer_views.zig").describeArrayBufferView,
+    .writeIntoArrayBufferView = @import("array_buffer_views.zig").writeIntoArrayBufferView,
+    .callUserObjectOperation = @import("callback_interfaces.zig").callUserObjectOperation,
+    .convertToUnrestrictedDouble = @import("webidl_conversions_numeric.zig").convertToUnrestrictedDouble,
+    .takeCallbackFunction = @import("callback_interfaces.zig").takeCallbackFunction,
     // ---- end lane: runtime-impls ----
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,
@@ -687,9 +701,11 @@ fn v8CreateUint8Array(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    // Create a backing ArrayBuffer
+    // Create a backing ArrayBuffer. Its Global is ours: the view keeps the
+    // buffer alive in V8's heap, and v8_Uint8Array_New does not retain it.
     const array_buffer = ffi.v8_ArrayBuffer_New(isolate, bytes.len) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_ArrayBuffer_Dispose(array_buffer);
 
     // Copy the bytes into the ArrayBuffer's backing store
     if (bytes.len > 0) {

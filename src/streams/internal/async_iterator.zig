@@ -4,8 +4,8 @@
 //! Spec: ECMAScript Language Specification §27.1 (Iteration)
 //! Spec: WHATWG Streams §4.2.1 ReadableStreamFromIterable
 //!
-//! This module provides the public interface for async iteration.
-//! The actual V8 FFI implementation is in iterator_record.zig.
+//! This module provides a Zig-only model of async iteration (tests, mocks).
+//! ReadableStream.from() itself is src/webidl/impls/streams_from.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,12 +14,7 @@ const common = @import("common");
 const JSValue = common.JSValue;
 const Promise = common.Promise;
 
-// Import the V8-backed IteratorRecord implementation
-const iterator_record = @import("iterator_record");
-pub const V8IteratorRecord = iterator_record.IteratorRecord;
-
 /// IteratorRecord - lightweight wrapper for internal use
-/// For V8-backed iteration, use V8IteratorRecord directly
 pub const IteratorRecord = struct {
     /// [[Iterator]] - The iterator object
     iterator: JSValue,
@@ -45,7 +40,6 @@ pub const IteratorRecord = struct {
 
 /// GetIterator(obj, hint) - Create iterator from object
 ///
-/// For real V8 integration, use V8IteratorRecord.fromAsyncIterable instead.
 /// This function is for internal Zig-only iteration (testing/mocks).
 ///
 /// Spec: ES §7.4.1 GetIterator
@@ -66,8 +60,6 @@ pub fn getIterator(allocator: Allocator, obj: JSValue, hint: enum { sync, async_
 
 /// IteratorNext(iteratorRecord) - Call next() on iterator
 ///
-/// For real V8 integration, use V8IteratorRecord.next() instead.
-///
 /// Spec: ES §7.4.2 IteratorNext
 pub fn iteratorNext(record: *IteratorRecord) !Promise(JSValue) {
     if (record.done) {
@@ -75,13 +67,11 @@ pub fn iteratorNext(record: *IteratorRecord) !Promise(JSValue) {
     }
 
     // For Zig-only iteration, return pending promise
-    // Real iteration uses V8IteratorRecord.next()
+    // Real iteration is streams_from.zig's
     return Promise(JSValue).pending();
 }
 
 /// IteratorComplete(iterResult) - Get "done" property
-///
-/// For real V8 integration, use V8IteratorRecord.complete() instead.
 ///
 /// Spec: ES §7.4.3 IteratorComplete
 pub fn iteratorComplete(iter_result: JSValue) !bool {
@@ -94,8 +84,6 @@ pub fn iteratorComplete(iter_result: JSValue) !bool {
 }
 
 /// IteratorValue(iterResult) - Get "value" property
-///
-/// For real V8 integration, use V8IteratorRecord.value() instead.
 ///
 /// Spec: ES §7.4.4 IteratorValue
 pub fn iteratorValue(iter_result: JSValue) !JSValue {
@@ -137,8 +125,6 @@ pub fn call(f: JSValue, v: JSValue, args: []const JSValue) !JSValue {
 }
 
 /// IteratorClose(iteratorRecord, completion) - Close iterator
-///
-/// For real V8 integration, use V8IteratorRecord.close() instead.
 ///
 /// Spec: ES §7.4.6 IteratorClose
 pub fn iteratorClose(record: *IteratorRecord, reason: JSValue) !void {

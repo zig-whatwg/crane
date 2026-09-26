@@ -216,19 +216,15 @@ pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(di
 
 /// Post-construction hooks the V8 binding calls. The start algorithm already
 /// ran inside the constructor, where SetUpReadableStreamDefaultController
-/// step 9 puts it, so there is nothing left to do.
-pub fn invokePendingStartCallback(instance: *runtime.Instance, controller_v8: *anyopaque, v8_isolate: *anyopaque, v8_context: *anyopaque) void {
+/// step 9 puts it, so there is nothing left to do. The engine's controller
+/// wrapper, agent and realm handles are unused, and unnamed: they are the
+/// adapter's, not this impl's.
+pub fn invokePendingStartCallback(instance: *runtime.Instance, _: *anyopaque, _: *anyopaque, _: *anyopaque) void {
     _ = instance;
-    _ = controller_v8;
-    _ = v8_isolate;
-    _ = v8_context;
 }
 
-pub fn invokePendingByteStartCallback(instance: *runtime.Instance, controller_v8: *anyopaque, v8_isolate: *anyopaque, v8_context: *anyopaque) void {
+pub fn invokePendingByteStartCallback(instance: *runtime.Instance, _: *anyopaque, _: *anyopaque, _: *anyopaque) void {
     _ = instance;
-    _ = controller_v8;
-    _ = v8_isolate;
-    _ = v8_context;
 }
 
 // ============================================================================

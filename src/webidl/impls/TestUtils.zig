@@ -19,12 +19,11 @@
 //!
 //! ## Engine Abstraction
 //!
-//! GC is performed through the runtime's EngineInterface, not direct V8 calls.
-//! This allows TestUtils to work with any JavaScript engine.
+//! GC and the promise both go through the runtime's EngineInterface, not
+//! direct V8 calls (AGENTS.md, "The engine boundary").
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 
 /// Error set for TestUtils operations
 pub const TestUtilsError = error{
@@ -32,36 +31,8 @@ pub const TestUtilsError = error{
     NoEngine,
     /// Engine context not available
     NoEngineContext,
-    /// Failed to create Promise
-    PromiseCreationFailed,
-    /// Failed to resolve Promise
-    PromiseResolutionFailed,
-    /// GC operation failed
-    GCFailed,
-    /// Thread spawn failed
-    ThreadSpawnFailed,
-    /// Out of memory
-    OutOfMemory,
-};
-
-/// GC task data passed to the background thread
-const GCTaskData = struct {
-    /// V8 isolate for GC operation
-    isolate: *v8.ffi.Isolate,
-    /// Promise resolver to resolve after GC completes
-    resolver: *v8.ffi.PromiseResolver,
-    /// Context for Promise resolution
-    context: *v8.ffi.Context,
-    /// Allocator for cleanup
-    allocator: std.mem.Allocator,
-
-    /// Clean up the task data
-    pub fn deinit(self: *GCTaskData) void {
-        // Note: We don't dispose the resolver here because the Promise
-        // is still held by JavaScript. The resolver will be cleaned up
-        // when the Promise is garbage collected.
-        self.allocator.destroy(self);
-    }
+    /// The engine does not provide an operation gc() needs
+    NotSupported,
 };
 
 /// Operation: gc
@@ -76,91 +47,24 @@ const GCTaskData = struct {
 ///    2.2 Resolve `p`.
 /// 3. Return `p`.
 ///
-/// ## Parameters
-///
-/// - `ctx`: Runtime context providing access to JavaScript engine
-///
-/// ## Returns
-///
-/// Returns an opaque pointer to a V8 Promise object that resolves to `undefined`
-/// after garbage collection completes.
-///
-/// ## Errors
-///
-/// - `NoEngine`: No JavaScript engine configured in context
-/// - `NoEngineContext`: Engine context (isolate) not available
-/// - `PromiseCreationFailed`: Failed to create V8 Promise
-/// - `ThreadSpawnFailed`: Failed to spawn background GC thread
-///
+/// The collection runs synchronously, before `p` is returned: an engine's
+/// collector runs on the thread that owns its heap, and "in parallel" here
+/// only asks that script not be blocked from receiving `p`. So step 2.2 has
+/// already happened when step 3 returns - `p` is a promise resolved with
+/// undefined, made in the current realm.
 pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
-    // Verify we have an engine context configured
-    _ = ctx.getEngineContext() orelse return TestUtilsError.NoEngineContext;
+    const engine = ctx.getEngine() orelse return TestUtilsError.NoEngine;
+    const engine_ctx = ctx.getEngineContext() orelse return TestUtilsError.NoEngineContext;
+    const collect = engine.requestGarbageCollection orelse return TestUtilsError.NotSupported;
+    const resolved_with = engine.createResolvedPromise orelse return TestUtilsError.NotSupported;
+    const current_realm = engine.currentRealm orelse return TestUtilsError.NotSupported;
 
-    // 1. Get the current V8 isolate
-    //    When we're called from V8, there's always a current isolate
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse
-        return TestUtilsError.NoEngineContext;
+    // Step 2.1: implementation-defined steps to collect garbage.
+    try collect(engine_ctx);
 
-    // 2. Get the current V8 context from the isolate
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse
-        return TestUtilsError.NoEngineContext;
-    defer v8.ffi.v8_Context_Dispose(v8_context);
-
-    // 3. Create a new Promise (Step 1 of spec)
-    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse
-        return TestUtilsError.PromiseCreationFailed;
-
-    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
-        v8.ffi.v8_PromiseResolver_Dispose(resolver);
-        return TestUtilsError.PromiseCreationFailed;
-    };
-
-    // 4. Run GC "in parallel" (Step 2 of spec)
-    //
-    // Per the WHATWG spec, GC should run "in parallel" which means on a
-    // background thread. However, V8's GC APIs are typically isolate-bound
-    // and should be called from the isolate's thread.
-    //
-    // For this implementation, we perform GC synchronously since:
-    // - V8's LowMemoryNotification/IdleNotification are designed to be
-    //   called from the main thread
-    // - The spec's "in parallel" primarily means "don't block JS execution"
-    //   which is satisfied by returning a Promise
-    //
-    // Future enhancement: Use V8's task posting API to schedule GC work
-    // and resolve the Promise via microtask.
-
-    // Perform garbage collection synchronously
-    v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-
-    // 5. Resolve the Promise (Step 2.2 of spec)
-    //
-    // Resolve with undefined since gc() returns Promise<undefined>
-    const undefined_val = v8.ffi.v8_Undefined(isolate) orelse {
-        v8.ffi.v8_Promise_Dispose(promise);
-        v8.ffi.v8_PromiseResolver_Dispose(resolver);
-        return TestUtilsError.PromiseResolutionFailed;
-    };
-    defer v8.ffi.v8_Value_Dispose(undefined_val);
-
-    const resolve_success = v8.ffi.v8_PromiseResolver_Resolve(
-        resolver,
-        v8_context,
-        undefined_val,
-    );
-
-    if (!resolve_success) {
-        v8.ffi.v8_Promise_Dispose(promise);
-        v8.ffi.v8_PromiseResolver_Dispose(resolver);
-        return TestUtilsError.PromiseResolutionFailed;
-    }
-
-    // Clean up the resolver (Promise handle is returned to JS)
-    // Note: We keep the promise alive, it will be disposed by V8's GC
-    v8.ffi.v8_PromiseResolver_Dispose(resolver);
-
-    // 6. Return the Promise (Step 3 of spec)
-    return runtime.JSValue.fromHandle(@ptrCast(promise));
+    // Steps 1, 2.2 and 3: p, resolved with undefined (Promise<undefined>).
+    // OWNED: the binding takes it.
+    return resolved_with(current_realm() orelse ctx, runtime.JSValue.jsUndefined);
 }
 
 // ============================================================================

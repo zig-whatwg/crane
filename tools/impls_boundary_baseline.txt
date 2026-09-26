@@ -3,9 +3,6 @@
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
 src/browser/Context.zig Document.setDefaultView 1
-src/browser/Context.zig EventTarget.call_addEventListener 3
-src/browser/Context.zig EventTarget.call_dispatchEvent 3
-src/browser/Context.zig EventTarget.call_removeEventListener 3
 src/browser/Context.zig HTMLIFrameElement.get_contentWindow 1
 src/browser/Context.zig HTMLParser.ScriptLoader 2
 src/browser/Context.zig HTMLParser.parseHTMLWithScripting 1
@@ -13,7 +10,6 @@ src/browser/Context.zig Location.setWindow 1
 src/browser/Context.zig Window.getInternal 4
 src/browser/Context.zig Window.setBoundV8Global 3
 src/browser/Context.zig Window.setDocument 1
-src/browser/Context.zig Window.setHistory 1
 src/browser/Context.zig Window.setLocation 1
 src/browser/Context.zig Window.setNavigator 1
 src/browser/Context.zig Window.setOrigin 1
@@ -77,9 +73,9 @@ src/html/script_execution.zig Document.SpeculationEagerness 1
 src/html/script_execution.zig Document.addImportMapping 1
 src/html/script_execution.zig Document.addPrefetchHint 2
 src/html/script_execution.zig Document.addScopedImportMapping 1
-src/html/script_execution.zig Document.addScriptToExecuteAsap 2
-src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 3
-src/html/script_execution.zig Document.addScriptToExecuteWhenParsingFinished 3
+src/html/script_execution.zig Document.addScriptToExecuteAsap 1
+src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 2
+src/html/script_execution.zig Document.addScriptToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.clearScriptsToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.decrementIgnoreDestructiveWritesCounter 1
 src/html/script_execution.zig Document.getCurrentScript 1
@@ -101,7 +97,7 @@ src/html/script_execution.zig Document.setCurrentScript 2
 src/html/script_execution.zig Document.setImportMapAcquired 1
 src/html/script_execution.zig Document.setModule 1
 src/html/script_execution.zig Document.setModuleDisposeFunction 1
-src/html/script_execution.zig Document.setPendingParsingBlockingScript 3
+src/html/script_execution.zig Document.setPendingParsingBlockingScript 2
 src/html/script_execution.zig Element.getInternal 2
 src/html/script_execution.zig Event.setIsTrusted 1
 src/html/script_execution.zig HTMLScriptElement.ClassicScript 1
@@ -118,12 +114,12 @@ src/html/script_execution.zig HTMLScriptElement.getResult 3
 src/html/script_execution.zig HTMLScriptElement.getScriptType 1
 src/html/script_execution.zig HTMLScriptElement.hasAlreadyStarted 1
 src/html/script_execution.zig HTMLScriptElement.isFromExternalFile 1
-src/html/script_execution.zig HTMLScriptElement.isReadyToBeParserExecuted 4
+src/html/script_execution.zig HTMLScriptElement.isReadyToBeParserExecuted 3
 src/html/script_execution.zig HTMLScriptElement.setAlreadyStarted 1
 src/html/script_execution.zig HTMLScriptElement.setFromExternalFile 1
 src/html/script_execution.zig HTMLScriptElement.setParserDocument 2
 src/html/script_execution.zig HTMLScriptElement.setPreparationTimeDocument 1
-src/html/script_execution.zig HTMLScriptElement.setReadyToBeParserExecuted 4
+src/html/script_execution.zig HTMLScriptElement.setReadyToBeParserExecuted 1
 src/html/script_execution.zig HTMLScriptElement.setResult 7
 src/html/script_execution.zig HTMLScriptElement.setScriptType 1
 src/html/script_execution.zig HTMLScriptElement.setScriptUrl 1
@@ -160,11 +156,6 @@ src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 26
 src/runtime/engines/v8/context_manager.zig Window.setDocument 12
 src/runtime/engines/v8/context_manager.zig Window.setLocation 12
 src/runtime/engines/v8/conversions.zig Window.getBoundV8Global 1
-src/runtime/engines/v8/interface.zig ReadableStream.State 1
-src/runtime/engines/v8/interface.zig ReadableStream.invokePendingByteStartCallback 1
-src/runtime/engines/v8/interface.zig ReadableStream.invokePendingStartCallback 1
-src/runtime/engines/v8/interface.zig WritableStream.State 1
-src/runtime/engines/v8/interface.zig WritableStream.invokePendingStartCallback 1
 src/runtime/engines/v8/template_registry.zig Document.getBoundV8Wrapper 1
 src/runtime/engines/v8/template_registry.zig Window.getBoundV8Global 1
 src/runtime/engines/v8/window_properties.zig Window.getNamedProperty 2
@@ -173,9 +164,6 @@ src/runtime/engines/v8/wrapper_cache.zig Document.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig History.getInternal 1
 src/runtime/engines/v8/wrapper_cache.zig Location.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig Node.getInternalState 9
-src/streams/internal/algorithms/reader_ops.zig ReadableStream.readableStreamCancelFromReaderWithOptReason 1
-src/streams/internal/algorithms/reader_ops.zig ReadableStreamDefaultController.pullSteps 1
-src/streams/internal/algorithms/reader_ops.zig ReadableStreamDefaultReader.ReadResult 2
 src/webidl/impls/AbortController.zig AbortSignal.signalAbort 1
 src/webidl/impls/Blob.zig ReadableStream.ZigUnderlyingSource 1
 src/webidl/impls/Blob.zig ReadableStream.createFromZigSource 1
@@ -352,7 +340,6 @@ src/webidl/impls/Window.zig CustomElementRegistry.init 1
 src/webidl/impls/Window.zig Document.deinit 1
 src/webidl/impls/Window.zig Element.InternalState 2
 src/webidl/impls/Window.zig Element.getInternal 3
-src/webidl/impls/Window.zig History.HistoryEntry 2
 src/webidl/impls/Window.zig History.State 2
 src/webidl/impls/Window.zig History.deinit 2
 src/webidl/impls/Window.zig History.getInternal 2

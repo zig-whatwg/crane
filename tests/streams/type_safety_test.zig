@@ -33,16 +33,11 @@ const testing = std.testing;
 // These are defined in build.zig and made available to test modules
 const common = @import("streams_common");
 
-// Note: v8_promise_chaining tests are included inline in v8_promise_chaining.zig itself
-// because it requires V8 FFI types that aren't available in the test context.
-// The TypedChainConfig tests here use a simplified approach.
-
 // ============================================================================
 // Type-Safe Callback Pattern Tests
 // ============================================================================
 //
-// Note: TypedChainConfig tests are in v8_promise_chaining.zig itself since they
-// require V8 FFI types. These tests demonstrate the general callback typing pattern.
+// These tests demonstrate the general callback typing pattern.
 
 test "Typed callback pattern - context preservation" {
     // This pattern is used throughout streams for type-safe callbacks
