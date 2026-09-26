@@ -404,6 +404,14 @@ status = "doing"
 branch = "lane/websockets"
 paths = ["src/websocket/", "src/webidl/impls/{WebSocket,CloseEvent}.zig", "tests/websocket/", "tests/wpt/crane/ws-*"]
 
+[[lane]]
+name = "Scripting (the script element)"
+area = "html/semantics/scripting-1/"
+owner = "agent"
+status = "doing"
+branch = "lane/scripting"
+paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "tests/html/script*", "tests/html/module*", "tests/wpt/crane/script-*"]
+
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
 # ---------------------------------------------------------------------------
