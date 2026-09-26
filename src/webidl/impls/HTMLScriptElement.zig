@@ -245,6 +245,8 @@ pub fn init(
     // And a clone of one must not run again: the cloning steps copy "already
     // started" (HTML § 4.12.1.1).
     dom_module.cloning_steps.install(&cloningSteps);
+    // And a connected one whose src is set prepares itself again.
+    dom_module.attribute_change_steps.install("script", &attributeChangeSteps);
 
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -903,6 +905,57 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     const source = getInternal(node) orelse return;
     const target = getInternal(copy) orelse return;
     target.already_started = source.already_started;
+}
+
+/// The attribute change steps HTML defines for script elements, and the
+/// force-async rule that rides on the same event.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
+/// "1. If namespace is not null, then return.
+///  2. If localName is src and element is connected, then run the script HTML
+///     element post-connection steps, given element."
+/// "When an async attribute is added to a script element el, the user agent
+///  must set el's force async to false."
+///
+/// Only when src is SET: removing it prepares nothing. The spec text reads
+/// "src" with no condition on the value, but the review of whatwg/html PR
+/// 10188 that wrote these steps settled on "set or changed", which is what
+/// browsers do and what remove-src-attr-prepare-a-script.html asserts:
+/// preparing on a removal would run a connected, unstarted script's inline
+/// text.
+///
+/// A script inserted with an invalid type, or with no src and no text, is
+/// connected and not yet started; setting its src afterwards is what runs it
+/// (change-src-attr-prepare-a-script.html, execution-timing/023.html).
+fn attributeChangeSteps(
+    element: *runtime.Instance,
+    local_name: []const u8,
+    old_value: ?[]const u8,
+    value: ?[]const u8,
+    namespace: ?[]const u8,
+) void {
+    // Installed for the local name "script", which an SVG script shares; the
+    // steps are the HTML script element's.
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+
+    // Step 1.
+    if (namespace != null) return;
+
+    if (std.mem.eql(u8, local_name, "async") and old_value == null and value != null) {
+        internal.force_async = false;
+    }
+
+    // Step 2, for a src that is set.
+    if (!std.mem.eql(u8, local_name, "src") or value == null) return;
+    if (!(NodeImpl.get_isConnected(element) catch false)) return;
+    // The post-connection steps: step 1 returns for a parser-inserted script,
+    // and prepare step 1 for one that has started.
+    if (internal.parser_document != null) return;
+    if (internal.already_started) return;
+    _ = prepareScriptElement(element.ctx.allocator, element) catch |err| {
+        log.debug("attribute change steps: prepare failed: {}", .{err});
+    };
 }
 
 /// Register the script insertion and children changed steps with the DOM
