@@ -899,7 +899,7 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
-    pending.fetch = fetch_mod.algorithms.AsyncFetch.start(
+    pending.fetch = fetch_mod.algorithms.AsyncFetch.startStreaming(
         allocator,
         request,
         .{},
@@ -1142,7 +1142,7 @@ const PendingFetch = struct {
         self.disarmTimeout();
         if (self.fetch) |f| {
             self.fetch = null;
-            f.terminate(.{ .kind = .aborted });
+            f.terminateWith(.{ .kind = .aborted });
             self.fetch_holds = false;
         }
         self.maybeFree();
@@ -1180,7 +1180,7 @@ const PendingFetch = struct {
         self.detach();
         if (self.fetch) |f| {
             self.fetch = null;
-            f.terminate(.{ .kind = .network });
+            f.terminateWith(.{ .kind = .network });
             self.fetch_holds = false;
         }
         const isolate = self.isolate;

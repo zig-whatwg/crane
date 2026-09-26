@@ -201,7 +201,7 @@ test "terminate ends a fetch with no word to its client" {
     var recorder: Recorder = .{};
     const f = try AsyncFetch.start(testing.allocator, try requestFor(server, "/delay/1"), .{}, &scheduler, recorder.client());
     _ = async_fetch.pumpWith(&scheduler);
-    f.terminate(.{ .kind = .network });
+    f.terminate();
 
     const deadline = clock.monotonicMillis() + 1_500;
     while (clock.monotonicMillis() < deadline) {
@@ -288,7 +288,7 @@ test "a response is handed on at its headers, and its body arrives through its p
     var reader: StreamingReader = .{};
     defer reader.deinit();
     const started = clock.monotonicMillis();
-    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/10"), .{}, &scheduler, reader.client());
+    _ = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/trickle/10"), .{}, &scheduler, reader.client());
 
     const Until = struct {
         fn finished(ctx: *anyopaque) bool {
@@ -320,7 +320,7 @@ test "a body that fails after its headers fails its pipe" {
 
     var reader: StreamingReader = .{};
     defer reader.deinit();
-    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/bad-chunk"), .{}, &scheduler, reader.client());
+    _ = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/bad-chunk"), .{}, &scheduler, reader.client());
     const Until = struct {
         fn finished(ctx: *anyopaque) bool {
             const r: *StreamingReader = @ptrCast(@alignCast(ctx));
@@ -344,7 +344,7 @@ test "a response dropped while its body arrives stops the transfer" {
 
     var reader: StreamingReader = .{};
     defer reader.deinit();
-    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
+    _ = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
     const Until = struct {
         fn responded(ctx: *anyopaque) bool {
             const r: *StreamingReader = @ptrCast(@alignCast(ctx));
@@ -364,7 +364,7 @@ test "a response dropped while its body arrives stops the transfer" {
     try testing.expectEqual(@as(usize, 0), async_fetch.inFlight());
 }
 
-test "a collecting fetch hands on its response only with the whole body, as bytes" {
+test "start() collects: the response comes only with the whole body, as bytes" {
     try network.globalInit();
     defer network.globalCleanup();
     const server = try TestServer.start(testing.allocator);
@@ -375,7 +375,7 @@ test "a collecting fetch hands on its response only with the whole body, as byte
     var reader: StreamingReader = .{};
     defer reader.deinit();
     const started = clock.monotonicMillis();
-    _ = try AsyncFetch.startWith(testing.allocator, try requestFor(server, "/trickle/5"), .{}, .{ .collect = true }, &scheduler, reader.client());
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/5"), .{}, &scheduler, reader.client());
     const Until = struct {
         fn finished(ctx: *anyopaque) bool {
             const r: *StreamingReader = @ptrCast(@alignCast(ctx));
@@ -400,7 +400,7 @@ test "terminating a fetch whose body is arriving fails the body" {
 
     var reader: StreamingReader = .{};
     defer reader.deinit();
-    const f = try AsyncFetch.start(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
+    const f = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/trickle/20"), .{}, &scheduler, reader.client());
     const Until = struct {
         fn responded(ctx: *anyopaque) bool {
             const r: *StreamingReader = @ptrCast(@alignCast(ctx));
@@ -409,7 +409,7 @@ test "terminating a fetch whose body is arriving fails the body" {
     };
     turnUntil(&scheduler, 5_000, Until.responded, &reader);
 
-    f.terminate(.{ .kind = .aborted });
+    f.terminateWith(.{ .kind = .aborted });
 
     const pipe = reader.response.?.body.?.pipe.?;
     try testing.expectEqual(fetch.internal.body_pipe.State.errored, pipe.state);
@@ -428,7 +428,7 @@ test "a response with a null body status has a null body, and its transfer stops
 
     var reader: StreamingReader = .{};
     defer reader.deinit();
-    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/status/204"), .{}, &scheduler, reader.client());
+    _ = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/status/204"), .{}, &scheduler, reader.client());
     const Until = struct {
         fn finished(ctx: *anyopaque) bool {
             const r: *StreamingReader = @ptrCast(@alignCast(ctx));
