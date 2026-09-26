@@ -696,7 +696,9 @@ fn deliver(
         webidl.Opt(bool).passed(false),
     ) catch return;
 
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
+    // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
+    // ancestor, so its impl.
+    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 

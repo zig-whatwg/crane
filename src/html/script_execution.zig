@@ -2534,7 +2534,8 @@ fn fireAtScriptElement(
     // Fired by the user agent, not by script.
     impls.Event.setIsTrusted(event, true);
 
-    _ = interfaces.EventTarget.call_dispatchEvent(script_element, event) catch |err| {
+    // Fired by the user agent, so trusted (DOM 2.10).
+    _ = @import("dom").fire_event.dispatchTrusted(script_element, event) catch |err| {
         log.debug("Failed to dispatch {s} event: {any}", .{ event_type, err });
         return;
     };

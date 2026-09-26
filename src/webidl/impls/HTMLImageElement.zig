@@ -585,7 +585,9 @@ fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void
 
     // Dispatch the event on the element
     // HTMLImageElement inherits from Element which inherits from EventTarget
-    _ = try EventTarget.call_dispatchEvent(instance, event);
+    // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
+    // ancestor, so its impl.
+    _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 
 /// Setter for srcset
