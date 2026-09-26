@@ -56,7 +56,7 @@ const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
 
 threadlocal var current_timer_interface: ?TimerInterface = null;
 threadlocal var current_allocator: ?std.mem.Allocator = null;
-threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
+threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *WindowTimerCallback) = null;
 
 // ============================================================================
 // Animation frames
@@ -81,27 +81,23 @@ const FRAME_INTERVAL_MS: u64 = 16;
 
 const AnimationFrameEntry = struct {
     handle: u32,
-    /// OWNED. `info.get` is `v8_FunctionCallbackInfo_GetArgument`, whose C++ body
-    /// ends `return trackHandle(new Global<Value>(isolate, arg))` - so it hands
-    /// back a heap-allocated Global and the caller owns it. That is what lets it
-    /// outlive the registering scope, and it means this entry must dispose it:
+    /// OWNED: the engine handed it over with requestAnimationFrame. Released
     /// once the callback has run, once it has been cancelled, or at teardown.
-    callback_fn: *v8.ffi.Function,
-    /// OWNED - `v8_Isolate_GetCurrentContext` allocates a Global per call.
+    callback: runtime.JSValue,
     /// The realm of the requestAnimationFrame that registered the callback:
     /// each Window has its own map of animation frame callbacks, so the
     /// callback runs, and reports what it throws, in the window it came from.
-    context: *v8.ffi.Context,
+    /// Not owned: the context manager keeps a realm until teardown, and a
+    /// destroyed window's entries go with it (windowDestroyed).
+    realm: runtime.Context,
     cancelled: bool = false,
 
     fn deinit(self: AnimationFrameEntry) void {
-        v8.ffi.v8_Global_Dispose(@ptrCast(self.callback_fn));
-        v8.ffi.v8_Global_Dispose(@ptrCast(self.context));
+        releaseValue(self.realm, self.callback);
     }
 };
 
 const AnimationFrameState = struct {
-    isolate: *v8.ffi.Isolate,
     /// Registered for the NEXT frame, in registration order.
     pending: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty,
     /// The single timer driving the next frame, if one is scheduled.
@@ -150,18 +146,16 @@ threadlocal var animation_frame_origin_ms: i64 = 0;
 // Thread-local because the nesting level belongs to the agent, and one agent is one
 // thread with one isolate.
 
-// HTML §8.6's nesting and clamp now live in `v8.native_timer`, so the worker
-// binding can apply the same rule - it previously had no clamp at all. These are
-// aliases, not a second copy: two definitions of a spec constant is how the two
-// paths diverged in the first place.
-const nested_min_delay_ms = runtime.timer.nested_min_delay_ms;
-const nesting_threshold = runtime.timer.nesting_threshold;
+// HTML §8.6's nesting and clamp live in `runtime.timer`, shared with the worker
+// binding - which previously had no clamp at all. Aliases, not a second copy: two
+// definitions of a spec constant is how the two paths diverged in the first place.
+const clampTimeout = runtime.timer.clampTimeout;
 
 /// Restore the timer nesting level at the start of the microtask checkpoint.
 ///
-/// A plain `defer` around the callback restores too late. V8's default microtask
-/// policy drains the queue when the JS call stack empties - which happens INSIDE
-/// `v8_Function_Call` - so a microtask queued by a timer callback would still
+/// A plain `defer` around the callback restores too late. The engine drains the
+/// microtask queue when the JS call stack empties - which happens INSIDE the
+/// callback's invocation - so a microtask queued by a timer callback would still
 /// observe the task's nesting level and have its sub-4ms timeout clamped.
 ///
 /// Microtasks run FIFO, so enqueueing this BEFORE invoking the callback puts it
@@ -169,8 +163,34 @@ const nesting_threshold = runtime.timer.nesting_threshold;
 /// spec boundary: a setTimeout called synchronously from the callback nests one
 /// deeper, while one scheduled from a microtask does not inherit the level at all.
 /// The checkpoint runs between tasks, so the level there is 0 by definition.
-fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
+fn resetNestingMicrotask(_: ?*anyopaque) void {
     runtime.timer.nesting_level = 0;
+}
+
+/// Release a value the engine handed over (OWNED), through the engine of the
+/// realm it came from.
+fn releaseValue(realm: runtime.Context, value: runtime.JSValue) void {
+    const engine = realm.getEngine() orelse return;
+    if (engine.releaseValue) |release| release(value);
+}
+
+/// The Window whose realm `realm` is: its realm record's global object.
+fn realmWindow(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global = record.global_object orelse return null;
+    return @ptrCast(@alignCast(global));
+}
+
+/// HTML "report an exception" for the Window `host`: an ErrorEvent at it,
+/// `window.onerror`.
+fn reportToWindow(host: ?*anyopaque, info: *const runtime.ErrorInfo) void {
+    const window: *runtime.Instance = @ptrCast(@alignCast(host orelse return));
+    const thrown: ?*anyopaque = if (info.error_value) |value| value.asEngineHandle() else null;
+    // TODO(engine adapter): transitional - reportException(global, *const runtime.ErrorInfo).
+    // report_exception takes the engine's own value until the scripting lane's
+    // engine-neutral entry point lands, so the handle is passed through
+    // unexamined; it re-derives the error's position from the value, as it did.
+    _ = html_mod.report_exception.reportException(window, @ptrCast(@alignCast(thrown)), .{});
 }
 
 /// Invoke a timer or animation frame callback, reporting what it throws.
@@ -178,55 +198,37 @@ fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
 /// HTML's timer initialization steps and "run the animation frame callbacks"
 /// invoke the callback with "report": an exception is REPORTED for the
 /// global - an ErrorEvent at the Window, `window.onerror` - not printed and
-/// dropped, which is all `v8_Function_Call` did. It also returned an owned
-/// Global for the result that every caller here threw away.
-fn invokeReporting(
-    context: *v8.ffi.Context,
-    function: *v8.ffi.Function,
-    receiver: anytype,
-    args: []const *v8.ffi.Value,
-) void {
-    var threw = false;
-    const completion = v8.ffi.v8_Function_CallCatching(
-        context,
-        @ptrCast(function),
-        @ptrCast(receiver),
-        @intCast(args.len),
-        args.ptr,
-        &threw,
-    ) orelse return;
-    defer v8.ffi.v8_Global_Dispose(completion);
-    if (!threw) return;
-
-    const report = html_mod.report_exception;
-    const window = report.globalForContext(context) orelse return;
-    _ = report.reportException(window, completion, .{});
+/// dropped. The callback this value is the WindowProxy. (For animation frames
+/// the spec gives none, so a strict callback should see undefined; the
+/// WindowProxy is what this binding has always passed, and is kept.)
+fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: []const runtime.JSValue) void {
+    const engine = realm.getEngine() orelse return;
+    const invoke = engine.invokeCallbackFunction orelse return;
+    invoke(realm, callback, .global_this, args, reportToWindow, realmWindow(realm)) catch |err| {
+        log.debug("a timer or animation frame callback was not invoked: {}", .{err});
+    };
 }
 
-/// Apply the clamping half of the timer initialisation steps.
-///
-/// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
-/// so it can be unit-tested without a V8 isolate.
-const clampTimeout = runtime.timer.clampTimeout;
+/// "Clean up after running script" at the end of a timer or frame task: the
+/// microtask checkpoint of the agent `realm` belongs to.
+fn performMicrotaskCheckpoint(realm: runtime.Context) void {
+    const engine = realm.getEngine() orelse return;
+    const checkpoint = engine.performMicrotaskCheckpoint orelse return;
+    checkpoint(realm) catch {};
+}
 
-/// Set the current timer interface for V8 callbacks
+/// Set the current timer interface
 pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
     current_timer_interface = timer;
     current_allocator = allocator;
     // Initialize timer contexts map if needed
     if (timer_contexts == null) {
-        timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(allocator);
+        timer_contexts = std.AutoHashMap(TimerId, *WindowTimerCallback).init(allocator);
     }
     animation_frame_origin_ms = clock.monotonicMillis();
-
-    // Every window created under this one - an iframe's, a popup's - gets the
-    // same timer, animation frame and fetch bindings, and gives them up when
-    // it is destroyed. They serve every realm from the state above.
-    context_manager.setChildContextGlobalsCallback(registerChildContextGlobals);
-    context_manager.setChildWindowCleanupCallback(clearChildWindowState);
 }
 
-/// Get the current timer interface (for V8 callbacks)
+/// Get the current timer interface
 pub fn getTimerInterface() ?TimerInterface {
     return current_timer_interface;
 }
@@ -255,43 +257,48 @@ pub fn clearTimerInterface() void {
         timer_contexts = null;
     }
 
-    // Animation frames: cancel the frame timer and drop the pending batch. The
-    // entries hold Globals owned by V8, not by us, so only the list is freed.
+    // Animation frames: cancel the frame timer and drop the pending batch.
     if (animation_frames) |*state| {
         if (state.timer_id) |id| {
             if (current_timer_interface) |timer| _ = timer.clearTimeout(id);
         }
-        // Every pending entry still owns its callback and context Globals.
+        // Every pending entry still owns its callback.
         for (state.pending.items) |entry| entry.deinit();
         if (current_allocator) |alloc| state.pending.deinit(alloc);
         animation_frames = null;
     }
 
+    // TODO(engine adapter): destroyWindowRealm ends the operations the realm
+    // installed (the child-window hooks); until it exists, teardown clears them.
     context_manager.clearChildContextGlobalsCallback();
     context_manager.clearChildWindowCleanupCallback();
     current_timer_interface = null;
     current_allocator = null;
 }
 
-/// Whether two context handles name the same V8 context. Each reads the
-/// context's current address; nothing between the two reads can allocate, so
-/// no GC can move it in between.
-fn sameContext(a: *v8.ffi.Context, b: *v8.ffi.Context) bool {
-    return v8.ffi.v8_Context_GetRawAddress(a) == v8.ffi.v8_Context_GetRawAddress(b);
-}
+/// The window's native operations, as the engine binds them: the host's
+/// steps behind setTimeout, setInterval, their clears, and the animation
+/// frame methods (see `runtime.WindowOperations`).
+const window_operations = runtime.WindowOperations{
+    .initializeTimer = initializeTimer,
+    .clearTimer = clearTimer,
+    .requestAnimationFrame = requestAnimationFrame,
+    .cancelAnimationFrame = cancelAnimationFrame,
+    .windowDestroyed = clearWindowState,
+};
 
-/// context_manager's child-window cleanup hook: a frame's document is being
-/// destroyed, and with it its window's map of active timers (HTML "unloading
-/// document cleanup steps": clear window's map of active timers) and its map
-/// of animation frame callbacks. Without this a removed frame's timers kept
-/// firing, and a destroyed one's fired into a window whose state was freed.
-fn clearChildWindowState(context: *v8.ffi.Context) void {
+/// A frame's document is being destroyed, and with it its window's map of
+/// active timers (HTML "unloading document cleanup steps": clear window's map
+/// of active timers) and its map of animation frame callbacks. Without this a
+/// removed frame's timers kept firing, and a destroyed one's fired into a
+/// window whose state was freed.
+fn clearWindowState(realm: runtime.Context) void {
     if (timer_contexts) |*map| {
         var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
         defer if (current_allocator) |alloc| doomed.deinit(alloc);
         var iter = map.iterator();
         while (iter.next()) |entry| {
-            if (!sameContext(entry.value_ptr.*.getData().v8_context, context)) continue;
+            if (entry.value_ptr.*.getData().realm != realm) continue;
             const alloc = current_allocator orelse break;
             doomed.append(alloc, entry.key_ptr.*) catch break;
         }
@@ -303,66 +310,17 @@ fn clearChildWindowState(context: *v8.ffi.Context) void {
         // The batch in progress sees its own entries through `running`; one
         // of this window's is skipped rather than removed from under the loop.
         for (state.running) |*entry| {
-            if (sameContext(entry.context, context)) entry.cancelled = true;
+            if (entry.realm == realm) entry.cancelled = true;
         }
         var i: usize = 0;
         while (i < state.pending.items.len) {
             const entry = state.pending.items[i];
-            if (sameContext(entry.context, context)) {
+            if (entry.realm == realm) {
                 entry.deinit();
                 _ = state.pending.orderedRemove(i);
             } else i += 1;
         }
     }
-}
-
-/// A native function on a window's global, bound in that window's realm.
-const NativeGlobal = struct {
-    name: []const u8,
-    callback: v8.ffi.FunctionCallback,
-    length: i32,
-};
-
-/// What every window gets natively, the top-level one and every frame's: the
-/// WebIDL operations for these are stubs. (fetch() is the WebIDL operation,
-/// the WindowOrWorkerGlobalScope mixin's.)
-const window_native_globals = [_]NativeGlobal{
-    .{ .name = "setTimeout", .callback = setTimeoutCallback, .length = 1 },
-    .{ .name = "clearTimeout", .callback = clearTimeoutCallback, .length = 0 },
-    .{ .name = "setInterval", .callback = setIntervalCallback, .length = 1 },
-    .{ .name = "clearInterval", .callback = clearTimeoutCallback, .length = 0 },
-    .{ .name = "requestAnimationFrame", .callback = requestAnimationFrameCallback, .length = 1 },
-    .{ .name = "cancelAnimationFrame", .callback = cancelAnimationFrameCallback, .length = 1 },
-};
-
-/// Define each of `natives` on `global_obj`, as functions of `v8_ctx`'s realm.
-fn installNativeGlobals(
-    isolate: *v8.ffi.Isolate,
-    v8_ctx: *v8.ffi.Context,
-    global_obj: *v8.ffi.Object,
-    natives: []const NativeGlobal,
-) !void {
-    for (natives) |native| {
-        // Every one of these returns a Global the caller owns; the function
-        // keeps its template, and the property keeps the function.
-        const template = v8.ffi.v8_FunctionTemplate_New(isolate, native.callback, null) orelse return error.FunctionTemplateCreateFailed;
-        defer v8.ffi.v8_FunctionTemplate_Dispose(template);
-        v8.ffi.v8_FunctionTemplate_SetLength(template, native.length);
-        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-        defer v8.ffi.v8_Function_Dispose(func);
-        const key = v8.ffi.v8_String_NewFromUtf8(isolate, native.name.ptr, @intCast(native.name.len)) orelse return error.StringCreateFailed;
-        defer v8.ffi.v8_String_Dispose(key);
-        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-    }
-}
-
-/// context_manager's child-context-globals hook: an iframe's or a popup's
-/// window gets the natives the top-level window has. Without it every frame
-/// ran the stubs - setTimeout threw NotSupportedError in every iframe.
-fn registerChildContextGlobals(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, global_obj: *v8.ffi.Object) void {
-    installNativeGlobals(isolate, v8_ctx, global_obj, &window_native_globals) catch |err| {
-        log.warn("child window globals not installed: {}", .{err});
-    };
 }
 
 /// Clear ALL pending timer contexts but keep the timer interface
@@ -392,12 +350,12 @@ pub fn clearPendingTimers() void {
 /// working with the id setInterval returned. It used to be re-keyed to each
 /// repeat's manager id, so after the first repeat clearInterval(id) found
 /// nothing and the interval ran until the page went away.
-fn scheduleTimer(timer: TimerInterface, wrapper: *V8TimerCallback, delay_ms: u64) ?TimerId {
+fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms: u64) ?TimerId {
     const map = if (timer_contexts) |*m| m else {
         destroyTimer(wrapper);
         return null;
     };
-    const id = timer.setTimeout(delay_ms, V8TimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+    const id = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
     if (id == 0) {
         destroyTimer(wrapper);
         return null;
@@ -454,45 +412,25 @@ fn unregisterTimerContext(timer_id: TimerId) void {
 }
 
 // ============================================================================
-// V8 Timer Context Types
+// Window timers
 // ============================================================================
 
-/// A converted TimerHandler - `(TrustedScript or DOMString or Function)`.
-///
-/// Both arms are OWNED Globals, released by `V8TimerContextData.release`.
-const TimerHandler = union(enum) {
-    /// A callable handler: WebIDL's union conversion picks the Function member.
-    function: *v8.ffi.Function,
-    /// Anything else, converted by ToString when setTimeout or setInterval
-    /// was called. (A TrustedScript converts the same way: its stringifier
-    /// is its data.)
-    string: *v8.ffi.String,
-
-    fn dispose(self: TimerHandler) void {
-        switch (self) {
-            .function => |function| v8.ffi.v8_Global_Dispose(@ptrCast(function)),
-            .string => |source| v8.ffi.v8_String_Dispose(source),
-        }
-    }
-};
-
-/// V8 Timer Context Data
-///
-/// Everything one setTimeout or setInterval needs when it fires. Every V8
-/// handle in it is an OWNED Global - `info.get` and `v8_Isolate_GetCurrentContext`
-/// each allocate one per call - and `release` disposes them all. Nothing did
-/// before: the handler and the context leaked on every call, and a Global of a
-/// context keeps that realm's whole heap alive, so every page that ever set a
-/// timer stayed in memory until the isolate went away.
-const V8TimerContextData = struct {
-    handler: TimerHandler,
+/// Everything one setTimeout or setInterval needs when it fires. The handler
+/// and the arguments are OWNED engine handles - handed over by the binding -
+/// and `release` returns them all. A timer used to hold its realm's context
+/// as a handle too, which kept that page's whole heap alive until the timer
+/// was freed; the realm is now the runtime.Context, which holds nothing.
+const WindowTimerData = struct {
+    /// The converted TimerHandler: a callable, or the string ToString made of
+    /// anything else when setTimeout was called.
+    handler: runtime.WindowTimerHandler,
     /// `any... arguments`, passed to a Function handler on every run. OWNED
-    /// Globals, in a slice from the wrapper's allocator.
-    arguments: []*v8.ffi.Value,
-    /// V8 isolate
-    isolate: *v8.ffi.Isolate,
-    /// The realm the timer was set in. OWNED.
-    v8_context: *v8.ffi.Context,
+    /// handles, in a slice from the wrapper's allocator.
+    arguments: []runtime.JSValue,
+    /// The realm the timer was set in - the Window whose method was called.
+    /// Not owned: the context manager keeps a realm until teardown, and a
+    /// destroyed window's timers go with it (clearWindowState).
+    realm: runtime.Context,
     /// Whether this is an interval (repeating) timer - affects cleanup
     is_interval: bool,
     /// The timeout after conversion and step 4 (negative becomes 0), before
@@ -523,51 +461,45 @@ const V8TimerContextData = struct {
     /// thing allowed to free it.
     executing: bool = false,
 
-    /// Dispose every handle this timer owns. Only `destroyTimer` calls it.
-    fn release(self: *V8TimerContextData, allocator: std.mem.Allocator) void {
-        self.handler.dispose();
-        for (self.arguments) |argument| v8.ffi.v8_Global_Dispose(argument);
+    /// Return every handle this timer owns. Only `destroyTimer` calls it.
+    fn release(self: *WindowTimerData, allocator: std.mem.Allocator) void {
+        switch (self.handler) {
+            .function, .string => |handle| releaseValue(self.realm, handle),
+        }
+        for (self.arguments) |argument| releaseValue(self.realm, argument);
         allocator.free(self.arguments);
         self.arguments = &.{};
-        v8.ffi.v8_Context_Dispose(self.v8_context);
     }
 };
 
-/// Type-safe timer callback wrapper for V8 timer contexts.
+/// Type-safe timer callback wrapper for window timers.
 ///
 /// Uses SelfContainedWorkCallback to bundle the callback function and context data
 /// together, providing compile-time type safety and eliminating manual
 /// anyopaque casts in callback functions. The work callback variant stores
 /// the allocator internally for no-argument destroy().
-const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
+const WindowTimerCallback = SelfContainedWorkCallback(WindowTimerData);
 
 /// Free a timer wrapper and every handle it owns. EVERY path that frees one
 /// goes through here; `wrapper.destroy()` alone leaks the handles.
-fn destroyTimer(wrapper: *V8TimerCallback) void {
+fn destroyTimer(wrapper: *WindowTimerCallback) void {
     wrapper.getData().release(wrapper.allocator);
     wrapper.destroy();
 }
 
 /// Timer initialization step 8's task, steps 8.3-8.5: run the handler in the
-/// timer's realm, at the timer's nesting level.
-fn runTimerTask(data: *V8TimerContextData) void {
-    const isolate = data.isolate;
-    const context = data.v8_context;
+/// timer's realm, at the timer's nesting level. A task runs from the event
+/// loop, so the realm is entered for it.
+fn runTimerTask(data: *WindowTimerData) void {
+    const engine = data.realm.getEngine() orelse return;
+    const run_task = engine.runTaskInRealm orelse return;
+    run_task(data.realm, runTimerSteps, data) catch |err| {
+        log.debug("a timer's task did not run: {}", .{err});
+    };
+}
 
-    // Phase 5 instrumentation: timer callbacks arrive from the event loop, which is
-    // exactly where isolate confinement would break if it is broken.
-    v8.isolate_ownership.assertOwned(isolate, "Context.timerHandler");
-
-    // A task runs from the event loop: V8 has opened no HandleScope and
-    // entered no context for it.
-    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
-    defer v8.ffi.v8_HandleScope_Dispose(scope);
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    // Step 1: thisArg is the WindowProxy - Context::Global is the global proxy.
-    const this_arg = v8.ffi.v8_Context_Global(context) orelse return;
-    defer v8.ffi.v8_Object_Dispose(this_arg);
+fn runTimerSteps(opaque_data: ?*anyopaque) void {
+    const data: *WindowTimerData = @ptrCast(@alignCast(opaque_data orelse return));
 
     // The "current timer nesting level" is this timer's level for the DURATION OF
     // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
@@ -580,7 +512,9 @@ fn runTimerTask(data: *V8TimerContextData) void {
     defer runtime.timer.nesting_level = saved_nesting;
 
     // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
-    v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+    if (data.realm.getEngine()) |engine| {
+        if (engine.queueMicrotask) |queue| queue(data.realm, resetNestingMicrotask, null) catch {};
+    }
 
     // This handler owns the wrapper for the duration of the callback, so a
     // clearTimeout/clearInterval from inside it defers the free to us.
@@ -589,15 +523,25 @@ fn runTimerTask(data: *V8TimerContextData) void {
 
     switch (data.handler) {
         // Step 8.4: invoke handler given arguments and "report", with callback
-        // this value set to thisArg.
-        .function => |function| invokeReporting(context, function, this_arg, data.arguments),
+        // this value set to thisArg (the WindowProxy).
+        .function => |function| invokeReporting(data.realm, function, data.arguments),
         // Step 8.5: create a classic script from the string and run it.
-        .string => |source| html_mod.script_execution.runTimerHandlerString(context, source),
+        .string => |source| {
+            const engine_ctx = data.realm.engine_ctx orelse return;
+            // TODO(engine adapter): transitional - reportException(*const
+            // runtime.ErrorInfo), then runClassicScript(realm, source, API base
+            // URL, report, host). runTimerHandlerString takes the engine's own
+            // context and string until then: report_exception keeps a compile
+            // error's position only from the engine's error information
+            // (compile-error-in-setTimeout checks it), so both are passed
+            // through unexamined.
+            html_mod.script_execution.runTimerHandlerString(@ptrCast(@alignCast(engine_ctx)), @ptrCast(@alignCast(source.asEngineHandle() orelse return)));
+        },
     }
 }
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
-fn v8TimerHandler(data: *V8TimerContextData) void {
+fn timerHandler(data: *WindowTimerData) void {
     // Step 8.9: remove global's map[id]. Before the run rather than after, so a
     // clearTimeout(id) from inside the callback finds nothing to free under us.
     if (timer_contexts) |*map| {
@@ -607,17 +551,17 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     runTimerTask(data);
 
     // Run microtasks after the timer callback (per event loop semantics)
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(data.isolate);
+    performMicrotaskCheckpoint(data.realm);
 
     // Destroy the wrapper - this is a one-shot timer, so clean up after execution
     // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
-    const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+    const wrapper: *WindowTimerCallback = @fieldParentPtr("data", data);
     destroyTimer(wrapper);
 }
 
 /// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
-fn v8IntervalHandler(data: *V8TimerContextData) void {
-    const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+fn intervalHandler(data: *WindowTimerData) void {
+    const wrapper: *WindowTimerCallback = @fieldParentPtr("data", data);
 
     // Check if interval was cancelled
     if (data.cancelled) {
@@ -630,7 +574,7 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
     runTimerTask(data);
 
     // Run microtasks after the timer callback
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(data.isolate);
+    performMicrotaskCheckpoint(data.realm);
 
     // Steps 8.6-8.8: still in the map - not cleared by the callback or its
     // microtasks - so run the timer initialization steps again, given the
@@ -640,7 +584,7 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         if (getTimerInterface()) |timer| {
             const delay: u64 = @intCast(clampTimeout(data.timeout_ms, data.nesting_level));
             data.nesting_level +|= 1;
-            const new_timer_id = timer.setTimeout(delay, V8TimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+            const new_timer_id = timer.setTimeout(delay, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
             if (new_timer_id != 0) {
                 // The id script holds stays the key; only the pending run changes.
                 data.current_timer_id = new_timer_id;
@@ -654,6 +598,67 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         if (map.get(data.id) == wrapper) _ = map.remove(data.id);
     }
     destroyTimer(wrapper);
+}
+
+/// The timer initialization steps for setTimeout and setInterval, after the
+/// engine's WebIDL conversion (`runtime.WindowOperations.initializeTimer`).
+/// `handler` and every element of `arguments` are handed over.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
+fn initializeTimer(realm: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) i32 {
+    // Owned until the timer takes them.
+    var owned = true;
+    defer if (owned) {
+        switch (handler) {
+            .function, .string => |handle| releaseValue(realm, handle),
+        }
+        for (arguments) |argument| releaseValue(realm, argument);
+    };
+
+    const timer = getTimerInterface() orelse return 0;
+    const allocator = current_allocator orelse return 0;
+
+    // Step 3: this timer's nesting level is one deeper than the running
+    // task's, if that task is a timer's; 0 otherwise.
+    const nesting = runtime.timer.nesting_level;
+    // Step 4: a negative timeout is 0.
+    const timeout_ms: i64 = @max(timeout, 0);
+
+    const kept = allocator.dupe(runtime.JSValue, arguments) catch return 0;
+    const wrapper = WindowTimerCallback.create(allocator, if (repeat) &intervalHandler else &timerHandler, .{
+        .handler = handler,
+        .arguments = kept,
+        .realm = realm,
+        .is_interval = repeat,
+        .timeout_ms = timeout_ms,
+        // Steps 9-10.
+        .nesting_level = nesting + 1,
+    }) catch {
+        allocator.free(kept);
+        return 0;
+    };
+    // The wrapper owns them now; destroyTimer releases them.
+    owned = false;
+
+    // Step 5: the 4ms clamp past nesting level 5. Steps 11-14: schedule, and
+    // return the id.
+    const delay: u64 = @intCast(clampTimeout(timeout_ms, nesting));
+    const id = scheduleTimer(timer, wrapper, delay) orelse return 0;
+    return @intCast(@as(u32, @truncate(id)));
+}
+
+/// clearTimeout(id) and clearInterval(id): one algorithm, "clear the timer
+/// with id from the map of setTimeout and setInterval IDs", so either clears
+/// either kind.
+fn clearTimer(realm: runtime.Context, id: i32) void {
+    if (id <= 0) return;
+    // The map, and nothing but the map, decides what an id names - and it is
+    // THIS window's map: an id another window's timer holds names nothing
+    // here. The function's realm is the window whose method this is.
+    const map = if (timer_contexts) |*m| m else return;
+    const wrapper = map.get(@intCast(id)) orelse return;
+    if (wrapper.getData().realm != realm) return;
+    unregisterTimerContext(@intCast(id));
 }
 
 /// Context type for determining which globals to register
@@ -870,26 +875,7 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
-        // Create and register Realm for cross-realm support
-        // The Realm stores V8 context and isolate pointers needed for:
-        // - iframe named property registration (window['frameName'] = contentWindow)
-        // - cross-realm error creation
-        // - intrinsic caching
-        if (runtime_ctx.realm == null) {
-            const realm = runtime.Realm.init(self.allocator, .{
-                .v8_context = @ptrCast(v8_ctx),
-                .isolate = @ptrCast(self.isolate),
-                .context_type = .window,
-                .global_object = @ptrCast(window_instance),
-            }) catch |err| {
-                log.debug("Warning: Failed to create Realm: {}\n", .{err});
-                return;
-            };
-            _ = realm.populateIntrinsics();
-            runtime_ctx.setRealm(realm);
-            // Also register with context manager
-            context_manager.setRealmForContext(v8_ctx, realm) catch {};
-        }
+        self.recordRealm(runtime_ctx, v8_ctx, window_instance);
 
         // Register Window properties (document, navigator, etc.) as own properties on the global object.
         // This is required because the global's prototype is immutable (set via SetImmutableProto),
@@ -1057,6 +1043,8 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
+        self.recordRealm(runtime_ctx, v8_ctx, window_instance);
+
         // Register Window properties as own properties on the global object
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
 
@@ -1109,6 +1097,28 @@ pub const Context = struct {
         self.initialized = true;
     }
 
+    /// The realm record - context, agent, and the Window as its global object -
+    /// for cross-realm support: iframe named properties, cross-realm errors,
+    /// intrinsics, and "the realm's global object", which the timer and
+    /// animation frame callbacks report their exceptions to. Both the
+    /// snapshot and the fresh path make one; the fresh path used to have none.
+    fn recordRealm(self: *Context, runtime_ctx: runtime.Context, v8_ctx: *v8.ffi.Context, window_instance: *runtime.Instance) void {
+        if (runtime_ctx.realm != null) return;
+        const realm = runtime.Realm.init(self.allocator, .{
+            .v8_context = @ptrCast(v8_ctx),
+            .isolate = @ptrCast(self.isolate),
+            .context_type = .window,
+            .global_object = @ptrCast(window_instance),
+        }) catch |err| {
+            log.debug("Warning: Failed to create Realm: {}\n", .{err});
+            return;
+        };
+        _ = realm.populateIntrinsics();
+        runtime_ctx.setRealm(realm);
+        // Also register with context manager
+        context_manager.setRealmForContext(v8_ctx, realm) catch {};
+    }
+
     /// Register browser globals based on context type
     fn registerBrowserGlobals(self: *Context) !void {
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
@@ -1130,7 +1140,7 @@ pub const Context = struct {
         }
 
         // Register common globals (setTimeout, fetch, console, etc.)
-        try self.registerCommonGlobals(global_obj);
+        try registerCommonGlobals(runtime_ctx);
     }
 
     /// Register Window context globals
@@ -1351,13 +1361,13 @@ pub const Context = struct {
     }
 
     /// Register common globals (setTimeout, fetch, console, etc.)
-    fn registerCommonGlobals(self: *Context, global_obj: *v8.ffi.Object) !void {
-        const isolate = self.isolate;
-        const v8_ctx = self.v8_context orelse return error.NotInitialized;
-
-        // setTimeout, setInterval, their clears, animation frames and fetch -
-        // the same natives every frame's window gets.
-        try installNativeGlobals(isolate, v8_ctx, global_obj, &window_native_globals);
+    fn registerCommonGlobals(realm: runtime.Context) !void {
+        // setTimeout, setInterval, their clears and the animation frame
+        // methods, bound by the engine over this file's steps - on this window
+        // and on every frame's.
+        const engine = realm.getEngine() orelse return error.NoEngine;
+        const install = engine.installWindowOperations orelse return error.NoEngine;
+        try install(realm, &window_operations);
 
         // NOTE: console object is registered via WebIDL namespace binding in snapshot
         // (see bindings.zig initializeNamespaces -> Console.registerGlobal)
@@ -1932,10 +1942,9 @@ pub const Context = struct {
 };
 
 // ============================================================================
-// V8 Callback Implementations
+// Animation frames
 // ============================================================================
 
-/// setTimeout callback - schedules callback to run after delay using TimerManager
 /// Schedule the single next-frame timer, if callbacks are waiting and none is
 /// already pending. One timer per FRAME, never one per callback.
 fn scheduleAnimationFrame() void {
@@ -1971,133 +1980,62 @@ fn animationFrameHandler(_: ?*anyopaque) void {
         s.running = &.{};
     };
 
-    const isolate = state.isolate;
-
-    v8.isolate_ownership.assertOwned(isolate, "Context.animationFrameHandler");
-
-    // Frame callbacks fire from the event loop: V8 has opened no HandleScope
-    // and entered no context for them.
-    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
-    defer v8.ffi.v8_HandleScope_Dispose(scope);
-
     // ONE timestamp for the whole frame.
     const elapsed = clock.monotonicMillis() - animation_frame_origin_ms;
-    const timestamp: f64 = @floatFromInt(if (elapsed < 0) 0 else elapsed);
-
-    // v8_Number_New returns a Global<Number>* and the CALLER owns it.
-    const ts_global = v8.ffi.v8_Number_New(isolate, timestamp);
-    defer v8.ffi.v8_Global_Dispose(@ptrCast(ts_global));
+    const timestamp = runtime.JSValue{ .number = @floatFromInt(if (elapsed < 0) 0 else elapsed) };
 
     // BY POINTER, not by value. cancelAnimationFrame called from inside one of
     // these callbacks writes `cancelled` through `state.running`, which aliases
     // this same array - a by-value loop variable is a snapshot taken before that
     // write is read back, and the sibling runs anyway.
+    var last_realm: ?runtime.Context = null;
     for (batch.items) |*entry| {
         // This frame is the end of the entry's life either way, so its callback
-        // Global is disposed whether it ran or was cancelled.
+        // is released whether it ran or was cancelled.
         defer entry.deinit();
         if (entry.cancelled) continue;
-        runAnimationFrameCallback(entry, @ptrCast(ts_global));
+        // In the realm that registered it: that window's global is `this`, and
+        // what it throws is reported there.
+        invokeReporting(entry.realm, entry.callback, &.{timestamp});
+        last_realm = entry.realm;
     }
 
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    if (last_realm) |realm| performMicrotaskCheckpoint(realm);
 
     // A callback may have asked for another frame.
     scheduleAnimationFrame();
 }
 
-/// Invoke one animation frame callback in the realm that registered it.
-fn runAnimationFrameCallback(entry: *const AnimationFrameEntry, timestamp: *v8.ffi.Value) void {
-    v8.ffi.v8_Context_Enter(entry.context);
-    defer v8.ffi.v8_Context_Exit(entry.context);
-
-    // v8_Context_Global allocates a Global<Object> the caller owns.
-    const global = v8.ffi.v8_Context_Global(entry.context) orelse return;
-    defer v8.ffi.v8_Global_Dispose(@ptrCast(global));
-
-    invokeReporting(entry.context, entry.callback_fn, global, &.{timestamp});
-}
-
-/// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards.
-fn requestAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // A missing or non-callable argument is a TypeError per WebIDL, but the rest
-    // of this file reports argument problems by returning the 0 sentinel rather
-    // than throwing, and a lone thrower here would be the odd one out.
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        setIntegerReturn(info, isolate, 0);
-        return;
-    }
-
-    // OWNED from here: every early return below must dispose it, and on success
-    // ownership passes to the pending entry.
-    const callback_value = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        v8.ffi.v8_Global_Dispose(callback_value);
-        setIntegerReturn(info, isolate, 0);
-        return;
-    }
-
+/// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards,
+/// after the engine's conversion (`runtime.WindowOperations`). `callback` is
+/// handed over.
+fn requestAnimationFrame(realm: runtime.Context, callback: runtime.JSValue) u32 {
     const allocator = current_allocator orelse {
-        v8.ffi.v8_Global_Dispose(callback_value);
-        setIntegerReturn(info, isolate, 0);
-        return;
+        releaseValue(realm, callback);
+        return 0;
     };
 
-    // The function's realm: this window's map of animation frame callbacks.
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        v8.ffi.v8_Global_Dispose(callback_value);
-        setIntegerReturn(info, isolate, 0);
-        return;
-    };
-
-    if (animation_frames == null) animation_frames = .{ .isolate = isolate };
+    if (animation_frames == null) animation_frames = .{};
     const state = &animation_frames.?;
 
     const handle = state.next_handle;
     state.pending.append(allocator, .{
         .handle = handle,
-        .callback_fn = @ptrCast(callback_value),
-        .context = context,
+        .callback = callback,
+        .realm = realm,
     }) catch {
-        v8.ffi.v8_Global_Dispose(callback_value);
-        v8.ffi.v8_Global_Dispose(@ptrCast(context));
-        setIntegerReturn(info, isolate, 0);
-        return;
+        releaseValue(realm, callback);
+        return 0;
     };
     state.next_handle += 1;
 
     scheduleAnimationFrame();
-
-    setIntegerReturn(info, isolate, @intCast(handle));
-}
-
-/// `v8_Integer_New` allocates a Global and `SetReturnValue` only reads it into a
-/// Local, so the caller still owns it. Wrapped because rAF has six return paths
-/// and an undisposed one on each is how the 14,774 leaked `v8_Number_New`
-/// handles in a single timers file got there.
-fn setIntegerReturn(info: *const v8.ffi.FunctionCallbackInfo, isolate: *v8.ffi.Isolate, value: i32) void {
-    const boxed = v8.ffi.v8_Integer_New(isolate, value);
-    defer v8.ffi.v8_Global_Dispose(@ptrCast(boxed));
-    info.setReturnValue(@ptrCast(boxed));
+    return handle;
 }
 
 /// cancelAnimationFrame(handle). An unknown handle must do nothing.
-fn cancelAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (info.v8_FunctionCallbackInfo_Length() < 1) return;
-
+fn cancelAnimationFrame(realm: runtime.Context, handle: u32) void {
     const state = if (animation_frames) |*s| s else return;
-
-    const handle_value = info.get(0);
-    defer v8.ffi.v8_Global_Dispose(handle_value);
-    if (!v8.ffi.v8_Value_IsNumber(handle_value)) return;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Global_Dispose(@ptrCast(context));
-    const as_f64 = v8.ffi.v8_Value_NumberValue(handle_value, context);
-    if (std.math.isNan(as_f64) or as_f64 < 1 or as_f64 > @as(f64, @floatFromInt(std.math.maxInt(u32)))) return;
-    const handle: u32 = @intFromFloat(as_f64);
 
     // Mark rather than remove: the batch may already be running, and removing
     // from under the loop in animationFrameHandler would shift its indices.
@@ -2107,151 +2045,15 @@ fn cancelAnimationFrameCallback(info: *const v8.ffi.FunctionCallbackInfo) callco
     // A handle names a callback in THIS window's map only, so another
     // window's callback with that handle is not cancelled.
     for (state.running) |*entry| {
-        if (entry.handle == handle and sameContext(entry.context, context)) {
+        if (entry.handle == handle and entry.realm == realm) {
             entry.cancelled = true;
             return;
         }
     }
     for (state.pending.items) |*entry| {
-        if (entry.handle == handle and sameContext(entry.context, context)) {
+        if (entry.handle == handle and entry.realm == realm) {
             entry.cancelled = true;
             return;
         }
     }
-}
-
-/// setTimeout(handler, timeout, ...arguments)
-fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    timerInitializationFromCall(info, false);
-}
-
-/// clearTimeout(id) and clearInterval(id): one algorithm, "clear the timer
-/// with id from the map of setTimeout and setInterval IDs", so either clears
-/// either kind.
-fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (info.v8_FunctionCallbackInfo_Length() < 1) return;
-
-    const id_value = info.get(0);
-    defer v8.ffi.v8_Global_Dispose(id_value);
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Context_Dispose(context);
-
-    // `optional long id = 0`: ToInt32, like the timeout - so "5" is 5, and
-    // a throwing valueOf propagates.
-    var id: i32 = 0;
-    if (!v8.ffi.v8_Value_ToInt32(id_value, context, &id)) return;
-    if (id <= 0) return;
-
-    // The map, and nothing but the map, decides what an id names - and it is
-    // THIS window's map: an id another window's timer holds names nothing
-    // here. The function's realm is the window whose method this is.
-    const map = if (timer_contexts) |*m| m else return;
-    const wrapper = map.get(@intCast(id)) orelse return;
-    if (!sameContext(wrapper.getData().v8_context, context)) return;
-    unregisterTimerContext(@intCast(id));
-}
-
-/// setInterval(handler, timeout, ...arguments)
-fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    timerInitializationFromCall(info, true);
-}
-
-/// The binding of `long setTimeout(TimerHandler handler, optional long
-/// timeout = 0, any... arguments)` and of setInterval: WebIDL argument
-/// conversion, then the timer initialization steps.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
-fn timerInitializationFromCall(info: *const v8.ffi.FunctionCallbackInfo, repeat: bool) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const argc: usize = @intCast(@max(info.v8_FunctionCallbackInfo_Length(), 0));
-
-    // `handler` is required: WebIDL throws a TypeError for a call without it.
-    if (argc < 1) {
-        return throwTypeError(isolate, info, if (repeat)
-            "Failed to execute 'setInterval' on 'Window': 1 argument required, but only 0 present."
-        else
-            "Failed to execute 'setTimeout' on 'Window': 1 argument required, but only 0 present.");
-    }
-
-    // OWNED - handed to the timer below, disposed on every other way out.
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    var context_owned = true;
-    defer if (context_owned) v8.ffi.v8_Context_Dispose(context);
-
-    // TimerHandler is (TrustedScript or DOMString or Function). A callable
-    // value is the Function member; anything else is converted by ToString
-    // HERE, at the call - which runs script (evil-spec-example.any.js has a
-    // toString() that itself calls setTimeout) and can throw. A null from
-    // ToString means it threw: the exception is pending, and returning now
-    // rethrows it to the caller.
-    const handler_value = info.get(0);
-    const handler: TimerHandler = if (v8.ffi.v8_Value_IsFunction(handler_value))
-        .{ .function = @ptrCast(handler_value) }
-    else blk: {
-        defer v8.ffi.v8_Global_Dispose(handler_value);
-        break :blk .{ .string = v8.ffi.v8_Value_ToString(handler_value, context) orelse return };
-    };
-    var handler_owned = true;
-    defer if (handler_owned) handler.dispose();
-
-    // `optional long timeout = 0` is ToInt32: ToNumber - script again, and
-    // it can throw - then modulo 2^32, so 2**32 is 0 rather than 49 days.
-    var timeout: i32 = 0;
-    if (argc >= 2) {
-        const timeout_value = info.get(1);
-        defer v8.ffi.v8_Global_Dispose(timeout_value);
-        if (!v8.ffi.v8_Value_IsUndefined(timeout_value) and
-            !v8.ffi.v8_Value_ToInt32(timeout_value, context, &timeout)) return;
-    }
-
-    const timer = getTimerInterface() orelse return setIntegerReturn(info, isolate, 0);
-    const allocator = current_allocator orelse return setIntegerReturn(info, isolate, 0);
-
-    // `any... arguments`, for every run of a Function handler.
-    const arguments = allocator.alloc(*v8.ffi.Value, argc -| 2) catch return setIntegerReturn(info, isolate, 0);
-    for (arguments, 2..) |*argument, i| argument.* = info.get(@intCast(i));
-    var arguments_owned = true;
-    defer if (arguments_owned) {
-        for (arguments) |argument| v8.ffi.v8_Global_Dispose(argument);
-        allocator.free(arguments);
-    };
-
-    // Step 3: this timer's nesting level is one deeper than the running
-    // task's, if that task is a timer's; 0 otherwise.
-    const nesting = runtime.timer.nesting_level;
-    // Step 4: a negative timeout is 0.
-    const timeout_ms: i64 = @max(timeout, 0);
-
-    const wrapper = V8TimerCallback.create(allocator, if (repeat) &v8IntervalHandler else &v8TimerHandler, .{
-        .handler = handler,
-        .arguments = arguments,
-        .isolate = isolate,
-        .v8_context = context,
-        .is_interval = repeat,
-        .timeout_ms = timeout_ms,
-        // Steps 9-10.
-        .nesting_level = nesting + 1,
-    }) catch return setIntegerReturn(info, isolate, 0);
-    // The wrapper owns them now; destroyTimer releases them.
-    context_owned = false;
-    handler_owned = false;
-    arguments_owned = false;
-
-    // Step 5: the 4ms clamp past nesting level 5. Steps 11-14: schedule, and
-    // return the id.
-    const delay: u64 = @intCast(clampTimeout(timeout_ms, nesting));
-    const id = scheduleTimer(timer, wrapper, delay) orelse return setIntegerReturn(info, isolate, 0);
-    setIntegerReturn(info, isolate, @intCast(@as(u32, @truncate(id))));
-}
-
-/// Helper to throw TypeError
-fn throwTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
-    _ = info;
-    // Both are owned Globals; ThrowException takes its own reference.
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
-    defer v8.ffi.v8_String_Dispose(error_msg);
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-    defer v8.ffi.v8_Global_Dispose(error_val);
-    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
 }
