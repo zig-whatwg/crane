@@ -166,6 +166,9 @@ pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEng
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+pub const SimpleExceptionKind = @import("engine_interface.zig").SimpleExceptionKind;
+pub const DictionaryMember = @import("engine_interface.zig").DictionaryMember;
+pub const ArrayBufferViewDescription = @import("engine_interface.zig").ArrayBufferViewDescription;
 // ---- end lane: runtime-impls ----
 // ---- lane: engine-boundary ----
 pub const SerializedWithTransfer = @import("engine_interface.zig").SerializedWithTransfer;

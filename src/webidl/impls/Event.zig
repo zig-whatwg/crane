@@ -12,7 +12,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const v8_engine = @import("v8");
 const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Event = interfaces.Event;
@@ -413,9 +412,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Step 3: If path is empty, then return composedPath (empty array)
     if (path.len == 0) {
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-        const v8_array = v8_engine.createEmptyArray(isolate);
-        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+        return sequenceOfEventTargets(instance, &.{});
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
@@ -424,16 +421,9 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
         // Path is not empty but currentTarget is null - shouldn't happen during dispatch
-        // Return the empty composedPath as a V8 array
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-        const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-        defer v8_engine.ffi.v8_Context_Dispose(v8_context);
-        const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
-            composed_path.deinit();
-            return error.NotImplemented;
-        };
-        composed_path.deinit();
-        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+        // Return the empty composedPath
+        defer composed_path.deinit();
+        return sequenceOfEventTargets(instance, composed_path.toSlice());
     }
 
     // Step 6: Append currentTarget to composedPath
@@ -544,25 +534,20 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         }
     }
 
-    // Step 17: Return composedPath as a V8 Array of EventTarget instances
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
+    // Step 17: Return composedPath, as a sequence<EventTarget>. The array
+    // holds its own references to the targets' wrappers; the list is ours.
+    defer composed_path.deinit();
+    return sequenceOfEventTargets(instance, composed_path.toSlice());
+}
 
-    const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-
-    // The V8 array now owns references to the instances; clean up our temporary list
-    composed_path.deinit();
-    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+/// `targets` converted to a JS value as composedPath's sequence<EventTarget>:
+/// a new array of the current realm - the operation's, where WebIDL converts
+/// its result - holding each target's wrapper. OWNED: the binding takes it.
+fn sequenceOfEventTargets(instance: *runtime.Instance, targets: []const *runtime.Instance) !runtime.JSValue {
+    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
+    const create_sequence = engine.createSequenceOfPlatformObjects orelse return error.NotSupported;
+    const current_realm = engine.currentRealm orelse return error.NotSupported;
+    return create_sequence(current_realm() orelse instance.ctx, targets);
 }
 
 // ============================================================================

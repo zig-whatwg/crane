@@ -3253,4 +3253,10 @@ pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key:
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+/// Create ReferenceError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ReferenceErrorInContext(context: *Context, message: *String) ?*Value;
+/// WebIDL "write" `length` bytes into an ArrayBufferView, `starting_offset`
+/// bytes into the view, an ArrayBuffer or SharedArrayBuffer alike. False when
+/// `view` is not an ArrayBufferView, is detached, or the bytes do not fit.
+pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, length: usize, starting_offset: usize) bool;
 // ---- end lane: runtime-impls ----

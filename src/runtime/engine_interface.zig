@@ -181,6 +181,32 @@ pub fn setConfiguredEngine(engine: *const EngineInterface) void {
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+/// WebIDL's simple exception types (§ 2.8 "Exceptions"): the ECMAScript error
+/// objects an operation throws by name. Error and SyntaxError are not among
+/// them - the spec reserves them for authors and the parser.
+pub const SimpleExceptionKind = enum { EvalError, RangeError, ReferenceError, TypeError, URIError };
+
+/// One present member of an IDL dictionary value, for createDictionaryObject.
+/// `value` is BORROWED for the call.
+pub const DictionaryMember = struct {
+    name: []const u8,
+    value: JSValue,
+};
+
+/// What an ArrayBufferView is: its type ([[TypedArrayName]], or a DataView)
+/// and the part of its [[ViewedArrayBuffer]] it views, for
+/// describeArrayBufferView.
+pub const ArrayBufferViewDescription = struct {
+    view_type: @import("arraybuffer_view.zig").ViewType,
+    /// [[ByteOffset]] into the viewed buffer.
+    byte_offset: usize,
+    /// [[ByteLength]]: 0 when the buffer is detached.
+    byte_length: usize,
+    /// IsDetachedBuffer([[ViewedArrayBuffer]]).
+    detached: bool,
+    /// IsSharedArrayBuffer([[ViewedArrayBuffer]]).
+    shared: bool,
+};
 // ---- end lane: runtime-impls ----
 
 // ---- lane: engine-boundary ----
@@ -996,6 +1022,143 @@ pub const EngineInterface = struct {
     // ---- lane: page-realm ----
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    /// WebIDL "create an observable array exotic object" (§ 3.10) in `realm`,
+    /// with an empty backing list.
+    ///
+    /// ENGINE-OWNED: the result is a persistent handle the engine keeps. The
+    /// engine frees the object's state (its backing list) when script can no
+    /// longer reach the object, and frees whatever is left when the realm's
+    /// agent is torn down. The caller never releases it. A caller that keeps
+    /// it - a [SameObject] attribute - holds it only as long as script can
+    /// reach it, and never after the realm ends.
+    createObservableArray: ?*const fn (
+        realm: Context,
+    ) EngineError!JSValue,
+
+    /// HTML "queue a microtask" (8.1.7.2): `steps(data)` runs as a microtask
+    /// of `realm`'s agent - at its next microtask checkpoint, after the
+    /// microtasks already queued. The steps run with no realm entered for
+    /// them: they enter the realm they run script in through the realm
+    /// operations (runInRealm, runTaskInRealm), as script-invoking steps must.
+    ///
+    /// `data` is BORROWED until the steps run, so it must outlive the agent's
+    /// microtask queue. A microtask still queued when the agent is torn down
+    /// is DROPPED - its steps never run - so the steps cannot be relied on to
+    /// free `data`.
+    queueMicrotask: ?*const fn (
+        realm: Context,
+        steps: RealmSteps,
+        data: ?*anyopaque,
+    ) EngineError!void,
+
+    /// WebIDL "a promise resolved with" `value` (§ 3.2.24), made in `realm`.
+    /// `value` is BORROWED. OWNED: release the promise with `releaseValue`,
+    /// or return it to the binding, which takes an owned handle.
+    createResolvedPromise: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "a promise rejected with" `reason` (§ 3.2.24), made in `realm`.
+    /// `reason` is BORROWED. OWNED, as createResolvedPromise.
+    createRejectedPromise: ?*const fn (
+        realm: Context,
+        reason: JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "create a simple exception" of type `kind` (§ 3.14.3):
+    /// Construct(`realm`'s intrinsic %kind%, « `message` ») - the realm's own
+    /// constructor, whatever script has done to its global. OWNED: release it
+    /// with `releaseValue`, or hand it to something documented to take it
+    /// (rejectPromiseWithValue, createRejectedPromise borrow it).
+    createSimpleException: ?*const fn (
+        realm: Context,
+        kind: SimpleExceptionKind,
+        message: []const u8,
+    ) EngineError!JSValue,
+
+    /// WebIDL: an IDL dictionary value converted to an ECMAScript value
+    /// (§ 3.2.17): a new ordinary object of `realm` with one data property per
+    /// member, created in the order given. The caller passes the present
+    /// members in the spec's order - the dictionary's inherited dictionaries
+    /// first, each one's members in lexicographical order, as the conversions
+    /// already emit them. The member values are BORROWED. OWNED: release it
+    /// with `releaseValue`, or return it to the binding.
+    createDictionaryObject: ?*const fn (
+        realm: Context,
+        members: []const DictionaryMember,
+    ) EngineError!JSValue,
+
+    /// ECMAScript's "current realm": the realm of the running execution
+    /// context. While a binding runs - an operation, attribute or
+    /// constructor - it is the realm of the running function object, which is
+    /// where WebIDL converts the result (§ 3.2). Null otherwise: no script is
+    /// running, or the running context is not a realm the engine hosts.
+    /// BORROWED: valid while that realm lives.
+    currentRealm: ?*const fn () ?Context,
+
+    /// The ArrayBufferView `value` is - a TypedArray of some element type, or
+    /// a DataView - or null when it is not one: what WebIDL's conversion to an
+    /// ArrayBufferView type checks, and what an impl taking one unconverted
+    /// (`[AllowShared] Uint8Array destination`) needs to check it.
+    describeArrayBufferView: ?*const fn (
+        value: JSValue,
+    ) ?ArrayBufferViewDescription,
+
+    /// WebIDL "write" `bytes` into the ArrayBufferView `view` (§ 3.2.26),
+    /// starting `starting_offset` bytes into the view. A view of a
+    /// SharedArrayBuffer is written through like any other: "write" applies
+    /// to [AllowShared] views. `bytes` is BORROWED. TypeError when `view` is
+    /// not an ArrayBufferView. OperationFailed when the bytes do not fit or
+    /// the buffer is detached - conditions the spec ASSERTS cannot happen, so
+    /// a caller that hits one has a bug: it checks the view's byte length
+    /// (describeArrayBufferView) before writing.
+    writeIntoArrayBufferView: ?*const fn (
+        view: JSValue,
+        bytes: []const u8,
+        starting_offset: usize,
+    ) EngineError!void,
+
+    /// WebIDL "call a user object's operation" (§ 3.12) `operation_name` on
+    /// the callback interface value `callback` with `args`, from `realm`,
+    /// with exception behaviour "rethrow": a callable value is called with
+    /// undefined as this; otherwise its `operation_name` property is looked
+    /// up now (TypeError when that is not callable) and called with the value
+    /// as this. What it throws is left in flight and reported as
+    /// ExceptionPending. The arguments are BORROWED. OWNED: the return value,
+    /// as a handle whatever its type - convert it (convertToUnrestrictedDouble
+    /// ...) and release it with `releaseValue`.
+    callUserObjectOperation: ?*const fn (
+        realm: Context,
+        callback: *@import("callback_wrapper.zig").CallbackWrapper,
+        operation_name: []const u8,
+        args: []const JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "convert to unrestricted double" (§ 3.2.5): ? ToNumber(`value`)
+    /// in `realm`. A primitive the binding already classified converts with
+    /// no script run; an object runs its valueOf. What ToNumber throws (a
+    /// TypeError for a Symbol or BigInt, or a valueOf's exception) is left in
+    /// flight and reported as ExceptionPending. `value` is BORROWED.
+    convertToUnrestrictedDouble: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!f64,
+
+    /// The callback function a binding handed an impl for an argument of a
+    /// WebIDL callback function type - which the generated signature spells
+    /// as a function pointer (`callbacks.MutationCallback`) - as a JSValue.
+    /// It TAKES OWNERSHIP of the persistent handle the binding's conversion
+    /// made for the argument: the result is OWNED, and the impl keeps it (a
+    /// MutationObserver's callback) and releases it with `releaseValue`, or
+    /// releases it at once if it keeps nothing. Call it once per argument.
+    ///
+    /// Transitional: once codegen types callback-function parameters as
+    /// runtime.JSValue, the argument arrives as this value and the operation
+    /// goes.
+    takeCallbackFunction: ?*const fn (
+        argument: *const anyopaque,
+    ) JSValue,
     // ---- end lane: runtime-impls ----
 
     /// Compile an ES module from source
@@ -1531,6 +1694,18 @@ pub const stub_engine: EngineInterface = .{
     // ---- lane: page-realm ----
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    .createObservableArray = null,
+    .queueMicrotask = null,
+    .createResolvedPromise = null,
+    .createRejectedPromise = null,
+    .createSimpleException = null,
+    .createDictionaryObject = null,
+    .currentRealm = null,
+    .describeArrayBufferView = null,
+    .writeIntoArrayBufferView = null,
+    .callUserObjectOperation = null,
+    .convertToUnrestrictedDouble = null,
+    .takeCallbackFunction = null,
     // ---- end lane: runtime-impls ----
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
