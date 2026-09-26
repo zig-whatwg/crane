@@ -14,16 +14,19 @@
 //! network. Nothing called it either - `XMLHttpRequest.call_send` set the send
 //! flag and returned, so the whole `algorithms/` tree was unreachable.
 //!
-//! ## Blocking, deliberately
+//! ## Two ways to wait, one set of steps
 //!
-//! `fetch.algorithms.fetch` runs the exchange to completion and hands back a
-//! finished response - the same call `src/html/navigation/fetch_integration.zig`
-//! makes. There is no incremental read, so the body arrives as ONE chunk. That
+//! A synchronous request waits for the network: `fetch` runs
+//! `fetch.algorithms.fetch`, which returns a finished response - the same call
+//! `src/html/navigation/fetch_integration.zig` makes. An asynchronous one does
+//! not: the WebIDL impl builds the request with `createRequest`, runs it on the
+//! event loop (`fetch.algorithms.AsyncFetch`), and hands the outcome to
+//! `processFetchResult` from a task. `fetch` is those same two around the
+//! blocking fetch, so what a response does to the XHR is written once.
+//!
+//! There is no incremental read yet, so the body arrives as ONE chunk. That
 //! gets event order and the final counts right and the number of intermediate
 //! `progress` events wrong; see the header of `send.zig`.
-//!
-//! The caller decides when to block: directly for a sync request, from an
-//! event-loop task for an async one.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -40,7 +43,8 @@ const InternalResponse = fetch_mod.internal.InternalResponse;
 
 const log = std.log.scoped(.xhr_fetch);
 
-/// Run the fetch for this XHR and drive the response processor.
+/// Run the fetch for this XHR, waiting for it, and drive the response
+/// processor.
 ///
 /// Spec: send() steps 6 through 11.10 (async) / 12 (sync).
 pub fn fetch(
@@ -61,13 +65,32 @@ pub fn fetch(
     // processRequestEndOfBody. The transfer is not observable from here, so
     // the whole body counts as transmitted the moment the fetch returns.
     // Firing these BEFORE the fetch would be a lie about ordering, so they run
-    // below, once the request has actually gone out.
+    // in `processFetchResult`, once the request has actually gone out.
 
-    var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {
+    const result = fetch_mod.algorithms.fetch(allocator, request, .{});
+    if (result) |_| {} else |err| {
+        log.warn("fetch failed for {s}: {s}", .{ request.currentUrl(), @errorName(err) });
+    }
+    try processFetchResult(state, body, result, elapsed_timer.read() / std.time.ns_per_ms, processor, upload_tracker);
+}
+
+/// What the fetch's outcome does to this XHR: send() from the point req's
+/// fetch has its response. The response, if there is one, passes to the XHR
+/// state. `elapsed_ms` is how long a synchronous request's fetch took, for its
+/// timeout; null for an asynchronous one, whose timeout the caller enforces
+/// as the fetch runs.
+pub fn processFetchResult(
+    state: *XMLHttpRequestState,
+    body: ?[]const u8,
+    fetch_result: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult,
+    elapsed_ms: ?u64,
+    processor: *ResponseProcessor,
+    upload_tracker: ?*UploadTracker,
+) !void {
+    var result = fetch_result catch |err| {
         // The fetch algorithm reports transport failure IN-BAND, as a response
         // whose type is "error" - an error return here means it could not even
         // get that far.
-        log.warn("fetch failed for {s}: {s}", .{ request.currentUrl(), @errorName(err) });
         if (err == error.AbortError) {
             processor.handleAbort();
         } else {
@@ -83,15 +106,14 @@ pub fn fetch(
 
     // Step 12.4 / step 11.12.2: the timed out flag.
     //
-    // KNOWN GAP: there is no way to hand a deadline to the fetch algorithm -
-    // `InternalRequest` has no timeout field, and the curl backend's
-    // `timeout_ms` is not reachable from here. So the transfer is NOT cancelled
-    // at the deadline; the flag is applied after the fact, from the elapsed
-    // time. A request that overruns its timeout therefore reports `timeout`
-    // late rather than on time.
+    // An asynchronous request is timed out on time, by the WebIDL impl, which
+    // ends its fetch at the deadline; one whose fetch ended first was not timed
+    // out, however late its task runs - a long task can hold the task past the
+    // deadline after the response is in. A synchronous one cannot be timed out
+    // on time - nothing runs while it waits - so its flag is applied after the
+    // fact, from the elapsed time, and it reports `timeout` late.
     if (state.timeout > 0) {
-        const elapsed_ms = elapsed_timer.read() / std.time.ns_per_ms;
-        if (elapsed_ms >= state.timeout) {
+        if (elapsed_ms != null and elapsed_ms.? >= state.timeout) {
             response.deinit();
             state.timed_out_flag = true;
             processor.handleTimeout();
@@ -172,7 +194,7 @@ pub fn fetch(
 /// Build `req` from the XHR state.
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 6
-fn createRequest(
+pub fn createRequest(
     allocator: Allocator,
     state: *XMLHttpRequestState,
     body: ?[]const u8,

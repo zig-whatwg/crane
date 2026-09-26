@@ -30,6 +30,8 @@ const EventTargetKind = xhr.EventTargetKind;
 const ProgressEventData = xhr.ProgressEventData;
 
 const log = std.log.scoped(.xhr);
+const clock = @import("clock");
+const fetch_mod = @import("fetch");
 
 const same_object = @import("same_object.zig");
 
@@ -59,56 +61,48 @@ pub const InternalState = struct {
     /// V8 isolate for creating/disposing Global handles
     isolate: ?*v8_engine.ffi.Isolate,
 
-    /// The token shared with a queued send task, if one is outstanding.
-    send_token: ?*SendToken,
+    /// The asynchronous send()'s fetch, from send() until its task has run.
+    pending_fetch: ?*PendingFetch,
 
     /// Keeps `this.upload` alive for as long as this XHR - see
     /// `same_object.zig`. The upload object carries the upload event handlers,
     /// which script sets on it and then never touches again.
     upload_pin: same_object.Pin,
 
-    /// The request body, owned for the lifetime of one send().
-    ///
-    /// An async send() hands the bytes to an event-loop TASK, which runs after
-    /// `call_send` has returned and the WebIDL conversion layer has freed its
-    /// copy of the argument. Borrowing it would be a use-after-free by the time
-    /// the request goes out.
-    pending_body: ?[]u8,
-
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
             .isolate = null,
-            .send_token = null,
+            .pending_fetch = null,
             .upload_pin = .{},
-            .pending_body = null,
         };
     }
 
-    /// Cancel and release the outstanding send task's token, if any.
-    fn cancelPendingSend(self: *InternalState) void {
-        if (self.send_token) |token| {
-            token.cancelled = true;
-            token.release();
-            self.send_token = null;
-        }
-    }
-
-    fn releasePendingBody(self: *InternalState) void {
-        if (self.pending_body) |b| {
-            self.allocator.free(b);
-            self.pending_body = null;
+    /// End the asynchronous send()'s fetch, if there is one: "terminate"
+    /// (open(), a later send(), the XHR going) or "abort" (abort()) this's
+    /// fetch controller. Its transfer is cancelled and nothing it received
+    /// reaches the XHR.
+    fn cancelFetch(self: *InternalState) void {
+        const pending = self.pending_fetch orelse return;
+        self.pending_fetch = null;
+        if (pending.fetch) |f| {
+            // In flight: the fetch owned it, and the fetch is over.
+            pending.fetch = null;
+            f.terminate();
+            pending.destroy();
+        } else {
+            // Its task is queued, and frees it.
+            pending.cancelled = true;
         }
     }
 
     pub fn deinitState(self: *InternalState) void {
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_pin.release();
-        // Before anything else: a task queued by an async send() is about to
-        // run against an instance that is going away.
-        self.cancelPendingSend();
-        self.releasePendingBody();
+        // Before anything else: a fetch in flight, or its queued task, would
+        // otherwise reach an instance that is going away.
+        self.cancelFetch();
         self.xhr_state.deinit();
     }
 };
@@ -441,6 +435,10 @@ pub fn set_timeout(instance: *runtime.Instance, value: u32) anyerror!void {
 
     // Step 2: Set timeout
     xhr_state.timeout = value;
+
+    // "This implies that the timeout attribute can be set while fetching is
+    // in progress" - and it still counts from when fetching began.
+    if (getInternal(instance).pending_fetch) |pending| pending.armTimeout(value);
 }
 
 /// Setter for withCredentials
@@ -592,6 +590,10 @@ fn openSteps(
             open_algo.OpenError.OutOfMemory => error.OutOfMemory,
         };
     };
+
+    // Step 10 (with 11, which open_algo ran): Terminate this's fetch
+    // controller. Nothing observable happens between the two.
+    getInternal(instance).cancelFetch();
 
     // Step 12: If this's state is not opened, set it to opened and fire an
     // event named readystatechange at this.
@@ -807,6 +809,8 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
 pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     const xhr_state = getXHRState(instance);
     installEventSink(instance);
+    // Step 1: Abort this's fetch controller.
+    getInternal(instance).cancelFetch();
     xhr.abort.abort(xhr_state);
 }
 
@@ -814,25 +818,21 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method
 ///
-/// ## Async is a task, not a thread
+/// ## Sync waits; async fetches in parallel
 ///
-/// `fetch.algorithms.fetch` blocks. Running it inline for an async request
-/// would fire `loadstart` .. `loadend` BEFORE `send()` returned, so
+/// Steps 1-10, which script can observe immediately (a second `send()` must
+/// throw), and 11.1-11.6 (`loadstart`) run inline. A synchronous request then
+/// waits for its response (step 12), as sync means. An asynchronous one hands
+/// req to the event loop (`fetch.algorithms.AsyncFetch`) and returns; a task
+/// runs steps 11.9 onwards once the response is in (`PendingFetch`). So
+/// handlers assigned after `send()` see every event, the loop keeps turning
+/// while the response is on its way, requests complete in the order the
+/// server answers them, and `timeout` and `abort()` end one still in flight.
 ///
-///     xhr.send();
-///     xhr.onload = () => { ... };   // assigned after send(), as tests do
+/// The fetch used to run inside that task, blocked in curl, so none of the
+/// last three held.
 ///
-/// would miss every event. So steps 1-10, which script can observe immediately
-/// (a second `send()` must throw), run inline, and step 11 - loadstart, the
-/// fetch and everything downstream - runs from an event-loop TASK.
-///
-/// That gets ordering right for the common case and is still wrong in one
-/// respect: the task occupies the loop for the duration of the transfer, so two
-/// concurrent XHRs complete in the order they were sent rather than the order
-/// the server answers. Fixing that needs an incremental fetch backend, not a
-/// change here.
-///
-/// With no event loop - a bare realm, or a unit test - it falls back to running
+/// With no event loop and no timer - a bare realm, or a unit test - it waits
 /// inline, which is better than dropping the request.
 pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
     const xhr_state = getXHRState(instance);
@@ -842,24 +842,25 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // object, then set this's upload listener flag.
     xhr_state.upload_listener_flag = uploadHasListeners(instance);
 
-    // Own the body for the life of the request: an async send() reads it from a
-    // task, long after the conversion layer has freed its copy.
-    internal.releasePendingBody();
-    if (extractBodyBytes(instance, body)) |bytes| {
-        internal.pending_body = internal.allocator.dupe(u8, bytes) catch return error.OutOfMemory;
-    }
+    // Own the body for the life of the request: the conversion layer frees
+    // its copy when this returns, and an asynchronous request's fetch - a
+    // redirect re-sends it - runs long after. The body is THIS send()'s: a
+    // handler that runs during it can send again, with a body of its own.
+    const allocator = internal.allocator;
+    const owned_body: ?[]u8 = if (extractBodyBytes(instance, body)) |bytes|
+        allocator.dupe(u8, bytes) catch return error.OutOfMemory
+    else
+        null;
+    var body_taken = false;
+    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
 
     installEventSink(instance);
 
     // Steps 1-10, inline and synchronously observable.
-    const effective_body = send_algo.sendPrologue(xhr_state, internal.pending_body) catch |err| {
-        internal.releasePendingBody();
-        return err;
-    };
+    const effective_body = try send_algo.sendPrologue(xhr_state, owned_body);
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
-        defer internal.releasePendingBody();
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
             return switch (err) {
                 error.TimeoutError => error.TimeoutError,
@@ -875,139 +876,249 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // the rest of step 11 put it after whatever the caller did next, so
     // `xhr.send(); xhr.abort();` emitted `readystatechange(4)` first and
     // `loadstart` never.
-    if (!send_algo.sendStart(xhr_state, effective_body)) {
-        internal.releasePendingBody();
-        return;
-    }
+    if (!send_algo.sendStart(xhr_state, effective_body)) return;
 
-    // Steps 11.7-11.10 - the part that blocks - from a task.
-    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
-        defer internal.releasePendingBody();
+    // A realm with no event loop and no timer to run the fetch's task on - a
+    // bare realm, or a unit test - waits for it here, which is better than
+    // dropping the request.
+    if (instance.ctx.getOptionalEventLoop() == null and instance.ctx.getOptionalTimer() == null) {
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
             log.debug("inline send failed: {s}", .{@errorName(err)});
         };
         return;
-    };
+    }
 
-    // One reference for the task, one for the InternalState that can cancel it.
-    internal.cancelPendingSend();
-    const token = internal.allocator.create(SendToken) catch return error.OutOfMemory;
-    token.* = .{
-        .refs = 2,
-        .cancelled = false,
-        .instance = instance,
-        .allocator = internal.allocator,
+    // Steps 11.7-11.10: fetch req in parallel, on the event loop. Step 3 may
+    // have discarded the body (GET, HEAD); then none is sent.
+    internal.cancelFetch();
+    const request = try send_algo.createRequest(allocator, xhr_state, effective_body);
+    const pending = allocator.create(PendingFetch) catch {
+        request.deinit();
+        return error.OutOfMemory;
     };
-    internal.send_token = token;
-    event_loop.queueTask(.{ .callback = &runSendTask, .context = @ptrCast(token) });
+    pending.* = .{
+        .allocator = allocator,
+        .instance = instance,
+        .isolate = internal.isolate orelse v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+            allocator.destroy(pending);
+            request.deinit();
+            return error.InvalidStateError;
+        },
+        .body = if (effective_body != null) owned_body else null,
+        .started_ms = clock.monotonicMillis(),
+    };
+    pending.fetch = fetch_mod.algorithms.AsyncFetch.start(
+        allocator,
+        request,
+        .{},
+        fetch_mod.network.scheduler.threadScheduler(),
+        pending.client(),
+    ) catch |err| {
+        // The fetch owned the request, and freed it.
+        allocator.destroy(pending);
+        return err;
+    };
+    // The request's body is these bytes, borrowed; the pending fetch keeps
+    // them for as long as the fetch can read them.
+    if (pending.body != null) body_taken = true;
+    internal.pending_fetch = pending;
+    pending.keep_alive.hold(instance);
+
+    // Step 11.11: If this's timeout is not 0, end the fetch once it has run
+    // that long.
+    pending.armTimeout(xhr_state.timeout);
 }
 
-/// The handle a queued send task holds on its XMLHttpRequest.
+/// One asynchronous send()'s fetch, from `send()` until its task has run.
 ///
-/// The task runs AFTER `call_send` returns, and nothing keeps the XHR alive
-/// across that gap - the spec's "an XHR with an outstanding request stays
-/// alive" is not something this GC knows. If V8 collects the wrapper first, the
-/// Instance handle goes back to the slab and is REUSED, so a task holding a
-/// bare `*Instance` would run `send()` against whatever object took its place.
-/// A recycled Instance still LOOKS like one, which is the failure mode
-/// AGENTS.md records for `InstanceRegistry.createIn`: the read succeeds and
-/// corrupts a neighbour.
+/// The XMLHttpRequest's `InternalState.pending_fetch` points at it, and
+/// exactly one other thing owns it at a time:
 ///
-/// So the instance pointer is only ever dereferenced through a token that both
-/// sides own. `deinitState` sets `cancelled` and drops its reference; the task
-/// checks the flag before touching anything and drops its own. Whichever runs
-/// second frees the token. Single-threaded - the event loop - so a plain
-/// counter is enough.
+///   in flight      the fetch - `done`/`gone`, `timedOut`, or `cancelFetch`
+///                  (abort(), open(), a later send(), deinit) ends it
+///   task queued    the task - `run`, or `drop` if its loop goes first
 ///
-/// One bounded leak remains that cannot be closed from here: if the event loop
-/// is destroyed before it runs the task - a worker terminated with a request
-/// outstanding, which `xhr/close-worker-with-xhr-in-progress.html` does
-/// deliberately - the task's reference is never released, so the token (four
-/// words) survives. Closing it needs a cancellable task, which
-/// `EventLoop.queueTask` does not offer. One token per XHR terminated
-/// mid-request.
-const SendToken = struct {
-    refs: u8,
-    cancelled: bool,
-    instance: *runtime.Instance,
+/// The instance is read only while nothing has cancelled this: the XHR's
+/// `deinitState` cancels it before the instance can go, and the slab
+/// recycles addresses, so a bare `*Instance` held across turns would
+/// otherwise run into whatever took its place (see the SendToken this
+/// replaced, which carried the same rule).
+const PendingFetch = struct {
     allocator: std.mem.Allocator,
+    instance: *runtime.Instance,
+    /// The XMLHttpRequest's isolate - a worker's is not the page's, and the
+    /// task can run from the page's loop.
+    isolate: *v8_engine.ffi.Isolate,
+    fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
+    outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
+    /// The request body, owned: req's body borrows it, and a redirect
+    /// re-sends it, so it lives as long as this does.
+    body: ?[]u8 = null,
+    /// Set by `cancelFetch` while the task is queued: the task frees this
+    /// and touches nothing else.
+    cancelled: bool = false,
+    /// When the fetch began, which is what `timeout` counts from.
+    started_ms: i64,
+    /// The XMLHttpRequest's wrapper, held strongly while this exists. XHR
+    /// §3.2: an XMLHttpRequest whose request is outstanding "must not be
+    /// garbage collected" - its events are still to come, and script need not
+    /// hold it to hear them (`xhr.onloadend = () => t.done()` closes over
+    /// nothing). Without this a collection mid-fetch deinitialised it, which
+    /// cancels the fetch, and no event ever fired. Blink's
+    /// XMLHttpRequest::HasPendingActivity is the same rule.
+    keep_alive: same_object.Pin = .{},
+    /// The pending timeout, while the fetch is in flight.
+    timeout_timer: ?runtime.TimerInterface = null,
+    timeout_id: runtime.TimerId = 0,
 
-    fn release(self: *SendToken) void {
-        self.refs -= 1;
-        if (self.refs == 0) self.allocator.destroy(self);
+    fn client(self: *PendingFetch) fetch_mod.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+    }
+
+    /// Whether the XHR's realm is still there. A page that ends retires its
+    /// context and empties its `engine_ctx`.
+    fn alive(context: *anyopaque) bool {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        return self.instance.ctx.engine_ctx != null;
+    }
+
+    /// The realm went away with the fetch in flight; the fetch is over.
+    fn gone(context: *anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        self.detach();
+        self.destroy();
+    }
+
+    /// req's fetch has its outcome: queue the task that processes it, on the
+    /// realm's event loop - or, in a worker, whose realm has none and runs
+    /// its tasks as timers on the page's, as a timer.
+    fn done(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        self.disarmTimeout();
+        self.outcome = outcome;
+        const ctx = self.instance.ctx;
+        if (ctx.getOptionalEventLoop()) |loop| {
+            loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
+            return;
+        }
+        if (ctx.getOptionalTimer()) |timer| {
+            if (timer.setTimeout(0, run, self) != 0) return;
+        }
+        run(self);
+    }
+
+    /// The task: send() steps 11.9 onwards, given the fetch's outcome.
+    fn run(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
+        if (self.cancelled) return;
+        const instance = self.instance;
+        self.detach();
+
+        const outcome = self.outcome orelse return;
+        self.outcome = null;
+
+        // A task runs from the event loop, not from script: it enters the
+        // realm itself - and in a worker, the worker's isolate.
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        {
+            const scope = v8_engine.JsScope.init(instance.ctx) orelse {
+                freeOutcome(outcome);
+                return;
+            };
+            defer scope.deinit();
+            send_algo.sendAsyncFinish(getXHRState(instance), self.body, outcome) catch |err| {
+                log.debug("async send failed: {s}", .{@errorName(err)});
+            };
+        }
+        // In a worker, the task's end is the worker's to run.
+        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+    }
+
+    /// A task that will never run: its loop is going.
+    fn drop(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        if (!self.cancelled) self.detach();
+        self.destroy();
+    }
+
+    /// Step 11.11's timer: the fetch has run for this's timeout. Set the
+    /// timed out flag and terminate the fetch; its processResponse would then
+    /// run the timeout steps, which this does instead - there is no response
+    /// to wait for.
+    fn timedOut(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        self.timeout_id = 0;
+        // The response may be in and unread: a long task can hold the loop
+        // past the deadline with it waiting in the socket. The fetch and the
+        // timer race in parallel, and the fetch finished first, so give the
+        // network its step before calling it a timeout. A fetch that ends
+        // here queues its task and is no longer this timer's. (Only while the
+        // realm lives: a sweep inside the pump would end this very call.)
+        if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
+        const f = self.fetch orelse return;
+        self.fetch = null;
+        f.terminate();
+
+        const instance = self.instance;
+        self.detach();
+        defer self.destroy();
+
+        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != self.isolate;
+        if (entered) v8_engine.ffi.v8_Isolate_Enter(self.isolate);
+        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(self.isolate);
+        {
+            const scope = v8_engine.JsScope.init(instance.ctx) orelse return;
+            defer scope.deinit();
+            var processor = xhr.response.ResponseProcessor.init(getXHRState(instance));
+            processor.handleTimeout();
+        }
+        @import("html").worker_v8_context.finishTaskIn(self.isolate);
+    }
+
+    /// Arm the timeout for a fetch that began at `started_ms`, `timeout_ms`
+    /// after it began - at once if that is already past. 0 is no timeout.
+    fn armTimeout(self: *PendingFetch, timeout_ms: u32) void {
+        self.disarmTimeout();
+        if (timeout_ms == 0 or self.fetch == null) return;
+        const timer = self.instance.ctx.getOptionalTimer() orelse return;
+        const elapsed = clock.monotonicMillis() - self.started_ms;
+        const remaining: u64 = @intCast(@max(0, @as(i64, timeout_ms) - elapsed));
+        const id = timer.setTimeout(remaining, timedOut, self);
+        if (id == 0) return;
+        self.timeout_timer = timer;
+        self.timeout_id = id;
+    }
+
+    fn disarmTimeout(self: *PendingFetch) void {
+        if (self.timeout_id == 0) return;
+        if (self.timeout_timer) |timer| _ = timer.clearTimeout(self.timeout_id);
+        self.timeout_id = 0;
+    }
+
+    /// Unhook from the XMLHttpRequest, which is still there.
+    fn detach(self: *PendingFetch) void {
+        const internal = getInternal(self.instance);
+        if (internal.pending_fetch == self) internal.pending_fetch = null;
+    }
+
+    fn destroy(self: *PendingFetch) void {
+        self.keep_alive.release();
+        self.disarmTimeout();
+        if (self.outcome) |outcome| freeOutcome(outcome);
+        if (self.body) |b| self.allocator.free(b);
+        self.allocator.destroy(self);
+    }
+
+    fn freeOutcome(outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        var result = outcome catch return;
+        result.deinit();
     }
 };
-
-fn runSendTask(context: ?*anyopaque) void {
-    const token: *SendToken = @ptrCast(@alignCast(context orelse return));
-    defer token.release();
-
-    // The XHR was collected, or a later send() superseded this one.
-    if (token.cancelled) return;
-
-    const instance = token.instance;
-    const xhr_state = getXHRState(instance);
-    const internal = getInternal(instance);
-
-    // This token has now been consumed, so `deinitState` must not cancel it a
-    // second time.
-    if (internal.send_token == token) {
-        internal.send_token = null;
-        token.release();
-    }
-
-    defer internal.releasePendingBody();
-
-    // Step 11.6, hoisted: between `send()` returning and this task running,
-    // script has had a turn. `abort()` unsets the send() flag and `open()`
-    // resets the state, and either means this request is no longer wanted.
-    if (!xhr_state.send_flag or xhr_state.ready_state != .OPENED) return;
-
-    // A task runs from the event loop, where no V8 context is entered - unlike
-    // every other entry point here, which V8 calls into from JavaScript.
-    // `Context.timerHandler` enters the context for the same reason.
-    //
-    // This is DEFENSIVE, and the measurement says so. It was committed as the
-    // fix for three crashes that appeared with async send:
-    //
-    //     xhr/abort-during-readystatechange.any.js    TIMEOUT -> CRASH
-    //     xhr/abort-event-order.htm                   OK      -> CRASH
-    //     xhr/access-control-and-redirects-async-...  OK      -> CRASH
-    //
-    // all of them `# Fatal error in v8::HandleScope::CreateHandle()`. They are
-    // gone. But removing this again - context enter only, HandleScope only, and
-    // NEITHER - leaves `abort-event-order.htm` crash-free in all three
-    // configurations, 3 runs each. So something else fixed them, most likely
-    // the nine Event subclasses gaining their inherited `InternalState` in the
-    // same window (before that, dispatching a ProgressEvent threw
-    // InvalidStateError and the listener path was never reached).
-    //
-    // Kept anyway, for a reason that does not depend on the crash: without an
-    // entered context, anything downstream that asks V8 for the CURRENT context
-    // gets whatever was entered last, which on a page with iframes is not
-    // necessarily this XHR's. Most `v8_*` wrappers open their own HandleScope,
-    // so that half is belt and braces.
-    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
-        log.debug("async send dropped: no V8 context", .{});
-        return;
-    };
-    v8_engine.ffi.v8_Context_Enter(v8_context);
-    defer v8_engine.ffi.v8_Context_Exit(v8_context);
-
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        log.debug("async send dropped: no current isolate", .{});
-        return;
-    };
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
-        log.debug("async send dropped: could not open a HandleScope", .{});
-        return;
-    };
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    send_algo.sendDispatch(xhr_state, internal.pending_body) catch |err| {
-        log.debug("async send failed: {s}", .{@errorName(err)});
-    };
-}
 
 /// Step 5: "If one or more event listeners are registered on this's upload
 /// object, then set this's upload listener flag." An event handler's listener
