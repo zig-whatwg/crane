@@ -34,6 +34,9 @@ pub const Implementation = struct {
 pub const BeforeUnloadResult = struct {
     prompt_shown: bool = false,
     canceled: bool = false,
+    /// A handler asked for the prompt - cancelled the event or set its
+    /// returnValue - which is shown only with sticky activation.
+    prompt_requested: bool = false,
 };
 
 threadlocal var implementation: ?Implementation = null;
