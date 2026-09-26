@@ -104,6 +104,14 @@ fn enumNameMatches(comptime field_name: []const u8, runtime_name: []const u8) bo
 // JavaScript to Zig (V8 → Runtime)
 // ============================================================================
 
+/// WebIDL 3.2.11 USVString: convert to DOMString, then replace every lone
+/// surrogate with U+FFFD - Infra's "convert a string into a scalar value
+/// string" over the WTF-8 bytes V8 writes. ByteString shares the `[]const u8`
+/// type and so passes through here too; WebIDL gives it a TypeError for any
+/// code unit above 0xFF instead, which needs the two types told apart in
+/// codegen.
+pub const replaceLoneSurrogates = @import("infra").string.replaceLoneSurrogatesWtf8;
+
 /// Convert V8 String to Zig DOMString
 ///
 /// Allocates memory for the string contents using the provided allocator.
@@ -809,6 +817,9 @@ pub fn fromV8Value(
                 allocator.free(buffer);
                 return ConversionError.StringError;
             }
+            // USVString (and ByteString, which shares the Zig type): lone
+            // surrogates become U+FFFD.
+            replaceLoneSurrogates(buffer);
             return buffer;
         }
 

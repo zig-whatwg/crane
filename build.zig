@@ -908,6 +908,7 @@ pub fn build(b: *std.Build) void {
     // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
     v8_mod.addOptions("build_options", build_options);
     v8_mod.addImport("clock", clock_mod);
+    v8_mod.addImport("infra", infra_mod);
     v8_mod.addImport("host", host_mod);
     v8_mod.addImport("runtime", runtime_mod);
     v8_mod.addOptions("debug_options", debug_options);

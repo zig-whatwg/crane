@@ -2711,6 +2711,18 @@ pub fn V8Interface(comptime Interface: type) type {
             var buf: [160]u8 = undefined;
             const key = std.fmt.bufPrint(&buf, "crane:SameObject:" ++ prop_name ++ "@{x}", .{addr}) catch return;
             v8.v8_Object_SetPrivateRef(owner, key.ptr, @intCast(key.len), child);
+
+            // And the edge back. A [SameObject] child - classList, dataset,
+            // attributes, style - reads and writes through its owner, and
+            // script can keep the child and drop the owner; the owner must then
+            // live as long as the child (Blink traces the child to its element;
+            // WebKit forwards the child's refcount to it). A JS-heap edge, not
+            // a Global, so the pair still collects as a unit. Without it,
+            // `el.attributes` kept past `el` read a freed element.
+            if (!v8.v8_Value_IsObject(child)) return;
+            var back_buf: [168]u8 = undefined;
+            const back = std.fmt.bufPrint(&back_buf, "crane:SameObjectOwner:" ++ prop_name ++ "@{x}", .{addr}) catch return;
+            v8.v8_Object_SetPrivateRef(@ptrCast(child), back.ptr, @intCast(back.len), @ptrCast(owner));
         }
 
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
@@ -7954,22 +7966,25 @@ pub fn V8Interface(comptime Interface: type) type {
             if (T == runtime.DOMString) {
                 // Check if it's a string
                 if (!v8.v8_Value_IsString(v8_value)) {
-                    // Coerce to string
+                    // Coerce to string; ToString's result is owned.
                     const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
+                    defer v8.v8_String_Dispose(str);
                     return try conv.fromV8String(allocator, isolate, context, str);
                 }
                 const str: *v8.String = @ptrCast(v8_value);
                 return try conv.fromV8String(allocator, isolate, context, str);
             } else if (T == runtime.USVString or T == []const u8) {
-                // Similar to DOMString
-                if (!v8.v8_Value_IsString(v8_value)) {
+                // DOMString conversion, then every lone surrogate becomes
+                // U+FFFD (WebIDL 3.2.11); the bytes are the fresh copy
+                // fromV8String allocated, so they are rewritten in place.
+                const dom_str = if (!v8.v8_Value_IsString(v8_value)) blk: {
                     const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    const dom_str = try conv.fromV8String(allocator, isolate, context, str);
-                    return dom_str.asSlice();
-                }
-                const str: *v8.String = @ptrCast(v8_value);
-                const dom_str = try conv.fromV8String(allocator, isolate, context, str);
-                return dom_str.asSlice();
+                    defer v8.v8_String_Dispose(str);
+                    break :blk try conv.fromV8String(allocator, isolate, context, str);
+                } else try conv.fromV8String(allocator, isolate, context, @ptrCast(v8_value));
+                const bytes = dom_str.asSlice();
+                if (bytes.len > 0) conv.replaceLoneSurrogates(@constCast(bytes));
+                return bytes;
             } else if (T == bool or T == runtime.Boolean) {
                 return conv.fromV8Boolean(isolate, v8_value);
             } else if (@typeInfo(T) == .int or @typeInfo(T) == .float) {
