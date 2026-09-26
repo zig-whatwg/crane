@@ -721,6 +721,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A short `curl_ws_send` is the middle of a frame](docs/lessons/architecture-a-short-curl-ws-send-is-the-middle-of-a-frame.md) - A partial write is state, not an error.
 - [An errdefer that outlives the handoff frees what the new owner will free](docs/lessons/architecture-an-errdefer-that-outlives-the-handoff-frees-what-the-new-owner-will-free.md) - End the errdefer scope where ownership moves.
 - [An EventTarget subclass must init and deinit through EventTarget's impl](docs/lessons/architecture-an-eventtarget-subclass-must-init-and-deinit-through-eventtarget-s-impl.md) - An address-keyed side table needs its owner's deinit.
+- [Frames and the top-level page parse through different drivers](docs/lessons/architecture-frames-and-the-top-level-page-parse-through-different-drivers.md) - When a feature works in a frame but not at top level, compare the two parser drivers first.
 
 ### Spec Compliance
 
@@ -738,6 +739,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Infra's ASCII whitespace is not `std.ascii.isWhitespace`](docs/lessons/spec-compliance-infra-ascii-whitespace-is-not-std-ascii-iswhitespace.md) - Use Infra's whitespace set for web microsyntaxes; the standard library's includes VT.
 - [A union argument reaches the impl in every JSValue shape](docs/lessons/spec-compliance-a-union-argument-reaches-the-impl-in-every-jsvalue-shape.md) - An impl that takes a raw JSValue owns the whole union conversion.
 - [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
+- [A result the spec hands over from onComplete arrives in a task](docs/lessons/spec-compliance-a-result-handed-over-from-oncomplete-arrives-in-a-task.md) - A synchronous fetch does not make the spec's task synchronous; deliver the result where the spec does.
+- ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
 
 ### Codegen
 
@@ -778,6 +781,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [wpt serve: a file added after it starts 404s, and stopping it means stopping all of it](docs/lessons/testing-wpt-serve-a-file-added-after-it-starts-404s-and.md) - `lsof -t -iTCP:8000 | xargs kill` (the advice in the 404 lesson above) kills only the :8000 child.
 - [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
 - [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
+- [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
 
 ### Debugging
 
@@ -791,6 +795,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Redirect the runner's output into a pipe, never a file](docs/lessons/debugging-redirect-the-runner-s-output-into-a-pipe-never-a.md) - Before concluding instrumentation did not run, pipe the output.
 - [Find what keeps a page alive: count native contexts, snapshot, attribute handles by site](docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) - Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.
 - [A 101 response's headers are filed under `CURLH_1XX`](docs/lessons/debugging-a-101-response-s-headers-are-filed-under-curlh-1xx.md) - A header curl says is missing may be filed under another origin bit.
+- [When one subtest in a file hangs and its siblings pass, compare what triggers each one](docs/lessons/debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
 
 ### Workflow
 
