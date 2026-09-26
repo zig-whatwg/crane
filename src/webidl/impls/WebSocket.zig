@@ -806,39 +806,73 @@ fn invokeIdlHandler(target: *runtime.Instance, event: *runtime.Instance, kind: H
 /// 1. Let baseURL be this's relevant settings object's API base URL.
 /// 2. Let urlRecord be the result of applying the URL parser to url with baseURL.
 /// 3. If urlRecord is failure, throw a "SyntaxError" DOMException.
-/// 4. If urlRecord's scheme is not "ws" or "wss", throw a "SyntaxError" DOMException.
-/// 5. If urlRecord's fragment is non-null, throw a "SyntaxError" DOMException.
-/// 6. If protocols is a string, set protocols to a sequence consisting of just that string.
-/// 7. If any of the values in protocols occur more than once or contain illegal values,
+/// 4. If urlRecord's scheme is "http", set it to "ws".
+/// 5. Otherwise, if urlRecord's scheme is "https", set it to "wss".
+/// 6. If urlRecord's scheme is not "ws" or "wss", throw a "SyntaxError" DOMException.
+/// 7. If urlRecord's fragment is non-null, throw a "SyntaxError" DOMException.
+/// 8. If protocols is a string, set protocols to a sequence consisting of just that string.
+/// 9. If any of the values in protocols occur more than once or contain illegal values,
 ///    throw a "SyntaxError" DOMException.
-/// 8. Set this's url to urlRecord.
-/// 9. Let client be this's relevant settings object.
-/// 10. Run this step in parallel: Establish a WebSocket connection given urlRecord, protocols...
+/// 10. Set this's url to urlRecord.
+/// 11. Let client be this's relevant settings object.
+/// 12. Run this step in parallel: Establish a WebSocket connection given urlRecord,
+///     protocols, and client.
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // Steps 2-5. Parse the URL, then check its scheme and fragment.
+    // Steps 1-2. Parse url against this's relevant settings object's API base
+    // URL. With no base, which is what this passed, every relative url - "",
+    // "test", "?" - failed step 3 instead of resolving against the page.
     //
-    // This used to be `startsWith("ws://")` plus a search for '#', which reads
-    // as equivalent and is not: it accepts everything the URL parser rejects
-    // for reasons that are not in the prefix. `ws://web platform.test:80/echo`
-    // is a SyntaxError because a space cannot appear in a host, and a prefix
-    // test cannot see that.
-    var record = api_parser.parseURL(ctx.allocator, url, null) catch {
+    // A prefix test (`startsWith("ws://")`, which this was before the parser)
+    // is not equivalent either: `ws://web platform.test:80/echo` is a
+    // SyntaxError because a space cannot appear in a host.
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (apiBaseURL(ctx)) |base| {
+        defer ctx.allocator.free(base);
+        base_record = api_parser.parseURL(ctx.allocator, base, null) catch null;
+    }
+
+    var record = api_parser.parseURL(
+        ctx.allocator,
+        url,
+        if (base_record) |*b| b else null,
+    ) catch {
         // Step 3. Parse failure is a "SyntaxError" DOMException.
         return error.SyntaxError;
     };
     defer record.deinit();
 
-    // Step 4. The scheme must be "ws" or "wss".
+    // Steps 4-5. "http" becomes "ws" and "https" becomes "wss".
     const scheme = record.scheme();
-    if (!std.mem.eql(u8, scheme, "ws") and !std.mem.eql(u8, scheme, "wss")) {
+    const ws_scheme: []const u8 = if (std.mem.eql(u8, scheme, "http"))
+        "ws"
+    else if (std.mem.eql(u8, scheme, "https"))
+        "wss"
+    else
+        scheme;
+
+    // Step 6. The scheme must now be "ws" or "wss".
+    if (!std.mem.eql(u8, ws_scheme, "ws") and !std.mem.eql(u8, ws_scheme, "wss")) {
         return error.SyntaxError;
     }
 
-    // Step 5. A non-null fragment is a "SyntaxError" DOMException - including
+    // Step 7. A non-null fragment is a "SyntaxError" DOMException - including
     // an EMPTY one, so `ws://host/#` is just as invalid as `ws://host/#x`.
     if (record.has_fragment) {
         return error.SyntaxError;
     }
+
+    // Step 10. This's url is urlRecord, and the `url` getter serializes it.
+    // Serialized once, here: nothing changes a WebSocket's url afterwards.
+    // Swapping the scheme on the serialization is exact, because each pair
+    // shares its default port (80 for http and ws, 443 for https and wss), so
+    // the parser elided the same port either way and nothing but the scheme
+    // differs.
+    const serialized = try @import("url_serializer").serialize(ctx.allocator, &record, false);
+    defer ctx.allocator.free(serialized);
+    const url_string = try std.mem.concat(ctx.allocator, u8, &.{ ws_scheme, serialized[scheme.len..] });
+    var url_owned = true;
+    defer if (url_owned) ctx.allocator.free(url_string);
 
     // Create instance
     const instance = try init(ctx.allocator, State, &WebSocket.vtable, ctx);
@@ -864,11 +898,12 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     state.own._internal = internal;
 
     // Create the WebSocket connection (starts in CONNECTING state)
-    const connection = try WebSocketConnection.init(ctx.allocator, url);
+    const connection = try WebSocketConnection.init(ctx.allocator, url_string);
     internal.connection = connection;
 
-    // Store URL (copy for ownership)
-    internal.url_string = try ctx.allocator.dupe(u8, url);
+    // The serialized url, owned by the internal state from here on.
+    internal.url_string = url_string;
+    url_owned = false;
     state.own.url = internal.url_string;
 
     // Initialize state from connection
@@ -885,12 +920,12 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     state.own.onclose = null;
     state.own.onmessage = null;
 
-    // Steps 6-7. protocols is a string or a sequence of strings. Each must be a
+    // Steps 8-9. protocols is a string or a sequence of strings. Each must be a
     // valid HTTP token, and no value may repeat (ASCII case-insensitively) -
     // otherwise throw a "SyntaxError" DOMException.
     internal.requested_protocols = try parseProtocols(ctx.allocator, protocols);
 
-    // Step 10. "Run this step in parallel: establish a WebSocket connection."
+    // Step 12. "Run this step in parallel: establish a WebSocket connection."
     //
     // Deferred to the pump's first turn rather than done here. Connecting
     // inline would block the constructor on a network handshake and, worse,
@@ -912,7 +947,33 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     return instance;
 }
 
-/// Steps 6-7 of the constructor: validate and copy the requested subprotocols.
+/// This's relevant settings object's API base URL, owned by `ctx.allocator`.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
+///
+/// A window's is its document's base URL, read through the Document's
+/// `baseURI`; a worker's is its script URL, which the context entry records
+/// (html/worker_v8_context.zig). The same lookup `Request`'s constructor makes.
+fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
+    if (ctx.getEngineContextAs(v8_engine.ffi.Context)) |v8_context| {
+        if (v8_engine.context_manager.getWindowForContext(v8_context)) |window| {
+            const document = interfaces.Window.get_document(window) catch null;
+            if (document) |d| {
+                const base = interfaces.Node.get_baseURI(d) catch null;
+                if (base) |b| {
+                    if (b.len > 0) return @constCast(b);
+                    d.ctx.allocator.free(b);
+                }
+            }
+        }
+        if (v8_engine.context_manager.getDocumentUrl(v8_context)) |document_url| {
+            if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
+        }
+    }
+    return null;
+}
+
+/// Steps 8-9 of the constructor: validate and copy the requested subprotocols.
 ///
 /// Returns null when none were given, which is distinct from an empty list -
 /// `CreateWebSocket(false, false)` must send no Sec-WebSocket-Protocol header
@@ -936,7 +997,7 @@ fn parseProtocols(
         return null;
     }
 
-    // Step 7. Any value that is not a token, or that repeats, is a SyntaxError.
+    // Step 9. Any value that is not a token, or that repeats, is a SyntaxError.
     for (list.items, 0..) |value, i| {
         if (!isHttpToken(value)) return error.SyntaxError;
         for (list.items[0..i]) |earlier| {
@@ -958,7 +1019,20 @@ fn collectProtocolStrings(
 ) !void {
     const v8 = v8_engine.ffi;
 
-    if (value != .handle) return;
+    // WebIDL § 3.2.24, union conversion: anything that is not an object is
+    // converted to the union's DOMString. The binding has already done that for
+    // a string - it arrives here as `.string`, never as a handle - and this used
+    // to return on any non-handle, so `new WebSocket(url, "/echo")` sent no
+    // protocol at all instead of throwing the SyntaxError step 9 requires.
+    switch (value) {
+        .string => |s| return list.append(allocator, try allocator.dupe(u8, s.data)),
+        .boolean => |b| return list.append(allocator, try allocator.dupe(u8, if (b) "true" else "false")),
+        .null => return list.append(allocator, try allocator.dupe(u8, "null")),
+        .number => |n| return list.append(allocator, try numberToString(allocator, n)),
+        .handle => {},
+        // `undefined` is the omitted argument's default: the empty sequence.
+        .undefined, .instance => return,
+    }
     const v8_value: *v8.Value = @ptrCast(@alignCast(value.handle.ptr));
 
     const isolate = v8.v8_Isolate_GetCurrent() orelse return;
@@ -985,6 +1059,21 @@ fn collectProtocolStrings(
         defer v8.v8_Value_Dispose(element);
         if (try v8StringToOwned(allocator, element)) |s| try list.append(allocator, s);
     }
+}
+
+/// ECMAScript's Number::toString, for a number passed as a protocol.
+///
+/// Exact for NaN, the infinities and every integer below 10^21 (which is what
+/// an integer argument is); other values take the shortest round-trip form,
+/// which differs from ECMAScript's only in exponent notation. Any of these that
+/// is not an HTTP token is rejected by step 9 either way.
+fn numberToString(allocator: std.mem.Allocator, n: f64) ![]const u8 {
+    if (std.math.isNan(n)) return allocator.dupe(u8, "NaN");
+    if (std.math.isInf(n)) return allocator.dupe(u8, if (n > 0) "Infinity" else "-Infinity");
+    if (n == @trunc(n) and @abs(n) < 1e21) {
+        return std.fmt.allocPrint(allocator, "{d}", .{@as(i128, @intFromFloat(n))});
+    }
+    return std.fmt.allocPrint(allocator, "{d}", .{n});
 }
 
 /// A V8 string as an owned UTF-8 slice, or null if it is not a string.
