@@ -3226,6 +3226,21 @@ pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *a
 // Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
 // its functions only inside its own region, so parallel lanes never edit the same lines.
 // ---- lane: engine-boundary ----
+// The steps of WebIDL's record<K, V> conversion (3.2.23) that run script, each
+// under a TryCatch: on a throw the thrown value (caught, not pending) with
+// `threw.*` true - null only for a terminating isolate. Every non-null result
+// is a new Global the caller owns.
+
+/// O.[[OwnPropertyKeys]](): an Array of every own key - Symbols included,
+/// integer indices as Strings - in order (a Proxy's ownKeys trap, unfiltered).
+pub extern fn v8_Object_OwnPropertyKeysCatching(context: *Context, object: *Value, threw: *bool) ?*Value;
+
+/// O.[[GetOwnProperty]](key): `enumerable.*` is whether the property exists
+/// and is enumerable. Returns the thrown value when script threw, else null.
+pub extern fn v8_Object_IsOwnEnumerableCatching(context: *Context, object: *Value, key: *Value, enumerable: *bool, threw: *bool) ?*Value;
+
+/// Get(O, key) for a String or Symbol `key` (the key itself, not its UTF-8).
+pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key: *Value, threw: *bool) ?*Value;
 // ---- end lane: engine-boundary ----
 // ---- lane: page-realm ----
 // ---- end lane: page-realm ----
