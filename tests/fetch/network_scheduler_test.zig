@@ -270,3 +270,185 @@ test "deinit cancels what is still in flight" {
     // std.testing.allocator fails the test if the transfer outlived deinit.
     try testing.expectEqual(@as(usize, 0), outcome.calls);
 }
+
+/// What a streamed transfer's client heard, in order.
+const StreamRecord = struct {
+    status: u16 = 0,
+    content_type_seen: bool = false,
+    head_at_ms: i64 = 0,
+    chunks: usize = 0,
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
+    first_data_at_ms: i64 = 0,
+    ended: bool = false,
+    end_error: ?NetworkError = null,
+    end_at_ms: i64 = 0,
+    order_ok: bool = true,
+
+    fn client(self: *StreamRecord) network.scheduler.StreamClient {
+        return .{ .context = self, .head = head, .data = data, .end = end };
+    }
+
+    fn head(context: ?*anyopaque, response: NetworkResponse) void {
+        const self: *StreamRecord = @ptrCast(@alignCast(context.?));
+        var r = response;
+        defer r.deinit();
+        if (self.ended or self.chunks > 0) self.order_ok = false;
+        self.status = r.status;
+        self.head_at_ms = clock.monotonicMillis();
+        for (r.headers) |h| {
+            if (std.ascii.eqlIgnoreCase(h.name, "content-type")) self.content_type_seen = true;
+        }
+        if (r.body != null) self.order_ok = false;
+    }
+
+    fn data(context: ?*anyopaque, bytes: []const u8) void {
+        const self: *StreamRecord = @ptrCast(@alignCast(context.?));
+        if (self.status == 0 or self.ended) self.order_ok = false;
+        if (self.chunks == 0) self.first_data_at_ms = clock.monotonicMillis();
+        self.chunks += 1;
+        self.bytes.appendSlice(testing.allocator, bytes) catch {};
+    }
+
+    fn end(context: ?*anyopaque, result: NetworkError!void) void {
+        const self: *StreamRecord = @ptrCast(@alignCast(context.?));
+        if (self.ended) self.order_ok = false;
+        self.ended = true;
+        self.end_at_ms = clock.monotonicMillis();
+        result catch |err| {
+            self.end_error = err;
+        };
+    }
+
+    fn deinit(self: *StreamRecord) void {
+        self.bytes.deinit(testing.allocator);
+    }
+
+    fn isEnded(ctx: *anyopaque) bool {
+        const self: *StreamRecord = @ptrCast(@alignCast(ctx));
+        return self.ended;
+    }
+};
+
+test "a streamed transfer hands on its headers before its body, and its body as it arrives" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/trickle/10"));
+    var record: StreamRecord = .{};
+    defer record.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+
+    const longest = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
+
+    try testing.expect(record.order_ok);
+    try testing.expectEqual(@as(u16, 200), record.status);
+    try testing.expect(record.content_type_seen);
+    try testing.expectEqual(@as(?NetworkError, null), record.end_error);
+    // Ten chunks, 100ms apart: the headers and the first piece arrive long
+    // before the end, and the body comes in more than one piece.
+    try testing.expectEqual(@as(usize, 60), record.bytes.items.len);
+    try testing.expect(record.chunks >= 3);
+    try testing.expect(record.end_at_ms - record.head_at_ms >= 700);
+    try testing.expect(record.end_at_ms - record.first_data_at_ms >= 700);
+    try testing.expect(longest < 250);
+    try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+}
+
+test "a streamed transfer that fails after its headers ends in error" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/bad-chunk"));
+    var record: StreamRecord = .{};
+    defer record.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
+
+    try testing.expect(record.order_ok);
+    try testing.expectEqual(@as(u16, 200), record.status);
+    try testing.expectEqualStrings("chunk\n", record.bytes.items);
+    try testing.expect(record.end_error != null);
+}
+
+test "a streamed transfer that never connects ends with no headers" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    const request = get("http://127.0.0.1:9/");
+    var record: StreamRecord = .{};
+    defer record.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
+
+    try testing.expectEqual(@as(u16, 0), record.status);
+    try testing.expectEqual(@as(?NetworkError, NetworkError.ConnectionRefused), record.end_error);
+}
+
+test "a streamed transfer cancelled from its own head callback hears nothing more" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    const Canceller = struct {
+        scheduler: *NetworkScheduler,
+        job: ?*NetworkScheduler.Job = null,
+        heads: usize = 0,
+        others: usize = 0,
+
+        fn head(context: ?*anyopaque, response: NetworkResponse) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            var r = response;
+            r.deinit();
+            self.heads += 1;
+            self.scheduler.cancel(self.job.?);
+        }
+        fn data(context: ?*anyopaque, _: []const u8) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.others += 1;
+        }
+        fn end(context: ?*anyopaque, _: NetworkError!void) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.others += 1;
+        }
+        fn gotHead(ctx: *anyopaque) bool {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            return self.heads > 0;
+        }
+    };
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/trickle/5"));
+    var canceller: Canceller = .{ .scheduler = &scheduler };
+    canceller.job = try scheduler.startStreaming(testing.allocator, &request, .{}, .{
+        .context = &canceller,
+        .head = Canceller.head,
+        .data = Canceller.data,
+        .end = Canceller.end,
+    });
+    _ = pumpUntil(&scheduler, 5_000, Canceller.gotHead, &canceller);
+    const deadline = clock.monotonicMillis() + 800;
+    while (clock.monotonicMillis() < deadline) {
+        _ = scheduler.pump();
+        clock.sleep(5 * std.time.ns_per_ms);
+    }
+    try testing.expectEqual(@as(usize, 1), canceller.heads);
+    try testing.expectEqual(@as(usize, 0), canceller.others);
+    try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+}
