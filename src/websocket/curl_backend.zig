@@ -38,6 +38,45 @@ const curl = fetch.network.curl_ffi;
 const CurlCookieManager = fetch.network.CurlCookieManager;
 const close_codes = @import("close_codes.zig");
 
+/// Which subprotocol a handshake response selects, or whether it fails the
+/// connection.
+///
+/// `requested` is the client's Sec-WebSocket-Protocol list as sent - comma
+/// joined, null when none was sent - and `response` the server's header value,
+/// null when absent.
+///
+/// Two rules, from two documents:
+///
+/// - WebSockets § 2.2 step 11.2: if `protocols` is not empty and the response's
+///   Sec-WebSocket-Protocol is null, failure or empty, fail the connection. A
+///   subprotocol the client asked for and the server did not acknowledge.
+/// - RFC 6455 § 4.1, the client's step 6: a Sec-WebSocket-Protocol naming a
+///   subprotocol the client did not request fails the connection. That covers
+///   a server answering a request that named none.
+///
+/// Subprotocol names are compared exactly: they are tokens, and the constructor
+/// already rejected a list repeating one ASCII case-insensitively.
+pub fn selectSubprotocol(requested: ?[]const u8, response: ?[]const u8) error{HandshakeFailed}!?[]const u8 {
+    const asked = if (requested) |r| r.len > 0 else false;
+    const value = std.mem.trim(u8, response orelse "", " \t");
+
+    if (!asked) {
+        // RFC 6455 § 4.1 step 6: nothing was offered, so nothing may be chosen.
+        if (response != null and value.len > 0) return error.HandshakeFailed;
+        return null;
+    }
+
+    // WebSockets § 2.2 step 11.2: offered, so one must be acknowledged.
+    if (value.len == 0) return error.HandshakeFailed;
+
+    // RFC 6455 § 4.1 step 6: and it must be one of those offered.
+    var offered = std.mem.splitScalar(u8, requested.?, ',');
+    while (offered.next()) |candidate| {
+        if (std.mem.eql(u8, candidate, value)) return candidate;
+    }
+    return error.HandshakeFailed;
+}
+
 /// WebSocket backend using libcurl.
 pub const CurlWebSocket = struct {
     allocator: std.mem.Allocator,
@@ -231,8 +270,31 @@ pub const CurlWebSocket = struct {
             return error.HandshakeFailed;
         }
 
+        // The subprotocol in use, if the handshake allows the connection at
+        // all. libcurl validates Sec-WebSocket-Accept; it does not look at
+        // Sec-WebSocket-Protocol.
+        const selected = try selectSubprotocol(self.protocols, responseHeader(handle, "Sec-WebSocket-Protocol"));
+        if (selected) |p| self.negotiated_protocol = try self.allocator.dupe(u8, p);
+
         self.handle = handle;
         self.connected = true;
+    }
+
+    /// A header of the handshake response (request -1: the last request on
+    /// the handle), or null when it is absent. A header sent more than once
+    /// comes back as a bare ",": extracting its values yields a list, and a
+    /// list of subprotocols is never the ONE the server must select.
+    fn responseHeader(handle: *curl.CURL, name: [:0]const u8) ?[]const u8 {
+        // The 101 that completes the handshake is an informational response,
+        // and libcurl files its headers under CURLH_1XX, not CURLH_HEADER.
+        const origin: c_uint = curl.c.CURLH_HEADER | curl.c.CURLH_1XX;
+        var header: ?*curl.c.struct_curl_header = null;
+        const rc = curl.c.curl_easy_header(handle, name.ptr, 0, origin, -1, &header);
+        if (rc != curl.c.CURLHE_OK) return null;
+        const h = header orelse return null;
+        // Two or more instances cannot all be the one subprotocol requested.
+        if (h.amount > 1) return ",";
+        return std.mem.span(h.value);
     }
 
     /// Verify the peer and its host name, against the configured CA bundle
@@ -424,6 +486,36 @@ test "CurlWebSocket - protocol list is exactly sized" {
         defer ws.deinit();
         try std.testing.expect(ws.protocols == null);
     }
+}
+
+test "selectSubprotocol - nothing offered, nothing chosen" {
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectSubprotocol(null, null));
+    // An empty header is no subprotocol, not an unrequested one.
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectSubprotocol(null, ""));
+}
+
+test "selectSubprotocol - a server may not choose what was not offered" {
+    // RFC 6455 § 4.1, the client's step 6.
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol(null, "echo"));
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo,chat", "graphql"));
+    // Matching is exact; the constructor has already folded case for duplicates.
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo", "Echo"));
+    // Two protocols at once is not one of the offered ones.
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo,chat", "echo, chat"));
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo,chat", ","));
+}
+
+test "selectSubprotocol - what was offered must be acknowledged" {
+    // WebSockets § 2.2 step 11.2: null, or the empty byte sequence, fails.
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo", null));
+    try std.testing.expectError(error.HandshakeFailed, selectSubprotocol("echo,chat", ""));
+}
+
+test "selectSubprotocol - the server's choice is the subprotocol in use" {
+    try std.testing.expectEqualStrings("echo", (try selectSubprotocol("echo", "echo")).?);
+    try std.testing.expectEqualStrings("chat", (try selectSubprotocol("echo,chat", "chat")).?);
+    // Optional whitespace around a header value is not part of it.
+    try std.testing.expectEqualStrings("chat", (try selectSubprotocol("echo,chat", " chat ")).?);
 }
 
 test "CurlWebSocket - a wss handshake trusts what fetch trusts" {
