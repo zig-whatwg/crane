@@ -19,11 +19,6 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const infra = @import("infra");
 
-// Import V8 pointer tagging and FFI for Uint8Array access
-const v8 = @import("v8");
-const pointer_tag = v8.pointer_tag;
-const ffi = v8.ffi;
-
 const TextEncoder = interfaces.TextEncoder;
 
 pub const State = TextEncoder.State;
@@ -123,32 +118,15 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
     // Get input value - default to empty string
     const input_slice: []const u8 = if (input.was_passed) input.value else "";
 
-    // Handle empty input (common case)
-    if (input_slice.len == 0) {
-        // Return pointer to empty Uint8Array descriptor
-        // The V8 bindings layer will create the actual Uint8Array object
-        return createUint8ArrayDescriptor(allocator, "") catch return ImplError.OutOfMemory;
+    // A USVString is valid UTF-8 already, so the UTF-8 encoder's output is the
+    // input's own bytes (the ASCII fast path is the same case). Anything else
+    // has its invalid sequences replaced with U+FFFD first.
+    if (std.unicode.utf8ValidateSlice(input_slice)) {
+        return newUint8Array(instance, input_slice);
     }
-
-    // ASCII FAST PATH: For ASCII-only input, copy directly
-    if (isAscii(input_slice)) {
-        const output = allocator.dupe(u8, input_slice) catch return ImplError.OutOfMemory;
-        return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
-    }
-
-    // GENERAL PATH: Validate and encode UTF-8
-    // Since input is already USVString (valid UTF-8), we can copy directly
-    // USVString contains only Unicode scalar values (no surrogates)
-    if (!std.unicode.utf8ValidateSlice(input_slice)) {
-        // Invalid UTF-8 - replace invalid sequences with U+FFFD
-        // This shouldn't happen with proper USVString input, but handle gracefully
-        const output = replaceInvalidUtf8(allocator, input_slice) catch return ImplError.OutOfMemory;
-        return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
-    }
-
-    // Valid UTF-8 - duplicate
-    const output = allocator.dupe(u8, input_slice) catch return ImplError.OutOfMemory;
-    return createUint8ArrayDescriptor(allocator, output) catch return ImplError.OutOfMemory;
+    const output = replaceInvalidUtf8(allocator, input_slice) catch return ImplError.OutOfMemory;
+    defer allocator.free(output);
+    return newUint8Array(instance, output);
 }
 
 /// encodeInto() operation
@@ -180,80 +158,51 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
 ///       ii.  Otherwise, break.
 /// 7. Return «[ "read" → read, "written" → written ]».
 pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: runtime.JSValue) anyerror!dictionaries.TextEncoderEncodeIntoResult {
-    _ = instance;
+    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
+    const describe_view = engine.describeArrayBufferView orelse return error.NotSupported;
+    const write_into_view = engine.writeIntoArrayBufferView orelse return error.NotSupported;
 
-    // Extract destination buffer from opaque pointer
-    // The V8 bindings layer should have passed a Uint8Array that we can write to
-    const dest_ptr = destination.toAnyopaque() orelse return error.TypeError;
-    const dest_buf = extractUint8ArrayBuffer(dest_ptr);
+    // The binding hands `destination` over unconverted: WebIDL's conversion
+    // to [AllowShared] Uint8Array is a TypeError for anything that is not a
+    // Uint8Array - another typed array or a DataView included.
+    const view = describe_view(destination) orelse return error.TypeError;
+    if (view.view_type != .uint8_array) return error.TypeError;
+    const capacity: u64 = view.byte_length;
 
-    // Step 1-2: Initialize counters
+    // Step 5: source as scalar values. A USVString is valid UTF-8, and the
+    // UTF-8 encoder's result for each scalar value is its own bytes, so what
+    // steps 6.4.1.3-4 write is a prefix of `text`.
+    const allocator = instance.ctx.allocator;
+    const replaced: ?[]const u8 = if (std.unicode.utf8ValidateSlice(source)) null else try replaceInvalidUtf8(allocator, source);
+    defer if (replaced) |r| allocator.free(r);
+    const text = replaced orelse source;
+
+    // Steps 1-2: Let read and written be 0.
     var read: u64 = 0;
     var written: u64 = 0;
 
-    // Step 5-6: Process each scalar value (code point) from source
-    // Source is USVString (UTF-8 encoded), we decode to code points then encode back
+    // Step 6: While true
     var i: usize = 0;
-    while (i < source.len) {
-        // Step 6a: Read next scalar value (code point) from source
-        const cp_len = std.unicode.utf8ByteSequenceLength(source[i]) catch {
-            // Invalid UTF-8 start byte - this shouldn't happen with valid USVString
-            // Skip this byte (it won't be encoded)
-            i += 1;
-            continue;
-        };
+    while (i < text.len) {
+        // Steps 6.1-6.2: the next scalar value, and the encoder's result for it
+        // (1-4 bytes; valid UTF-8, so its sequence length is known).
+        const bytes_needed = std.unicode.utf8ByteSequenceLength(text[i]) catch unreachable;
+        const code_point = std.unicode.utf8Decode(text[i .. i + bytes_needed]) catch unreachable;
 
-        // Check if we have complete UTF-8 sequence
-        if (i + cp_len > source.len) {
-            // Incomplete UTF-8 sequence at end - stop processing
-            break;
-        }
+        // Step 6.4.2: not enough room left - break.
+        if (capacity - written < bytes_needed) break;
 
-        // Decode the code point
-        const code_point = std.unicode.utf8Decode(source[i .. i + cp_len]) catch {
-            // Invalid UTF-8 sequence - skip
-            i += cp_len;
-            continue;
-        };
+        // Step 6.4.1.1-2: a scalar value above U+FFFF is two UTF-16 code units.
+        read += if (code_point > 0xFFFF) 2 else 1;
 
-        // Step 6b: Run UTF-8 encoder's handler
-        // UTF-8 encoding of a code point produces 1-4 bytes
-        var encoded_bytes: [4]u8 = undefined;
-        const bytes_needed = std.unicode.utf8Encode(code_point, &encoded_bytes) catch {
-            // This shouldn't happen for valid scalar values
-            i += cp_len;
-            continue;
-        };
-
-        // Step 6c: If result is finished (end-of-queue), break
-        // (We check this implicitly by the while loop condition)
-
-        // Step 6d: Check if we have enough space in destination
-        if (written + bytes_needed > dest_buf.len) {
-            // Step 6d.ii: Not enough space - break without writing
-            break;
-        }
-
-        // Step 6d.i: We have enough space - write and update counters
-
-        // Step 6d.i.1-2: Update read counter based on UTF-16 representation
-        // Code points > U+FFFF require a surrogate pair (2 code units) in UTF-16
-        // Code points <= U+FFFF require 1 code unit in UTF-16
-        if (code_point > 0xFFFF) {
-            read += 2; // Surrogate pair in UTF-16
-        } else {
-            read += 1; // Single code unit in UTF-16
-        }
-
-        // Step 6d.i.3: Write the encoded bytes to destination
-        @memcpy(dest_buf[written .. written + bytes_needed], encoded_bytes[0..bytes_needed]);
-
-        // Step 6d.i.4: Increment written by number of bytes
+        // Step 6.4.1.4 (the bytes are written below, in one go).
         written += bytes_needed;
-
-        // Move to next code point in source
-        i += cp_len;
+        i += bytes_needed;
     }
+
+    // Step 6.4.1.3: write the bytes into destination, from startingOffset 0 -
+    // all of them at once, since no script runs in between.
+    if (written > 0) try write_into_view(destination, text[0..@intCast(written)], 0);
 
     // Step 7: Return result
     return .{
@@ -265,11 +214,6 @@ pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, d
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Check if byte slice is ASCII-only (fast path optimization)
-fn isAscii(bytes: []const u8) bool {
-    return infra.string.isAscii(bytes);
-}
 
 /// Replace invalid UTF-8 sequences with U+FFFD REPLACEMENT CHARACTER
 fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
@@ -311,100 +255,11 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
     return output.toOwnedSlice();
 }
 
-/// Descriptor for passing Uint8Array data to V8 bindings
-/// This is a simple struct that V8 bindings can read to create the actual Uint8Array
-const Uint8ArrayDescriptor = extern struct {
-    data: [*]const u8,
-    len: usize,
-};
-
-/// Create a V8 Uint8Array from the given data
-/// The data is copied into the ArrayBuffer backing store and ownership is transferred to V8
-fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !runtime.JSValue {
-    // Get V8 isolate
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse {
-        // Free the data since we can't use it
-        if (data.len > 0) {
-            allocator.free(@constCast(data));
-        }
-        return error.OutOfMemory;
-    };
-
-    // Create ArrayBuffer with the required size
-    const array_buffer = ffi.v8_ArrayBuffer_New(isolate, data.len) orelse {
-        if (data.len > 0) {
-            allocator.free(@constCast(data));
-        }
-        return error.OutOfMemory;
-    };
-
-    // Copy data into the ArrayBuffer's backing store
-    if (data.len > 0) {
-        const buffer_data = ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
-            allocator.free(@constCast(data));
-            return error.OutOfMemory;
-        };
-        const dest: [*]u8 = @ptrCast(buffer_data);
-        @memcpy(dest[0..data.len], data);
-
-        // Free the original data since it's been copied
-        allocator.free(@constCast(data));
-    }
-
-    // Create Uint8Array view over the ArrayBuffer
-    const uint8_array = ffi.v8_Uint8Array_New(isolate, array_buffer, 0, data.len) orelse {
-        return error.OutOfMemory;
-    };
-
-    // Return as JSValue - tag the pointer appropriately
-    return runtime.JSValue.fromAnyopaque(@ptrCast(uint8_array));
-}
-
-/// Extract the byte buffer from a Uint8Array opaque pointer (tagged V8 Value)
-/// The V8 bindings pass a tagged pointer to the Uint8Array V8 Value
-fn extractUint8ArrayBuffer(source: *const anyopaque) []u8 {
-    // Check for null-like pointer
-    const source_addr = @intFromPtr(source);
-    if (source_addr == 0) {
-        return &[_]u8{};
-    }
-
-    // Untag the pointer to get the actual V8 Value
-    const untagged = pointer_tag.untagPointer(source);
-
-    // Check if this is a runtime instance (shouldn't be for Uint8Array, but handle gracefully)
-    if (untagged.tag == .runtime_instance) {
-        return &[_]u8{};
-    }
-
-    // Cast to V8 Value pointer
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-
-    // Verify it's actually a TypedArray
-    if (!ffi.v8_Value_IsTypedArray(v8_value)) {
-        return &[_]u8{};
-    }
-
-    // Get the byte length of the TypedArray
-    const byte_length = ffi.v8_TypedArray_ByteLength(v8_value);
-    if (byte_length == 0) {
-        return &[_]u8{};
-    }
-
-    // Get the underlying ArrayBuffer
-    const array_buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse {
-        return &[_]u8{};
-    };
-
-    // Get the raw data pointer from the ArrayBuffer
-    const data_ptr = ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
-        return &[_]u8{};
-    };
-
-    // Get the byte offset within the ArrayBuffer
-    const byte_offset = ffi.v8_TypedArray_ByteOffset(v8_value);
-
-    // Return a slice pointing to the correct offset in the buffer
-    const data: [*]u8 = @ptrCast(data_ptr);
-    return data[byte_offset .. byte_offset + byte_length];
+/// A new Uint8Array over a copy of `bytes`, made in the current realm.
+/// OWNED: the binding takes it.
+fn newUint8Array(instance: *runtime.Instance, bytes: []const u8) !runtime.JSValue {
+    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
+    const create_uint8_array = engine.createUint8Array orelse return error.NotSupported;
+    const engine_ctx = instance.ctx.getEngineContext() orelse return error.NotImplemented;
+    return runtime.JSValue.fromHandle(try create_uint8_array(engine_ctx, bytes));
 }
