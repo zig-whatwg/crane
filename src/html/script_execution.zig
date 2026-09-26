@@ -268,7 +268,9 @@ pub fn prepareScriptElement(
 
         // Step 33.5: Let url be the result of encoding-parsing a URL given src,
         // relative to el's node document.
-        const base_url = documentBaseUrl(node_document, script_element);
+        const base_url = documentBaseUrlAlloc(allocator, node_document, script_element) orelse
+            return ScriptExecutionError.OutOfMemory;
+        defer allocator.free(base_url);
         const parsed_url = parseUrl(script_element, src, base_url) orelse {
             // Step 33.6: If url is failure, queue an element task to fire error
             // at el, and return.
@@ -350,12 +352,20 @@ pub fn prepareScriptElement(
 
     // Step 34: Inline script (no src attribute)
     if (node_document) |doc| {
-        const base_url = documentBaseUrl(doc, script_element);
+        // Step 34.1: "Let base URL be el's node document's document base URL."
+        const base_url = documentBaseUrlAlloc(allocator, doc, script_element) orelse
+            return ScriptExecutionError.OutOfMemory;
+        defer allocator.free(base_url);
 
         switch (script_type) {
             .classic => {
-                // Step 34.2.1: Create a classic script
-                const script = ClassicScript.init(source_text, base_url);
+                // Step 34.2.1: Create a classic script. Its base URL here is
+                // the document's URL, not the document base URL: the script
+                // result keeps it as the resource name V8 compiles with, which
+                // is also the filename its errors report - the document's URL
+                // for an inline script. It is borrowed from the document, so
+                // it lives as long as the result.
+                const script = ClassicScript.init(source_text, documentUrl(doc, script_element));
 
                 // Step 34.2.2: Mark as ready
                 HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
@@ -942,7 +952,7 @@ pub fn runTimerHandlerString(context: *@import("v8").ffi.Context, source: *@impo
     // Steps 8.5.4-8.5.6: the settings object's API base URL - for a Window,
     // its document's base URL.
     const document = interfaces.Window.get_document(window) catch null;
-    runClassicSource(context, source, documentBaseUrl(document, window), false);
+    runClassicSource(context, source, documentUrl(document, window), false);
 }
 
 /// A classic script's muted errors flag (see `ClassicScript.muted_errors`).
@@ -1110,7 +1120,11 @@ fn onDynamicImport(
     };
 
     // Steps 8-9: resolve a module specifier, or reject with its TypeError.
-    const base_url = if (referrer.len > 0) referrer else documentBaseUrl(document, window);
+    // An event handler's [[ScriptOrModule]] is null, so V8 names no referrer
+    // and the base is the document base URL as it is now.
+    const document_base = if (referrer.len > 0) null else documentBaseUrlAlloc(window.ctx.allocator, document, window);
+    defer if (document_base) |b| window.ctx.allocator.free(b);
+    const base_url = if (referrer.len > 0) referrer else document_base orelse "";
     const url = module_script.resolve(&env, specifier, base_url) orelse {
         rejectImportWithTypeError(resolver, "Failed to resolve module specifier");
         return true;
@@ -1578,22 +1592,21 @@ fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
     return null;
 }
 
-/// The document base URL to resolve a script's `src` against.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
-/// "If there is no base element that has an href attribute ... then the
-///  document base URL is the document's fallback base URL", which for an
-///  ordinary document is its own URL.
+/// The document's URL, for the realm `script_element` is in: an inline
+/// classic script's resource name - the filename its errors report - and the
+/// URL a string timer handler is compiled with.
 ///
 /// `Document`'s `base_uri` field is written by nothing in the tree - it is
 /// initialised to "" in `InternalState.init` and never assigned - and
-/// `internal.url` is only ever set to "about:blank". The URL the document was
+/// `internal.url` may still read "about:blank". The URL the document was
 /// actually fetched from lives on the context entry, put there by
 /// `setDocumentUrl` during navigation. Reading `base_uri` alone made every
 /// relative `src` on a dynamically-inserted script resolve to itself, so the
 /// fetch went to a bare path with no origin and failed; an absolute URL in the
 /// same position worked, which is what isolated it.
-fn documentBaseUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
+///
+/// Not the document BASE URL: that honours `<base>` (`documentBaseUrlAlloc`).
+fn documentUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
     if (document) |doc| {
         if (doc_state.getInternal(doc)) |internal| {
             if (internal.base_uri.len > 0) return internal.base_uri;
@@ -1607,6 +1620,38 @@ fn documentBaseUrl(document: ?*runtime.Instance, script_element: *runtime.Instan
     const v8_engine = @import("v8");
     const v8_ctx: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
     return v8_engine.context_manager.getDocumentUrl(v8_ctx) orelse "";
+}
+
+/// The document base URL, as a copy owned by `allocator`, or null when it
+/// cannot be copied.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
+/// "1. If there is no base element that has an href attribute in the
+///  Document, then return the Document's fallback base URL.
+///  2. Otherwise, return the frozen base URL of the first base element in the
+///  Document that has an href attribute, in tree order."
+///
+/// `Node.baseURI` is that algorithm. A script's `src` resolves against it
+/// (prepare step 33.5), and so does everything an inline script's base URL
+/// feeds: an inline module's imports, an import map's addresses. Resolving
+/// against the document's own URL instead sent a frame's
+/// `<base href="../"><script src="resources/x.js">` to the wrong directory
+/// (module/dynamic-import/v8-code-cache.html).
+///
+/// An `about:` URL has no path to resolve against - an about:blank or
+/// about:srcdoc document's fallback base URL is its creator's, which
+/// `Node.baseURI` does not model - so for one of those it answers what
+/// `documentUrl` does, as it did before.
+fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instance, script_element: *runtime.Instance) ?[]const u8 {
+    if (document) |doc| {
+        if (interfaces.Node.get_baseURI(doc)) |base| {
+            defer doc.ctx.allocator.free(base);
+            if (base.len > 0 and !std.ascii.startsWithIgnoreCase(base, "about:")) {
+                return allocator.dupe(u8, base) catch null;
+            }
+        } else |_| {}
+    }
+    return allocator.dupe(u8, documentUrl(document, script_element)) catch null;
 }
 
 /// Parse `input` against `base` with the URL Standard's parser and return the
