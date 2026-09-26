@@ -396,8 +396,9 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // referred to again.
         if (T == *runtime.Instance) break :blk true;
 
-        // BodyInit: convertBodyInit makes an owned or empty USVString on every
-        // path - the BufferSource arm, which would be a view, is never produced.
+        // BodyInit: convertBodyInit copies out of the handle on every path -
+        // an owned USVString, a copy of a buffer's bytes, or the Instance a
+        // platform object's wrapper holds (see `freeBodyInitArg`).
         if (T == copied_arg_types.BodyInit) break :blk true;
 
         // A sequence reads each element through its own handle (v8_Array_Get):
@@ -446,6 +447,39 @@ fn memberHandleIsSafe(comptime T: type) bool {
 pub const copied_arg_types = struct {
     pub const BodyInit = @import("typedefs").BodyInit;
 };
+
+/// Free a converted BodyInit argument - what `conv.convertBodyInit` allocated,
+/// and nothing else.
+///
+/// Ownership is the conversion's, not the type's, so this is decided here by
+/// arm rather than by the structural rules. Those would get the BufferSource
+/// arm wrong: `argConversionIsNonOwning` rightly calls BufferSource a view
+/// that must never be freed - true of TextDecoder's AllowSharedBufferSource,
+/// false of BodyInit's, which is a copy (an ArrayBuffer struct and its bytes)
+/// so that nothing in the call can detach the buffer under it. Left to the
+/// structural rules, every `new Response(bytes)` leaked the copy.
+///
+/// - `readable_stream`, `blob`, `form_data`, `urlsearch_params`: the Instance
+///   a wrapper holds. Not ours.
+/// - `buffer_source`: always `.array_buffer`, struct and data both owned.
+/// - `usvstring`: an owned buffer, or a literal "" (length 0) never freed.
+pub fn freeBodyInitArg(allocator: std.mem.Allocator, arg: copied_arg_types.BodyInit) void {
+    switch (arg) {
+        .readable_stream => {},
+        .xmlhttp_request_body_init => |inner| switch (inner) {
+            .blob, .form_data, .urlsearch_params => {},
+            .buffer_source => |source| switch (source) {
+                .array_buffer => |buffer| {
+                    buffer.deinit(allocator);
+                    allocator.destroy(buffer);
+                },
+                // Never produced by convertBodyInit.
+                .array_buffer_view => {},
+            },
+            .usvstring => |text| if (text.len > 0) allocator.free(text),
+        },
+    }
+}
 
 /// Does converting an argument of type `T` yield a NON-OWNING view - memory
 /// this engine never allocated and must therefore never free?
@@ -3013,6 +3047,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // `[]const u8`, so every rule below would claim it. See
             // `argConversionIsNonOwning`.
             if (argConversionIsNonOwning(T)) return false;
+            // BodyInit: freed by arm, as its conversion allocated it - before
+            // the union rule below, which would take its copied BufferSource
+            // arm for a view (`freeBodyInitArg`).
+            if (T == copied_arg_types.BodyInit) return true;
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
@@ -3070,6 +3108,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Empty strings return a static slice that must NOT be freed.
         fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
             if (comptime !needsArgCleanup(T)) return;
+            if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
 
             if (T == []const u8) {
                 // Only free if it's not the static empty slice and has content

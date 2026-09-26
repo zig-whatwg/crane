@@ -84,3 +84,60 @@ test "an unrecognised type defaults to OWNED, so ordinary arguments still get fr
     const LookalikeUnion = union(enum) { array_buffer: *anyopaque, byte_slice: []const u8 };
     try std.testing.expect(!nonOwning(LookalikeUnion));
 }
+
+// =============================================================================
+// BodyInit: ownership by arm, decided by its conversion
+// =============================================================================
+//
+// `convertBodyInit` COPIES a buffer (an ArrayBuffer struct and its bytes) into
+// BodyInit's BufferSource arm, so nothing a later argument's getter does to the
+// buffer can leave the impl reading freed memory. That makes this BufferSource
+// owned, where the type-level predicate above - rightly, for TextDecoder's
+// views - says "never free". `freeBodyInitArg` frees BodyInit by arm; these
+// tests run it under std.testing.allocator, which fails on a leak AND on a
+// free of anything it did not allocate.
+
+const BodyInit = v8.interface_mod.copied_arg_types.BodyInit;
+const XhrBodyInit = @FieldType(BodyInit, "xmlhttp_request_body_init");
+const BufferSource = @FieldType(XhrBodyInit, "buffer_source");
+const ArrayBuffer = @typeInfo(@FieldType(BufferSource, "array_buffer")).pointer.child;
+
+test "BodyInit's copied buffer is freed, struct and bytes" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = try ArrayBuffer.init(allocator, 5);
+    @memcpy(buffer.data, "bytes");
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .buffer_source = .{ .array_buffer = buffer } } });
+}
+
+test "BodyInit's empty copy is freed too" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = try ArrayBuffer.init(allocator, 0);
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .buffer_source = .{ .array_buffer = buffer } } });
+}
+
+test "BodyInit's string is freed when owned, and the empty literal is not" {
+    const allocator = std.testing.allocator;
+    const text = try allocator.dupe(u8, "a body");
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .usvstring = text } });
+    // convertBodyInit returns the literal "" for an empty string.
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .usvstring = "" } });
+}
+
+test "BodyInit's interface arms are the wrappers' Instances, never freed" {
+    // A pointer the testing allocator never handed out: freeing it fails.
+    var not_ours: runtime.Instance = undefined;
+    const instance: *runtime.Instance = &not_ours;
+    const allocator = std.testing.allocator;
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .readable_stream = instance });
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .blob = instance } });
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .form_data = instance } });
+    v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .urlsearch_params = instance } });
+}
+
+test "the BodyInit rule leaves BufferSource itself a view everywhere else" {
+    // What TextDecoder and the rest rely on: the type-level answer is unchanged.
+    try std.testing.expect(nonOwning(BufferSource));
+    try std.testing.expect(!nonOwning(BodyInit));
+}
