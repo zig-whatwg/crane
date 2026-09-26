@@ -148,6 +148,10 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     const entries = interfaces.FormData.getEntriesForIterable(form) orelse &.{};
+    // No entries, no parts - and no closing delimiter either: an empty
+    // FormData is an empty body in every engine
+    // (fetch/api/response/response-consume-empty.any.js).
+    if (entries.len == 0) return out.toOwnedSlice(allocator);
     for (entries) |entry| {
         try out.appendSlice(allocator, "--");
         try out.appendSlice(allocator, boundary);

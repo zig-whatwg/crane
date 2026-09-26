@@ -552,6 +552,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 response.deinit();
                 return self.rejectTypeError(realm, "Failed to fetch");
             }
+            // The abort steps name responseObject from here: an abort after
+            // this errors its body (step 11.4's "abort the fetch() call",
+            // step 5) - also once this call is over, so the response carries
+            // the signal itself.
+            if (self.liveSignal()) |signal| _ = fetch_objects.followSignal(response_object, signal);
 
             // Step 5: resolve p with responseObject.
             const wrapper = realm.wrap(response_object) catch return;

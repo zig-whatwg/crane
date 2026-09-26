@@ -30,6 +30,10 @@ pub const ResponseSteps = struct {
     /// `*fetch.internal.InternalResponse`, whose ownership passes to it) with
     /// a headers guard of `guard`.
     adopt: *const fn (response_object: *runtime.Instance, response: *anyopaque, guard: Guard) void,
+    /// Make `response_object` follow `signal`, the signal of the fetch()
+    /// call that made it: once it is aborted, the body is errored with its
+    /// reason ("abort the fetch() call" step 5).
+    follow: *const fn (response_object: *runtime.Instance, signal: *runtime.Instance) void,
 };
 
 threadlocal var request_steps: ?RequestSteps = null;
@@ -52,6 +56,14 @@ pub fn requestOf(request_object: *runtime.Instance) ?*anyopaque {
     return steps.request_of(request_object);
 }
 
+/// Make `response_object` follow the AbortSignal `signal`. False when
+/// Response has installed nothing.
+pub fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instance) bool {
+    const steps = response_steps orelse return false;
+    steps.follow(response_object, signal);
+    return true;
+}
+
 /// Hand `response` to `response_object`. False when Response has installed
 /// nothing, and then `response` is still the caller's.
 pub fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, guard: Guard) bool {
@@ -72,4 +84,5 @@ test "without installed steps nothing is asked of an object" {
     var response: u8 = 0;
     try std.testing.expect(requestOf(&object) == null);
     try std.testing.expect(!adoptResponse(&object, &response, .immutable));
+    try std.testing.expect(!followSignal(&object, &object));
 }

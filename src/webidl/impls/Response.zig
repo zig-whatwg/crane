@@ -28,6 +28,7 @@ const srd = @import("streams_readable.zig");
 const v8 = @import("v8");
 const BodyPipe = fetch.internal.BodyPipe;
 const fetch_body = @import("fetch_body.zig");
+const abort_algorithms = @import("dom").abort_algorithms;
 
 pub const State = Response.State;
 
@@ -58,6 +59,20 @@ pub const InternalState = struct {
     /// `same_object.zig`. (`headers` works the other way round: the Headers
     /// object keeps its owner alive, because its list lives in the owner.)
     body_pin: same_object.Pin = .{},
+    /// The signal of the fetch() call that made this response, which it
+    /// follows (`followSignal`), as (address, slab generation), and held
+    /// alive for as long as this object: an abort after the response
+    /// errors its body, however long after.
+    signal: ?*runtime.Instance = null,
+    signal_generation: u64 = 0,
+    signal_pin: same_object.Pin = .{},
+
+    /// The followed signal, if it is still the one followed.
+    fn liveSignal(self: *const InternalState) ?*runtime.Instance {
+        const signal = self.signal orelse return null;
+        if (runtime.SlabAllocator.generationOf(signal) != self.signal_generation) return null;
+        return signal;
+    }
 };
 
 /// Initialize instance
@@ -68,7 +83,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // fetch() hands a Response object its response through this hook.
-    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse });
+    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal });
 
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -146,12 +161,70 @@ pub fn deinit(instance: *runtime.Instance) void {
         // InternalState.Owner). At context teardown the order is arbitrary,
         // which is what that object's generation check is for.
         internal.body_pin.release();
+        if (internal.liveSignal()) |signal| abort_algorithms.remove(signal, instance);
+        internal.signal = null;
+        internal.signal_pin.release();
 
         internal.response.deinit();
         allocator.destroy(internal);
     }
     // NOTE: Do NOT call runtime.Instance.deinit(instance) here!
     // The GC integration layer handles slab freeing after this returns.
+}
+
+/// dom.fetch_objects: `response_object` follows `signal`, the signal of the
+/// fetch() call that made it.
+///
+/// Fetch keeps responseObject in the abort steps it adds to the request's
+/// signal: once aborted, "abort the fetch() call" step 5 errors the body if
+/// it is readable - after the body has arrived too, while nobody has read
+/// it. Gecko's FetchBody is an AbortFollower of that signal for the same
+/// reason (dom/fetch/Fetch.cpp, FetchBody<Derived>::RunAbortAlgorithm), and
+/// its ConsumeBody rejects with the abort reason once the signal is aborted,
+/// before the bodyUsed check - which is what `consumeThroughStream` does.
+fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instance) void {
+    const state = response_object.stateAs(State) orelse return;
+    const internal = state.own._internal orelse return;
+    if (internal.signal != null) return;
+    abort_algorithms.add(signal, .{ .ctx = response_object, .run = signalAborted }) catch return;
+    internal.signal = signal;
+    internal.signal_generation = runtime.SlabAllocator.generationOf(signal);
+    internal.signal_pin.hold(signal);
+}
+
+/// The followed signal is aborted: error the body's stream, if it is
+/// readable, with the abort reason. A stream made later is errored as it is
+/// made (`get_body`).
+fn signalAborted(context: *anyopaque) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(context));
+    const state = instance.stateAs(State) orelse return;
+    const stream = state.own.body orelse return;
+    errorWithAbortReason(instance, stream);
+}
+
+/// The followed signal's abort reason, owned, once it is aborted.
+fn abortReason(instance: *runtime.Instance, realm: js.Realm) ?js.Value {
+    const internal = instance.getState(State).own._internal orelse return null;
+    const signal = internal.liveSignal() orelse return null;
+    if (!(interfaces.AbortSignal.get_aborted(signal) catch false)) return null;
+    const reason = interfaces.AbortSignal.get_reason(signal) catch return null;
+    return realm.fromRuntime(reason) catch null;
+}
+
+/// Error `stream`, if it is readable, with the followed signal's abort
+/// reason - "error response's body with error".
+fn errorWithAbortReason(instance: *runtime.Instance, stream: *runtime.Instance) void {
+    const slots = srd.streamOf(stream) orelse return;
+    if (slots.state != .readable) return;
+    const realm = js.Realm.of(instance) catch return;
+    const reason = abortReason(instance, realm) orelse return;
+    defer js.dispose(reason);
+    const controller = slots.controller orelse return;
+    if (srd.byteControllerOf(controller) != null) {
+        srd.byteControllerError(realm, controller, reason);
+    } else {
+        srd.defaultControllerError(realm, controller, reason);
+    }
 }
 
 /// Constructor - Creates a Response with optional body and init
@@ -451,6 +524,8 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     body.pipe = null;
 
     const stream_instance = try PipeStream.create(instance.ctx, pipe);
+    // Made after the followed signal aborted: the body was errored then.
+    errorWithAbortReason(instance, stream_instance);
 
     // Cache the stream for future calls
     // Note: This modifies state, which is mutable through the instance
@@ -530,8 +605,7 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
 ///
 /// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .array_buffer);
-    return arrayBufferFromBytes(instance);
+    return consumeThroughStream(instance, .array_buffer);
 }
 
 /// `arrayBuffer()` over a body that is its bytes.
@@ -593,8 +667,7 @@ fn arrayBufferFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .blob);
-    return blobFromBytes(instance);
+    return consumeThroughStream(instance, .blob);
 }
 
 /// `blob()` over a body that is its bytes.
@@ -681,8 +754,7 @@ fn blobFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise and Uint8Array creation.
 pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .bytes);
-    return bytesFromBytes(instance);
+    return consumeThroughStream(instance, .bytes);
 }
 
 /// `bytes()` over a body that is its bytes.
@@ -744,8 +816,7 @@ fn bytesFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .form_data);
-    return formDataFromBytes(instance);
+    return consumeThroughStream(instance, .form_data);
 }
 
 /// `formData()` over a body that is its bytes.
@@ -920,8 +991,7 @@ fn formDataFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
 pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .json);
-    return jsonFromBytes(instance);
+    return consumeThroughStream(instance, .json);
 }
 
 /// `json()` over a body that is its bytes.
@@ -988,8 +1058,7 @@ fn jsonFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and string creation.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    if (readsThroughStream(instance)) return consumeThroughStream(instance, .text);
-    return textFromBytes(instance);
+    return consumeThroughStream(instance, .text);
 }
 
 /// `text()` over a body that is its bytes.
@@ -1058,17 +1127,6 @@ fn textFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 // A body read through its stream
 // ============================================================================
 
-/// Whether the body methods read this response's body through its stream:
-/// once the stream exists - script touched `body` - and for a body still
-/// arriving, whose bytes are not all here.
-fn readsThroughStream(instance: *runtime.Instance) bool {
-    const state = instance.getState(State);
-    if (state.own.body != null) return true;
-    const internal = state.own._internal orelse return false;
-    const body = internal.response.body orelse return false;
-    return body.pipe != null;
-}
-
 /// "Unusable": the body is disturbed or locked.
 fn isUnusable(instance: *runtime.Instance) bool {
     const state = instance.getState(State);
@@ -1091,6 +1149,16 @@ fn consumeThroughStream(instance: *runtime.Instance, method: BodyMethod) anyerro
     const deferred = try js.Deferred.init(realm);
     var deferred_taken = false;
     errdefer if (!deferred_taken) deferred.deinit();
+
+    // The followed signal is aborted: reject with its reason, before the
+    // unusable check - Gecko's ConsumeBody, and what WPT holds every engine
+    // to (fetch/api/abort/general.any.js: the rejection comes before the
+    // next microtask, and a second call rejects the same way).
+    if (abortReason(instance, realm)) |reason| {
+        defer js.dispose(reason);
+        deferred.reject(realm, reason);
+        return finishReturn(deferred);
+    }
 
     // Step 1: If object is unusable, return a promise rejected with a
     // TypeError.
@@ -1147,16 +1215,17 @@ fn finishReturn(deferred: js.Deferred) runtime.JSValue {
 /// `deferred` with their outcome.
 fn settleWithBytes(instance: *runtime.Instance, method: BodyMethod, bytes: []const u8, realm: js.Realm, deferred: js.Deferred) !void {
     const internal = instance.getState(State).own._internal.?;
-    if (internal.response.body == null) {
-        internal.response.body = try fetch.internal.Body.fromBytes(internal.allocator, "");
+    // A null body stays null (consume body step 5: the steps run on an empty
+    // byte sequence), so bodyUsed stays false - the bytes forms read a null
+    // body as empty and mark nothing.
+    if (internal.response.body) |body| {
+        // As a body of these bytes that nobody has read yet: the stream was
+        // the one disturbed, and the bytes form does its own marking.
+        body.data.clearRetainingCapacity();
+        try body.data.appendSlice(body.allocator, bytes);
+        body.used = false;
+        body.disturbed = false;
     }
-    const body = internal.response.body.?;
-    // As a body of these bytes that nobody has read yet: the stream was the
-    // one disturbed, and the bytes form does its own marking.
-    body.data.clearRetainingCapacity();
-    try body.data.appendSlice(body.allocator, bytes);
-    body.used = false;
-    body.disturbed = false;
 
     const result = switch (method) {
         .array_buffer => arrayBufferFromBytes(instance),
