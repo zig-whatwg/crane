@@ -235,6 +235,10 @@ progress = [
   status = "doing"
 
   [[infra.items]]
+  name = "Dictionary members read in WebIDL order (inherited first, then lexicographic)"
+  status = "done"
+
+  [[infra.items]]
   name = "A nullable dictionary member tells absent from null"
   status = "todo"
 
@@ -386,7 +390,7 @@ infra = "bindings"
 owner = "agent"
 status = "doing"
 branch = "lane/reflection"
-paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/interfaces/ and mixins", "src/webidl/impls/reflection.zig (new helper)", "src/webidl/impls/HTML*.zig: deleting reflected-attribute stubs only, except the navigation lane's files", "tests/codegen/reflect_*", "tests/html/reflection*", "tests/wpt/crane/reflect-*"]
+paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/interfaces/ and mixins", "src/webidl/impls/reflection.zig (new helper)", "src/webidl/impls/HTML*.zig: deleting reflected-attribute stubs only, except the navigation lane's files and HTMLScriptElement.zig", "src/dom/token_lists.zig (new hook) and its install in DOMTokenList.zig", "tests/codegen/reflect_*", "tests/html/reflection*", "tests/wpt/crane/reflect-*"]
 
 [[lane]]
 name = "WebSockets"
