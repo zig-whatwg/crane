@@ -782,3 +782,4 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Tools are Zig, and so are their gates](docs/lessons/workflow-tools-are-zig-and-so-are-their-gates.md) - Write the tool in the language the repo builds with, tests first.
 - [WindowOrWorkerGlobalScope is inherited; its includer state goes through `dom.global_settings`](docs/lessons/workflow-windoworworkerglobalscope-is-inherited-its.md) - A mixin with includer state is still implemented once.
 - [Never overwrite a binary macOS has already run; remove it first](docs/lessons/workflow-never-overwrite-a-binary-macos-has-already-run.md) - Exit 137 before the first line of output is code signing, not the engine.
+- [Build after each lane merge - two clean merges can make a broken tree](docs/lessons/workflow-build-after-each-lane-merge.md) - "Each branch is green" says nothing about their merge.
