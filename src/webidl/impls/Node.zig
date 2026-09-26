@@ -492,9 +492,8 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// HTML "document base URL": the frozen base URL of the first `base` element
 /// with an `href` attribute in tree order, and otherwise the document's
-/// fallback base URL, which is its URL. Deviation: the fallback's "about base
-/// URL" (what an about:srcdoc or about:blank document inherits from its
-/// creator) is not tracked, so those documents answer with their own URL.
+/// fallback base URL: its about base URL - what an about:srcdoc or
+/// about:blank document inherits from its creator - or else its URL.
 ///
 /// This was a stub returning "" for every node, so nothing could resolve a
 /// relative URL against a document - an iframe's relative `src` above all.
@@ -507,9 +506,13 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
         internal.owner_document orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
-    // The fallback base URL. The getter clones into the document's allocator.
-    const fallback = try interfaces.Document.get_URL(document);
-    defer document.ctx.allocator.free(fallback);
+    // The fallback base URL: steps 1-2, an about:blank or iframe srcdoc
+    // document's about base URL - its creator's base - when it has one, and
+    // otherwise (step 3) the document's URL. The getter clones into the
+    // document's allocator.
+    const url = try interfaces.Document.get_URL(document);
+    defer document.ctx.allocator.free(url);
+    const fallback = @import("dom").document_lifecycle.aboutFallbackBaseUrl(document) orelse url;
 
     if (firstBaseHref(document)) |href| {
         var owned_href = href;

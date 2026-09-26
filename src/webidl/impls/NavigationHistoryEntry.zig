@@ -1,17 +1,19 @@
 //! Implementation for NavigationHistoryEntry interface
 //!
-//! HTML Standard §7.2.6.1 - The NavigationHistoryEntry interface
-//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigationhistoryentry
+//! HTML Standard §7.2.6.5 - The NavigationHistoryEntry interface
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigationhistoryentry-interface
 //!
-//! NavigationHistoryEntry represents a single entry in the navigation history.
-//! Each entry has a unique key (for traverseTo), an id, and associated state.
+//! A NavigationHistoryEntry stands for one session history entry of its
+//! window's navigable (html_core JointHistory), which it names by the entry's
+//! id. The entry's navigation API key and ID and its URL are recorded when
+//! the object is made - a session history entry never changes them, and an
+//! entry a "replace" or a pruning disposes of is gone from the history while
+//! this object can still be read. The navigation API state is read live:
+//! updateCurrentEntry() changes it in place.
 //!
-//! ## Key Concepts
-//!
-//! - **key**: Stable identifier for traverseTo() - survives page reloads
-//! - **id**: Unique identifier for this specific entry
-//! - **index**: Position in entries() array (-1 if disposed)
-//! - **state**: User-defined state object (via updateCurrentEntry)
+//! Its window is held by address and slab generation: script can keep an
+//! entry after its window is gone, and every getter then answers as for a
+//! document that is not fully active.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -22,11 +24,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const NavigationHistoryEntry = interfaces.NavigationHistoryEntry;
-
-// HTML navigation infrastructure
-const html_core = @import("html_core");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-const SessionHistoryEntry = html_core.navigation.SessionHistoryEntry;
+const EventTargetImpl = @import("EventTarget.zig");
+const navigation_entries = @import("navigation_entries.zig");
+const joint_history = @import("html_core").navigation.joint_history;
 
 pub const State = NavigationHistoryEntry.State;
 
@@ -35,230 +35,172 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
-/// Static sentinel for representing "undefined" return values.
-/// Used instead of null to provide a valid pointer that represents
-/// undefined/empty results from operations that return *const anyopaque.
-var undefined_sentinel: u8 = 0;
-
-/// Internal state for NavigationHistoryEntry implementation
 pub const InternalState = struct {
-    /// Allocator for this entry's resources
     allocator: Allocator,
+    /// The relevant global object - the Window whose navigation API made
+    /// this - and its slab generation.
+    window: ?*runtime.Instance = null,
+    window_generation: u64 = 0,
+    /// The session history entry: its id in the traversable's history.
+    entry_id: u64 = 0,
+    /// What the entry had when this was made.
+    key: [36]u8 = undefined,
+    id: [36]u8 = undefined,
+    url: []u8 = &.{},
+    document: ?*anyopaque = null,
 
-    /// The underlying session history entry
-    /// This is the source of truth for URL, key, id, and state
-    session_entry: ?*SessionHistoryEntry = null,
-
-    /// The index of this entry in the entries() array
-    /// -1 indicates the entry has been disposed
-    index: i64 = -1,
-
-    /// Whether this entry represents a same-document navigation
-    same_document: bool = false,
-
-    /// Event handler for dispose event (EventHandler is already optional)
-    ondispose: typedefs.EventHandler = null,
-
-    /// Whether this entry has been disposed
-    disposed: bool = false,
-
-    pub fn init(allocator: Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        // We don't own the session entry - it's owned by the session history
-        _ = self;
+    fn deinit(self: *InternalState) void {
+        self.allocator.free(self.url);
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
-/// Initialize NavigationHistoryEntry instance
+/// Initialize instance (creates the instance): an EventTarget, which the
+/// dispose event is fired at.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Initialize internal state
-    const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
-
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
+    @import("dom").navigation_history_entries.install(.{ .create = &createForEntry, .entry_id = &entryIdOf });
     return instance;
 }
 
-/// Deinitialize NavigationHistoryEntry instance
+/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
-
-        // Return the block itself, not just what it points to.
-        // `internal.deinit()` releases the strings and lists the state
-        // OWNS; without this the state struct stays allocated for the
-        // life of the process - measured at 208 bytes per discarded
-        // element across the impls still doing it this way.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    EventTargetImpl.deinit(instance);
 }
 
-// ============================================================================
-// Factory Function
-// ============================================================================
-
-/// Create a NavigationHistoryEntry wrapper for a session history entry
-pub fn createForSessionEntry(
-    allocator: Allocator,
-    ctx: runtime.Context,
-    session_entry: *SessionHistoryEntry,
-    index: i64,
-    same_document: bool,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &NavigationHistoryEntry.vtable, ctx);
-    errdefer deinit(instance);
-
+/// dom.navigation_history_entries: a new NavigationHistoryEntry in
+/// `window`'s realm for `entry_ptr`, a session history entry of `window`'s
+/// navigable. For the navigation API, which keeps the object.
+fn createForEntry(window: *runtime.Instance, entry_ptr: *const anyopaque) anyerror!*runtime.Instance {
+    const entry: *const joint_history.Entry = @ptrCast(@alignCast(entry_ptr));
+    const instance = try interfaces.NavigationHistoryEntry.init(window.ctx.allocator, window.ctx);
+    errdefer runtime.Instance.deinit(instance);
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.session_entry = session_entry;
-    internal.index = index;
-    internal.same_document = same_document;
-
+    internal.url = try internal.allocator.dupe(u8, entry.url);
+    internal.window = window;
+    internal.window_generation = runtime.SlabAllocator.generationOf(window);
+    internal.entry_id = entry.id;
+    internal.key = entry.api_key;
+    internal.id = entry.api_id;
+    internal.document = entry.document;
     return instance;
 }
 
-// ============================================================================
-// Property Getters
-// ============================================================================
-
-/// Getter for url
-/// HTML Standard §7.2.6.1: Returns the URL of this entry, or null if disposed
-pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
-    const internal = getInternal(instance) orelse return null;
-
-    // Return null if disposed
-    if (internal.disposed) return null;
-
-    const entry = internal.session_entry orelse return null;
-    // USVString is just []const u8
-    return entry.url;
+/// dom.navigation_history_entries: the session history entry id this
+/// object stands for.
+fn entryIdOf(instance: *runtime.Instance) u64 {
+    const internal = getInternal(instance) orelse return 0;
+    return internal.entry_id;
 }
 
-/// Getter for key
-/// HTML Standard §7.2.6.1: Returns the unique key for traverseTo()
+/// The window's scope, when its document is fully active.
+fn scopeOf(internal: *InternalState) ?navigation_entries.Scope {
+    const window = internal.window orelse return null;
+    return navigation_entries.scopeOf(window, internal.window_generation);
+}
+
+// ============================================================================
+// Attributes
+// ============================================================================
+
+/// "1. Let document be this's relevant global object's associated Document.
+/// 2. If document is not fully active, then return the empty string. 3. Let
+/// she be this's session history entry. 4. If she's document does not equal
+/// document, and she's document state's request referrer policy is
+/// "no-referrer" or "origin", then return null. 5. Return she's URL,
+/// serialized." Step 4 is not modelled (no request referrer policy is kept),
+/// stated.
+pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (scopeOf(internal) == null) return try instance.ctx.allocator.dupe(u8, "");
+    return try instance.ctx.allocator.dupe(u8, internal.url);
+}
+
+/// The key: "" when the document is not fully active, else the session
+/// history entry's navigation API key.
 pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const entry = internal.session_entry orelse return error.InvalidStateError;
-
-    // Return the navigation API key (UUID)
-    return runtime.DOMString.initInterned(&entry.navigation_api_key);
+    if (scopeOf(internal) == null) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, &internal.key);
 }
 
-/// Getter for id
-/// HTML Standard §7.2.6.1: Returns the unique ID for this entry
+/// The ID: "" when the document is not fully active, else the session
+/// history entry's navigation API ID.
 pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const entry = internal.session_entry orelse return error.InvalidStateError;
-
-    // Return the navigation API ID (UUID)
-    return runtime.DOMString.initInterned(&entry.navigation_api_id);
+    if (scopeOf(internal) == null) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, &internal.id);
 }
 
-/// Getter for index
-/// HTML Standard §7.2.6.1: Returns the index in entries(), or -1 if disposed
+/// The index: −1 when the document is not fully active; else "getting the
+/// navigation API entry index" of the session history entry within the
+/// navigation API - its position among entries(), or −1 when it is not
+/// there (disposed, or entries and events are disabled).
 pub fn get_index(instance: *runtime.Instance) anyerror!i64 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return -1 if disposed
-    if (internal.disposed) return -1;
-
-    return internal.index;
+    const scope = scopeOf(internal) orelse return -1;
+    if (navigation_entries.disabled(scope)) return -1;
+    var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
+    defer entries.deinit(internal.allocator);
+    _ = scope.history.apiEntries(scope.navigable.id, internal.allocator, &entries) catch return -1;
+    for (entries.items, 0..) |entry, i| {
+        if (entry.id == internal.entry_id) return @intCast(i);
+    }
+    return -1;
 }
 
-/// Getter for sameDocument
-/// HTML Standard §7.2.6.1: Returns true if this was a same-document navigation
+/// "1. Let document be this's relevant global object's associated Document.
+/// 2. If document is not fully active, then return false. 3. Return true if
+/// this's session history entry's document equals document, and false
+/// otherwise."
 pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.same_document;
+    const scope = scopeOf(internal) orelse return false;
+    const document = internal.document orelse return false;
+    return document == @as(*anyopaque, @ptrCast(scope.document));
 }
 
 /// Getter for ondispose
 pub fn get_ondispose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.ondispose;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "dispose");
 }
 
 /// Setter for ondispose
 pub fn set_ondispose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.ondispose = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "dispose", value);
 }
 
 // ============================================================================
 // Operations
 // ============================================================================
 
-/// Operation: getState()
-/// HTML Standard §7.2.6.1: Returns a clone of the navigation API state
+/// "1. If this's relevant global object's associated Document is not fully
+/// active, then return undefined. 2. Return StructuredDeserialize(this's
+/// session history entry's navigation API state). Rethrow any exceptions."
+/// An entry disposed of has no state left to read here, and answers
+/// undefined.
 pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const entry = internal.session_entry orelse return error.InvalidStateError;
-
-    // Return the serialized state
-    // In full implementation, this would deserialize and return a clone
-    const state = &entry.navigation_api_state;
-
-    // Check for undefined (initial state) - return undefined JSValue
-    if (state.isUndefined()) {
-        return runtime.JSValue.jsUndefined;
-    }
-
-    // Return the state data as JSValue - stored V8 handle
-    return runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(state.data.ptr)));
-}
-
-// ============================================================================
-// Internal Helper Functions
-// ============================================================================
-
-/// Mark this entry as disposed
-/// Called when the entry is removed from the session history
-pub fn markDisposed(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-
-    if (internal.disposed) return;
-
-    internal.disposed = true;
-    internal.index = -1;
-
-    // Fire dispose event
-    // In full implementation, this would dispatch the event
-}
-
-/// Update the index of this entry
-/// Called when entries are added/removed from the session history
-pub fn updateIndex(instance: *runtime.Instance, new_index: i64) void {
-    const internal = getInternal(instance) orelse return;
-    internal.index = new_index;
-}
-
-/// Check if this entry is disposed
-pub fn isDisposed(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return true;
-    return internal.disposed;
+    const scope = scopeOf(internal) orelse return runtime.JSValue.jsUndefined;
+    const entry = scope.history.entryById(internal.entry_id) orelse return runtime.JSValue.jsUndefined;
+    return navigation_entries.deserialize(entry.api_state);
 }

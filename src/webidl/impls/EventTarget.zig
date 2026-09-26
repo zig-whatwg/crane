@@ -619,6 +619,36 @@ pub fn deactivateEventHandler(instance: *runtime.Instance, event_type: []const u
     }
 }
 
+/// HTML "erase all event listeners and handlers" given `target` (§8.1.8.1),
+/// which document.open() runs over a document's nodes and its window.
+/// "1. If eventTarget has an associated event handler map, then for each
+/// name -> eventHandler of eventTarget's associated event handler map,
+/// deactivate an event handler given eventTarget and name. 2. Remove all
+/// event listeners given eventTarget."
+pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
+    const internal = getInternalFromRegistry(target) orelse return;
+    // Step 1: every handler's value goes - the map owns each one - and so
+    // does its listener, which step 2 removes with the rest.
+    if (internal.event_handler_map) |map| {
+        var values = map.valueIterator();
+        while (values.next()) |address| disposeHandlerValue(address.*);
+        map.clearRetainingCapacity();
+    }
+    // Step 2: DOM "remove all event listeners" - for each listener, "remove
+    // an event listener": its removed flag set, then out of the list, and
+    // what its record owns released. Dispatch looks listeners up by id in
+    // this list, and the flag keeps honest anything holding a copy.
+    const list = internal.event_listener_list orelse return;
+    while (list.len > 0) {
+        const index = list.len - 1;
+        const slot = &list.toSliceMut()[index];
+        slot.removed = true;
+        const record = slot.*;
+        _ = list.remove(index) catch break;
+        releaseRecord(internal, record);
+    }
+}
+
 /// "Getting the current value of the event handler" (HTML §8.1.8.1) for
 /// `target`'s handler for `event_type`: its value, or null. Handlers are
 /// compiled when their content attribute is set (Element's event handler

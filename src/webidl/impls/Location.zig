@@ -673,8 +673,8 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
             .push => .push,
             .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
         };
-        if (bc.ensureHistoryEntries(&historyUrlOf)) |history| {
-            history.commitSameDocument(bc.id, url, .null, handling) catch {};
+        if (bc.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+            history.commitSameDocument(bc.id, url, .null, handling, null) catch {};
         } else |_| {}
     }
 
@@ -683,6 +683,17 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
     const v8 = @import("v8");
     const engine_ctx = window.ctx.engine_ctx orelse return false;
     try v8.context_manager.setDocumentUrl(@ptrCast(@alignCast(engine_ctx)), url);
+
+    // Step 13: "Update the navigation API entries for a same-document
+    // navigation given navigation, historyEntry, and historyHandling."
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
+        const kind: @import("dom").navigation_api.Kind = switch (behavior) {
+            .replace => .replace,
+            .push => .push,
+            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
+        };
+        @import("dom").navigation_api.sameDocumentNavigation(window, kind);
+    }
 
     // Step 14's hashchange, if the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url);
@@ -693,13 +704,6 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
 }
 
 /// BrowsingContext.ensureHistoryEntries's `url_of`.
-fn historyUrlOf(document_ptr: *anyopaque, allocator: Allocator) anyerror![]u8 {
-    const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
-    const url = interfaces.Document.get_URL(document) catch return allocator.dupe(u8, "about:blank");
-    defer document.ctx.allocator.free(url);
-    return allocator.dupe(u8, if (url.len == 0) "about:blank" else url);
-}
-
 /// A queued hashchange at a window, held with its slab generation.
 const HashChange = struct {
     window: *runtime.Instance,

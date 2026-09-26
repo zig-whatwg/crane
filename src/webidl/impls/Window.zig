@@ -32,6 +32,7 @@ const Window = interfaces.Window;
 // Import parent class impl for initialization chain
 // Window inherits from EventTarget per WebIDL
 const EventTargetImpl = @import("EventTarget.zig");
+const same_object = @import("same_object.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
 
@@ -135,6 +136,13 @@ pub const InternalState = struct {
     location: ?*runtime.Instance = null,
     history: ?*runtime.Instance = null,
     navigator: ?*runtime.Instance = null,
+    /// Keeps a Navigator this Window made itself (`get_navigator`) alive for
+    /// the Window's life; see `same_object.zig`.
+    navigator_pin: same_object.Pin = .{},
+    /// The navigation API ([SameObject]), made on first use and kept alive
+    /// for the Window's life the same way.
+    navigation: ?*runtime.Instance = null,
+    navigation_pin: same_object.Pin = .{},
     performance: ?*runtime.Instance = null,
     custom_elements: ?*runtime.Instance = null,
 
@@ -222,6 +230,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.navigator_pin.release();
+        self.navigation_pin.release();
         // The popups first: each integration destroys its navigable's context
         // (a child of this window's, and already gone if this window's page is
         // being torn down - destroyChildContext runs once per context).
@@ -871,11 +881,20 @@ pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for navigation
 /// Per spec: Returns the Navigation object for this window.
+///
+/// "Each Window has an associated navigation API, which is a Navigation
+/// object. Upon creation of the Window object, its navigation API must be set
+/// to a new Navigation object created in the Window object's relevant
+/// realm." Made on first use here - nothing can observe the difference -
+/// and held through the Window (`same_object.Pin`), as Blink traces
+/// navigation_ from LocalDOMWindow.
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Navigation instance lazily
-    _ = internal;
-    return error.NotImplemented;
+    if (internal.navigation) |navigation| return navigation;
+    const navigation = try interfaces.Navigation.init(internal.allocator, instance.ctx);
+    internal.navigation = navigation;
+    internal.navigation_pin.hold(navigation);
+    return navigation;
 }
 
 /// Getter for customElements
@@ -1129,10 +1148,21 @@ fn containerOf(window: *runtime.Instance) ?*runtime.Instance {
 
 /// Getter for navigator
 /// Per spec: Returns the Navigator object for this window.
+///
+/// [SameObject]: the page's Window is given its Navigator by the browser
+/// context; a frame's or popup's Window - and the Window a navigation left
+/// behind, which script in its realm still reaches - makes its own on first
+/// use, in its own realm. The Window holds that one's wrapper strongly
+/// (`same_object.Pin`, released in deinit), as Blink traces navigator_ from
+/// LocalDOMWindow: a weak wrapper would let a collection free the Navigator
+/// under this pointer.
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Navigator instance lazily
-    return internal.navigator orelse error.NotImplemented;
+    if (internal.navigator) |navigator| return navigator;
+    const navigator = try interfaces.Navigator.init(internal.allocator, instance.ctx);
+    internal.navigator = navigator;
+    internal.navigator_pin.hold(navigator);
+    return navigator;
 }
 
 /// Getter for clientInformation - Same as navigator
@@ -1470,8 +1500,14 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
         return storage_instance;
     }
 
-    // Get the browsing context ID for session storage scoping
-    const context_id = internal.browsing_context.id;
+    // Storage "obtain a session storage bottle map": the session storage
+    // shed is the top-level traversable's, and in it the storage key - the
+    // origin - picks the shelf. So every same-origin document of one tab
+    // shares it: a frame and its parent, and the Windows a frame's
+    // navigations make one after another. Keyed on the browsing context
+    // itself, as it was, each frame had its own. Not modelled, stated: a
+    // popup's traversable starting with a copy of its opener's shed.
+    const context_id = internal.browsing_context.getTop().id;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;

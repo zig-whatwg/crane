@@ -32,6 +32,7 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
+const EventTargetImpl = @import("EventTarget.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
@@ -126,6 +127,10 @@ pub const InternalState = struct {
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
     destroyed: bool = false,
+    /// HTML "about base URL": the document base URL of the document that
+    /// created it, or of the navigation's source document, for an
+    /// about:blank or about:srcdoc document; null otherwise. Owned.
+    about_base_url: ?[]u8 = null,
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
@@ -438,6 +443,10 @@ pub const InternalState = struct {
         if (self.base_uri.len > 0) {
             self.allocator.free(self.base_uri);
         }
+        if (self.about_base_url) |url| {
+            self.allocator.free(url);
+            self.about_base_url = null;
+        }
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
@@ -613,6 +622,8 @@ pub fn init(
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
         .destroy = &lifecycleDestroy,
+        .set_about_base_url = &lifecycleSetAboutBaseUrl,
+        .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
     });
 
     return instance;
@@ -2252,7 +2263,21 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // document's node navigable."
     @import("dom").content_navigables.stopLoading(instance);
 
-    // Steps 9-14: Remove all nodes from document
+    // Step 9: "For each shadow-including inclusive descendant node of
+    // document, erase all event listeners and handlers given node." (No
+    // shadow trees exist yet.)
+    eraseListenersOfTree(instance);
+
+    // Step 10: "If document is the associated Document of document's
+    // relevant global object, then erase all event listeners and handlers
+    // given document's relevant global object."
+    if (internal.default_view) |window| {
+        if ((interfaces.Window.get_document(window) catch null) == instance) {
+            EventTargetImpl.eraseAllEventListenersAndHandlers(window);
+        }
+    }
+
+    // Step 11: "Replace all with null within document."
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
@@ -2277,13 +2302,31 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     internal.write_buffer.clearRetainingCapacity();
 
     // Step 18: "Update the current document readiness of document to
-    // "loading"." Not implemented, stated: steps 9-10 (erase the listeners
-    // and handlers of the document and its window) and 14 (mute the iframe
-    // load event).
+    // "loading"." Not implemented, stated: step 14 (mute the iframe load
+    // event).
     updateReadiness(instance, ._loading_);
 
     // Return the document
     return instance;
+}
+
+/// document.open() step 9: "erase all event listeners and handlers" of
+/// `document` and each of its descendants, in tree order.
+fn eraseListenersOfTree(document: *runtime.Instance) void {
+    var node: ?*runtime.Instance = document;
+    while (node) |current| {
+        EventTargetImpl.eraseAllEventListenersAndHandlers(current);
+        if (NodeImpl.getFirstChild(current)) |first| {
+            node = first;
+            continue;
+        }
+        var cursor = current;
+        node = while (true) {
+            if (cursor == document) break null;
+            if (NodeImpl.getNextSibling(cursor)) |next| break next;
+            cursor = NodeImpl.getParent(cursor) orelse break null;
+        };
+    }
 }
 
 /// Operation: hasUnpartitionedCookieAccess
@@ -3821,6 +3864,30 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.salvageable = false;
     internal.destroyed = true;
+}
+
+/// dom.document_lifecycle: set `document`'s about base URL (a copy).
+fn lifecycleSetAboutBaseUrl(document: *runtime.Instance, url: ?[]const u8) void {
+    const internal = getInternal(document) orelse return;
+    const copy: ?[]u8 = if (url) |u| internal.allocator.dupe(u8, u) catch return else null;
+    if (internal.about_base_url) |old| internal.allocator.free(old);
+    internal.about_base_url = copy;
+}
+
+/// dom.document_lifecycle: "fallback base URL" steps 1-2. "1. If document is
+/// an iframe srcdoc document, then: assert document's about base URL is
+/// non-null; return document's about base URL. 2. If document's URL matches
+/// about:blank and document's about base URL is non-null, then return
+/// document's about base URL." Crane has no separate srcdoc flag: a document
+/// at about:srcdoc is one.
+fn lifecycleAboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(document) orelse return null;
+    const about = internal.about_base_url orelse return null;
+    const url = get_URL(document) catch return null;
+    defer document.ctx.allocator.free(url);
+    const navigate_steps = @import("html_core").navigation.navigate_steps;
+    if (navigate_steps.matchesAboutSrcdoc(url) or navigate_steps.matchesAboutBlank(url)) return about;
+    return null;
 }
 
 /// Page Visibility "update the visibility state" of `document`.

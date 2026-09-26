@@ -410,6 +410,12 @@ pub const IFrameIntegration = struct {
     /// creator's - or null for an opaque one. Owned.
     window_origin: ?[]u8 = null,
 
+    /// The about base URL the next document this navigable makes is created
+    /// with ("create and initialize a Document object"): set just before a
+    /// commit that makes an about:blank or about:srcdoc document, taken by
+    /// whatever creates the document, and cleared after the commit. Owned.
+    next_about_base_url: ?[]u8 = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -456,6 +462,7 @@ pub const IFrameIntegration = struct {
         self.retired_realms.deinit(self.allocator);
         if (self.window_origin) |o| self.allocator.free(o);
         self.window_origin = null;
+        self.setNextAboutBaseUrl(null);
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -595,6 +602,14 @@ pub const IFrameIntegration = struct {
         self.ongoing_navigation = .none;
         self.window_proxy = null;
         self.state = .uninitialized;
+    }
+
+    /// The about base URL for the next document this navigable makes (a
+    /// copy), or null for none.
+    pub fn setNextAboutBaseUrl(self: *IFrameIntegration, url: ?[]const u8) void {
+        const copy: ?[]u8 = if (url) |u| self.allocator.dupe(u8, u) catch null else null;
+        if (self.next_about_base_url) |old| self.allocator.free(old);
+        self.next_about_base_url = copy;
     }
 
     /// Record the origin the navigable's Windows are created with.
