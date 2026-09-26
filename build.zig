@@ -3975,6 +3975,44 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_impls_tests).step);
 
     // ========================================================================
+    // LINT: the engine boundary, as a ratchet
+    // ========================================================================
+    // AGENTS.md "The engine boundary": the JavaScript engine is an adapter, and
+    // V8 belongs in src/runtime/engines/v8/ (and tests/v8/) only.
+    // tools/lint_engine_boundary.zig counts every V8 reference elsewhere - per
+    // file and per name - and fails if any rises above
+    // tools/engine_boundary_baseline.txt or a new one appears. The baseline only
+    // goes down: `zig build lint-engine -- --update` records a paid-down tree and
+    // refuses to record an increase. `zig build test` depends on it.
+    const lint_engine_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_engine_boundary.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_engine_exe = b.addExecutable(.{
+        .name = "lint_engine_boundary",
+        .root_module = lint_engine_module,
+    });
+
+    const lint_engine_step = b.step("lint-engine", "Fail on new V8 references outside the V8 adapter (use -- --update after paying debt down)");
+    const lint_engine = b.addRunArtifact(lint_engine_exe);
+    // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
+    lint_engine.has_side_effects = true;
+    lint_engine.setCwd(b.path("."));
+    if (b.args) |args| lint_engine.addArgs(args);
+    lint_engine_step.dependOn(&lint_engine.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_engine_check = b.addRunArtifact(lint_engine_exe);
+    lint_engine_check.has_side_effects = true;
+    lint_engine_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_engine_check.step);
+    const lint_engine_tests = b.addTest(.{ .root_module = lint_engine_module });
+    test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
+
+    // ========================================================================
     // HELP: Available JavaScript Engines
     // ========================================================================
 

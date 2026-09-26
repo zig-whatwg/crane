@@ -185,6 +185,40 @@ progress = []
   status = "todo"
 
 [[infra]]
+id = "engine-adapter"
+title = "The JavaScript engine is an adapter"
+why = """V8 is statically linked on desktop and server; iOS will dynamically link \
+the system JavaScriptCore. A second adapter can only replace V8 at a seam the \
+rest of the engine respects, and every direct V8 call outside the adapter is \
+work it must undo first (AGENTS.md, "The engine boundary")."""
+done_when = """tools/engine_boundary_baseline.txt is empty, "v8" is gone from the \
+non-adapter modules' imports in build.zig, and a non-V8 build fails only on \
+explicit NotSupported entries."""
+progress = [
+  "tools/lint_engine_boundary.zig in zig build test: a per-file, per-name ratchet that only goes down",
+]
+
+  [[infra.items]]
+  name = "Engine adapter: no V8 outside src/runtime/engines/v8"
+  status = "doing"
+
+  [[infra.items]]
+  name = "The WPT runner reads heap and context counts, and evaluates harness state, through the Engine table"
+  status = "todo"
+
+  [[infra.items]]
+  name = "The no-snapshot startup path is exercised by a test"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Engine-specific capabilities (snapshots, reusing a global proxy, synchronous module resolve, microtask control) are declared on the Engine table"
+  status = "todo"
+
+  [[infra.items]]
+  name = "\"v8\" removed from the non-adapter modules' imports in build.zig"
+  status = "todo"
+
+[[infra]]
 id = "bindings"
 title = "Binding-layer gaps"
 why = """They live in generated code or interface.zig, so an agent working \
