@@ -15,6 +15,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const network = @import("../network/root.zig");
 const StreamingSource = network.StreamingSource;
+const body_pipe = @import("body_pipe.zig");
+pub const BodyPipe = body_pipe.BodyPipe;
 
 /// Body source types for tracking the origin of body data.
 /// Per spec, source can be null, bytes, Blob, or FormData.
@@ -81,6 +83,10 @@ pub const Body = struct {
     /// Whether the body is currently being read.
     /// Used to prevent concurrent reads.
     disturbed: bool,
+
+    /// A body still arriving from the network: its bytes are in the pipe,
+    /// not `data`, until a reader takes them. The body owns its reader's end.
+    pipe: ?*BodyPipe = null,
 
     const Self = @This();
 
@@ -152,8 +158,41 @@ pub const Body = struct {
         return body;
     }
 
+    /// A body whose bytes arrive through `pipe`, which it takes.
+    pub fn fromPipe(allocator: Allocator, pipe: *BodyPipe) !*Self {
+        const body = try allocator.create(Self);
+        body.* = .{
+            .allocator = allocator,
+            .data = .empty,
+            .source = .none,
+            .length = null,
+            .used = false,
+            .disturbed = false,
+            .pipe = pipe,
+        };
+        return body;
+    }
+
+    /// Whether bytes are still to arrive.
+    pub fn isArriving(self: *const Self) bool {
+        const pipe = self.pipe orelse return false;
+        return pipe.state == .open;
+    }
+
+    /// Take a finished pipe's bytes into `data`, as if the body had been
+    /// bytes all along, and let the pipe go. For a reader that wanted the
+    /// whole body at once.
+    pub fn settlePipe(self: *Self) !void {
+        const pipe = self.pipe orelse return;
+        try self.data.appendSlice(self.allocator, pipe.buffered.items);
+        self.length = self.data.items.len;
+        self.pipe = null;
+        pipe.release();
+    }
+
     /// Deinitialize the body, freeing all resources.
     pub fn deinit(self: *Self) void {
+        if (self.pipe) |pipe| pipe.release();
         self.data.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -179,7 +218,11 @@ pub const Body = struct {
             .length = self.length,
             .used = false,
             .disturbed = false,
+            // A body still arriving is teed: the clone reads its own copy.
+            .pipe = if (self.pipe) |pipe| try pipe.tee() else null,
         };
+
+        errdefer if (new_body.pipe) |pipe| pipe.release();
 
         // Clone the data
         try new_body.data.appendSlice(allocator, self.data.items);

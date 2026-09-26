@@ -556,7 +556,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             const was_in_flight = self.in_flight != null;
             if (self.in_flight) |f| {
                 self.in_flight = null;
-                f.terminate();
+                f.terminate(.{ .kind = .aborted });
             }
 
             // Step 11.4: Abort the fetch() call with p, request,
@@ -661,7 +661,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         return error.OutOfMemory;
     };
     call.* = .{ .allocator = allocator, .ctx = instance.ctx, .isolate = realm.isolate, .resolver = p.resolver };
-    call.in_flight = fetch.algorithms.AsyncFetch.start(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
+    call.in_flight = fetch.algorithms.AsyncFetch.startWith(allocator, fetched_request, .{}, .{ .collect = true }, fetch.network.scheduler.threadScheduler(), call.client()) catch {
         // The fetch owned the request, and freed it.
         allocator.destroy(call);
         rejectWithTypeError(realm, p, "Failed to fetch");

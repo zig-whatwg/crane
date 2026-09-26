@@ -89,7 +89,7 @@ pub const InternalState = struct {
         if (pending.fetch) |f| {
             // In flight: the fetch owned it, and the fetch is over.
             pending.fetch = null;
-            f.terminate();
+            f.terminate(.{ .kind = .aborted });
             pending.destroy();
         } else {
             // Its task is queued, and frees it.
@@ -907,10 +907,11 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
-    pending.fetch = fetch_mod.algorithms.AsyncFetch.start(
+    pending.fetch = fetch_mod.algorithms.AsyncFetch.startWith(
         allocator,
         request,
         .{},
+        .{ .collect = true },
         fetch_mod.network.scheduler.threadScheduler(),
         pending.client(),
     ) catch |err| {
@@ -1062,7 +1063,7 @@ const PendingFetch = struct {
         if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
         const f = self.fetch orelse return;
         self.fetch = null;
-        f.terminate();
+        f.terminate(.{ .kind = .network });
 
         const instance = self.instance;
         self.detach();

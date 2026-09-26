@@ -44,6 +44,9 @@ pub const canDelete = guards.canDelete;
 pub const canGet = guards.canGet;
 
 pub const body = @import("body.zig");
+pub const body_pipe = @import("body_pipe.zig");
+pub const BodyPipe = body_pipe.BodyPipe;
+pub const PipeSource = body_pipe.PipeSource;
 pub const Body = body.Body;
 pub const BodySource = body.BodySource;
 pub const BodyWithType = body.BodyWithType;
@@ -127,6 +130,7 @@ test {
     _ = parsing;
     _ = guards;
     _ = body;
+    _ = body_pipe;
     _ = fetch_timing;
     _ = request;
     _ = response;
