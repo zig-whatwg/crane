@@ -323,6 +323,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                                 };
                                 global_context.?.* = runtime.ContextData.init(gpa, .{
                                     .colored = true,
+                                    .engine = &@import("engine.zig").v8_engine_interface,
                                     .engine_ctx = @ptrCast(context),
                                 }) catch {
                                     conv.throwTypeError(isolate, "Failed to initialize runtime context");
