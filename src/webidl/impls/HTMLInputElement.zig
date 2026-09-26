@@ -93,8 +93,9 @@ pub fn init(
 //                  and detaches from it once anything assigns to it
 //   defaultChecked reflects the "checked" CONTENT ATTRIBUTE
 //   checked        is the element's CHECKEDNESS, likewise detaching
-// Only the reflecting halves are implemented here; the stateful halves need
-// the dirty-value and dirty-checkedness flags.
+// The reflecting halves are plain [Reflect] attributes, which the generated
+// interface implements (src/webidl/impls/reflection.zig); the stateful halves
+// here keep the dirty-value and dirty-checkedness flags.
 // ---------------------------------------------------------------------------
 
 fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
@@ -109,15 +110,6 @@ fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!
     // A boolean content attribute is true by PRESENCE; disabled="false" is true.
     const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
     return elem_internal.findAttribute(null, attr) != null;
-}
-
-fn setBoolAttr(instance: *runtime.Instance, comptime attr: []const u8, value: bool) anyerror!void {
-    const name = runtime.DOMString.initInterned(attr);
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
 }
 
 fn setStringAttr(instance: *runtime.Instance, comptime attr: []const u8, value: runtime.DOMString) anyerror!void {
@@ -154,22 +146,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // TODO: Implement constructor logic with parameters
 
     return instance;
-}
-
-/// Getter for accept
-pub fn get_accept(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "accept");
-}
-
-/// Getter for alpha
-pub fn get_alpha(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for alt
-pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "alt");
 }
 
 /// Getter for autocomplete
@@ -210,11 +186,6 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
         return error.OutOfMemory;
 }
 
-/// Getter for defaultChecked
-pub fn get_defaultChecked(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "checked");
-}
-
 /// Getter for checked
 pub fn get_checked(instance: *runtime.Instance) anyerror!bool {
     if (Registry.get(instance)) |internal| {
@@ -227,17 +198,6 @@ pub fn get_checked(instance: *runtime.Instance) anyerror!bool {
 pub fn get_colorSpace(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Getter for dirName
-pub fn get_dirName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "disabled");
 }
 
 /// Getter for form
@@ -270,18 +230,6 @@ pub fn get_formMethod(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for formNoValidate
-pub fn get_formNoValidate(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for formTarget
-pub fn get_formTarget(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for height
 pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
@@ -300,20 +248,10 @@ pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for max
-pub fn get_max(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "max");
-}
-
 /// Getter for maxLength
 pub fn get_maxLength(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Getter for min
-pub fn get_min(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "min");
 }
 
 /// Getter for minLength
@@ -322,51 +260,10 @@ pub fn get_minLength(instance: *runtime.Instance) anyerror!i32 {
     return error.NotImplemented;
 }
 
-/// Getter for multiple
-pub fn get_multiple(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "multiple");
-}
-
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "name");
-}
-
-/// Getter for pattern
-pub fn get_pattern(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "pattern");
-}
-
-/// Getter for placeholder
-pub fn get_placeholder(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "placeholder");
-}
-
-/// Getter for readOnly
-pub fn get_readOnly(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "readonly");
-}
-
-/// Getter for required
-pub fn get_required(instance: *runtime.Instance) anyerror!bool {
-    return reflectBool(instance, "required");
-}
-
 /// Getter for size
 pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Getter for src
-pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for step
-pub fn get_step(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "step");
 }
 
 /// Getter for type
@@ -380,11 +277,6 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         }
     }
     return runtime.DOMString.initInterned("text");
-}
-
-/// Getter for defaultValue
-pub fn get_defaultValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "value");
 }
 
 /// Getter for value
@@ -477,18 +369,6 @@ pub fn get_webkitEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
-/// Getter for align
-pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for useMap
-pub fn get_useMap(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for popoverTargetElement
 pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
@@ -499,33 +379,6 @@ pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.
 pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Setter for accept
-pub fn set_accept(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "accept", value);
-}
-
-/// Setter for alpha
-pub fn set_alpha(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for alt
-pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "alt", value);
-}
-
-/// Setter for autocomplete
-pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "autocomplete", value);
-}
-
-/// Setter for defaultChecked
-pub fn set_defaultChecked(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "checked", value);
 }
 
 /// Setter for checked
@@ -541,27 +394,8 @@ pub fn set_colorSpace(instance: *runtime.Instance, value: runtime.DOMString) any
     return error.NotImplemented;
 }
 
-/// Setter for dirName
-pub fn set_dirName(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "disabled", value);
-}
-
 /// Setter for files
 pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for formAction
-pub fn set_formAction(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -581,20 +415,6 @@ pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) any
     return error.NotImplemented;
 }
 
-/// Setter for formNoValidate
-pub fn set_formNoValidate(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for formTarget
-pub fn set_formTarget(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for height
 pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
@@ -609,21 +429,11 @@ pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void
     return error.NotImplemented;
 }
 
-/// Setter for max
-pub fn set_max(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "max", value);
-}
-
 /// Setter for maxLength
 pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
-}
-
-/// Setter for min
-pub fn set_min(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "min", value);
 }
 
 /// Setter for minLength
@@ -633,53 +443,11 @@ pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
     return error.NotImplemented;
 }
 
-/// Setter for multiple
-pub fn set_multiple(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "multiple", value);
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "name", value);
-}
-
-/// Setter for pattern
-pub fn set_pattern(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "pattern", value);
-}
-
-/// Setter for placeholder
-pub fn set_placeholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "placeholder", value);
-}
-
-/// Setter for readOnly
-pub fn set_readOnly(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "readonly", value);
-}
-
-/// Setter for required
-pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
-    try setBoolAttr(instance, "required", value);
-}
-
 /// Setter for size
 pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
-}
-
-/// Setter for src
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for step
-pub fn set_step(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "step", value);
 }
 
 /// Setter for type
@@ -688,11 +456,6 @@ pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     // `el.type = "NONSENSE"` leaves type="NONSENSE" in the markup while
     // `el.type` reads back "text".
     try setStringAttr(instance, "type", value);
-}
-
-/// Setter for defaultValue
-pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setStringAttr(instance, "value", value);
 }
 
 /// Setter for value
@@ -758,20 +521,6 @@ pub fn set_capture(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 
 /// Setter for webkitdirectory
 pub fn set_webkitdirectory(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for useMap
-pub fn set_useMap(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

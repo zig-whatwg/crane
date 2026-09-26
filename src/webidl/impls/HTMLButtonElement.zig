@@ -68,12 +68,6 @@ pub fn get_commandForElement(instance: *runtime.Instance) anyerror!?*runtime.Ins
     return null;
 }
 
-/// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
@@ -98,32 +92,8 @@ pub fn get_formMethod(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for formNoValidate
-pub fn get_formNoValidate(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for formTarget
-pub fn get_formTarget(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for type
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for value
-pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -164,29 +134,8 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOM
     return error.NotImplemented;
 }
 
-/// Setter for command
-pub fn set_command(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for commandForElement
 pub fn set_commandForElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for formAction
-pub fn set_formAction(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -201,41 +150,6 @@ pub fn set_formEnctype(instance: *runtime.Instance, value: runtime.DOMString) an
 
 /// Setter for formMethod
 pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for formNoValidate
-pub fn set_formNoValidate(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for formTarget
-pub fn set_formTarget(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -166,52 +166,10 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for alt
-pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for src - reflects the "src" content attribute
-/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
-pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    // Get the src attribute value, returning empty string if not set
-    const attr_value = try Element.call_getAttribute(instance, runtime.DOMString.initInterned("src"));
-    if (attr_value) |val| {
-        // USVString is []const u8, DOMString has asSlice() method
-        return val.asSlice();
-    }
-    return "";
-}
-
-/// Getter for srcset
-pub fn get_srcset(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for sizes
-pub fn get_sizes(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for crossOrigin
 pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
-}
-
-/// Getter for useMap
-pub fn get_useMap(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for isMap
-pub fn get_isMap(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
 }
 
 /// Getter for width
@@ -251,8 +209,10 @@ pub fn get_complete(instance: *runtime.Instance) anyerror!bool {
     // Per spec: complete is true if:
     // 1. src attribute is not set (or empty)
     // 2. The image has finished loading (success or error)
-    const src = try get_src(instance);
-    if (src.len == 0) {
+    // The content attribute, not the `src` IDL attribute: that one resolves
+    // src="" to the document URL, and it is the empty value that counts here.
+    const src = try Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("src"));
+    if (src == null or src.?.isEmpty()) {
         return true; // No src attribute
     }
 
@@ -292,24 +252,6 @@ pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString
     return error.NotImplemented;
 }
 
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lowsrc
-pub fn get_lowsrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for align
-pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for hspace
 pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
@@ -318,18 +260,6 @@ pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for vspace
 pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for longDesc
-pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for border
-pub fn get_border(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -355,13 +285,6 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
 /// Getter for sharedStorageWritable
 pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for alt
-pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }
 
@@ -590,36 +513,8 @@ fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void
     _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 
-/// Setter for srcset
-pub fn set_srcset(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for sizes
-pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for crossOrigin
 pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for useMap
-pub fn set_useMap(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for isMap
-pub fn set_isMap(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -667,27 +562,6 @@ pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) 
     return error.NotImplemented;
 }
 
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lowsrc
-pub fn set_lowsrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Setter for hspace
 pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
@@ -697,20 +571,6 @@ pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
 
 /// Setter for vspace
 pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for longDesc
-pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for border
-pub fn set_border(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

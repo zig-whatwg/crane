@@ -80,18 +80,6 @@ pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
     return error.NotImplemented;
 }
 
-/// Getter for poster
-pub fn get_poster(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for playsInline
-pub fn get_playsInline(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for onenterpictureinpicture
 pub fn get_onenterpictureinpicture(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
@@ -119,20 +107,6 @@ pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
 
 /// Setter for height
 pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for poster
-pub fn set_poster(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for playsInline
-pub fn set_playsInline(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

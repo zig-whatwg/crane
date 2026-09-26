@@ -68,12 +68,6 @@ pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for name
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for type
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
@@ -113,13 +107,6 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }
 

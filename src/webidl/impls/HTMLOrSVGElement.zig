@@ -57,12 +57,6 @@ pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for autofocus
-pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for tabIndex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
@@ -71,13 +65,6 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
 
 /// Setter for nonce
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for autofocus
-pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

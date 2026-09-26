@@ -62,20 +62,8 @@ pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Getter for media
-pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for blocking
 pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for type
-pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -88,20 +76,6 @@ pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Setter for disabled
 pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for media
-pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

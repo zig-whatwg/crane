@@ -106,22 +106,14 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // exception - so `form.method` THREW rather than returning its default. Every
 // form test died on the first property read.
 //
-// Three kinds of reflection appear here and they are not interchangeable:
-//   * plain      - return the attribute, or "" when absent (name, target, rel)
-//   * URL        - resolve against the document base URL (action)
+// Plain [Reflect] attributes (acceptCharset, name, noValidate, target, rel)
+// and the [ReflectSetter] action setter are the generated interface's own
+// (src/webidl/impls/reflection.zig). What is left here is not plain:
+//   * action     - a URL getter with the document URL as its fallback
 //   * enumerated - "limited to only known values": an unrecognised value maps
 //                  to the INVALID VALUE DEFAULT, and a missing attribute to the
 //                  MISSING VALUE DEFAULT, which are not always the same thing
 // ---------------------------------------------------------------------------
-
-/// The attribute's literal value, or "" when it is absent.
-fn reflectString(instance: *runtime.Instance, comptime attr: []const u8) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, attr)) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-    return runtime.DOMString.initEmpty();
-}
 
 /// Enumerated reflection. `known` is matched ASCII-case-insensitively; anything
 /// unmatched yields `invalid_default`, and an absent attribute `missing_default`.
@@ -142,13 +134,6 @@ fn reflectEnumerated(
         }
     }
     return runtime.DOMString.initInterned(invalid_default);
-}
-
-/// Getter for acceptCharset
-pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Reflects "accept-charset", NOT "acceptcharset" - the content attribute
-    // name differs from the IDL name.
-    return reflectString(instance, "accept-charset");
 }
 
 /// Getter for action
@@ -202,49 +187,6 @@ pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Missing and invalid both default to "get".
     return reflectEnumerated(instance, "method", &.{ "get", "post", "dialog" }, "get", "get");
-}
-
-/// Getter for name
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
-/// Reflects the name attribute.
-pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Use Element's attribute access
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Look for the "name" attribute
-    if (elem_internal.findAttribute(null, "name")) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-
-    return runtime.DOMString.initEmpty();
-}
-
-/// Getter for noValidate
-pub fn get_noValidate(instance: *runtime.Instance) anyerror!bool {
-    // A boolean attribute: presence is true regardless of value, so even
-    // novalidate="false" is true.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    return elem_internal.findAttribute(null, "novalidate") != null;
-}
-
-/// Getter for target
-pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectString(instance, "target");
-}
-
-/// Getter for rel
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rel
-/// Reflects the rel attribute.
-pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Use Element's attribute access
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Look for the "rel" attribute
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
-        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
-    }
-
-    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for relList
@@ -337,22 +279,6 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return interfaces.HTMLCollection.get_length(collection);
 }
 
-/// Setter for acceptCharset
-pub fn set_acceptCharset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("accept-charset"), value);
-}
-
-/// Setter for action
-pub fn set_action(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    // USVString is a plain []const u8. setAttribute copies into the attribute
-    // store, so a borrowed view of the caller's bytes is safe here.
-    try interfaces.Element.call_setAttribute(
-        instance,
-        runtime.DOMString.initInterned("action"),
-        runtime.DOMString.initInterned(value),
-    );
-}
-
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("autocomplete"), value);
@@ -372,39 +298,6 @@ pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyer
 /// Setter for method
 pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("method"), value);
-}
-
-/// Setter for name
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
-/// Sets the name attribute.
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Use Element's setAttribute through the interface
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("name"), value);
-}
-
-/// Setter for noValidate
-pub fn set_noValidate(instance: *runtime.Instance, value: bool) anyerror!void {
-    // Boolean attribute: true adds it with the empty string, false removes it.
-    // Setting it to "false" would still read back as true.
-    const name = runtime.DOMString.initInterned("novalidate");
-    if (value) {
-        try interfaces.Element.call_setAttribute(instance, name, runtime.DOMString.initEmpty());
-    } else {
-        try interfaces.Element.call_removeAttribute(instance, name);
-    }
-}
-
-/// Setter for target
-pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("target"), value);
-}
-
-/// Setter for rel
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rel
-/// Sets the rel attribute.
-pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Use Element's setAttribute through the interface
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), value);
 }
 
 /// Operation: requestSubmit
