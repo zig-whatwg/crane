@@ -417,3 +417,27 @@ test "terminating a fetch whose body is arriving fails the body" {
     try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
     try testing.expect(!reader.finished);
 }
+
+test "a response with a null body status has a null body, and its transfer stops" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var reader: StreamingReader = .{};
+    defer reader.deinit();
+    _ = try AsyncFetch.start(testing.allocator, try requestFor(server, "/status/204"), .{}, &scheduler, reader.client());
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *StreamingReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.finished, &reader);
+
+    const response = reader.response orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(u16, 204), response.status);
+    try testing.expect(response.body == null);
+}

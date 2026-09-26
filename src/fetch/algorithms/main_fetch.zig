@@ -245,6 +245,18 @@ pub fn mainFetchFinish(
         return response;
     }
 
+    // Step 20: a response to HEAD or CONNECT, or with a null body status, has
+    // a null body, "and disregard any enqueuing toward it" - a body still
+    // arriving is let go, which stops its transfer.
+    if (!isNetworkError(response)) {
+        const method = request.method;
+        const head_or_connect = std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "CONNECT");
+        if (head_or_connect or internal_response.isNullBodyStatus(response.status)) {
+            if (response.body) |body| body.deinit();
+            response.body = null;
+        }
+    }
+
     // Step 15: Response filtering based on tainting
     if (!isNetworkError(response)) {
         switch (request.response_tainting) {
