@@ -23,6 +23,10 @@ const typedefs = @import("typedefs");
 const fetch = @import("fetch");
 const blob_bytes = @import("dom").blob_bytes;
 const srd = @import("streams_readable.zig");
+const js = @import("streams_js.zig");
+const same_object = @import("same_object.zig");
+const v8 = @import("v8");
+const BodyPipe = fetch.internal.BodyPipe;
 
 pub const Error = error{ TypeError, OutOfMemory };
 
@@ -111,6 +115,688 @@ pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepaliv
     }
     return result;
 }
+
+// =============================================================================
+// The Body mixin (§5.3), for Request and Response
+// =============================================================================
+
+pub const Method = enum { array_buffer, blob, bytes, form_data, json, text };
+
+/// What the Body mixin's steps need of a Request or Response object.
+///
+/// A body is bytes, or a pipe the network fills (a response fetch() made),
+/// or a ReadableStream script gave it; its stream - Fetch's "body's
+/// stream" - is made when script first asks (`bodyStream`), from the pipe
+/// or the bytes, since nothing can read or disturb it before. From then on
+/// everything goes through the stream.
+pub const Owner = struct {
+    instance: *runtime.Instance,
+    /// This object's body's stream, once made: the [SameObject] `body`
+    /// (the generated state's `body`).
+    stream: *?*runtime.Instance,
+    /// Holds that stream's wrapper for as long as this object - see
+    /// same_object.zig: `stream` is a pointer V8 cannot see.
+    pin: *same_object.Pin,
+    /// This object's body; null for a null body.
+    body: ?*fetch.internal.Body,
+    kind: *const Kind,
+
+    pub const Kind = struct {
+        /// The Owner of `instance`, asked again when a read finishes.
+        of: *const fn (instance: *runtime.Instance) ?Owner,
+        /// The method's own steps on a body that is its bytes (`body`'s
+        /// data): the promise the method returns.
+        steps: *const fn (instance: *runtime.Instance, method: Method) anyerror!runtime.JSValue,
+        /// A reason consuming the body rejects with before anything else
+        /// is looked at, owned - a Response's followed signal's abort
+        /// reason.
+        rejection: ?*const fn (instance: *runtime.Instance, realm: js.Realm) ?js.Value = null,
+        /// Told of a stream just made for the body.
+        made: ?*const fn (instance: *runtime.Instance, stream: *runtime.Instance) void = null,
+    };
+};
+
+/// The `body` getter: this's body's stream, or null for a null body.
+///
+/// A body still arriving streams from its pipe; a body that is bytes becomes
+/// a stream of them - a pipe that has already ended. Either way the stream
+/// takes the bytes over.
+pub fn bodyStream(o: Owner) !?*runtime.Instance {
+    if (o.stream.*) |stream| return stream;
+    const body = o.body orelse return null;
+    const pipe = if (body.pipe) |p| p else blk: {
+        const source = try fetch.internal.PipeSource.create(body.allocator);
+        const p = source.branch() catch |err| {
+            source.finish();
+            return err;
+        };
+        source.push(body.data.items);
+        source.finish();
+        break :blk p;
+    };
+    body.pipe = null;
+
+    const stream = try PipeStream.create(o.instance.ctx, pipe);
+    o.stream.* = stream;
+    o.pin.hold(stream);
+    if (o.kind.made) |made| made(o.instance, stream);
+    return stream;
+}
+
+/// The `bodyUsed` getter: this's body is non-null and its stream is
+/// disturbed. A body whose stream was never made cannot have been.
+pub fn bodyUsed(o: Owner) bool {
+    const stream = o.stream.* orelse return false;
+    const slots = srd.streamOf(stream) orelse return false;
+    return slots.disturbed;
+}
+
+/// "Unusable": this's body is non-null and its stream is disturbed or
+/// locked.
+pub fn isUnusable(o: Owner) bool {
+    const stream = o.stream.* orelse return false;
+    const slots = srd.streamOf(stream) orelse return false;
+    return slots.disturbed or srd.isLocked(slots);
+}
+
+/// "Clone a body", for `clone` - which has cloned the body itself (a pipe
+/// still arriving is teed there): a stream already made is teed too, this
+/// body reading the first branch and the clone the second.
+pub fn cloneStream(o: Owner, clone: Owner) !void {
+    const stream = o.stream.* orelse return;
+    const realm = try js.Realm.of(o.instance);
+    const branches = try srd.tee(realm, stream);
+    o.pin.release();
+    o.stream.* = branches[0];
+    o.pin.hold(branches[0]);
+    clone.stream.* = branches[1];
+    clone.pin.hold(branches[1]);
+}
+
+/// Streams "create a proxy" for `input`'s body, as `target`'s body's
+/// stream (the Request constructor's step 41.2). The proxy is `input`'s
+/// stream piped through an identity transform, so from here `input`'s body
+/// is locked, and disturbed (ReadableStreamPipeTo step 11 disturbs the
+/// source at once). A tee stands in for the pipe: the first branch is
+/// `target`'s stream, the second is cancelled - nobody reads it - and the
+/// source is marked disturbed as the pipe would.
+pub fn proxyInto(input: Owner, target: Owner) !void {
+    const input_body = input.body orelse return;
+    const stream = (try bodyStream(input)) orelse return;
+    const realm = try js.Realm.of(input.instance);
+    if (input_body.source != .none) {
+        // A body of bytes: `target` has its own copy of them (the request
+        // copy carried them), so nothing need flow through a pipe. `input`'s
+        // stream is locked and disturbed, as piping it would leave it.
+        const reader = try srd.acquireDefaultReader(realm, stream);
+        _ = try realm.wrap(reader);
+        if (srd.streamOf(stream)) |slots| slots.disturbed = true;
+        return;
+    }
+    const branches = try srd.tee(realm, stream);
+    if (srd.streamOf(stream)) |slots| slots.disturbed = true;
+    target.pin.release();
+    target.stream.* = branches[0];
+    target.pin.hold(branches[0]);
+    const reason = try realm.undefinedValue();
+    defer js.dispose(reason);
+    const cancelled = srd.cancel(realm, branches[1], reason) catch return;
+    js.dispose(cancelled);
+}
+
+/// Read every byte of a request body's stream, for fetch() to send them:
+/// Fetch's "transmit request body" reads the stream chunk by chunk, and
+/// each chunk must be a Uint8Array.
+///
+/// Deviation: HTTP-network fetch would stream the bytes onto the wire as
+/// they are read; here they are all read first and sent as one body, since
+/// the network layer takes a body of bytes.
+///
+/// Every chunk is read from the last one's chunk steps (Streams "read
+/// loop"), so a pending read is the only state: the stream's teardown drops
+/// it (`drop`), which ends this too.
+pub const ReadAll = struct {
+    allocator: std.mem.Allocator,
+    realm: js.Realm,
+    reader: *runtime.Instance,
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
+    context: *anyopaque,
+    done: *const fn (context: *anyopaque, bytes: []const u8) void,
+    /// The read failed - an errored stream, a chunk that is not a
+    /// Uint8Array - or was dropped (the realm went). `e` is borrowed, null
+    /// for a drop.
+    failed: *const fn (context: *anyopaque, e: ?js.Value) void,
+    /// `cancel` ran: nothing is reported, and this ends at the next step.
+    cancelled: bool = false,
+
+    const vtable = srd.ReadRequest.VTable{ .chunk = chunk, .close = close, .err = fail, .drop = drop };
+
+    /// Acquire a reader for `stream`, to read it all from `begin` - kept
+    /// apart so the caller can hold the pointer before a stream that has
+    /// every chunk already reports, and frees this, inside the first read.
+    pub fn start(
+        allocator: std.mem.Allocator,
+        realm: js.Realm,
+        stream: *runtime.Instance,
+        context: *anyopaque,
+        done: *const fn (context: *anyopaque, bytes: []const u8) void,
+        failed: *const fn (context: *anyopaque, e: ?js.Value) void,
+    ) !*ReadAll {
+        const reader = try srd.acquireDefaultReader(realm, stream);
+        // Held through a Zig pointer: the wrapper cache keeps streams-graph
+        // objects for the realm once they are wrapped.
+        _ = try realm.wrap(reader);
+        const self = try allocator.create(ReadAll);
+        self.* = .{ .allocator = allocator, .realm = realm, .reader = reader, .context = context, .done = done, .failed = failed };
+        return self;
+    }
+
+    /// Start reading. `done` or `failed` may run before this returns.
+    pub fn begin(self: *ReadAll) void {
+        self.readNext();
+    }
+
+    /// Cancel the stream with `reason` - fetch()'s abort steps' "cancel
+    /// request's body with error" - through the reader that holds it.
+    /// Nothing more is reported; this frees itself.
+    pub fn cancel(self: *ReadAll, reason: js.Value) void {
+        self.cancelled = true;
+        const realm = self.realm;
+        const reader = srd.readerOf(self.reader) orelse return;
+        // The pending read's close steps run inside, and free this.
+        const promise = srd.readerGenericCancel(realm, reader, reason) catch return;
+        js.dispose(promise);
+    }
+
+    fn readNext(self: *ReadAll) void {
+        const reader = srd.readerOf(self.reader) orelse return self.fail2(null);
+        srd.defaultReaderRead(self.realm, reader, .{ .ctx = self, .vtable = &vtable });
+    }
+
+    fn chunk(ctx: *anyopaque, realm: js.Realm, value: js.Value) void {
+        const self: *ReadAll = @ptrCast(@alignCast(ctx));
+        if (self.cancelled) return self.destroy();
+        const info = js.describeView(value) orelse return self.typeError(realm);
+        if (info.kind != .uint8) return self.typeError(realm);
+        const buffer = js.viewBuffer(value) catch return self.typeError(realm);
+        defer js.dispose(buffer);
+        const all = js.bufferBytes(buffer) orelse return self.typeError(realm);
+        self.bytes.appendSlice(self.allocator, all[info.byte_offset..][0..info.byte_length]) catch return self.fail2(null);
+        self.readNext();
+    }
+
+    fn close(ctx: *anyopaque, realm: js.Realm) void {
+        _ = realm;
+        const self: *ReadAll = @ptrCast(@alignCast(ctx));
+        if (!self.cancelled) self.done(self.context, self.bytes.items);
+        self.destroy();
+    }
+
+    fn fail(ctx: *anyopaque, realm: js.Realm, e: js.Value) void {
+        _ = realm;
+        const self: *ReadAll = @ptrCast(@alignCast(ctx));
+        self.fail2(e);
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *ReadAll = @ptrCast(@alignCast(ctx));
+        self.fail2(null);
+    }
+
+    /// A chunk that is not a Uint8Array: the fetch fails, and the stream is
+    /// cancelled with the TypeError - nothing will read it again, and a pipe
+    /// feeding it (pipeThrough) must hear so, or it waits forever.
+    fn typeError(self: *ReadAll, realm: js.Realm) void {
+        const e = realm.typeError("a request body chunk is not a Uint8Array") catch return self.fail2(null);
+        defer js.dispose(e);
+        if (!self.cancelled) self.failed(self.context, e);
+        self.cancelled = true;
+        if (srd.readerOf(self.reader)) |reader| {
+            if (srd.readerGenericCancel(realm, reader, e)) |promise| js.dispose(promise) else |_| {}
+        }
+        self.destroy();
+    }
+
+    fn fail2(self: *ReadAll, e: ?js.Value) void {
+        if (!self.cancelled) self.failed(self.context, e);
+        self.destroy();
+    }
+
+    fn destroy(self: *ReadAll) void {
+        self.bytes.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
+/// Cancel `stream` with `reason` if it is readable and nobody holds it -
+/// fetch()'s "abort the fetch() call" step 2, "cancel request's body with
+/// error", before anything reads it.
+pub fn cancelStream(realm: js.Realm, stream: *runtime.Instance, reason: js.Value) void {
+    const slots = srd.streamOf(stream) orelse return;
+    if (slots.state != .readable or srd.isLocked(slots)) return;
+    const promise = srd.cancel(realm, stream, reason) catch return;
+    js.dispose(promise);
+}
+
+/// Fetch "consume body": step 1's unusable check, then "fully read body" - a
+/// reader takes every chunk - and the method's own steps on the bytes
+/// (`settleWithBytes`).
+pub fn consume(o: Owner, method: Method) anyerror!runtime.JSValue {
+    const instance = o.instance;
+    const realm = try js.Realm.of(instance);
+    const deferred = try js.Deferred.init(realm);
+    var deferred_taken = false;
+    errdefer if (!deferred_taken) deferred.deinit();
+
+    if (o.kind.rejection) |rejection| {
+        if (rejection(instance, realm)) |reason| {
+            defer js.dispose(reason);
+            deferred.reject(realm, reason);
+            return finishReturn(deferred);
+        }
+    }
+
+    // Step 1: If object is unusable, return a promise rejected with a
+    // TypeError.
+    if (isUnusable(o)) {
+        const e = try realm.typeError("Body is unusable: it has been read or is locked");
+        defer js.dispose(e);
+        deferred.reject(realm, e);
+        return finishReturn(deferred);
+    }
+
+    const stream = (try bodyStream(o)) orelse {
+        // Step 5: a null body reads as no bytes.
+        try settleWithBytes(instance, o.kind, method, &.{}, realm, deferred);
+        return finishReturn(deferred);
+    };
+    const reader = try srd.acquireDefaultReader(realm, stream);
+    // The read holds it through a Zig pointer; wrapping registers it with the
+    // wrapper cache, which keeps streams-graph objects for the realm and
+    // frees them with it - as ReadableStreamTee and pipeTo do. Unwrapped,
+    // nothing ever freed it.
+    _ = try realm.wrap(reader);
+
+    const read = try instance.ctx.allocator.create(FullRead);
+    deferred_taken = true;
+    read.* = .{
+        .allocator = instance.ctx.allocator,
+        .instance = instance,
+        .method = method,
+        .kind = o.kind,
+        .realm = realm,
+        .deferred = deferred,
+        .reader = reader,
+    };
+    // The object is what the method's own steps read - its headers, for a
+    // blob's type - so it lives until they have run.
+    read.keep.hold(instance);
+    // Taken first: a stream already closed settles, and frees, the read
+    // before readNext returns.
+    const promise = js.clone(deferred.promise) catch |err| {
+        read.destroy();
+        return err;
+    };
+    read.readNext();
+    return js.toReturnOwned(promise);
+}
+
+fn finishReturn(deferred: js.Deferred) runtime.JSValue {
+    const result = deferred.returnOwned();
+    v8.ffi.v8_PromiseResolver_Dispose(deferred.resolver);
+    return result;
+}
+
+/// The method's own steps - what it does to a body that is its bytes - on
+/// `bytes`, the whole of a body read through its stream, settling
+/// `deferred` with their outcome.
+fn settleWithBytes(instance: *runtime.Instance, kind: *const Owner.Kind, method: Method, bytes: []const u8, realm: js.Realm, deferred: js.Deferred) !void {
+    // A null body stays null (consume body step 5: the steps run on an empty
+    // byte sequence), so bodyUsed stays false - the bytes forms read a null
+    // body as empty and mark nothing.
+    if (kind.of(instance)) |o| if (o.body) |body| {
+        // As a body of these bytes that nobody has read yet: the stream was
+        // the one disturbed, and the bytes form does its own marking.
+        body.data.clearRetainingCapacity();
+        try body.data.appendSlice(body.allocator, bytes);
+        body.used = false;
+        body.disturbed = false;
+    };
+
+    // The steps make their value - an ArrayBuffer, a Blob - in this's
+    // relevant realm, which is not always the caller's (a method borrowed
+    // from another window). A stream that has already ended reads to its
+    // end inside the method call, before any microtask would enter it.
+    const scope = v8.JsScope.init(instance.ctx);
+    defer if (scope) |sc| sc.deinit();
+    const result = kind.steps(instance, method) catch |err| {
+        const e = try realm.typeError(@errorName(err));
+        defer js.dispose(e);
+        deferred.reject(realm, e);
+        return;
+    };
+    // The bytes form returns its promise; ours takes on its outcome.
+    switch (result) {
+        .handle => |h| {
+            const promise: js.Value = @ptrCast(@alignCast(h.ptr));
+            deferred.resolve(realm, promise);
+            if (h.needs_disposal) js.dispose(promise);
+        },
+        else => deferred.resolveUndefined(realm),
+    }
+}
+
+/// Fetch "fully read body" through the body's stream: read every chunk,
+/// then run the method's steps. Streams "read-loop": each chunk step reads
+/// again - from a microtask, so a queue of many chunks is not a deep stack.
+const FullRead = struct {
+    allocator: std.mem.Allocator,
+    instance: *runtime.Instance,
+    method: Method,
+    kind: *const Owner.Kind,
+    realm: js.Realm,
+    deferred: js.Deferred,
+    reader: *runtime.Instance,
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
+    keep: same_object.Pin = .{},
+
+    const vtable = srd.ReadRequest.VTable{ .chunk = chunk, .close = close, .err = fail, .drop = drop };
+
+    fn readNext(self: *FullRead) void {
+        const reader = srd.readerOf(self.reader) orelse return self.finishWithTypeError("the body's reader is gone");
+        srd.defaultReaderRead(self.realm, reader, .{ .ctx = self, .vtable = &vtable });
+    }
+
+    fn chunk(ctx: *anyopaque, realm: js.Realm, value: js.Value) void {
+        const self: *FullRead = @ptrCast(@alignCast(ctx));
+        _ = realm;
+        // "If chunk is not a Uint8Array object, reject with a TypeError."
+        const info = js.describeView(value) orelse return self.finishWithTypeError("a body chunk is not a Uint8Array");
+        if (info.kind != .uint8) return self.finishWithTypeError("a body chunk is not a Uint8Array");
+        const buffer = js.viewBuffer(value) catch return self.finishWithTypeError("a body chunk has no buffer");
+        defer js.dispose(buffer);
+        const all = js.bufferBytes(buffer) orelse return self.finishWithTypeError("a body chunk's buffer is detached");
+        self.bytes.appendSlice(self.allocator, all[info.byte_offset..][0..info.byte_length]) catch return self.finishWithTypeError("out of memory");
+        js.queueMicrotask(self.realm, FullRead, self, readNext);
+    }
+
+    fn close(ctx: *anyopaque, realm: js.Realm) void {
+        const self: *FullRead = @ptrCast(@alignCast(ctx));
+        settleWithBytes(self.instance, self.kind, self.method, self.bytes.items, realm, self.deferred) catch {};
+        self.destroy();
+    }
+
+    fn fail(ctx: *anyopaque, realm: js.Realm, e: js.Value) void {
+        const self: *FullRead = @ptrCast(@alignCast(ctx));
+        self.deferred.reject(realm, e);
+        self.destroy();
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *FullRead = @ptrCast(@alignCast(ctx));
+        self.destroy();
+    }
+
+    fn finishWithTypeError(self: *FullRead, message: []const u8) void {
+        const e = self.realm.typeError(message) catch return self.destroy();
+        defer js.dispose(e);
+        self.deferred.reject(self.realm, e);
+        self.destroy();
+    }
+
+    fn destroy(self: *FullRead) void {
+        self.keep.release();
+        self.deferred.deinit();
+        self.bytes.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
+/// The underlying source of a body's stream: the body's pipe.
+///
+/// Fetch's HTTP-network fetch sets the stream up with byte reading support
+/// and enqueues bytes as they arrive; here the bytes wait in the pipe until a
+/// read asks for them (pull), so what nobody has read stays where a clone can
+/// still tee it. The network's news - bytes, the end, a failure - comes as a
+/// notification from the event loop's network step, and is acted on in a
+/// task in the stream's realm: a pending read gets the bytes, the end closes
+/// the stream, a failure errors it at once, read or not.
+const PipeStream = struct {
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    isolate: *v8.ffi.Isolate,
+    /// The body's pipe, this source's from creation until cancel or
+    /// deinit.
+    pipe: ?*BodyPipe,
+    /// The stream's controller, from start until deinit.
+    controller: ?*runtime.Instance = null,
+    /// The promise a pull is waiting on, while the pipe has nothing.
+    pending_pull: ?js.Deferred = null,
+    /// A task is queued to act on the pipe; it owns this until it runs.
+    task_queued: bool = false,
+    /// The stream is done with this source (its algorithms were cleared).
+    detached: bool = false,
+    /// Calls into the stream under way from here: freeing waits for them.
+    busy: u32 = 0,
+
+    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+
+    /// CreateReadableByteStream over `pipe`, whose ownership passes in -
+    /// on failure too.
+    fn create(ctx: runtime.Context, pipe: *BodyPipe) !*runtime.Instance {
+        const realm = js.Realm.ofContext(ctx) catch |err| {
+            pipe.release();
+            return err;
+        };
+        const self = ctx.allocator.create(PipeStream) catch |err| {
+            pipe.release();
+            return err;
+        };
+        self.* = .{ .allocator = ctx.allocator, .ctx = ctx, .isolate = realm.isolate, .pipe = pipe };
+        pipe.consumer = .{ .context = self, .notify = notify };
+        // Held while the stream is set up: a failed setup clears the
+        // source's algorithms, which must not free it under this call.
+        self.busy += 1;
+        const stream = srd.createReadableByteStream(realm, ctx, .{ .ctx = self, .vtable = &vtable });
+        if (stream) |_| {
+            // A body that ended with nothing left to read, or failed, before
+            // its stream was made: the stream is made in the state it would
+            // have reached had it existed all along - closed (an empty queue
+            // closes at once), or errored.
+            if (self.controller) |controller| {
+                if (pipe.state == .errored) {
+                    self.errorStream(realm, controller, pipe);
+                } else if (pipe.state == .closed and !pipe.hasBytes()) {
+                    srd.byteControllerClose(realm, controller) catch {};
+                }
+            }
+        } else |_| {}
+        self.busy -= 1;
+        if (stream) |s| {
+            self.freeIfDone();
+            return s;
+        } else |err| {
+            self.detached = true;
+            self.releasePipe();
+            self.freeIfDone();
+            return err;
+        }
+    }
+
+    fn start(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Completion {
+        const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
+        self.controller = controller;
+        return .{ .normal = try realm.undefinedValue() };
+    }
+
+    fn pull(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
+        const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
+        self.controller = controller;
+        self.busy += 1;
+        const acted = self.deliver(realm);
+        self.busy -= 1;
+        if (acted or self.detached) {
+            self.freeIfDone();
+            return realm.promiseResolvedWithUndefined();
+        }
+        // Nothing yet: the pull waits for the network.
+        const d = try js.Deferred.init(realm);
+        self.pending_pull = d;
+        return js.clone(d.promise);
+    }
+
+    /// Act on what the pipe has: enqueue its bytes, close at its end, error
+    /// on its failure. Returns whether there was anything to act on.
+    fn deliver(self: *PipeStream, realm: js.Realm) bool {
+        const pipe = self.pipe orelse return false;
+        const controller = self.controller orelse return false;
+        if (pipe.state == .errored) {
+            self.errorStream(realm, controller, pipe);
+            return true;
+        }
+        if (pipe.hasBytes()) {
+            const bytes = pipe.take() catch return false;
+            defer self.allocator.free(bytes);
+            self.enqueue(realm, controller, bytes);
+            if (self.detached) return true;
+            if (pipe.state == .closed) srd.byteControllerClose(realm, controller) catch {};
+            return true;
+        }
+        if (pipe.state == .closed) {
+            srd.byteControllerClose(realm, controller) catch {};
+            return true;
+        }
+        return false;
+    }
+
+    fn enqueue(self: *PipeStream, realm: js.Realm, controller: *runtime.Instance, bytes: []const u8) void {
+        _ = self;
+        const buffer = js.allocateBuffer(bytes.len) orelse return;
+        defer js.dispose(buffer);
+        if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..bytes.len], bytes);
+        const view = js.newView(.uint8, buffer, 0, bytes.len) catch return;
+        defer js.dispose(view);
+        srd.byteControllerEnqueue(realm, controller, view) catch {};
+    }
+
+    /// Error the stream with the pipe's failure: an abort's reason, or a
+    /// TypeError for a network error.
+    fn errorStream(self: *PipeStream, realm: js.Realm, controller: *runtime.Instance, pipe: *BodyPipe) void {
+        _ = self;
+        const failure = pipe.failure();
+        if (failure.kind == .aborted) {
+            if (failure.reason) |reason| {
+                // Our own handle to it: erroring the controller clears the
+                // stream's algorithms, which lets this source's pipe go -
+                // and with the last reader, the source and the reason it
+                // holds - before the error reaches the stream.
+                const e = js.clone(@ptrCast(@alignCast(reason))) catch return;
+                defer js.dispose(e);
+                srd.byteControllerError(realm, controller, e);
+                return;
+            }
+            const e = v8.conversions.newDOMExceptionFromContext(realm.isolate, realm.context, "AbortError", "The operation was aborted.") orelse return;
+            defer js.dispose(e);
+            srd.byteControllerError(realm, controller, e);
+            return;
+        }
+        const e = realm.typeError("network error") catch return;
+        defer js.dispose(e);
+        srd.byteControllerError(realm, controller, e);
+    }
+
+    /// The pipe has news. Called from the event loop's network step, outside
+    /// the realm: act on it in a task there.
+    fn notify(context: *anyopaque) void {
+        const self: *PipeStream = @ptrCast(@alignCast(context));
+        if (self.task_queued or self.detached) return;
+        if (self.ctx.getOptionalEventLoop()) |loop| {
+            self.task_queued = true;
+            loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
+            return;
+        }
+        if (self.ctx.getOptionalTimer()) |timer| {
+            if (timer.setTimeout(0, runTask, self) != 0) {
+                self.task_queued = true;
+                return;
+            }
+        }
+    }
+
+    fn runTask(context: ?*anyopaque) void {
+        const self: *PipeStream = @ptrCast(@alignCast(context.?));
+        self.task_queued = false;
+        if (self.detached or self.ctx.engine_ctx == null) return self.freeIfDone();
+        // A task from the event loop, not from script: enter the realm.
+        const isolate = self.isolate;
+        const entered = v8.ffi.v8_Isolate_GetCurrent() != isolate;
+        if (entered) v8.ffi.v8_Isolate_Enter(isolate);
+        defer if (entered) v8.ffi.v8_Isolate_Exit(isolate);
+        {
+            const scope = v8.JsScope.init(self.ctx) orelse return self.freeIfDone();
+            defer scope.deinit();
+            const realm = js.Realm.ofContext(self.ctx) catch return self.freeIfDone();
+            self.busy += 1;
+            defer self.busy -= 1;
+            const pipe = self.pipe orelse return;
+            const controller = self.controller orelse return;
+            if (pipe.state == .errored) {
+                // Errored at once, read or not: an aborted body's stream
+                // errors with the abort reason even while nobody reads.
+                self.errorStream(realm, controller, pipe);
+            } else if (self.pending_pull != null) {
+                if (self.deliver(realm)) {
+                    if (self.pending_pull) |d| {
+                        self.pending_pull = null;
+                        d.resolveUndefined(realm);
+                        d.deinit();
+                    }
+                }
+            }
+        }
+        self.freeIfDone();
+        @import("html").worker_v8_context.finishTaskIn(isolate);
+    }
+
+    fn dropTask(context: ?*anyopaque) void {
+        const self: *PipeStream = @ptrCast(@alignCast(context.?));
+        self.task_queued = false;
+        self.freeIfDone();
+    }
+
+    fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+        const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
+        // Nobody will read what is left: let the pipe go, which stops the
+        // transfer if this was its last reader.
+        self.releasePipe();
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn deinitSource(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
+        _ = allocator;
+        const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
+        self.detached = true;
+        self.controller = null;
+        self.releasePipe();
+        if (self.pending_pull) |d| {
+            self.pending_pull = null;
+            d.deinit();
+        }
+        self.freeIfDone();
+    }
+
+    fn releasePipe(self: *PipeStream) void {
+        const pipe = self.pipe orelse return;
+        self.pipe = null;
+        pipe.consumer = null;
+        pipe.release();
+    }
+
+    fn freeIfDone(self: *PipeStream) void {
+        if (!self.detached or self.task_queued or self.busy > 0) return;
+        self.allocator.destroy(self);
+    }
+};
 
 // =============================================================================
 // multipart/form-data (HTML § 4.10.21.8)
