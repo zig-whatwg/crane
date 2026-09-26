@@ -13,10 +13,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const AbortSignal = interfaces.AbortSignal;
 const EventTargetImpl = @import("EventTarget.zig");
-const streams_js = @import("streams_js.zig");
 
 pub const State = AbortSignal.State;
 
@@ -56,8 +54,13 @@ pub const InternalState = struct {
     /// only in a signal made before any reason existed.
     aborted: bool = false,
 
-    /// Abort reason: an owned Global<Value>, or null for undefined.
-    reason: ?*v8.ffi.Value = null,
+    /// Abort reason: a value retained through the Engine table (OWNED,
+    /// released with `releaseValue`), or null for undefined.
+    reason: ?runtime.JSValue = null,
+
+    /// The Engine table of the signal's realm, which retained `reason` and
+    /// releases it.
+    engine: ?*const runtime.EngineInterface = null,
 
     /// DOM § 3.3 "abort algorithms": run, in order, when the signal is aborted.
     abort_algorithms: std.ArrayListUnmanaged(AbortAlgorithm) = .empty,
@@ -72,7 +75,7 @@ pub const InternalState = struct {
     timeout: ?*TimeoutTask = null,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        if (self.reason) |r| v8.ffi.v8_Global_Dispose(r);
+        self.releaseReason();
         // A signal that dies unaborted never runs these; their owners gave
         // them to the signal, so it hands each back to be freed.
         for (self.abort_algorithms.items) |algorithm| {
@@ -83,6 +86,13 @@ pub const InternalState = struct {
         self.dependent_signals.deinit(allocator);
         if (self.timeout) |task| task.cancel();
         allocator.destroy(self);
+    }
+
+    fn releaseReason(self: *InternalState) void {
+        const reason = self.reason orelse return;
+        self.reason = null;
+        const engine = self.engine orelse return;
+        if (engine.releaseValue) |release_value| release_value(reason);
     }
 };
 
@@ -132,7 +142,7 @@ pub fn init(
     errdefer EventTargetImpl.deinit(instance);
 
     const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
+    internal.* = .{ .allocator = allocator, .engine = ctx.getEngine() };
     instance.getState(StateType).own._internal = internal;
 
     // Nobody can hold a signal to add an algorithm to before one exists.
@@ -171,7 +181,11 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const reason = internal.reason orelse return runtime.JSValue.jsUndefined;
-    return streams_js.toReturn(reason);
+    // The signal keeps its handle: the binding reads it and leaves it.
+    return switch (reason) {
+        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        else => reason,
+    };
 }
 
 /// Getter for onabort
@@ -189,39 +203,23 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// Spec: "return the result of creating a dependent abort signal from
 /// signals using AbortSignal and the current realm."
 ///
-/// Deviation: `sequence<AbortSignal>` arrives unconverted, and only an Array
-/// is accepted, where WebIDL would take any iterable.
+/// `sequence<AbortSignal>` arrives unconverted; the engine converts it as
+/// WebIDL does (any iterable), and each item must be an AbortSignal.
 pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
     const allocator = instance.ctx.allocator;
-    const realm = try streams_js.Realm.of(instance);
-    const handle: *v8.ffi.Value = switch (signals) {
-        .handle => |h| @ptrCast(@alignCast(h.ptr)),
-        else => return error.TypeError,
-    };
-    if (!v8.ffi.v8_Value_IsArray(handle)) return error.TypeError;
-    const array: *v8.ffi.Array = @ptrCast(handle);
-
-    var list: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer list.deinit(allocator);
-    const length = v8.ffi.v8_Array_Length(array);
-    var i: u32 = 0;
-    while (i < length) : (i += 1) {
-        const element = v8.ffi.v8_Array_Get(realm.context, array, i) orelse return error.TypeError;
-        defer v8.ffi.v8_Global_Dispose(element);
-        try list.append(allocator, signalOf(element) orelse return error.TypeError);
+    const engine = try engineOf(instance.ctx);
+    const convert = engine.convertToSequenceOfPlatformObjects orelse return error.NotSupported;
+    const list = try convert(instance.ctx, signals, allocator);
+    defer allocator.free(list);
+    for (list) |signal| {
+        if (signal.stateAs(State) == null) return error.TypeError;
     }
-    return createDependentAbortSignal(instance.ctx, list.items);
+    return createDependentAbortSignal(instance.ctx, list);
 }
 
-/// The AbortSignal `value` wraps, or null when it is not one.
-fn signalOf(value: *v8.ffi.Value) ?*runtime.Instance {
-    if (!v8.ffi.v8_Value_IsObject(value)) return null;
-    const object: *v8.ffi.Object = @ptrCast(value);
-    if (v8.ffi.v8_Object_InternalFieldCount(object) < 1) return null;
-    const pointer = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return null;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(pointer));
-    if (instance.stateAs(State) == null) return null;
-    return instance;
+/// The Engine table of `ctx`'s realm.
+fn engineOf(ctx: runtime.Context) error{NoEngine}!*const runtime.EngineInterface {
+    return ctx.getEngine() orelse error.NoEngine;
 }
 
 /// Static operation: abort(reason)
@@ -252,8 +250,7 @@ pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyer
     const timer = signal.ctx.timer orelse return signal;
     const internal = getInternal(signal).?;
     const task = try internal.allocator.create(TimeoutTask);
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return signal;
-    task.* = .{ .signal = SignalRef.of(signal), .allocator = internal.allocator, .timer = timer, .isolate = isolate };
+    task.* = .{ .signal = SignalRef.of(signal), .allocator = internal.allocator, .timer = timer };
     task.id = timer.setTimeout(milliseconds, &TimeoutTask.fire, task);
     if (task.id == 0) {
         internal.allocator.destroy(task);
@@ -267,9 +264,6 @@ const TimeoutTask = struct {
     signal: SignalRef,
     allocator: std.mem.Allocator,
     timer: runtime.TimerInterface,
-    /// The signal's isolate. A worker's is not the page's, and the timer
-    /// may fire from the page's event loop.
-    isolate: *v8.ffi.Isolate,
     id: runtime.TimerId = 0,
 
     fn fire(data: ?*anyopaque) void {
@@ -278,18 +272,22 @@ const TimeoutTask = struct {
         const signal = task.signal.get() orelse return;
         const internal = getInternal(signal) orelse return;
         internal.timeout = null;
-        // A task, entered from the event loop rather than from script - and
-        // possibly from another isolate's loop.
-        const entered = v8.ffi.v8_Isolate_GetCurrent() != task.isolate;
-        if (entered) v8.ffi.v8_Isolate_Enter(task.isolate);
-        defer if (entered) v8.ffi.v8_Isolate_Exit(task.isolate);
-        const scope = v8.JsScope.init(signal.ctx) orelse return;
-        defer scope.deinit();
+        // "Queue a global task on the timer task source given global": the
+        // steps run as a task of the signal's realm, entered from the event
+        // loop - a worker's realm with its own agent, and its task ended the
+        // worker's way. A realm that has gone runs nothing.
+        const engine = engineOf(signal.ctx) catch return;
+        const run = engine.runTaskInRealm orelse return;
+        run(signal.ctx, abortTimedOut, signal) catch {};
+    }
+
+    /// The task's steps: signal abort given signal and a new "TimeoutError"
+    /// DOMException.
+    fn abortTimedOut(data: ?*anyopaque) void {
+        const signal: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
         const reason = newDOMException(signal, "TimeoutError", "signal timed out") catch return;
-        defer v8.ffi.v8_Global_Dispose(reason);
+        defer release(signal.ctx, reason);
         signalAbortWith(signal, reason);
-        // In a worker, the task's end is the worker's to run.
-        @import("html").worker_v8_context.finishTaskIn(task.isolate);
     }
 
     /// The signal is going: its timer must not fire into it.
@@ -305,29 +303,41 @@ const TimeoutTask = struct {
 pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     if (!internal.aborted) return;
-    const realm = try streams_js.Realm.of(instance);
-    const reason = internal.reason orelse try realm.undefinedValue();
-    defer if (internal.reason == null) streams_js.dispose(reason);
-    return realm.throwValue(reason);
+    const engine = try engineOf(instance.ctx);
+    const throw = engine.throwValue orelse return error.NotSupported;
+    try throw(instance.ctx, internal.reason orelse runtime.JSValue.jsUndefined);
+    // In flight: the binding leaves it for the calling script.
+    return error.ExceptionPending;
 }
 
 // ============================================================================
 // DOM § 3.3 algorithms other types reach (AbortController, Fetch, Streams)
 // ============================================================================
 
-/// A new "`name`" DOMException of `signal`'s realm. Owned.
-fn newDOMException(signal: *runtime.Instance, name: []const u8, message: []const u8) !*v8.ffi.Value {
-    const realm = try streams_js.Realm.of(signal);
-    return v8.conversions.newDOMExceptionFromContext(realm.isolate, realm.context, name, message) orelse error.V8Failure;
+/// A new "`name`" DOMException of `signal`'s realm. OWNED: `release` it.
+fn newDOMException(signal: *runtime.Instance, name: []const u8, message: []const u8) !runtime.JSValue {
+    const engine = try engineOf(signal.ctx);
+    const create = engine.createDOMException orelse return error.NotSupported;
+    return create(signal.ctx, name, message);
 }
 
-/// `reason` as an owned Global, or a new `name` DOMException when it is
-/// undefined - an optional `any` argument not given.
-fn reasonOrDefault(signal: *runtime.Instance, reason: runtime.JSValue, name: []const u8, message: []const u8) !*v8.ffi.Value {
-    if (!reason.isUndefined()) {
-        const realm = try streams_js.Realm.of(signal);
-        return realm.fromRuntime(reason);
-    }
+/// `value` held beyond this call, in `ctx`'s realm. OWNED: `release` it.
+fn retain(ctx: runtime.Context, value: runtime.JSValue) !runtime.JSValue {
+    const engine = try engineOf(ctx);
+    const keep = engine.retainValue orelse return error.NotSupported;
+    return keep(ctx, value);
+}
+
+/// Release a value `retain` or `newDOMException` made.
+fn release(ctx: runtime.Context, value: runtime.JSValue) void {
+    const engine = ctx.getEngine() orelse return;
+    if (engine.releaseValue) |release_value| release_value(value);
+}
+
+/// `reason` held by the signal, or a new `name` DOMException when it is
+/// undefined - an optional `any` argument not given. OWNED.
+fn reasonOrDefault(signal: *runtime.Instance, reason: runtime.JSValue, name: []const u8, message: []const u8) !runtime.JSValue {
+    if (!reason.isUndefined()) return retain(signal.ctx, reason);
     return newDOMException(signal, name, message);
 }
 
@@ -341,16 +351,16 @@ pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplErr
     // Step 2: Set signal's abort reason to reason if it is given; otherwise
     // to a new "AbortError" DOMException.
     const owned = reasonOrDefault(instance, reason, "AbortError", "signal is aborted without reason") catch return error.OutOfMemory;
-    defer v8.ffi.v8_Global_Dispose(owned);
+    defer release(instance.ctx, owned);
     signalAbortWith(instance, owned);
 }
 
 /// "Signal abort" steps 2-6 with the reason decided. `reason` is borrowed;
 /// every signal that takes it takes its own handle.
-fn signalAbortWith(signal: *runtime.Instance, reason: *v8.ffi.Value) void {
+fn signalAbortWith(signal: *runtime.Instance, reason: runtime.JSValue) void {
     const internal = getInternal(signal) orelse return;
     if (internal.aborted) return;
-    setReason(internal, reason);
+    setReason(signal, internal, reason);
 
     // Step 3: Let dependentSignalsToAbort be a new list.
     var to_abort: std.ArrayListUnmanaged(SignalRef) = .empty;
@@ -362,7 +372,7 @@ fn signalAbortWith(signal: *runtime.Instance, reason: *v8.ffi.Value) void {
         const dependent = ref.get() orelse continue;
         const dependent_internal = getInternal(dependent) orelse continue;
         if (dependent_internal.aborted) continue;
-        setReason(dependent_internal, reason);
+        setReason(dependent, dependent_internal, reason);
         to_abort.append(internal.allocator, ref) catch continue;
     }
 
@@ -376,10 +386,12 @@ fn signalAbortWith(signal: *runtime.Instance, reason: *v8.ffi.Value) void {
     }
 }
 
-fn setReason(internal: *InternalState, reason: *v8.ffi.Value) void {
+/// Mark `signal` aborted with its own handle for `reason` (borrowed). A
+/// reason the engine cannot hold leaves the signal aborted with undefined.
+fn setReason(signal: *runtime.Instance, internal: *InternalState, reason: runtime.JSValue) void {
     internal.aborted = true;
-    if (internal.reason) |old| v8.ffi.v8_Global_Dispose(old);
-    internal.reason = v8.ffi.v8_Global_Clone(reason);
+    internal.releaseReason();
+    internal.reason = retain(signal.ctx, reason) catch null;
 }
 
 /// DOM § 3.3 "run the abort steps" for `signal`.
@@ -419,7 +431,7 @@ pub fn createDependentAbortSignal(ctx: runtime.Context, signals: []const *runtim
         const internal = getInternal(signal) orelse continue;
         if (!internal.aborted) continue;
         result_internal.aborted = true;
-        if (internal.reason) |r| result_internal.reason = v8.ffi.v8_Global_Clone(r);
+        if (internal.reason) |r| result_internal.reason = retain(ctx, r) catch null;
         return result;
     }
 

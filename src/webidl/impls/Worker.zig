@@ -1577,22 +1577,6 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
                                         // Store the internal state for transfer
                                         port_transfers[port_count] = port_internal;
                                         port_count += 1;
-
-                                        // Per HTML Standard § 9.4.4: transferred ports are disentangled
-                                        // from their WebIDL layer but KEEP internal entanglement for
-                                        // message routing. The internal entangled_port must remain
-                                        // intact so messages can flow between the ports.
-                                        //
-                                        // Clear WebIDL entanglement (source wrapper becomes neutered)
-                                        // but don't call internal_port.disentangle()
-                                        port_internal.entangled_webidl_port = null;
-
-                                        // Mark the internal port as transferred for cross-isolate messaging
-                                        port_internal.internal_port.transferred = true;
-
-                                        // Mark source as no longer owning the port
-                                        // Ownership transfers to the destination
-                                        port_internal.owns_port = false;
                                     }
                                 }
                             }
@@ -1665,8 +1649,10 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             const ports = try allocator.alloc(TransferredPortData, port_count);
             errdefer allocator.free(ports);
             for (0..port_count) |i| {
+                // HTML's MessagePort transfer steps: the port is shipped, and
+                // its end - queue and entanglement - is the data holder.
                 ports[i] = .{
-                    .internal_port = port_transfers[i].internal_port,
+                    .internal_port = port_transfers[i].transfer(),
                 };
             }
             break :blk ports;

@@ -1,15 +1,14 @@
-//! ArrayBufferView Introspection
+//! ArrayBufferView metadata, as Zig state
 //!
-//! Provides runtime introspection of TypedArray and DataView objects for
-//! WHATWG Streams BYOB operations.
+//! The element types of TypedArray and DataView objects and the metadata a
+//! BYOB stream keeps about a view. Introspecting a view that script holds is
+//! the engine's work, done through the Engine table (AGENTS.md, "The engine
+//! boundary") - never here.
 //!
 //! Spec: ECMAScript § 22.2 TypedArray Objects
 //!       ECMAScript § 25.3 DataView Objects
 
 const std = @import("std");
-const v8_mod = @import("v8");
-const ffi = v8_mod.ffi;
-const pointer_tag = v8_mod.pointer_tag;
 
 /// Simple ArrayBuffer representation for Streams BYOB operations
 ///
@@ -90,249 +89,6 @@ pub const ViewMetadata = struct {
 };
 
 // ============================================================================
-// V8 Integration Helpers
-// ============================================================================
-
-/// Determine ViewType from V8 Value
-fn getViewTypeFromV8(value: *ffi.Value) ?ViewType {
-    if (ffi.v8_Value_IsInt8Array(value)) return .int8_array;
-    if (ffi.v8_Value_IsUint8Array(value)) return .uint8_array;
-    if (ffi.v8_Value_IsUint8ClampedArray(value)) return .uint8_clamped_array;
-    if (ffi.v8_Value_IsInt16Array(value)) return .int16_array;
-    if (ffi.v8_Value_IsUint16Array(value)) return .uint16_array;
-    if (ffi.v8_Value_IsInt32Array(value)) return .int32_array;
-    if (ffi.v8_Value_IsUint32Array(value)) return .uint32_array;
-    if (ffi.v8_Value_IsFloat32Array(value)) return .float32_array;
-    if (ffi.v8_Value_IsFloat64Array(value)) return .float64_array;
-    if (ffi.v8_Value_IsBigInt64Array(value)) return .bigint64_array;
-    if (ffi.v8_Value_IsBigUint64Array(value)) return .biguint64_array;
-    if (ffi.v8_Value_IsDataView(value)) return .data_view;
-    return null;
-}
-
-/// Extract metadata from an ArrayBufferView
-///
-/// This function introspects the view using V8 APIs.
-pub fn getViewMetadata(view: *const anyopaque) !ViewMetadata {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-
-    // Determine view type
-    const view_type = getViewTypeFromV8(v8_value) orelse return error.TypeError;
-
-    // Get buffer
-    const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return error.InvalidState;
-
-    // Check if detached
-    const detached = ffi.v8_ArrayBuffer_IsDetached(buffer);
-
-    // Get view properties
-    const byte_offset = ffi.v8_TypedArray_ByteOffset(v8_value);
-    const byte_length = ffi.v8_TypedArray_ByteLength(v8_value);
-
-    // Create a simple ArrayBuffer wrapper (just for metadata, doesn't own the buffer)
-    var array_buffer = ArrayBuffer{
-        .data = &[_]u8{}, // We don't actually need the data pointer
-        .byte_length = ffi.v8_ArrayBuffer_ByteLength(buffer),
-        .detached = detached,
-    };
-
-    // Dispose the buffer handle (we got our info)
-    ffi.v8_ArrayBuffer_Dispose(buffer);
-
-    return ViewMetadata{
-        .buffer = &array_buffer,
-        .byte_offset = @intCast(byte_offset),
-        .byte_length = @intCast(byte_length),
-        .view_type = view_type,
-        .detached = detached,
-    };
-}
-
-/// Get the element size of an ArrayBufferView in bytes
-///
-/// Spec: Used in ReadableByteStreamController algorithms
-pub fn getViewElementSize(view: *const anyopaque) u64 {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-    const view_type = getViewTypeFromV8(v8_value) orelse return 1;
-    return view_type.elementSize();
-}
-
-/// Get the byte offset into the underlying ArrayBuffer
-///
-/// Spec: TypedArray.prototype.byteOffset
-///       DataView.prototype.byteOffset
-pub fn getViewByteOffset(view: *const anyopaque) u64 {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-    const offset = ffi.v8_TypedArray_ByteOffset(v8_value);
-    return @intCast(offset);
-}
-
-/// Get the byte length of the view
-///
-/// Spec: TypedArray.prototype.byteLength
-///       DataView.prototype.byteLength
-pub fn getViewByteLength(view: *const anyopaque) u64 {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-    const length = ffi.v8_TypedArray_ByteLength(v8_value);
-    return @intCast(length);
-}
-
-/// Check if the view's buffer is detached
-///
-/// Spec: IsDetachedBuffer abstract operation
-pub fn isViewDetached(view: *const anyopaque) bool {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-
-    // Get buffer and check if detached
-    const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return true;
-    defer ffi.v8_ArrayBuffer_Dispose(buffer);
-
-    return ffi.v8_ArrayBuffer_IsDetached(buffer);
-}
-
-/// Get the byte length of the view's underlying ArrayBuffer
-///
-/// Spec: ArrayBuffer.prototype.byteLength (of the viewed buffer)
-pub fn getViewBufferByteLength(view: *const anyopaque) u64 {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-
-    // Get buffer
-    const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return 0;
-    defer ffi.v8_ArrayBuffer_Dispose(buffer);
-
-    return @intCast(ffi.v8_ArrayBuffer_ByteLength(buffer));
-}
-
-/// Get the view constructor type
-///
-/// Returns the ViewType enum identifying which TypedArray or DataView this is.
-pub fn getViewConstructor(view: *const anyopaque) ViewType {
-    const untagged = pointer_tag.untagPointer(view);
-    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
-    return getViewTypeFromV8(v8_value) orelse .uint8_array;
-}
-
-/// Extract the underlying ArrayBuffer from a view
-///
-/// Spec: TypedArray.prototype.buffer
-///       DataView.prototype.buffer
-pub fn extractViewBuffer(allocator: std.mem.Allocator, view: *const anyopaque) !*ArrayBuffer {
-    _ = allocator;
-    const metadata = try getViewMetadata(view);
-    return metadata.buffer;
-}
-
-// ============================================================================
-// TypedArray Construction
-// ============================================================================
-
-/// Create a V8 TypedArray or DataView from buffer data
-///
-/// This function creates a V8 TypedArray view over an ArrayBuffer.
-/// Used by BYOB stream controllers to return views to JavaScript.
-///
-/// @param isolate - V8 isolate handle
-/// @param view_type - Type of view to create (Uint8Array, Int16Array, etc.)
-/// @param buffer - ArrayBuffer handle
-/// @param byte_offset - Offset into the buffer
-/// @param length - Number of elements (for TypedArray) or bytes (for DataView)
-/// @return V8 Value handle to the new view, or null on error
-pub fn createView(
-    isolate: *ffi.Isolate,
-    view_type: ViewType,
-    buffer: *ffi.ArrayBuffer,
-    byte_offset: usize,
-    length: usize,
-) ?*ffi.Value {
-    return switch (view_type) {
-        .int8_array => ffi.v8_Int8Array_New(isolate, buffer, byte_offset, length),
-        .uint8_array => ffi.v8_Uint8Array_New(isolate, buffer, byte_offset, length),
-        .uint8_clamped_array => ffi.v8_Uint8ClampedArray_New(isolate, buffer, byte_offset, length),
-        .int16_array => ffi.v8_Int16Array_New(isolate, buffer, byte_offset, length),
-        .uint16_array => ffi.v8_Uint16Array_New(isolate, buffer, byte_offset, length),
-        .int32_array => ffi.v8_Int32Array_New(isolate, buffer, byte_offset, length),
-        .uint32_array => ffi.v8_Uint32Array_New(isolate, buffer, byte_offset, length),
-        .float32_array => ffi.v8_Float32Array_New(isolate, buffer, byte_offset, length),
-        .float64_array => ffi.v8_Float64Array_New(isolate, buffer, byte_offset, length),
-        .bigint64_array => ffi.v8_BigInt64Array_New(isolate, buffer, byte_offset, length),
-        .biguint64_array => ffi.v8_BigUint64Array_New(isolate, buffer, byte_offset, length),
-        .data_view => ffi.v8_DataView_New(isolate, buffer, byte_offset, length),
-    };
-}
-
-/// Create a Uint8Array view - convenience function for the most common case
-///
-/// BYOB streams most commonly use Uint8Array for raw byte operations.
-pub fn createUint8Array(
-    isolate: *ffi.Isolate,
-    buffer: *ffi.ArrayBuffer,
-    byte_offset: usize,
-    length: usize,
-) ?*ffi.Value {
-    return ffi.v8_Uint8Array_New(isolate, buffer, byte_offset, length);
-}
-
-// ============================================================================
-// V8 Integration Functions
-// ============================================================================
-
-/// V8-specific metadata extraction
-///
-/// This struct provides type-safe V8 integration when available.
-pub const V8ViewIntrospection = if (@hasDecl(@import("root"), "runtime")) struct {
-    const v8 = @import("root").runtime.engines.v8;
-
-    /// Extract metadata from a V8 TypedArray or DataView
-    ///
-    /// Uses the V8 FFI functions to get buffer details.
-    pub fn extractMetadata(isolate: *ffi.Isolate, value: *ffi.Value) !ViewMetadata {
-        _ = isolate;
-
-        // Determine view type from V8 value
-        const view_type = getViewTypeFromV8(value) orelse return error.TypeError;
-
-        // Get buffer reference
-        const buffer_handle = ffi.v8_TypedArray_Buffer(value) orelse return error.InvalidState;
-
-        // Check detachment
-        const detached = ffi.v8_ArrayBuffer_IsDetached(buffer_handle);
-
-        // Get view properties
-        const byte_offset = ffi.v8_TypedArray_ByteOffset(value);
-        const byte_length = ffi.v8_TypedArray_ByteLength(value);
-
-        // Create wrapper (doesn't own the buffer)
-        var array_buffer = ArrayBuffer{
-            .data = &[_]u8{},
-            .byte_length = ffi.v8_ArrayBuffer_ByteLength(buffer_handle),
-            .detached = detached,
-        };
-
-        // Dispose buffer handle
-        ffi.v8_ArrayBuffer_Dispose(buffer_handle);
-
-        return ViewMetadata{
-            .buffer = &array_buffer,
-            .byte_offset = @intCast(byte_offset),
-            .byte_length = @intCast(byte_length),
-            .view_type = view_type,
-            .detached = detached,
-        };
-    }
-
-    /// Determine ViewType from V8 TypedArray
-    pub fn detectViewType(value: *ffi.Value) ViewType {
-        return getViewTypeFromV8(value) orelse .uint8_array;
-    }
-} else struct {};
-
-// ============================================================================
 // Test Helpers
 // ============================================================================
 
@@ -395,7 +151,7 @@ test "Create test view" {
 
     const metadata = try createTestUint8Array(allocator, 256);
     defer {
-        metadata.buffer.deinit();
+        metadata.buffer.deinit(allocator);
         allocator.destroy(metadata.buffer);
     }
 

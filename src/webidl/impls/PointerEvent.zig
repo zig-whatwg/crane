@@ -229,21 +229,27 @@ pub fn get_persistentDeviceId(instance: *runtime.Instance) anyerror!i32 {
 }
 
 /// Operation: getCoalescedEvents
+///
+/// No pointer event list is kept yet (an untrusted event's is empty), so this
+/// returns the empty sequence<PointerEvent>.
 pub fn call_getCoalescedEvents(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // Return empty array for now
-    _ = instance;
-    const v8_engine = @import("v8");
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-    const v8_array = v8_engine.createEmptyArray(isolate);
-    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+    return sequenceOfPointerEvents(instance, &.{});
 }
 
 /// Operation: getPredictedEvents
+///
+/// No pointer event list is kept yet (an untrusted event's is empty), so this
+/// returns the empty sequence<PointerEvent>.
 pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // Return empty array for now
-    _ = instance;
-    const v8_engine = @import("v8");
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-    const v8_array = v8_engine.createEmptyArray(isolate);
-    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+    return sequenceOfPointerEvents(instance, &.{});
+}
+
+/// `events` converted to a JS value as a sequence<PointerEvent>: a new array
+/// of the current realm - the operation's, where WebIDL converts its result.
+/// OWNED: the binding takes it.
+fn sequenceOfPointerEvents(instance: *runtime.Instance, events: []const *runtime.Instance) !runtime.JSValue {
+    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
+    const create_sequence = engine.createSequenceOfPlatformObjects orelse return error.NotSupported;
+    const current_realm = engine.currentRealm orelse return error.NotSupported;
+    return create_sequence(current_realm() orelse instance.ctx, events);
 }

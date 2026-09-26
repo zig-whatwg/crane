@@ -37,6 +37,8 @@ const std = @import("std");
 const JSValue = @import("js_value.zig").JSValue;
 const Context = @import("context.zig").Context;
 const Instance = @import("instance.zig").Instance;
+const ContextData = @import("context.zig").ContextData;
+const TimerInterface = @import("timer.zig").TimerInterface;
 
 /// Callback signature for main thread scheduling
 ///
@@ -232,7 +234,138 @@ pub const WindowOperations = struct {
 
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
+/// WebIDL's simple exception types (§ 2.8 "Exceptions"): the ECMAScript error
+/// objects an operation throws by name. Error and SyntaxError are not among
+/// them - the spec reserves them for authors and the parser.
+pub const SimpleExceptionKind = enum { EvalError, RangeError, ReferenceError, TypeError, URIError };
+
+/// One present member of an IDL dictionary value, for createDictionaryObject.
+/// `value` is BORROWED for the call.
+pub const DictionaryMember = struct {
+    name: []const u8,
+    value: JSValue,
+};
+
+/// What an ArrayBufferView is: its type ([[TypedArrayName]], or a DataView)
+/// and the part of its [[ViewedArrayBuffer]] it views, for
+/// describeArrayBufferView.
+pub const ArrayBufferViewDescription = struct {
+    view_type: @import("arraybuffer_view.zig").ViewType,
+    /// [[ByteOffset]] into the viewed buffer.
+    byte_offset: usize,
+    /// [[ByteLength]]: 0 when the buffer is detached.
+    byte_length: usize,
+    /// IsDetachedBuffer([[ViewedArrayBuffer]]).
+    detached: bool,
+    /// IsSharedArrayBuffer([[ViewedArrayBuffer]]).
+    shared: bool,
+};
 // ---- end lane: runtime-impls ----
+
+// ---- lane: engine-boundary ----
+/// HTML's "serialize with transfer result" (2.7.5), as an engine produces it
+/// and StructuredDeserializeWithTransfer takes it back. `serialized` and
+/// `array_buffers` are OWNED (the allocator the operation was given; free them
+/// with `deinit`). `platform_objects` are BORROWED: the transferred platform
+/// objects in transfer-list order, valid for the caller to run their transfer
+/// steps (a MessagePort's) - the slice is freed by `deinit`, the objects are
+/// not.
+pub const SerializedWithTransfer = struct {
+    /// The engine's serialization of the value - opaque to everyone else.
+    serialized: []u8,
+    /// Each transferred ArrayBuffer's contents, in transfer-list order. The
+    /// sender's buffers are detached.
+    array_buffers: [][]u8,
+    /// The transferred platform objects, in transfer-list order.
+    platform_objects: []*Instance,
+
+    pub fn deinit(self: *SerializedWithTransfer, allocator: std.mem.Allocator) void {
+        allocator.free(self.serialized);
+        for (self.array_buffers) |contents| allocator.free(contents);
+        allocator.free(self.array_buffers);
+        allocator.free(self.platform_objects);
+        self.* = .{ .serialized = &.{}, .array_buffers = &.{}, .platform_objects = &.{} };
+    }
+};
+
+/// What a platform object in a transfer list is (HTML 2.7.5 steps 2.1 and
+/// 5.2): one without a [[Detached]] internal slot is not transferable, and one
+/// whose [[Detached]] is true cannot be transferred again.
+pub const TransferableState = enum { not_transferable, transferable, detached };
+
+/// The caller's answer for one platform object in a transfer list; `data` is
+/// the pointer it passed alongside (the source port, say, which may not be in
+/// its own transfer list).
+pub const TransferableCheck = *const fn (data: ?*anyopaque, instance: *Instance) TransferableState;
+
+/// An agent (ECMAScript 9.7): a thread of script execution with its own
+/// heap - a worker has its own. Opaque: V8's is an isolate, JavaScriptCore's
+/// a VM.
+pub const Agent = opaque {};
+
+/// What a host gives the engine for a worker realm (HTML "run a worker" steps
+/// 5-7).
+pub const WorkerRealmOptions = struct {
+    /// The worker's script URL: the realm's API base URL. Borrowed.
+    url: []const u8,
+    /// The timers the realm's tasks run on.
+    timer: ?TimerInterface,
+    /// What ends a task in the realm (see ContextData.end_of_task).
+    end_of_task: ?*const fn (realm: *ContextData) void = null,
+    /// Called once the realm exists and before its global object is made, so
+    /// the host can record the realm's settings the global scope reads.
+    on_realm: ?*const fn (data: ?*anyopaque, realm: Context) void = null,
+    /// Passed to `on_realm`.
+    data: ?*anyopaque = null,
+    allocator: std.mem.Allocator,
+};
+
+/// A worker realm and its global object.
+pub const WorkerRealm = struct {
+    realm: Context,
+    /// The DedicatedWorkerGlobalScope behind the global object. The realm owns
+    /// it.
+    global_scope: *Instance,
+};
+
+/// The steps of a built-in function a host defines (`defineBuiltinFunction`):
+/// `data` is the pointer the host gave; `args` are BORROWED for the call (a
+/// primitive as itself, a string as UTF-8, anything else a handle). The
+/// result is returned to script: a value made for it, or an OWNED handle
+/// (needs_disposal) the engine releases, or a borrowed one it leaves.
+/// ExceptionPending leaves what was thrown in flight; any other error is
+/// thrown as WebIDL does an impl's.
+pub const BuiltinSteps = *const fn (data: ?*anyopaque, args: []const JSValue) EngineError!JSValue;
+
+/// A built-in function: its steps and their data.
+pub const BuiltinFunction = struct {
+    steps: BuiltinSteps,
+    data: ?*anyopaque,
+};
+
+/// The string type a record's keys or values convert to: DOMString
+/// (WebIDL 3.2.10) or USVString (3.2.12), as UTF-8. (ByteString, 3.2.11, is
+/// not here: its bytes are code units, a representation Crane's ByteString
+/// does not use yet.)
+pub const StringConversion = enum { dom_string, usv_string };
+
+/// One entry of an IDL record<K, V> whose K and V are string types, as
+/// `convertToRecordOfStrings` returns them. Both slices are OWNED by the list
+/// (`freeAll`).
+pub const StringRecordEntry = struct {
+    key: []u8,
+    value: []u8,
+
+    /// Free a list `convertToRecordOfStrings` returned, entries and all.
+    pub fn freeAll(entries: []StringRecordEntry, allocator: std.mem.Allocator) void {
+        for (entries) |entry| {
+            allocator.free(entry.key);
+            allocator.free(entry.value);
+        }
+        allocator.free(entries);
+    }
+};
+// ---- end lane: engine-boundary ----
 
 /// Abstract interface for JavaScript engine operations
 ///
@@ -978,6 +1111,143 @@ pub const EngineInterface = struct {
 
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    /// WebIDL "create an observable array exotic object" (§ 3.10) in `realm`,
+    /// with an empty backing list.
+    ///
+    /// ENGINE-OWNED: the result is a persistent handle the engine keeps. The
+    /// engine frees the object's state (its backing list) when script can no
+    /// longer reach the object, and frees whatever is left when the realm's
+    /// agent is torn down. The caller never releases it. A caller that keeps
+    /// it - a [SameObject] attribute - holds it only as long as script can
+    /// reach it, and never after the realm ends.
+    createObservableArray: ?*const fn (
+        realm: Context,
+    ) EngineError!JSValue,
+
+    /// HTML "queue a microtask" (8.1.7.2): `steps(data)` runs as a microtask
+    /// of `realm`'s agent - at its next microtask checkpoint, after the
+    /// microtasks already queued. The steps run with no realm entered for
+    /// them: they enter the realm they run script in through the realm
+    /// operations (runInRealm, runTaskInRealm), as script-invoking steps must.
+    ///
+    /// `data` is BORROWED until the steps run, so it must outlive the agent's
+    /// microtask queue. A microtask still queued when the agent is torn down
+    /// is DROPPED - its steps never run - so the steps cannot be relied on to
+    /// free `data`.
+    queueMicrotask: ?*const fn (
+        realm: Context,
+        steps: RealmSteps,
+        data: ?*anyopaque,
+    ) EngineError!void,
+
+    /// WebIDL "a promise resolved with" `value` (§ 3.2.24), made in `realm`.
+    /// `value` is BORROWED. OWNED: release the promise with `releaseValue`,
+    /// or return it to the binding, which takes an owned handle.
+    createResolvedPromise: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "a promise rejected with" `reason` (§ 3.2.24), made in `realm`.
+    /// `reason` is BORROWED. OWNED, as createResolvedPromise.
+    createRejectedPromise: ?*const fn (
+        realm: Context,
+        reason: JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "create a simple exception" of type `kind` (§ 3.14.3):
+    /// Construct(`realm`'s intrinsic %kind%, « `message` ») - the realm's own
+    /// constructor, whatever script has done to its global. OWNED: release it
+    /// with `releaseValue`, or hand it to something documented to take it
+    /// (rejectPromiseWithValue, createRejectedPromise borrow it).
+    createSimpleException: ?*const fn (
+        realm: Context,
+        kind: SimpleExceptionKind,
+        message: []const u8,
+    ) EngineError!JSValue,
+
+    /// WebIDL: an IDL dictionary value converted to an ECMAScript value
+    /// (§ 3.2.17): a new ordinary object of `realm` with one data property per
+    /// member, created in the order given. The caller passes the present
+    /// members in the spec's order - the dictionary's inherited dictionaries
+    /// first, each one's members in lexicographical order, as the conversions
+    /// already emit them. The member values are BORROWED. OWNED: release it
+    /// with `releaseValue`, or return it to the binding.
+    createDictionaryObject: ?*const fn (
+        realm: Context,
+        members: []const DictionaryMember,
+    ) EngineError!JSValue,
+
+    /// ECMAScript's "current realm": the realm of the running execution
+    /// context. While a binding runs - an operation, attribute or
+    /// constructor - it is the realm of the running function object, which is
+    /// where WebIDL converts the result (§ 3.2). Null otherwise: no script is
+    /// running, or the running context is not a realm the engine hosts.
+    /// BORROWED: valid while that realm lives.
+    currentRealm: ?*const fn () ?Context,
+
+    /// The ArrayBufferView `value` is - a TypedArray of some element type, or
+    /// a DataView - or null when it is not one: what WebIDL's conversion to an
+    /// ArrayBufferView type checks, and what an impl taking one unconverted
+    /// (`[AllowShared] Uint8Array destination`) needs to check it.
+    describeArrayBufferView: ?*const fn (
+        value: JSValue,
+    ) ?ArrayBufferViewDescription,
+
+    /// WebIDL "write" `bytes` into the ArrayBufferView `view` (§ 3.2.26),
+    /// starting `starting_offset` bytes into the view. A view of a
+    /// SharedArrayBuffer is written through like any other: "write" applies
+    /// to [AllowShared] views. `bytes` is BORROWED. TypeError when `view` is
+    /// not an ArrayBufferView. OperationFailed when the bytes do not fit or
+    /// the buffer is detached - conditions the spec ASSERTS cannot happen, so
+    /// a caller that hits one has a bug: it checks the view's byte length
+    /// (describeArrayBufferView) before writing.
+    writeIntoArrayBufferView: ?*const fn (
+        view: JSValue,
+        bytes: []const u8,
+        starting_offset: usize,
+    ) EngineError!void,
+
+    /// WebIDL "call a user object's operation" (§ 3.12) `operation_name` on
+    /// the callback interface value `callback` with `args`, from `realm`,
+    /// with exception behaviour "rethrow": a callable value is called with
+    /// undefined as this; otherwise its `operation_name` property is looked
+    /// up now (TypeError when that is not callable) and called with the value
+    /// as this. What it throws is left in flight and reported as
+    /// ExceptionPending. The arguments are BORROWED. OWNED: the return value,
+    /// as a handle whatever its type - convert it (convertToUnrestrictedDouble
+    /// ...) and release it with `releaseValue`.
+    callUserObjectOperation: ?*const fn (
+        realm: Context,
+        callback: *@import("callback_wrapper.zig").CallbackWrapper,
+        operation_name: []const u8,
+        args: []const JSValue,
+    ) EngineError!JSValue,
+
+    /// WebIDL "convert to unrestricted double" (§ 3.2.5): ? ToNumber(`value`)
+    /// in `realm`. A primitive the binding already classified converts with
+    /// no script run; an object runs its valueOf. What ToNumber throws (a
+    /// TypeError for a Symbol or BigInt, or a valueOf's exception) is left in
+    /// flight and reported as ExceptionPending. `value` is BORROWED.
+    convertToUnrestrictedDouble: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!f64,
+
+    /// The callback function a binding handed an impl for an argument of a
+    /// WebIDL callback function type - which the generated signature spells
+    /// as a function pointer (`callbacks.MutationCallback`) - as a JSValue.
+    /// It TAKES OWNERSHIP of the persistent handle the binding's conversion
+    /// made for the argument: the result is OWNED, and the impl keeps it (a
+    /// MutationObserver's callback) and releases it with `releaseValue`, or
+    /// releases it at once if it keeps nothing. Call it once per argument.
+    ///
+    /// Transitional: once codegen types callback-function parameters as
+    /// runtime.JSValue, the argument arrives as this value and the operation
+    /// goes.
+    takeCallbackFunction: ?*const fn (
+        argument: *const anyopaque,
+    ) JSValue,
     // ---- end lane: runtime-impls ----
 
     /// Compile an ES module from source
@@ -1213,6 +1483,247 @@ pub const EngineInterface = struct {
         index: u32,
     ) ?*anyopaque,
 
+    // ---- lane: engine-boundary ----
+    // ========================================================================
+    // Values held across the seam
+    // ========================================================================
+
+    /// Keep `value` beyond the call that handed it over - an AbortSignal's
+    /// reason, a timer's callback. OWNED: the result is a `.handle` the caller
+    /// releases with `releaseValue`. Any kind of JSValue: a primitive or a
+    /// string is made in `realm`, an `.instance` becomes its wrapper there,
+    /// and a handle (global or local) gets one of its own - the argument
+    /// stays the caller's.
+    retainValue: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!JSValue,
+
+    /// ECMAScript ThrowCompletion(`value`) into the script running in
+    /// `realm`: `value` (BORROWED) becomes its pending exception. The impl
+    /// then returns error.ExceptionPending, so the binding leaves it in
+    /// flight instead of throwing another.
+    throwValue: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) EngineError!void,
+
+    /// WebIDL "convert an ECMAScript value to sequence<T>" (3.2.28) for an
+    /// interface type T: `value`'s iterator, run to its end, each item a
+    /// platform object. OWNED: the slice is allocated with `allocator` and
+    /// is the caller's. TypeError when `value` is not iterable or an item is
+    /// not a platform object; ExceptionPending when the iteration threw.
+    /// Which interface each item implements is the caller's check
+    /// (`stateAs`). The inverse of createSequenceOfPlatformObjects.
+    convertToSequenceOfPlatformObjects: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError![]*Instance,
+
+    /// WebIDL "convert an ECMAScript value to sequence<object>" (3.2.28) -
+    /// postMessage's `transfer` argument, say. OWNED: the slice is allocated
+    /// with `allocator`, and each item is a handle the caller releases with
+    /// `releaseValue`. TypeError when `value` is not iterable or an item is
+    /// not an object; ExceptionPending when the iteration threw.
+    convertToSequenceOfObjects: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError![]JSValue,
+
+    /// WebIDL "create a frozen array" from a list of platform objects: an
+    /// Array of `realm` holding each one's wrapper, frozen - a MessageEvent's
+    /// `ports`. OWNED: release it with `releaseValue`.
+    createFrozenArrayOfPlatformObjects: ?*const fn (
+        realm: Context,
+        instances: []const *Instance,
+    ) EngineError!JSValue,
+
+    // ========================================================================
+    // Messages (HTML 2.7.5, 2.7.7)
+    // ========================================================================
+
+    /// HTML StructuredSerializeWithTransfer(`value`, `transfer_list`) in
+    /// `realm`: ArrayBuffers in the list are transferred (their contents move
+    /// into the result and the originals are detached); a platform object in
+    /// it is asked about through `check` (with `check_data`) and handed back
+    /// in `platform_objects` for the caller's transfer steps. OWNED result
+    /// (see SerializedWithTransfer). DataCloneError when nothing has been
+    /// thrown - a duplicate or detached entry, a platform object that is not
+    /// transferable - and ExceptionPending when a "DataCloneError"
+    /// DOMException, or whatever script threw while serializing, is pending.
+    structuredSerializeWithTransfer: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        transfer_list: []const JSValue,
+        check: TransferableCheck,
+        check_data: ?*anyopaque,
+        allocator: std.mem.Allocator,
+    ) EngineError!SerializedWithTransfer,
+
+    /// HTML StructuredDeserializeWithTransfer of what
+    /// structuredSerializeWithTransfer produced, into `realm`: each
+    /// transferred ArrayBuffer is made anew there from its contents (copied;
+    /// the caller keeps its bytes). The transferred platform objects are the
+    /// caller's to receive. OWNED: release the value with `releaseValue`.
+    /// DataCloneError when the bytes do not deserialize (a messageerror).
+    structuredDeserializeWithTransfer: ?*const fn (
+        realm: Context,
+        serialized: []const u8,
+        array_buffers: []const []const u8,
+    ) EngineError!JSValue,
+
+    // ========================================================================
+    // WebIDL conversions an impl needs of an argument it takes unconverted
+    // ========================================================================
+
+    /// WebIDL "convert to sequence<DOMString>" of `value`'s iterator. Null
+    /// when `value` is an object with no @@iterator - for a union, the
+    /// sequence member does not apply. TypeError when `value` is not an
+    /// object; ExceptionPending when the iteration or a ToString threw.
+    /// OWNED: each string and the slice are allocated with `allocator`.
+    convertToSequenceOfDOMStrings: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError!?[][]u8,
+
+    /// WebIDL "convert to DOMString": ToString(`value`). TypeError for a
+    /// Symbol; ExceptionPending when ToString threw. OWNED (`allocator`).
+    convertToDOMString: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError![]u8,
+
+    /// WebIDL "convert to USVString": convertToDOMString, with lone
+    /// surrogates replaced by U+FFFD. OWNED (`allocator`).
+    convertToUSVString: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError![]u8,
+
+    /// WebIDL 3.2.23 "convert to record<K, V>" for string types K (`keys`)
+    /// and V (`values`): `value`'s own enumerable properties, in
+    /// [[OwnPropertyKeys]] order - for each key, [[GetOwnProperty]], then (if
+    /// enumerable) the key converted, Get, the value converted. A USVString
+    /// key that collides with an earlier one once its lone surrogates are
+    /// replaced sets that entry's value in place. TypeError when `value` is
+    /// not an Object, or for an enumerable Symbol-keyed property or a Symbol
+    /// value (neither converts to a string); ExceptionPending when script
+    /// threw (a proxy trap, a getter, a toString). OWNED (`allocator`; free
+    /// with `StringRecordEntry.freeAll`).
+    convertToRecordOfStrings: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        keys: StringConversion,
+        values: StringConversion,
+        allocator: std.mem.Allocator,
+    ) EngineError![]StringRecordEntry,
+
+    /// The platform object `value` is, or null for anything else. Which
+    /// interface it implements is the caller's check (`stateAs`).
+    convertToPlatformObject: ?*const fn (
+        realm: Context,
+        value: JSValue,
+    ) ?*Instance,
+
+    /// WebIDL "get a copy of the bytes held by the buffer source" `value` - an
+    /// ArrayBuffer, or a view's bytes of its buffer (a detached one's are
+    /// none). Null when `value` is not a BufferSource; TypeError for a
+    /// SharedArrayBuffer (BufferSource is not [AllowShared]). OWNED
+    /// (`allocator`).
+    getCopyOfBufferSourceBytes: ?*const fn (
+        realm: Context,
+        value: JSValue,
+        allocator: std.mem.Allocator,
+    ) EngineError!?[]u8,
+
+    /// WebIDL: a `sequence<any>` converted to a new Array of `realm`. The
+    /// values are BORROWED. OWNED: release the result with `releaseValue`.
+    createSequenceOfValues: ?*const fn (
+        realm: Context,
+        values: []const JSValue,
+    ) EngineError!JSValue,
+
+    // ========================================================================
+    // Workers: agents and worker realms (HTML "run a worker")
+    // ========================================================================
+
+    /// HTML "obtain a dedicated worker agent": a new agent. OWNED:
+    /// `destroyAgent`, once every realm in it is destroyed.
+    createAgent: ?*const fn () EngineError!*Agent,
+
+    /// Dispose `agent`. Every realm in it has been destroyed.
+    destroyAgent: ?*const fn (agent: *Agent) void,
+
+    /// Whether `agent`'s JavaScript execution context stack may be
+    /// non-empty on this thread - script of its is running, and this call
+    /// is inside it (a nested event loop, a task fired from inside the
+    /// worker's own script). A host tearing down a worker's realm waits until
+    /// it is false: destroying a realm under its running script frees what
+    /// the script is using.
+    hasRunningScript: ?*const fn (agent: *Agent) bool,
+
+    /// Whether the engine has work of its own for `agent` still in progress
+    /// that will post the embedder a task when done - an asynchronous
+    /// WebAssembly compile settling its promise, FinalizationRegistry
+    /// cleanup. A host keeps pumping `runEngineTasks` while this is true. A
+    /// declared capability: an engine that posts no such work returns false,
+    /// and no spec behaviour may depend on it.
+    hasPendingEngineWork: ?*const fn (agent: *Agent) bool,
+
+    /// Run the tasks the engine has posted to its embedder for `agent` (see
+    /// hasPendingEngineWork); whether any ran. An engine that posts none
+    /// returns false.
+    runEngineTasks: ?*const fn (agent: *Agent) bool,
+
+    /// HTML "run a worker" step 5: a new realm in `agent` whose global object
+    /// is a new DedicatedWorkerGlobalScope, with every interface
+    /// [Exposed=DedicatedWorker] installed. OWNED: `destroyWorkerRealm`.
+    createWorkerRealm: ?*const fn (
+        agent: *Agent,
+        options: WorkerRealmOptions,
+    ) EngineError!WorkerRealm,
+
+    /// The end of a realm `createWorkerRealm` made: nothing runs in it again,
+    /// and everything the engine kept for it - its Instances, the global
+    /// scope first - goes. `retire(data)` runs with the agent entered once
+    /// the realm is retired and before its engine state goes: what the host
+    /// releases with the realm (its fetches in flight). The agent stays.
+    destroyWorkerRealm: ?*const fn (
+        realm: Context,
+        retire: ?RealmSteps,
+        data: ?*anyopaque,
+    ) void,
+
+    /// ECMAScript CreateBuiltinFunction for `function`, defined as the own
+    /// data property `name` of `realm`'s global object, with `length`.
+    /// `function` is BORROWED for the realm's life: every call of the
+    /// built-in reads it, so the caller's storage must outlive the realm
+    /// (`destroyWorkerRealm` for a worker's) - a call after it is freed reads
+    /// freed memory. The worker host keeps it in the object that outlives its
+    /// realm.
+    defineBuiltinFunction: ?*const fn (
+        realm: Context,
+        name: []const u8,
+        length: u32,
+        function: *const BuiltinFunction,
+    ) EngineError!void,
+
+    /// ECMAScript IsCallable(`value`).
+    isCallable: ?*const fn (value: JSValue) bool,
+
+    /// Keep `instance`'s wrapper alive whatever script holds - a platform
+    /// object with pending activity (Blink's ActiveScriptWrappable): a
+    /// running Worker. Released when the realm ends (its wrapper cache goes,
+    /// and the instance with it); there is no earlier release. Idempotent,
+    /// and a no-op for an instance script has never seen (no wrapper yet).
+    keepPlatformObjectAlive: ?*const fn (instance: *Instance) void,
+    // ---- end lane: engine-boundary ----
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -1274,6 +1785,18 @@ pub const stub_engine: EngineInterface = .{
     .installWindowOperations = null,
     // ---- end lane: page-realm ----
     // ---- lane: runtime-impls ----
+    .createObservableArray = null,
+    .queueMicrotask = null,
+    .createResolvedPromise = null,
+    .createRejectedPromise = null,
+    .createSimpleException = null,
+    .createDictionaryObject = null,
+    .currentRealm = null,
+    .describeArrayBufferView = null,
+    .writeIntoArrayBufferView = null,
+    .callUserObjectOperation = null,
+    .convertToUnrestrictedDouble = null,
+    .takeCallbackFunction = null,
     // ---- end lane: runtime-impls ----
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
@@ -1287,6 +1810,32 @@ pub const stub_engine: EngineInterface = .{
     .invokeForEach = stubInvokeForEach,
     .getCollectionLength = stubGetCollectionLength,
     .getCollectionElement = stubGetCollectionElement,
+    // ---- lane: engine-boundary ----
+    .retainValue = null,
+    .throwValue = null,
+    .convertToSequenceOfPlatformObjects = null,
+    .convertToSequenceOfObjects = null,
+    .createFrozenArrayOfPlatformObjects = null,
+    .structuredSerializeWithTransfer = null,
+    .structuredDeserializeWithTransfer = null,
+    .convertToSequenceOfDOMStrings = null,
+    .convertToDOMString = null,
+    .convertToUSVString = null,
+    .convertToRecordOfStrings = null,
+    .convertToPlatformObject = null,
+    .getCopyOfBufferSourceBytes = null,
+    .createSequenceOfValues = null,
+    .createAgent = null,
+    .destroyAgent = null,
+    .hasRunningScript = null,
+    .hasPendingEngineWork = null,
+    .runEngineTasks = null,
+    .createWorkerRealm = null,
+    .destroyWorkerRealm = null,
+    .defineBuiltinFunction = null,
+    .isCallable = null,
+    .keepPlatformObjectAlive = null,
+    // ---- end lane: engine-boundary ----
     .name = "stub",
     .version = "0.0.0",
 };

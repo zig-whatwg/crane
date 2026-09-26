@@ -358,7 +358,7 @@ pub fn deinit() void {
 
         // Clean up ObservableArray static registry
         // This is a safety net for states not cleaned up via V8 GC weak callbacks
-        runtime.ObservableArrayExotic.cleanupAll();
+        @import("observable_array.zig").cleanupAll();
 
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
@@ -632,6 +632,10 @@ pub fn getOrCreateWithExternalEventLoop(
 
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
     const entry = try state.allocator.create(ContextEntry);
@@ -712,7 +716,7 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
             .global_object = window_instance, // Set directly since we have the Window
         });
         // Populate intrinsics for cross-realm support
-        _ = realm.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
         // Store realm in entry and runtime context
         entry.realm = realm;
@@ -804,6 +808,10 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // Create realm for cross-realm support (only if we have an isolate)
     // Per WebIDL, every context has an associated realm with intrinsics
@@ -820,7 +828,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         errdefer if (realm) |r| r.deinit();
 
         // Populate realm intrinsics for cross-realm support
-        _ = realm.?.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm.?);
 
         // Set realm on runtime context so impl code can access via instance.ctx.realm
         ctx_data.setRealm(realm.?);
@@ -1953,7 +1961,7 @@ fn createWindowForExistingBrowsingContext(
         .context_type = .window,
         .global_object = null, // Will be set to Window instance below
     }) catch return null;
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     const inherited = inheritedEventLoop(parent_entry);
@@ -1978,6 +1986,10 @@ fn createWindowForExistingBrowsingContext(
         return null;
     };
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // 8. Create Window instance bound to the V8 global
     const runtime_ctx: runtime.Context = &ctx_data;
@@ -2650,7 +2662,7 @@ pub fn createChildContext(
     // 5b. Populate realm intrinsics for cross-realm support
     // This caches the realm's built-in constructors (TypeError, Object, Array, etc.)
     // which are needed for proper cross-realm object/error creation.
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     // Optionally inherit event loop from parent
@@ -2681,6 +2693,10 @@ pub fn createChildContext(
     errdefer cache_ptr.deinit();
 
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // 7b. Set realm on runtime context for cross-realm support
     // This enables impl code to access the realm via instance.ctx.realm
