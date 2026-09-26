@@ -34,6 +34,7 @@ const html_parser = @import("../parser/root.zig");
 // the machinery a top-level navigation uses.
 const navigation_fetch = @import("../navigation/fetch_integration.zig");
 const document_type = @import("../navigation/document_type.zig");
+const navigate_steps = @import("../navigation/navigate_steps.zig");
 const clock = @import("clock");
 const platform_host = @import("host");
 
@@ -59,6 +60,26 @@ pub const IFrameError = error{
     /// external software (a download). Not a failure: no Document is committed
     /// and no load event is owed.
     ExternalHandoff,
+    /// The response is one the navigation does not proceed with - a 204 or a
+    /// 205 (HTML §7.4.5 "populate a history entry" step 12): the navigable
+    /// keeps its current document and no load event is owed.
+    NoDocument,
+};
+
+/// What a caller without engine access asks the engine's "navigate" for.
+pub const NavigateRequest = struct {
+    history_behavior: navigate_steps.HistoryBehavior = .auto,
+    /// The navigation's "sourceDocument" (an engine document), or null.
+    source_document: ?*anyopaque = null,
+};
+
+/// An engine context this integration made for a content navigable it no
+/// longer has - the iframe was removed and inserted again, which makes a new
+/// one. Destroyed with the integration: script may still be running in it,
+/// or hold its window, when the replacement is made.
+pub const RetiredRealm = struct {
+    data: *anyopaque,
+    destroy: *const fn (data: *anyopaque, allocator: Allocator) void,
 };
 
 /// State of the iframe's nested browsing context
@@ -296,6 +317,10 @@ pub const IFrameIntegration = struct {
     /// Set by the module that created the context
     cleanup_callback: ?*const fn (*IFrameIntegration) void,
 
+    /// How a retired context's cleanup data is destroyed; see
+    /// `retireRealmContext`. Set with the context.
+    retired_realm_destroy: ?*const fn (data: *anyopaque, allocator: Allocator) void = null,
+
     /// Guard flag to prevent recursive cleanup during context teardown
     /// Set to true when cleanupRealmContext is entered
     cleanup_in_progress: bool,
@@ -332,6 +357,43 @@ pub const IFrameIntegration = struct {
     /// Opaque pointer to the HTMLIFrameElement instance (for load event firing)
     iframe_element: ?*anyopaque,
 
+    // ========================================================================
+    // Navigation (HTML §7.4.2)
+    // ========================================================================
+
+    /// HTML "ongoing navigation" of the content navigable (§7.4.2.5): a new
+    /// navigation replaces it, and an earlier one that finds it changed stops.
+    ongoing_navigation: navigate_steps.OngoingNavigation = .none,
+
+    /// HTML "is delaying load events": set by "navigate" step 15 and held
+    /// until the container's load event steps have run for a navigation (or
+    /// it ends without a document). While it is set the container delays its
+    /// node document's load event (§4.8.5 "potentially delays the load
+    /// event"). Held past "finalize a cross-document navigation" step 2,
+    /// which clears the spec's flag, to the iframe load event: browsers fire
+    /// the frame's load before the window's, and the new document's own load
+    /// event is what gets it there.
+    delaying_load: bool = false,
+
+    /// Engine contexts of earlier content navigables; see `RetiredRealm`.
+    retired_realms: std.ArrayListUnmanaged(RetiredRealm) = .empty,
+
+    /// The engine's "navigate" for this navigable, set with its context, for
+    /// callers that have no engine access (window.open()'s navigation).
+    navigate_callback: ?*const fn (*IFrameIntegration, []const u8, NavigateRequest) void = null,
+
+    /// Abandon the navigation in flight, if any: set by the engine that runs
+    /// it, and called when the navigable goes.
+    abandon_navigations_callback: ?*const fn (*IFrameIntegration) void = null,
+
+    /// How many engine steps are running script with this integration in
+    /// hand (a commit parsing the new document, a javascript: URL). Script
+    /// can take the iframe away and a collection can deinit its element; the
+    /// element then sets `deinit_pending` instead of freeing this, and the
+    /// last step to finish does it.
+    busy: u32 = 0,
+    deinit_pending: bool = false,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -367,8 +429,14 @@ pub const IFrameIntegration = struct {
 
     /// Clean up resources
     pub fn deinit(self: *IFrameIntegration) void {
+        // A navigation in flight holds this integration; it ends first.
+        if (self.abandon_navigations_callback) |abandon| abandon(self);
+        self.ongoing_navigation = .none;
+
         // Clean up engine-specific context (Phase 3)
         self.cleanupRealmContext();
+        for (self.retired_realms.items) |retired| retired.destroy(retired.data, self.allocator);
+        self.retired_realms.deinit(self.allocator);
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -485,6 +553,38 @@ pub const IFrameIntegration = struct {
         return self.realm != null;
     }
 
+    /// Detach the current engine context without destroying it, so that a
+    /// new content navigable can be made (the iframe was removed and is being
+    /// inserted again). It is destroyed with the integration: script from it
+    /// may be on the stack right now - a frame that moves its own container -
+    /// and script elsewhere may hold its window.
+    pub fn retireRealmContext(self: *IFrameIntegration) IFrameError!void {
+        if (self.context_cleanup_data) |data| {
+            const destroy = self.retired_realm_destroy orelse return IFrameError.ContextCreationFailed;
+            self.retired_realms.append(self.allocator, .{ .data = data, .destroy = destroy }) catch return IFrameError.OutOfMemory;
+        }
+        self.engine_context = null;
+        self.realm = null;
+        self.context_cleanup_data = null;
+        self.runtime_context = null;
+        self.create_document_callback = null;
+        self.cleanup_callback = null;
+        self.parse_html_callback = null;
+        self.execute_script_callback = null;
+        self.update_location_callback = null;
+        self.navigate_callback = null;
+        self.ongoing_navigation = .none;
+        self.window_proxy = null;
+        self.state = .uninitialized;
+    }
+
+    /// HTML "navigate" this navigable to `url` (serialized, absolute), through
+    /// the engine that owns it. Nothing happens without one.
+    pub fn navigate(self: *IFrameIntegration, url: []const u8, request: NavigateRequest) void {
+        const navigate_fn = self.navigate_callback orelse return;
+        navigate_fn(self, url, request);
+    }
+
     /// Called when iframe is inserted into a document
     /// Creates the nested browsing context per HTML §7.5.4
     pub fn onInsertedIntoDocument(
@@ -599,6 +699,12 @@ pub const IFrameIntegration = struct {
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {
         // Guard against double-calls. Once discarded, we don't process again.
         if (self.state == .discarded) return;
+
+        // "Destroy a child navigable": its navigation in flight ends with it,
+        // and it no longer delays anything.
+        if (self.abandon_navigations_callback) |abandon| abandon(self);
+        self.ongoing_navigation = .none;
+        self.delaying_load = false;
 
         // DO NOT call cleanupRealmContext() here!
         // The child V8 context must remain alive so V8's weak callbacks can
@@ -754,19 +860,6 @@ pub const IFrameIntegration = struct {
             return;
         }
 
-        // The document origin follows the URL being navigated to, and must be
-        // set before the document exists so same-origin checks on it are right.
-        var new_origin = self.parseOriginFromURL(url);
-        if (!new_origin.is_opaque and new_origin.host.len > 0) {
-            const owned_host = self.allocator.dupe(u8, new_origin.host) catch return IFrameError.OutOfMemory;
-            if (self.document_origin_host) |old| self.allocator.free(old);
-            self.document_origin_host = owned_host;
-            new_origin.host = owned_host;
-        }
-        if (self.window_proxy) |*proxy| {
-            proxy.setDocumentOrigin(new_origin);
-        }
-
         var response = navigation_fetch.fetchNavigationResource(self.allocator, url, .{
             .destination = .iframe,
             .mode = .navigate,
@@ -783,12 +876,36 @@ pub const IFrameIntegration = struct {
         defer response.deinit();
 
         // A network error is not a document, and neither is a 204/205. Leaving
-        // the previous document in place is what the spec calls for, and it is
-        // also what keeps a failed load from looking like a successful empty one.
+        // the previous document in place is what the synchronous path has
+        // always done.
         if (response.is_network_error or !navigation_fetch.shouldNavigationProceed(response.status)) {
             self.state = .ready;
             return IFrameError.NavigationFailed;
         }
+        return self.commitResponse(url, &response);
+    }
+
+    /// Make the document `response` - the fetch of `url` - describes this
+    /// navigable's active document: HTML §7.4.6 "load a document" by the
+    /// response's computed type, with the URL, origin and content type the
+    /// document is created with. The caller has unloaded the document it
+    /// replaces.
+    ///
+    /// A network error commits an empty error document at `url` with an
+    /// opaque origin - the spec's "display inline content" - so the frame
+    /// still finishes loading and its container still hears load. A 204 or
+    /// 205, and a type handed to external software, commit nothing:
+    /// `IFrameError.NoDocument` / `IFrameError.ExternalHandoff`.
+    pub fn commitResponse(self: *IFrameIntegration, url: []const u8, response: *const navigation_fetch.NavigationFetchResult) IFrameError!void {
+        if (response.is_network_error) {
+            if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
+            self.updateLocationUrl(url);
+            try self.commitHtmlDocument("");
+            try self.recordCommit(url, "text/html");
+            self.state = .ready;
+            return;
+        }
+        if (!navigation_fetch.shouldNavigationProceed(response.status)) return IFrameError.NoDocument;
 
         const body = response.body orelse "";
 
@@ -803,33 +920,80 @@ pub const IFrameIntegration = struct {
 
         const final_url = if (response.final_url.len > 0) response.final_url else url;
         const kind = document_type.classify(computed);
+        switch (kind) {
+            // "Otherwise, proceed onward" - the resource is handed off to
+            // external software. The navigable keeps its current document.
+            .multipart, .external => return IFrameError.ExternalHandoff,
+            else => {},
+        }
+
+        self.state = .navigating;
+
+        // The document origin follows the URL navigated to - an about: URL
+        // inherits the container's - and is set as the document is created,
+        // before any of its script runs.
+        var new_origin = self.parseOriginFromURL(final_url);
+        if (!new_origin.is_opaque and new_origin.host.len > 0) {
+            const owned_host = self.allocator.dupe(u8, new_origin.host) catch return IFrameError.OutOfMemory;
+            if (self.document_origin_host) |old| self.allocator.free(old);
+            self.document_origin_host = owned_host;
+            new_origin.host = owned_host;
+        }
+        if (self.window_proxy) |*proxy| {
+            proxy.setDocumentOrigin(new_origin);
+        }
 
         // HTML "create and initialize a Document object": the new document's
         // URL is the response URL from the moment it exists - before the parser
         // runs its scripts. Support pages read their parameters from
         // location.search while loading (`self[params.get("window")]
         // .postMessage(...)`); updating after the commit handed them the
-        // previous URL, they threw, and the page waiting on them timed out. A
-        // handed-off response keeps the current document, and its URL.
-        switch (kind) {
-            .multipart, .external => {},
-            else => self.updateLocationUrl(final_url),
-        }
+        // previous URL, they threw, and the page waiting on them timed out.
+        self.updateLocationUrl(final_url);
 
         switch (kind) {
             .html => try self.commitHtmlDocument(body),
             .text => try self.commitTextDocument(body),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
             .xml => try self.commitXmlDocument(),
-            .multipart, .external => {
-                // "Otherwise, proceed onward" - the resource is handed off to
-                // external software. The navigable keeps its current document.
-                self.state = .ready;
-                return IFrameError.ExternalHandoff;
-            },
+            .multipart, .external => unreachable,
         }
 
         try self.recordCommit(final_url, computed);
+        self.state = .ready;
+    }
+
+    /// Whether committing `response` makes a document: a network error does
+    /// (its error document), a 204 or 205 does not (HTML §7.4.5 "populate a
+    /// history entry" step 12), and neither does a type handed to external
+    /// software.
+    pub fn responseMakesDocument(self: *IFrameIntegration, response: *const navigation_fetch.NavigationFetchResult) bool {
+        if (response.is_network_error) return true;
+        if (!navigation_fetch.shouldNavigationProceed(response.status)) return false;
+        const computed = document_type.essence(self.allocator, response.content_type orelse "text/html") catch return true;
+        defer self.allocator.free(computed);
+        return switch (document_type.classify(computed)) {
+            .multipart, .external => false,
+            else => true,
+        };
+    }
+
+    /// Set the active document's URL - the navigable's Location and the
+    /// context's document URL - as a fragment navigation does (HTML
+    /// §7.4.2.3.3 step 12).
+    pub fn setDocumentUrl(self: *IFrameIntegration, url: []const u8) void {
+        self.updateLocationUrl(url);
+    }
+
+    /// Commit a document made of `html` at `url`, whose origin is the
+    /// container's: an `about:srcdoc` document, or the document a
+    /// `javascript:` URL's string result makes.
+    pub fn commitHtmlAt(self: *IFrameIntegration, url: []const u8, html: []const u8, origin: Origin) IFrameError!void {
+        self.state = .navigating;
+        if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(origin);
+        self.updateLocationUrl(url);
+        try self.commitHtmlDocument(html);
+        try self.recordCommit(url, "text/html");
         self.state = .ready;
     }
 

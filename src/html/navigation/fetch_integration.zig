@@ -194,7 +194,8 @@ pub fn fetchNavigationResource(
     return fetchHttpResource(allocator, url, options);
 }
 
-/// Fetch an HTTP(S) resource using the fetch module.
+/// Fetch an HTTP(S) resource using the fetch module, blocking until the
+/// response is in.
 ///
 /// HTML Standard §7.4.3:
 /// Creates an internal request with appropriate destination and mode,
@@ -204,6 +205,33 @@ fn fetchHttpResource(
     url: []const u8,
     options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
+    const internal_request = try navigationRequest(allocator, url, options);
+
+    // Step 3: Execute fetch
+    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
+        internal_request.deinit();
+        return switch (err) {
+            fetch.FetchError.OutOfMemory => NavigationFetchError.OutOfMemory,
+            fetch.FetchError.NetworkError => NavigationFetchError.NetworkError,
+            fetch.FetchError.AbortError => NavigationFetchError.AbortError,
+        };
+    };
+    defer fetch_result.timing_info.deinit();
+    internal_request.deinit();
+
+    const response = fetch_result.response;
+    defer response.deinit();
+    return resultFromResponse(allocator, url, response, options);
+}
+
+/// Steps 1-2 of a navigation fetch: the request for `url`, with the
+/// destination, mode, credentials and redirect mode `options` asks for.
+/// Owned by the caller - or by the fetch it is handed to.
+pub fn navigationRequest(
+    allocator: Allocator,
+    url: []const u8,
+    options: NavigationFetchOptions,
+) NavigationFetchError!*fetch.internal.InternalRequest {
     // Step 1: Create an internal request
     // Per Fetch spec §5.1, create request with URL
     const internal_request = fetch.internal.InternalRequest.init(allocator, url) catch {
@@ -259,23 +287,17 @@ fn fetchHttpResource(
     if (options.origin) |org| {
         internal_request.origin = .{ .origin = org };
     }
+    return internal_request;
+}
 
-    // Step 3: Execute fetch
-    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
-        internal_request.deinit();
-        return switch (err) {
-            fetch.FetchError.OutOfMemory => NavigationFetchError.OutOfMemory,
-            fetch.FetchError.NetworkError => NavigationFetchError.NetworkError,
-            fetch.FetchError.AbortError => NavigationFetchError.AbortError,
-        };
-    };
-    defer fetch_result.timing_info.deinit();
-    internal_request.deinit();
-
-    const response = fetch_result.response;
-    defer response.deinit();
-
-    // Step 4: Convert InternalResponse to NavigationFetchResult
+/// Step 4 of a navigation fetch: what the navigation needs of `response`,
+/// the fetch of `url`, copied out - the response itself stays the caller's.
+pub fn resultFromResponse(
+    allocator: Allocator,
+    url: []const u8,
+    response: *fetch.internal.InternalResponse,
+    options: NavigationFetchOptions,
+) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
 
@@ -347,6 +369,13 @@ fn fetchHttpResource(
         }
     }
 
+    return result;
+}
+
+/// A network error, as a navigation sees one: no response to show.
+pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
+    var result = NavigationFetchResult.init(allocator);
+    result.final_url = allocator.dupe(u8, url) catch return NavigationFetchError.OutOfMemory;
     return result;
 }
 
@@ -624,10 +653,14 @@ pub fn isXmlResponse(content_type: ?[]const u8) bool {
 }
 
 /// Check if navigation should proceed based on response status
+/// HTML "attempt to populate the history entry's document" step 12: "If
+/// navigationParams is not null and navigationParams's response's status is
+/// 204 or 205, then set navigationParams to null" - no document. Every other
+/// response IS one: a 404 or a 500 is the server's error page, and browsers
+/// show it and fire load for it. (A network error, status 0, is decided
+/// before this is asked.)
 pub fn shouldNavigationProceed(status: u16) bool {
-    // Navigation proceeds for 2xx responses and some redirects
-    // 204 No Content and 205 Reset Content don't create new documents
-    return status >= 200 and status < 300 and status != 204 and status != 205;
+    return status != 204 and status != 205;
 }
 
 /// Determine if a navigation is cross-origin

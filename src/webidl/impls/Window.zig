@@ -2283,6 +2283,9 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 /// only a new or named navigable is navigated.
 pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
     if ((getInternal(this) orelse return error.InvalidStateError).closed) return null;
+    // Step 1: "If the event loop's termination nesting level is nonzero,
+    // return null" - no popups from beforeunload, pagehide or unload.
+    if (html_core.navigation.termination_nesting.active()) return null;
 
     // The window open steps never read `this`: every step works from the
     // ENTRY global - the window whose script is running. For
@@ -2325,7 +2328,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // opened from it, however deep. A popup's own script calling
     // `opener.open(url, name)` has the popup as the entry global, and the
     // name is one its opener gave.
-    if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+    // "The rules for choosing a navigable" step 7: an existing navigable by
+    // that name is chosen only when noopener is false - with noopener, every
+    // open() makes a new one.
+    if (!noopener and !std.ascii.eqlIgnoreCase(target_str, "_blank")) {
         var root = instance;
         var hops: usize = 0;
         while (hops < 16) : (hops += 1) {
@@ -2334,8 +2340,9 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         }
         if (namedPopup(root, target_str, 0)) |found| {
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
-            // to urlRecord".
-            if (url_record) |u| queuePopupNavigation(found.integration, found.window, u);
+            // to urlRecord using sourceDocument, with referrerPolicy and
+            // exceptionsEnabled set to true."
+            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
             return if (noopener) null else found.window;
         }
     }
@@ -2366,10 +2373,11 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     if (noopener) setOpenerNoopener(created.window) catch {} else setOpener(created.window, instance) catch {};
 
     // Steps 15.3-15.5: navigate it, unless the URL is about:blank - the
-    // initial document it already has. Queued: open() returns the window
-    // before its page loads, as it must for `w.onload = f` to hear the load.
+    // initial document it already has. "Navigate" fetches in parallel and
+    // commits in a later task, so open() returns the window before its page
+    // loads, as it must for `w.onload = f` to hear the load.
     if (url_record) |u| {
-        if (!std.mem.startsWith(u8, u, "about:blank")) queuePopupNavigation(integration, created.window, u);
+        if (!std.mem.startsWith(u8, u, "about:blank")) integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no
@@ -2421,63 +2429,6 @@ fn parseUrlRelativeTo(document: *runtime.Instance, url: []const u8, allocator: A
     const href = try interfaces.URL.get_href(parsed);
     defer document.ctx.allocator.free(href);
     return allocator.dupe(u8, href);
-}
-
-/// A popup's navigation, queued by open().
-const PopupNavigation = struct {
-    allocator: Allocator,
-    integration: *html_core.IFrameIntegration,
-    window: *runtime.Instance,
-    generation: u64,
-    url: []u8,
-
-    fn destroy(self: *PopupNavigation) void {
-        self.allocator.free(self.url);
-        self.allocator.destroy(self);
-    }
-};
-
-/// Navigate the popup `window` (whose integration is `integration`) to
-/// `url`, as a task: HTML navigates asynchronously, and the caller of open()
-/// must get the window before its page runs.
-fn queuePopupNavigation(integration: *html_core.IFrameIntegration, window: *runtime.Instance, url: []const u8) void {
-    const allocator = window.ctx.allocator;
-    const navigation = allocator.create(PopupNavigation) catch return;
-    const url_copy = allocator.dupe(u8, url) catch {
-        allocator.destroy(navigation);
-        return;
-    };
-    navigation.* = .{
-        .allocator = allocator,
-        .integration = integration,
-        .window = window,
-        .generation = runtime.SlabAllocator.generationOf(window),
-        .url = url_copy,
-    };
-    const loop = window.ctx.getOptionalEventLoop() orelse {
-        runPopupNavigation(navigation);
-        return;
-    };
-    loop.queueTask(.{ .callback = &runPopupNavigation, .context = navigation, .drop = &dropPopupNavigation });
-}
-
-fn dropPopupNavigation(context: ?*anyopaque) void {
-    const navigation: *PopupNavigation = @ptrCast(@alignCast(context orelse return));
-    navigation.destroy();
-}
-
-fn runPopupNavigation(context: ?*anyopaque) void {
-    const navigation: *PopupNavigation = @ptrCast(@alignCast(context orelse return));
-    defer navigation.destroy();
-    // Closed, or its page torn down since: nothing is left to navigate.
-    if (runtime.SlabAllocator.generationOf(navigation.window) != navigation.generation) return;
-    const window_internal = getInternal(navigation.window) orelse return;
-    if (window_internal.closed) return;
-    // A task runs from the event loop, not from V8: the page's scripts need a
-    // scope and the popup's realm entered.
-    const scope = @import("v8").JsScope.init(navigation.window.ctx) orelse return;
-    defer scope.deinit();
-    navigation.integration.navigateToSrc(navigation.url) catch {};
 }
 
 /// HTML "tokenize the features argument" (window.open()), and the three

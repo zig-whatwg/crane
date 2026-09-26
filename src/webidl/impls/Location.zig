@@ -64,11 +64,19 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+const html_core = @import("html_core");
+const navigate_steps = html_core.navigation.navigate_steps;
+
+/// What "Location-object navigate" asks of the navigable's engine.
+pub const NavigateRequest = html_core.window.iframe_integration.NavigateRequest;
+
 /// Navigation callback type for Location.assign/replace/href setter.
-/// Parameters: (context_ptr, url) -> success
+/// Parameters: (context_ptr, url, request) -> whether a navigable took it.
 /// The context_ptr is an opaque pointer to implementation-specific data
-/// (e.g., IFrameIntegration* for iframe contexts).
-pub const NavigateCallback = *const fn (ctx: ?*anyopaque, url: []const u8) bool;
+/// (e.g., IFrameIntegration* for iframe contexts). The engine behind it runs
+/// "Location-object navigate" step 3 - a relevant document that is not
+/// completely loaded makes the navigation a replace - and step 4, "navigate".
+pub const NavigateCallback = *const fn (ctx: ?*anyopaque, url: []const u8, request: NavigateRequest) bool;
 
 /// Internal state for Location implementation
 /// Contains private data not exposed via WebIDL attributes.
@@ -507,10 +515,17 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instan
 // =============================================================================
 
 /// Setter for href
-/// Per spec §7.1.3: Navigate to the given URL.
+/// HTML §7.2.4: "1. If this's relevant Document is null, then return.
+/// 2. Let url be the result of encoding-parsing a URL given the given value,
+/// relative to the entry settings object. 3. If url is failure, then throw a
+/// "SyntaxError" DOMException. 4. Location-object navigate this to url."
+/// Intentionally no security check.
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    // Navigate to the URL
-    return call_assign(instance, value);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const url = try parseRelativeToEntry(instance, internal, value);
+    defer internal.allocator.free(url);
+    return locationObjectNavigate(internal, url, .auto);
 }
 
 /// Setter for protocol
@@ -561,22 +576,216 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyer
 }
 
 /// Setter for search
-/// Per spec §7.1.3: Update URL query, then navigate.
+/// HTML §7.2.4: copy this's url; set its query to null for the empty string,
+/// otherwise basic-URL-parse the value without a leading "?" with the query
+/// state as state override; Location-object navigate to it. The fragment is
+/// kept. Deviation, stated: the query is percent-encoded as UTF-8, not in
+/// the relevant document's encoding, and the same-origin-domain check (step
+/// 2) is not modelled.
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement search setter
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const url = getURL(instance) orelse return;
+    const allocator = internal.allocator;
+    const current = try url_serializer.serialize(allocator, url, false);
+    defer allocator.free(current);
+    const without_fragment = navigate_steps.withoutFragment(current);
+    const query_start = std.mem.indexOfScalar(u8, without_fragment, '?') orelse without_fragment.len;
+    const input = if (value.len > 0 and value[0] == '?') value[1..] else value;
+    const fragment = navigate_steps.fragmentOf(current);
+    const candidate = try std.fmt.allocPrint(allocator, "{s}{s}{s}{s}{s}", .{
+        without_fragment[0..query_start],
+        if (value.len == 0) "" else "?",
+        if (value.len == 0) "" else input,
+        if (fragment != null) "#" else "",
+        fragment orelse "",
+    });
+    defer allocator.free(candidate);
+    const copy_url = try reparse(allocator, candidate);
+    defer allocator.free(copy_url);
+    return locationObjectNavigate(internal, copy_url, .auto);
 }
 
 /// Setter for hash
-/// Per spec §7.1.3: Update URL fragment, then navigate (fragment navigation).
+/// HTML §7.2.4, the hash setter steps. Deviation, stated: the
+/// same-origin-domain check (step 2) is not modelled.
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement hash setter
-    // This may trigger fragment-only navigation (hashchange event)
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Step 1: "If this's relevant Document is null, then return."
+    if (internal.window == null) return;
+    // Step 3: "Let copyURL be a copy of this's url."
+    const url = getURL(instance) orelse return;
+    const allocator = internal.allocator;
+    const current = try url_serializer.serialize(allocator, url, false);
+    defer allocator.free(current);
+    // Step 4: "Let thisURLFragment be copyURL's fragment if it is non-null;
+    // otherwise the empty string."
+    const this_fragment = navigate_steps.fragmentOf(current) orelse "";
+    // Step 5: "Let input be the given value with a single leading "#"
+    // removed, if any."
+    const input = if (value.len > 0 and value[0] == '#') value[1..] else value;
+    // Steps 6-7: set copyURL's fragment to the empty string and basic URL
+    // parse input with the fragment state as state override - the same as
+    // parsing copyURL with "#" and input appended.
+    const candidate = try std.fmt.allocPrint(allocator, "{s}#{s}", .{ navigate_steps.withoutFragment(current), input });
+    defer allocator.free(candidate);
+    const copy_url = try reparse(allocator, candidate);
+    defer allocator.free(copy_url);
+    // Step 8: "If copyURL's fragment is thisURLFragment, then return."
+    if (std.mem.eql(u8, navigate_steps.fragmentOf(copy_url) orelse "", this_fragment)) return;
+    // Step 9: "Location-object navigate this to copyURL."
+    return locationObjectNavigate(internal, copy_url, .auto);
+}
+
+/// "Navigate" step 14 for the top-level page, whose Location has no
+/// navigable engine behind it: a URL that differs from the document's only
+/// in its fragment is a fragment navigation (HTML §7.4.2.3.3) - the
+/// document's URL changes now, and hashchange is queued if the fragment
+/// did. Anything else is not one, and false.
+///
+/// Not modelled, stated: the navigate event, the session history entry and
+/// scrolling.
+fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8) !bool {
+    const window = internal.window orelse return false;
+    const allocator = internal.allocator;
+    const document = interfaces.Window.get_document(window) catch return false;
+    const old_url = interfaces.Document.get_URL(document) catch return false;
+    defer document.ctx.allocator.free(old_url);
+    if (!navigate_steps.isFragmentNavigation(url, old_url, false)) return false;
+
+    // Step 12: "Set navigable's active document's URL to url." A document
+    // with a window reads its URL from its context's record.
+    const v8 = @import("v8");
+    const engine_ctx = window.ctx.engine_ctx orelse return false;
+    try v8.context_manager.setDocumentUrl(@ptrCast(@alignCast(engine_ctx)), url);
+
+    // Step 14's hashchange, if the fragment changed.
+    const old_fragment = navigate_steps.fragmentOf(old_url);
+    const new_fragment = navigate_steps.fragmentOf(url);
+    const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
+    if (!same) queueHashChange(allocator, window, old_url, url);
+    return true;
+}
+
+/// A queued hashchange at a window, held with its slab generation.
+const HashChange = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    old_url: []u8,
+    new_url: []u8,
+    allocator: Allocator,
+
+    fn destroy(self: *HashChange) void {
+        self.allocator.free(self.old_url);
+        self.allocator.free(self.new_url);
+        self.allocator.destroy(self);
+    }
+};
+
+/// "Queue a global task on the DOM manipulation task source given
+/// document's relevant global object to fire an event named hashchange".
+fn queueHashChange(allocator: Allocator, window: *runtime.Instance, old_url: []const u8, new_url: []const u8) void {
+    const task = allocator.create(HashChange) catch return;
+    const old_copy = allocator.dupe(u8, old_url) catch {
+        allocator.destroy(task);
+        return;
+    };
+    const new_copy = allocator.dupe(u8, new_url) catch {
+        allocator.free(old_copy);
+        allocator.destroy(task);
+        return;
+    };
+    task.* = .{
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .old_url = old_copy,
+        .new_url = new_copy,
+        .allocator = allocator,
+    };
+    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
+}
+
+fn dropHashChange(context: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(context orelse return));
+    task.destroy();
+}
+
+fn runHashChange(context: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(context orelse return));
+    defer task.destroy();
+    if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
+    const scope = @import("v8").JsScope.init(task.window.ctx) orelse return;
+    defer scope.deinit();
+    const event = interfaces.HashChangeEvent.call_constructor(
+        task.window.ctx,
+        runtime.DOMString.initInterned("hashchange"),
+        webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// `url` through the basic URL parser and serializer; owned.
+fn reparse(allocator: Allocator, url: []const u8) ![]u8 {
+    var parsed = basic_parser.parse(allocator, url, null) catch return error.SyntaxError;
+    defer parsed.deinit();
+    return @constCast(try url_serializer.serialize(allocator, &parsed, false));
+}
+
+/// `url` encoding-parsed relative to the entry settings object - the
+/// document of the script that is running - and serialized; owned. Failure
+/// is a "SyntaxError". With no script running, the Location's own URL is the
+/// base.
+fn parseRelativeToEntry(instance: *runtime.Instance, internal: *InternalState, url: []const u8) ![]u8 {
+    const allocator = internal.allocator;
+    if (entryDocument()) |document| {
+        const base = interfaces.Node.get_baseURI(document) catch "";
+        defer if (base.len > 0) document.ctx.allocator.free(base);
+        if (base.len > 0) {
+            var base_record = basic_parser.parse(allocator, base, null) catch null;
+            defer if (base_record) |*b| b.deinit();
+            if (base_record) |*b| {
+                var parsed = basic_parser.parse(allocator, url, b) catch return error.SyntaxError;
+                defer parsed.deinit();
+                return @constCast(try url_serializer.serialize(allocator, &parsed, false));
+            }
+        }
+    }
+    var parsed = basic_parser.parse(allocator, url, getURL(instance)) catch return error.SyntaxError;
+    defer parsed.deinit();
+    return @constCast(try url_serializer.serialize(allocator, &parsed, false));
+}
+
+/// The entry global object's associated Document: the document of the
+/// window whose context V8 entered to run the current script. Also the
+/// incumbent's, as far as this engine tells them apart.
+fn entryDocument() ?*runtime.Instance {
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
+    const context = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
+    defer v8.ffi.v8_Context_Dispose(context);
+    const window = v8.context_manager.getWindowForContext(context) orelse return null;
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
+}
+
+/// HTML "Location-object navigate" this Location's navigable to `url`
+/// (serialized), with `behavior`. Steps 1-2 and 4 are the navigable's
+/// engine's (the navigate callback); step 3 is too, since it reads the
+/// navigable's own record of its document.
+fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !void {
+    const callback = internal.navigate_callback orelse {
+        // The top-level page: this engine cannot replace its document, but
+        // a fragment navigation keeps the document, and that it can do.
+        if (try topLevelFragmentNavigation(internal, url)) return;
+        return error.NotImplemented;
+    };
+    const source = entryDocument();
+    if (!callback(internal.navigate_context, url, .{ .history_behavior = behavior, .source_document = if (source) |d| @ptrCast(d) else null })) {
+        return error.SecurityError;
+    }
 }
 
 // =============================================================================
@@ -584,86 +793,29 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 // =============================================================================
 
 /// Operation: assign
-/// Per spec §7.1.3: Navigate to url, adding entry to session history.
+/// HTML §7.2.4: "1. If this's relevant Document is null, then return. ...
+/// 3. Let urlRecord be the result of encoding-parsing a URL given url,
+/// relative to the entry settings object. 4. If urlRecord is failure, then
+/// throw a "SyntaxError" DOMException. 5. Location-object navigate this to
+/// urlRecord." Deviation, stated: step 2's same-origin-domain check is not
+/// modelled.
 pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = internal.allocator;
-
-    // Step 1: Get base URL (document's URL) for relative URL resolution
-    const base_url = internal.url;
-
-    // Step 2: Parse the URL
-    // Per spec: If url cannot be parsed, throw a "SyntaxError" DOMException
-    var parsed_url = basic_parser.parse(allocator, url, base_url) catch {
-        // URL parsing failed - throw SyntaxError
-        // Per HTML spec §7.1.3.2, invalid URLs throw "SyntaxError" DOMException
-        return error.SyntaxError;
-    };
-
-    // Step 3: Serialize the resolved URL for navigation
-    const resolved_url = url_serializer.serialize(allocator, &parsed_url, false) catch {
-        parsed_url.deinit();
-        return error.OutOfMemory;
-    };
-    defer allocator.free(resolved_url);
-    parsed_url.deinit();
-
-    // Step 4: Perform navigation using the callback if available
-    // The callback handles browsing context navigation (e.g., iframe navigation)
-    if (internal.navigate_callback) |callback| {
-        if (callback(internal.navigate_context, resolved_url)) {
-            // Navigation succeeded - update our URL record
-            setURLFromString(instance, resolved_url) catch {};
-            return;
-        }
-        // Callback returned false - navigation was blocked/failed
-        return error.SecurityError;
-    }
-
-    // No navigation callback set - this context doesn't support programmatic navigation yet
-    // Full navigation for top-level windows requires Phase 6: Navigation & History
-    return error.NotImplemented;
+    if (internal.window == null) return;
+    const resolved = try parseRelativeToEntry(instance, internal, url);
+    defer internal.allocator.free(resolved);
+    return locationObjectNavigate(internal, resolved, .auto);
 }
 
 /// Operation: replace
-/// Per spec §7.1.3: Navigate to url, replacing current session history entry.
+/// HTML §7.2.4: as assign(), with no security check, and Location-object
+/// navigate given "replace".
 pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = internal.allocator;
-
-    // Step 1: Get base URL (document's URL) for relative URL resolution
-    const base_url = internal.url;
-
-    // Step 2: Parse the URL
-    // Per spec: If url cannot be parsed, throw a "SyntaxError" DOMException
-    var parsed_url = basic_parser.parse(allocator, url, base_url) catch {
-        // URL parsing failed - throw SyntaxError
-        return error.SyntaxError;
-    };
-
-    // Step 3: Serialize the resolved URL for navigation
-    const resolved_url = url_serializer.serialize(allocator, &parsed_url, false) catch {
-        parsed_url.deinit();
-        return error.OutOfMemory;
-    };
-    defer allocator.free(resolved_url);
-    parsed_url.deinit();
-
-    // Step 4: Perform navigation using the callback if available
-    // replace uses the same navigation but with "replace" history handling
-    // For now, we treat it the same as assign (both use the same callback)
-    if (internal.navigate_callback) |callback| {
-        if (callback(internal.navigate_context, resolved_url)) {
-            // Navigation succeeded - update our URL record
-            setURLFromString(instance, resolved_url) catch {};
-            return;
-        }
-        // Callback returned false - navigation was blocked/failed
-        return error.SecurityError;
-    }
-
-    // No navigation callback set
-    return error.NotImplemented;
+    if (internal.window == null) return;
+    const resolved = try parseRelativeToEntry(instance, internal, url);
+    defer internal.allocator.free(resolved);
+    return locationObjectNavigate(internal, resolved, .replace);
 }
 
 /// Operation: reload
