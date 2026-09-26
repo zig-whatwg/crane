@@ -169,6 +169,49 @@ pub const SnapshotError = error{
     OutOfMemory,
 };
 
+/// The build stamp the snapshot generator appends to every blob: `stamp_magic`
+/// and then its external-reference count, a little-endian u64.
+///
+/// V8 resolves each callback in a snapshot by its index in the embedder's
+/// external-reference table, so a blob restored against another build's table
+/// wires callbacks to whatever sits at those indices now, and V8 cannot tell.
+/// A January snapshot tracked in git was restored that way by every run from
+/// the repo root for nine months (docs/lessons/
+/// debugging-a-tracked-build-artifact-shadows-the-build.md). A blob with no
+/// stamp, or with a count other than the runtime's, is refused. The count is
+/// a cheap proxy for "the same table": a build that adds or removes a
+/// callback changes it.
+pub const stamp_magic = "CRANESNP";
+pub const stamp_len = stamp_magic.len + 8;
+
+pub const Stamped = struct {
+    /// V8's bytes, without the stamp.
+    blob: []const u8,
+    reference_count: u64,
+};
+
+/// Split a stamped blob, or null when it carries no stamp.
+pub fn splitStamp(data: []const u8) ?Stamped {
+    if (data.len < stamp_len) return null;
+    const tail = data[data.len - stamp_len ..];
+    if (!std.mem.eql(u8, tail[0..stamp_magic.len], stamp_magic)) return null;
+    return .{
+        .blob = data[0 .. data.len - stamp_len],
+        .reference_count = std.mem.readInt(u64, tail[stamp_magic.len..][0..8], .little),
+    };
+}
+
+/// The stamp for a blob made with `reference_count` external references.
+pub fn writeStamp(out: *[stamp_len]u8, reference_count: u64) void {
+    @memcpy(out[0..stamp_magic.len], stamp_magic);
+    std.mem.writeInt(u64, out[stamp_magic.len..][0..8], reference_count, .little);
+}
+
+/// Whether a stamped blob was made against a table of `runtime_count`.
+pub fn stampMatches(stamped: Stamped, runtime_count: usize) bool {
+    return stamped.reference_count == runtime_count;
+}
+
 /// Initialize V8 from a snapshot if available, otherwise fall back to fresh initialization.
 ///
 /// This is the main entry point for V8 initialization. It:
@@ -236,7 +279,15 @@ const SnapshotResult = struct {
 };
 
 /// Try to initialize from in-memory snapshot data
-fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResult {
+fn initFromSnapshotData(stamped_data: []const u8, log_performance: bool) !?SnapshotResult {
+    // A blob this build's generator did not make is not restored at all.
+    // Warned whatever `log_performance` says: the fallback is a slower mode.
+    const stamped = splitStamp(stamped_data) orelse {
+        std.log.warn("snapshot carries no build stamp - not made by this build's snapshot generator; not using it", .{});
+        return null;
+    };
+    const data = stamped.blob;
+
     // === Snapshot Validation ===
     // Validate snapshot data thoroughly before attempting to load.
     // This helps provide clear error messages and fail fast.
@@ -277,7 +328,10 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     const external_refs = @import("external_references.zig");
     external_refs.registerAllExternalReferences();
     const stats = external_refs.getExternalReferenceStats();
-    _ = stats; // Used for debugging only
+    if (!stampMatches(stamped, stats.count)) {
+        std.log.warn("snapshot was made against {d} external references and this build has {d}; not using it", .{ stamped.reference_count, stats.count });
+        return null;
+    }
     const refs_ptr: ?[*]const isize = external_refs.getRuntimeExternalReferencesPtr();
 
     // NOTE: V8 flags (--hash-seed=0, --predictable, --no-random-gc) MUST be set
@@ -399,7 +453,14 @@ pub const SnapshotValidation = struct {
 /// - is_valid: Whether V8 considers the snapshot data valid
 /// - can_rehash: Whether the snapshot can be loaded with different hash seeds
 /// - error_message: Description of any validation failure
-pub fn validateSnapshotData(data: []const u8) SnapshotValidation {
+pub fn validateSnapshotData(stamped_data: []const u8) SnapshotValidation {
+    const stamped = splitStamp(stamped_data) orelse return .{
+        .is_valid = false,
+        .can_rehash = false,
+        .size = stamped_data.len,
+        .error_message = "Snapshot carries no build stamp (not made by this build's snapshot generator)",
+    };
+    const data = stamped.blob;
     if (data.len < 8) {
         return .{
             .is_valid = false,
@@ -423,7 +484,7 @@ pub fn validateSnapshotData(data: []const u8) SnapshotValidation {
     return .{
         .is_valid = true,
         .can_rehash = can_rehash,
-        .size = data.len,
+        .size = stamped_data.len,
         .error_message = if (!can_rehash) "Snapshot not rehashable - requires matching hash seed" else null,
     };
 }
@@ -443,7 +504,8 @@ pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
     const bytes_read = file.readPositionalAll(io, data, 0) catch return false;
     if (bytes_read != stat.size) return false;
 
-    return ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));
+    const stamped = splitStamp(data) orelse return false;
+    return ffi.v8_Snapshot_IsValid(stamped.blob.ptr, @intCast(stamped.blob.len));
 }
 
 /// Clean up snapshot data that was allocated during initialization.
