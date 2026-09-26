@@ -40,7 +40,6 @@ src/browser/Context.zig v8.dom_type_info 2
 src/browser/Context.zig v8.ffi 278
 src/browser/Context.zig v8.interface_bindings 10
 src/browser/Context.zig v8.isolate_ownership 2
-src/browser/Context.zig v8.native_timer 8
 src/browser/Context.zig v8.template_registry 5
 src/browser/Context.zig v8.window_properties 2
 src/browser/Context.zig v8.wrapper_cache_mod 2
@@ -227,7 +226,6 @@ src/html/script_execution.zig v8_engine 29
 src/html/structured_clone/deserialize.zig v8_serialized 1
 src/html/structured_clone/types.zig v8_serialized 3
 src/html/worker_v8_context.zig @import("v8") 1
-src/html/worker_v8_context.zig @import("v8").native_timer 1
 src/html/worker_v8_context.zig v8.V8Interface 1
 src/html/worker_v8_context.zig v8.WrapperCache 1
 src/html/worker_v8_context.zig v8.cleanupTemplateStorage 1
@@ -239,8 +237,6 @@ src/html/worker_v8_context.zig v8.interface_bindings 1
 src/html/worker_v8_context.zig v8.interface_bindings.installForScope 1
 src/html/worker_v8_context.zig v8.isolate_allocator 1
 src/html/worker_v8_context.zig v8.isolate_ownership 1
-src/html/worker_v8_context.zig v8.native_timer.clampTimeout 3
-src/html/worker_v8_context.zig v8.native_timer.nesting_level 7
 src/html/worker_v8_context.zig v8.pumpPlatformTasks 4
 src/html/worker_v8_context.zig v8.template_registry 4
 src/html/worker_v8_context.zig v8_Array_New 3

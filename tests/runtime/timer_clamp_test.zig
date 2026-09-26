@@ -10,17 +10,16 @@
 //! (`src/html/worker_v8_context.zig`) had neither, so a nested `setTimeout(f, 0)`
 //! in a worker ran unclamped while the identical code in a window was clamped.
 //!
-//! The rule now lives in `v8.native_timer`, which both bindings already reach
-//! because both schedule through the same manager. These tests pin the behaviour
-//! there, so a future third copy is unnecessary rather than tempting.
+//! The rule now lives in `runtime.timer` - it is HTML's, not an engine's - and
+//! both bindings reach it there. These tests pin the behaviour in that one
+//! place, so a future third copy is unnecessary rather than tempting.
 //!
 //! Pure arithmetic - no isolate, no event loop. That is the point: the window's
 //! clamp only ever had coverage because it was separated from the V8 plumbing, and
 //! the worker's had none because it did not exist.
 
 const std = @import("std");
-const v8 = @import("v8");
-const timer = v8.native_timer;
+const timer = @import("runtime").timer;
 
 test "the spec's constants are 4ms and level 5" {
     // Named so a change to either reads as a deliberate spec decision rather than

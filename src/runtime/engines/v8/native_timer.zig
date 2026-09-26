@@ -56,32 +56,12 @@ const log = std.log.scoped(.native_timer);
 // (`MIN_NESTED_DELAY_MS`, `NESTING_LEVEL_THRESHOLD`): nothing spins that event
 // loop, so that copy never runs.
 
-/// Minimum delay once nested deeper than `nesting_threshold`. HTML §8.6 step 5.
-pub const nested_min_delay_ms: i64 = 4;
-
-/// Nesting depth beyond which `nested_min_delay_ms` applies. HTML §8.6 step 5.
-pub const nesting_threshold: u32 = 5;
-
-/// The "current timer nesting level".
-///
-/// Zero on the event loop's own turn; while a timer callback runs it is that
-/// timer's recorded level, so a timer created inside the callback nests one deeper.
-/// Thread-local because a worker runs its callbacks on its own thread and must not
-/// see the window's depth.
-pub threadlocal var nesting_level: u32 = 0;
-
-/// Apply the clamping half of the timer initialisation steps.
-///
-/// Kept separate from the nesting bookkeeping so it can be unit-tested without a V8
-/// isolate - which is the only reason the window's clamp ever had test coverage.
-pub fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
-    var timeout = requested_ms;
-    if (timeout < 0) timeout = 0;
-    if (nesting > nesting_threshold and timeout < nested_min_delay_ms) {
-        timeout = nested_min_delay_ms;
-    }
-    return timeout;
-}
+/// The timer nesting state is HTML's, in runtime.timer; these aliases keep
+/// this manager's callers and tests compiling. The level itself is
+/// `runtime.timer.nesting_level` (a threadlocal var cannot be aliased).
+pub const nested_min_delay_ms = runtime.timer.nested_min_delay_ms;
+pub const nesting_threshold = runtime.timer.nesting_threshold;
+pub const clampTimeout = runtime.timer.clampTimeout;
 
 /// A timer found due by `poll`, in firing order.
 const Due = struct {
