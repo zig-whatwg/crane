@@ -60,6 +60,14 @@ pub const CurlWebSocket = struct {
     /// Cookie manager for handshake cookies (shared with Fetch API)
     cookie_manager: ?*CurlCookieManager,
 
+    /// TLS trust for a wss:// handshake.
+    ///
+    /// The handshake is a fetch (WebSockets § 2.2 step 11), so it trusts what
+    /// every other fetch trusts: the embedder's defaults, which is where the
+    /// WPT runner registers the WPT certificate authority. Any paths are
+    /// borrowed from whoever registered them.
+    cert_options: fetch.network.CertVerifyOptions,
+
     const Self = @This();
 
     /// Options for WebSocket initialization.
@@ -69,6 +77,9 @@ pub const CurlWebSocket = struct {
 
         /// Cookie manager for handshake (shared with Fetch API)
         cookie_manager: ?*CurlCookieManager = null,
+
+        /// TLS trust; null means fetch's defaults.
+        cert_options: ?fetch.network.CertVerifyOptions = null,
     };
 
     /// Initialize a new WebSocket backend.
@@ -114,6 +125,7 @@ pub const CurlWebSocket = struct {
             .connected = false,
             .negotiated_protocol = null,
             .cookie_manager = options.cookie_manager,
+            .cert_options = options.cert_options orelse fetch.network.defaultCertOptions(),
         };
 
         return self;
@@ -164,6 +176,9 @@ pub const CurlWebSocket = struct {
         if (result != curl.CURLE_OK) {
             return error.CurlSetoptFailed;
         }
+
+        // TLS trust, as fetch applies it (network/curl_backend.zig).
+        try self.applyCertOptions(handle);
 
         // Attach cookie manager for handshake cookies
         if (self.cookie_manager) |cm| {
@@ -218,6 +233,20 @@ pub const CurlWebSocket = struct {
 
         self.handle = handle;
         self.connected = true;
+    }
+
+    /// Verify the peer and its host name, against the configured CA bundle
+    /// when there is one and the system's store otherwise.
+    fn applyCertOptions(self: *Self, handle: *curl.CURL) !void {
+        const options = self.cert_options;
+        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (options.verify_peer) 1 else 0));
+        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (options.verify_host) 2 else 0));
+        if (options.ca_bundle_path) |ca_path| {
+            const ca_z = try self.allocator.dupeZ(u8, ca_path);
+            defer self.allocator.free(ca_z);
+            // libcurl copies string options, so the copy can go at once.
+            _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
+        }
     }
 
     /// Send a text frame.
@@ -395,6 +424,26 @@ test "CurlWebSocket - protocol list is exactly sized" {
         defer ws.deinit();
         try std.testing.expect(ws.protocols == null);
     }
+}
+
+test "CurlWebSocket - a wss handshake trusts what fetch trusts" {
+    // The embedder registers the certificate authorities it trusts through
+    // fetch's default cert options - the WPT runner adds the WPT CA that way -
+    // and a WebSocket handshake is a fetch (WebSockets § 2.2 step 11). A
+    // backend that set no TLS options at all verified wss:// against the
+    // system store only, so every `?wss` variant failed to open.
+    const allocator = std.testing.allocator;
+
+    const saved = fetch.network.defaultCertOptions();
+    defer fetch.network.setDefaultCertOptions(saved);
+    fetch.network.setDefaultCertOptions(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
+
+    var ws = try CurlWebSocket.init(allocator, "wss://web-platform.test:8666/echo", null);
+    defer ws.deinit();
+
+    try std.testing.expectEqualStrings("/wpt/tools/certs/cacert.pem", ws.cert_options.ca_bundle_path.?);
+    try std.testing.expect(ws.cert_options.verify_peer);
+    try std.testing.expect(ws.cert_options.verify_host);
 }
 
 test "CurlWebSocket - not connected errors" {
