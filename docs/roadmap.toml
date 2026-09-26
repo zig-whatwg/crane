@@ -220,7 +220,7 @@ progress = [
 
   [[infra.items]]
   name = "Getter and setter receivers brand-checked"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "A promise-returning operation rejects, not throws, on an argument-conversion exception"
