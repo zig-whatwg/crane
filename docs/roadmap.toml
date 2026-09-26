@@ -216,6 +216,10 @@ progress = [
   status = "todo"
 
   [[infra.items]]
+  name = "Runtime types carry no V8 names: Realm.isolate -> agent, Realm.v8_context -> engine_realm, EngineHandle.handle_scope -> lifetime (.scoped/.persistent) - after the paused lanes merge, since held files read them"
+  status = "todo"
+
+  [[infra.items]]
   name = "\"v8\" removed from the non-adapter modules' imports in build.zig"
   status = "todo"
 
