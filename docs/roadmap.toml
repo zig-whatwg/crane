@@ -197,6 +197,10 @@ explicit NotSupported entries."""
 progress = [
   "1979a9892 - tools/lint_engine_boundary.zig in zig build test: a per-file, per-name ratchet that only goes down",
   "b041d9024 - first Engine realm operations: runClassicScript, performMicrotaskCheckpoint, runTaskInRealm, runInRealm, createDOMException, releaseValue",
+  "89f6c127d, 26d516ee6 - HTML's timer nesting state lives in runtime.timer; runtime.configuredEngine() lets realm-less code reach the build's table",
+  "d452ed281, 9d2f144ef - engine-boundary lane: values, WebIDL conversions, agents, worker realms, structured serialization with transfer; MessageEvent and MessagePort through the table",
+  "bfc9224db, 1bb4707f4 - runtime-impls lane: dead V8-coupled code deleted, not ported; promise, exception, dictionary, microtask, observable-array and callback-interface operations",
+  "11d457bab, 572fd3a08 - page-realm lane: invokeCallbackFunction and installWindowOperations; the top-level window keeps EventTarget's WebIDL operations",
 ]
 
   [[infra.items]]
@@ -217,6 +221,10 @@ progress = [
 
   [[infra.items]]
   name = "Runtime types carry no V8 names: Realm.isolate -> agent, Realm.v8_context -> engine_realm, EngineHandle.handle_scope -> lifetime (.scoped/.persistent) - after the paused lanes merge, since held files read them"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Codegen types callback-function parameters as runtime.JSValue (owned), retiring the transitional takeCallbackFunction operation"
   status = "todo"
 
   [[infra.items]]
@@ -350,6 +358,10 @@ progress = [
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"
+  status = "todo"
+
+  [[infra.items]]
+  name = "SharedWorker: a shared worker agent whose port is entangled with the creator's (workers/constructors/SharedWorker/ and data-url-shared wait on a reply that an unentangled port now drops, per spec)"
   status = "todo"
 
 # ---------------------------------------------------------------------------
