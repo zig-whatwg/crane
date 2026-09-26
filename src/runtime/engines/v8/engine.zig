@@ -87,6 +87,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .destroyPromiseHandle = v8DestroyPromiseHandle,
     .createString = v8CreateString,
     .getPropertyTruthy = v8GetPropertyTruthy,
+    .getPropertyBoolean = v8GetPropertyBoolean,
+    .getPropertyInstance = v8GetPropertyInstance,
     .createArrayBuffer = v8CreateArrayBuffer,
     .createUint8Array = v8CreateUint8Array,
     .parseJson = v8ParseJson,
@@ -308,6 +310,45 @@ fn v8GetPropertyTruthy(
     defer ffi.v8_Value_Dispose(value);
 
     return ffi.v8_Value_BooleanValue(value, isolate);
+}
+
+/// Get(object, name) for a dictionary member: the value (owned, the
+/// caller disposes), or null when Get threw and the exception is pending.
+fn getMember(isolate: *ffi.Isolate, context: *ffi.Context, object: *anyopaque, name: []const u8) EngineError!?*ffi.Value {
+    const obj: *ffi.Value = @ptrCast(@alignCast(object));
+    if (!ffi.v8_Value_IsObject(obj)) return EngineError.TypeError;
+    const key = ffi.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse
+        return EngineError.OperationFailed;
+    defer ffi.v8_String_Dispose(key);
+    return ffi.v8_Object_Get(@ptrCast(obj), context, @ptrCast(key));
+}
+
+fn v8GetPropertyBoolean(engine_ctx: *anyopaque, object: *anyopaque, name: []const u8) EngineError!?bool {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return EngineError.OperationFailed;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return EngineError.OperationFailed;
+    defer ffi.v8_Context_Dispose(context);
+
+    const value = (try getMember(isolate, context, object, name)) orelse return EngineError.ExceptionPending;
+    defer ffi.v8_Value_Dispose(value);
+    if (ffi.v8_Value_IsUndefined(value)) return null;
+    return ffi.v8_Value_BooleanValue(value, isolate);
+}
+
+fn v8GetPropertyInstance(engine_ctx: *anyopaque, object: *anyopaque, name: []const u8) EngineError!?*anyopaque {
+    _ = engine_ctx;
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return EngineError.OperationFailed;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return EngineError.OperationFailed;
+    defer ffi.v8_Context_Dispose(context);
+
+    const value = (try getMember(isolate, context, object, name)) orelse return EngineError.ExceptionPending;
+    defer ffi.v8_Value_Dispose(value);
+    if (ffi.v8_Value_IsUndefined(value)) return null;
+    // The binding's own unwrap rule for an interface-typed value; the
+    // allocator is unused for this type.
+    const instance = v8_conversions.fromV8Value(*runtime.Instance, std.heap.page_allocator, isolate, context, value) catch
+        return EngineError.TypeError;
+    return @ptrCast(instance);
 }
 
 /// Create a V8 ArrayBuffer from bytes

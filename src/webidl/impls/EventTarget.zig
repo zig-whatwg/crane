@@ -6,6 +6,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const abort_algorithms = @import("dom").abort_algorithms;
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -40,8 +41,15 @@ pub const EventListenerRecord = struct {
     /// once (a boolean, initially false)
     once: bool = false,
 
-    /// signal (null or an AbortSignal object)
+    /// signal (null or an AbortSignal object). Read only by "add an event
+    /// listener"; the stored record does not keep the signal alive, so
+    /// nothing may read it afterwards.
     signal: ?*runtime.Instance = null,
+
+    /// Identity for the abort steps "add an event listener" step 6 gives
+    /// the signal: they remove THIS listener, not an equal one added after
+    /// it was removed. Unique per thread; 0 for records never stored.
+    id: u64 = 0,
 
     /// removed (a boolean for bookkeeping purposes, initially false)
     removed: bool = false,
@@ -352,20 +360,75 @@ fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
     return v8_engine.v8_Value_StrictEquals(value_a, value_b);
 }
 
+threadlocal var next_listener_id: u64 = 1;
+
+/// Free what a listener record owns - its type string and its callback
+/// wrapper - for a record that was never stored, or has just left the list.
+fn releaseRecord(internal: *InternalState, record: EventListenerRecord) void {
+    var record_type = record.type;
+    record_type.deinit(internal.allocator);
+    if (record.callback) |callback_instance| {
+        // The stored callback is actually a *runtime.CallbackWrapper
+        const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+        runtime_wrapper.deinit();
+    }
+}
+
+/// The abort steps of "add an event listener" step 6, as the signal holds
+/// them. The signal owns this: `run` frees it, and so does `drop` when the
+/// signal is collected unaborted. The target is held by address and slab
+/// generation, because it can be collected first - nothing V8 sees keeps it
+/// alive for the signal's sake - and the listener by id. A listener removed
+/// some other way leaves this in place until the signal aborts or dies,
+/// where it finds nothing and only frees itself.
+const SignalRemoval = struct {
+    target: *runtime.Instance,
+    target_generation: u64,
+    listener_id: u64,
+
+    fn run(ctx: *anyopaque) void {
+        const self: *SignalRemoval = @ptrCast(@alignCast(ctx));
+        defer std.heap.page_allocator.destroy(self);
+        // "Remove an event listener with eventTarget and listener."
+        if (runtime.SlabAllocator.generationOf(self.target) != self.target_generation) return;
+        const internal = getInternalFromRegistry(self.target) orelse return;
+        const list = internal.event_listener_list orelse return;
+        const slice = list.toSliceMut();
+        for (slice, 0..) |*existing, i| {
+            if (existing.id != self.listener_id) continue;
+            existing.removed = true;
+            releaseRecord(internal, existing.*);
+            _ = list.remove(i) catch unreachable;
+            return;
+        }
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *SignalRemoval = @ptrCast(@alignCast(ctx));
+        std.heap.page_allocator.destroy(self);
+    }
+};
+
 /// DOM §2.7 - add an event listener
 /// To add an event listener, given an EventTarget object eventTarget and
-/// an event listener listener, run these steps:
+/// an event listener listener, run these steps. The record's type string and
+/// callback wrapper are this function's to store or free.
 fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, listener: EventListenerRecord) !void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
     // Step 2: If listener's signal is not null and is aborted, then return
     if (listener.signal) |signal| {
-        // TODO: Check if signal is aborted via AbortSignal interface
-        _ = signal;
+        if (interfaces.AbortSignal.get_aborted(signal) catch false) {
+            releaseRecord(internal, listener);
+            return;
+        }
     }
 
     // Step 3: If listener's callback is null, then return
-    if (listener.callback == null) return;
+    if (listener.callback == null) {
+        releaseRecord(internal, listener);
+        return;
+    }
 
     // Step 4: If listener's passive is null, set it to default passive value
     var updated_listener = listener;
@@ -389,24 +452,35 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
         }
     }
 
-    if (!already_exists) {
-        try list.append(updated_listener);
-    } else {
-        // Listener already exists - clean up the duplicate resources
-        // Free the duplicated type string
-        var listener_type = updated_listener.type;
-        listener_type.deinit(internal.allocator);
-
-        // Also dispose the CallbackWrapper since we're not storing it
-        if (updated_listener.callback) |callback_instance| {
-            // The stored callback is actually a *runtime.CallbackWrapper
-            const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-            runtime_wrapper.deinit();
-        }
+    if (already_exists) {
+        // Listener already exists - clean up the duplicate resources. Its
+        // abort steps (step 6) would remove a listener that was never
+        // appended, which does nothing, so none are added.
+        releaseRecord(internal, updated_listener);
+        return;
     }
 
-    // Step 6: If listener's signal is not null, add abort steps
-    // TODO: Implement abort signal integration
+    updated_listener.id = next_listener_id;
+    next_listener_id += 1;
+    list.append(updated_listener) catch |err| {
+        releaseRecord(internal, updated_listener);
+        return err;
+    };
+
+    // Step 6: If listener's signal is not null, then add the following abort
+    // steps to it: remove an event listener with eventTarget and listener.
+    if (listener.signal) |signal| {
+        const removal = try std.heap.page_allocator.create(SignalRemoval);
+        removal.* = .{
+            .target = instance,
+            .target_generation = runtime.SlabAllocator.generationOf(instance),
+            .listener_id = updated_listener.id,
+        };
+        // The listener is stored; failing to arm its removal leaves it
+        // registered, as an allocation failure anywhere else would.
+        abort_algorithms.add(signal, .{ .ctx = removal, .run = SignalRemoval.run, .drop = SignalRemoval.drop }) catch
+            std.heap.page_allocator.destroy(removal);
+    }
 }
 
 /// DOM §2.7 - remove an event listener
@@ -653,31 +727,42 @@ const FlatOptions = struct {
     signal: ?*runtime.Instance = null,
 };
 
-fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue)) FlatOptions {
+/// DOM "flatten" (`more` false: removeEventListener reads only `capture`)
+/// and "flatten more" (addEventListener).
+///
+/// `options` is `(EventListenerOptions or boolean)` or
+/// `(AddEventListenerOptions or boolean)`, which reaches the impl
+/// unconverted: an OBJECT converts to the dictionary and anything else goes
+/// through ToBoolean. The dictionary's members are read as WebIDL 3.2.18
+/// converts one - EventListenerOptions' `capture` first, then `once`,
+/// `passive`, `signal` - and a throwing getter propagates.
+fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue), comptime more: bool) !FlatOptions {
     if (!options.was_passed) return .{};
 
-    // WebIDL union resolution: an OBJECT converts to the dictionary, anything
-    // else goes through ToBoolean.
     if (options.value == .handle) {
         const engine = ctx.getEngine() orelse return .{};
         const engine_ctx = ctx.getEngineContext() orelse return .{};
-        const get = engine.getPropertyTruthy orelse return .{};
+        const get_boolean = engine.getPropertyBoolean orelse return .{};
         const object = options.value.handle.ptr;
 
-        // Members are truthiness-tested, not identity-tested, so `{capture: 2}`
-        // is capture and `{capture: 0}` is not - which is what
-        // EventListenerOptions-capture.html asserts.
-        return .{
-            .capture = get(engine_ctx, object, "capture", false) catch false,
-            .once = get(engine_ctx, object, "once", false) catch false,
-            // `passive` stays tri-state: absent means "engine decides", which
-            // is not the same as an explicit `passive: false`.
-            .passive = if (get(engine_ctx, object, "passive", false) catch false) true else null,
-            // TODO: `signal` is an AbortSignal object, not a boolean, so it
-            // needs an accessor that returns the value rather than its
-            // truthiness. Left null until there is one.
-            .signal = null,
-        };
+        // Members are ToBoolean-converted, so `{capture: 2}` is capture and
+        // `{capture: 0}` is not - EventListenerOptions-capture.html.
+        var flat: FlatOptions = .{ .capture = (try get_boolean(engine_ctx, object, "capture")) orelse false };
+        if (!more) return flat;
+
+        flat.once = (try get_boolean(engine_ctx, object, "once")) orelse false;
+        // "If options[passive] exists": absent leaves the default passive
+        // value to decide, which is not the same as `passive: false`.
+        flat.passive = try get_boolean(engine_ctx, object, "passive");
+        // `signal` is an AbortSignal, not nullable: anything else - null
+        // included - fails the member's conversion.
+        const get_instance = engine.getPropertyInstance orelse return flat;
+        if (try get_instance(engine_ctx, object, "signal")) |raw| {
+            const signal: *runtime.Instance = @ptrCast(@alignCast(raw));
+            if (signal.stateAs(interfaces.AbortSignal.State) == null) return error.TypeError;
+            flat.signal = signal;
+        }
+        return flat;
     }
 
     return .{ .capture = toBoolean(options.value) };
@@ -696,7 +781,11 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     }
 
     // https://dom.spec.whatwg.org/#concept-flatten-more
-    const flat = flattenOptions(instance.ctx, options);
+    const flat = flattenOptions(instance.ctx, options, true) catch |err| {
+        // The binding handed the callback's wrapper over to be stored.
+        if (callback) |cb_opt| if (cb_opt) |cb| cb.deinit();
+        return err;
+    };
     const capture = flat.capture;
     const passive = flat.passive;
     const once = flat.once;
@@ -728,12 +817,8 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
         .signal = signal,
     };
 
-    addAnEventListener(internal.?, instance, listener) catch |err| {
-        // Clean up owned type on error
-        var type_copy = owned_type;
-        type_copy.deinit(internal.?.allocator);
-        return err;
-    };
+    // It stores or frees the record's type and callback on every path.
+    try addAnEventListener(internal.?, instance, listener);
 }
 
 /// Operation: removeEventListener
@@ -754,7 +839,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     // Removal matches on type, callback AND capture, so discarding the flag
     // here meant `removeEventListener(t, fn, true)` could never find the
     // listener that `addEventListener(t, fn, true)` added.
-    const capture = flattenOptions(instance.ctx, options).capture;
+    const capture = (try flattenOptions(instance.ctx, options, false)).capture;
 
     // Convert callback wrapper to Instance pointer if present
     const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {

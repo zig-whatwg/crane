@@ -73,6 +73,11 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         if (self.reason) |r| v8.ffi.v8_Global_Dispose(r);
+        // A signal that dies unaborted never runs these; their owners gave
+        // them to the signal, so it hands each back to be freed.
+        for (self.abort_algorithms.items) |algorithm| {
+            if (algorithm.drop) |drop| drop(algorithm.ctx);
+        }
         self.abort_algorithms.deinit(allocator);
         self.source_signals.deinit(allocator);
         self.dependent_signals.deinit(allocator);
