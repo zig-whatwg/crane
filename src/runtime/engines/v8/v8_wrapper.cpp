@@ -11431,3 +11431,12 @@ void v8_Isolate_SetHostCreateShadowRealmContextCallback(
 }
 
 } // extern "C"
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----
