@@ -23,6 +23,7 @@ const EngineError = runtime.EngineError;
 
 // V8 FFI and helpers
 const ffi = @import("ffi.zig");
+const js_scope = @import("js_scope.zig");
 const v8_conversions = @import("conversions.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
@@ -87,6 +88,12 @@ pub const v8_engine_interface: EngineInterface = .{
     .destroyPromiseHandle = v8DestroyPromiseHandle,
     .createString = v8CreateString,
     .getPropertyTruthy = v8GetPropertyTruthy,
+    .runClassicScript = v8RunClassicScript,
+    .performMicrotaskCheckpoint = v8PerformMicrotaskCheckpoint,
+    .runTaskInRealm = v8RunTaskInRealm,
+    .runInRealm = v8RunInRealm,
+    .createDOMException = v8CreateDOMException,
+    .releaseValue = v8ReleaseValue,
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,
     .createArrayBuffer = v8CreateArrayBuffer,
@@ -310,6 +317,162 @@ fn v8GetPropertyTruthy(
     defer ffi.v8_Value_Dispose(value);
 
     return ffi.v8_Value_BooleanValue(value, isolate);
+}
+
+// ============================================================================
+// Realm operations (AGENTS.md, "The engine boundary")
+// ============================================================================
+
+/// A realm entered: its agent (isolate), when it was not the current one, and
+/// a scope on its context.
+const EnteredRealm = struct {
+    isolate: *ffi.Isolate,
+    entered_isolate: bool,
+    scope: js_scope.JsScope,
+
+    fn leaveScope(self: EnteredRealm) void {
+        self.scope.deinit();
+    }
+
+    fn leaveAgent(self: EnteredRealm) void {
+        if (self.entered_isolate) ffi.v8_Isolate_Exit(self.isolate);
+    }
+};
+
+/// Enter `realm`: its isolate - recorded on the realm, which a worker realm on
+/// this thread needs, else the current one - then a HandleScope and its context.
+fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
+    const engine_ctx = realm.engine_ctx orelse return EngineError.OperationFailed;
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const current = ffi.v8_Isolate_GetCurrent();
+    const recorded: ?*ffi.Isolate = if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
+    const isolate = recorded orelse current orelse return EngineError.OperationFailed;
+    const entered = current != isolate;
+    if (entered) ffi.v8_Isolate_Enter(isolate);
+    const scope = js_scope.JsScope.initFromV8Context(context) orelse {
+        if (entered) ffi.v8_Isolate_Exit(isolate);
+        return EngineError.OperationFailed;
+    };
+    return .{ .isolate = isolate, .entered_isolate = entered, .scope = scope };
+}
+
+fn v8RunClassicScript(
+    realm: runtime.Context,
+    source: []const u8,
+    source_url: ?[]const u8,
+    report: runtime.ReportExceptionFn,
+    host: ?*anyopaque,
+) EngineError!void {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const isolate = entered.isolate;
+    const context = entered.scope.context;
+
+    // The Window whose realm this runs in is the accessor for cross-origin
+    // checks while it runs.
+    const window = context_manager.getWindowForContext(context);
+    if (window) |w| context_manager.pushAccessorWindow(w);
+    defer if (window != null) context_manager.popAccessorWindow();
+
+    const text = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return EngineError.OperationFailed;
+    defer ffi.v8_String_Dispose(text);
+
+    // "Create a classic script": a script that does not parse has a parse
+    // error, which "run a classic script" step 6 turns into the evaluation
+    // status - reported like anything the script throws.
+    const compiled = if (source_url) |url| blk: {
+        const name = ffi.v8_String_NewFromUtf8(isolate, url.ptr, @intCast(url.len)) orelse return EngineError.OperationFailed;
+        defer ffi.v8_String_Dispose(name);
+        break :blk ffi.v8_Script_CompileWithOrigin_Safe(context, text, name);
+    } else ffi.v8_Script_Compile_Safe(context, text);
+    defer ffi.v8_FreeScriptCompileResult(compiled);
+
+    if (compiled.script) |script| {
+        defer ffi.v8_Script_Dispose(script);
+        // Step 7: ScriptEvaluation. Step 8: report an exception, while the
+        // result that owns its error information is alive.
+        const run = ffi.v8_Script_Run_Safe(context, script);
+        defer ffi.v8_FreeScriptRunResult(run);
+        if (run.value) |value| ffi.v8_Global_Dispose(value);
+        if (run.error_info) |info| reportException(isolate, info, report, host);
+    } else if (compiled.error_info) |info| {
+        reportException(isolate, info, report, host);
+    }
+}
+
+const PendingReport = struct {
+    info: *const ffi.V8ErrorInfo,
+    report: runtime.ReportExceptionFn,
+    host: ?*anyopaque,
+};
+
+/// Hand a thrown value to the host's "report an exception", with V8's
+/// automatic microtask checkpoints held off until it returns: the spec
+/// reports before "clean up after running script" performs the checkpoint.
+fn reportException(isolate: *ffi.Isolate, info: *const ffi.V8ErrorInfo, report: runtime.ReportExceptionFn, host: ?*anyopaque) void {
+    var pending = PendingReport{ .info = info, .report = report, .host = host };
+    ffi.v8_RunWithMicrotasksSuppressed(isolate, runPendingReport, &pending);
+}
+
+fn runPendingReport(data: ?*anyopaque) callconv(.c) void {
+    const pending: *PendingReport = @ptrCast(@alignCast(data orelse return));
+    const info = pending.info;
+    const error_info = runtime.ErrorInfo{
+        .message = info.getMessage() orelse "Uncaught exception",
+        .filename = info.getResourceName() orelse "",
+        .lineno = if (info.line_number > 0) @intCast(info.line_number) else 0,
+        // V8 counts columns from 0; ErrorEvent.colno counts from 1.
+        .colno = if (info.column_number >= 0) @intCast(info.column_number + 1) else 0,
+        // Borrowed: the error information owns it until this returns.
+        .error_value = if (info.exception) |value| runtime.JSValue{ .handle = .{ .ptr = value, .needs_disposal = false } } else null,
+    };
+    pending.report(pending.host, &error_info);
+}
+
+fn v8PerformMicrotaskCheckpoint(realm: runtime.Context) EngineError!void {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    entered.leaveScope();
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+}
+
+fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    {
+        defer entered.leaveScope();
+        steps(data);
+    }
+    // The end of the task, with the agent still entered: the realm's own
+    // (a worker's event loop does more than a checkpoint); for a window, the
+    // host loop's checkpoint follows the task.
+    if (realm.end_of_task) |end| end(realm);
+}
+
+fn v8RunInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    steps(data);
+}
+
+fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []const u8) EngineError!runtime.JSValue {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const value = v8_conversions.newDOMExceptionFromContext(entered.isolate, entered.scope.context, name, message) orelse
+        return EngineError.OperationFailed;
+    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+}
+
+fn v8ReleaseValue(value: runtime.JSValue) void {
+    switch (value) {
+        .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
+            ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
+        },
+        else => {},
+    }
 }
 
 /// Get(object, name) for a dictionary member: the value (owned, the

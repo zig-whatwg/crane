@@ -171,6 +171,13 @@ pub const ContextData = struct {
     /// Engine-specific opaque context (V8 Isolate, JSC VM, etc.)
     engine_ctx: ?*anyopaque,
 
+    /// What ends a task in this realm beyond the microtask checkpoint, when
+    /// its event loop does more - a worker's forwards what the worker posted
+    /// and schedules its next dispatch. Set by the host that runs the realm;
+    /// the engine's `runTaskInRealm` calls it after the task's steps. Null
+    /// for a window realm, whose host loop ends its own tasks.
+    end_of_task: ?*const fn (realm: *ContextData) void = null,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)

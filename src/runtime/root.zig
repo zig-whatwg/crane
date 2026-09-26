@@ -157,6 +157,9 @@ pub const EngineError = @import("engine_interface.zig").EngineError;
 pub const MainThreadCallback = @import("engine_interface.zig").MainThreadCallback;
 pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfillCallback;
 pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
+pub const ErrorInfo = @import("engine_interface.zig").ErrorInfo;
+pub const ReportExceptionFn = @import("engine_interface.zig").ReportExceptionFn;
+pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
 pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 

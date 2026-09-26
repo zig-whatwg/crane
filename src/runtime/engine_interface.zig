@@ -35,6 +35,7 @@
 
 const std = @import("std");
 const JSValue = @import("js_value.zig").JSValue;
+const Context = @import("context.zig").Context;
 
 /// Callback signature for main thread scheduling
 ///
@@ -114,7 +115,43 @@ pub const EngineError = error{
     ExceptionPending,
     /// V8 object creation from template failed
     ObjectCreationFailed,
+    /// This engine does not provide the operation (AGENTS.md, "The engine
+    /// boundary": every Engine operation has an explicit entry in every
+    /// engine's table, so a missing one fails loudly, never silently).
+    NotSupported,
 };
+
+/// HTML "extract error information" (8.1.4.6 "report an exception", step 2)
+/// from a thrown value: what an ErrorEvent carries.
+///
+/// BORROWED FOR THE CALL: every field, `error_value` included, is valid only
+/// until the callback it is handed to returns. A reporter that keeps any of it
+/// copies it first.
+pub const ErrorInfo = struct {
+    message: []const u8,
+    /// The script's URL, or "" when it has none.
+    filename: []const u8,
+    /// 1-based; 0 when unknown.
+    lineno: u32,
+    /// 1-based, as every engine that reports ErrorEvent.colno counts; 0 when
+    /// unknown.
+    colno: u32,
+    /// The thrown value itself - `runtime.JSValue.handle` with
+    /// `needs_disposal = false`, since the engine owns it.
+    error_value: ?JSValue,
+};
+
+/// HTML "report an exception", as the host supplies it to an operation that
+/// runs script with "rethrow errors" false. The engine calls it from inside
+/// the operation, before any microtask checkpoint and with the engine's
+/// automatic checkpoints held off - "run a classic script" reports (step 8)
+/// before "clean up after running script" performs the checkpoint (step 9).
+/// `host` is the pointer the caller passed alongside it.
+pub const ReportExceptionFn = *const fn (host: ?*anyopaque, info: *const ErrorInfo) void;
+
+/// Steps an operation runs inside a realm: `data` is the pointer the caller
+/// passed alongside them.
+pub const RealmSteps = *const fn (data: ?*anyopaque) void;
 
 /// Abstract interface for JavaScript engine operations
 ///
@@ -692,6 +729,75 @@ pub const EngineInterface = struct {
         script: *anyopaque,
     ) EngineError!?*anyopaque,
 
+    /// HTML "create a classic script" (8.1.4.2) from `source` and "run a
+    /// classic script" (8.1.4.4) with rethrow errors false, in `realm`: a parse error or a thrown exception is handed to
+    /// `report` (see `ReportExceptionFn`) and is not returned. The engine
+    /// opens and closes whatever scope it needs, so a caller needs none, and
+    /// no engine handle outlives the call. Muting (step 8's "muted errors")
+    /// is the reporter's to apply; the engine reports what was thrown.
+    ///
+    /// "Clean up after running script" is the caller's: call
+    /// `performMicrotaskCheckpoint` when the JavaScript execution context
+    /// stack is empty.
+    ///
+    /// Arguments:
+    ///   - realm: the realm to run in (a runtime.Context)
+    ///   - source: UTF-8 source text
+    ///   - source_url: the script's URL (the base for its errors), or null
+    ///   - report, host: the host's "report an exception" and its context
+    runClassicScript: ?*const fn (
+        realm: Context,
+        source: []const u8,
+        source_url: ?[]const u8,
+        report: ReportExceptionFn,
+        host: ?*anyopaque,
+    ) EngineError!void,
+
+    /// HTML "perform a microtask checkpoint" (8.1.7.3) for the agent `realm`
+    /// belongs to: run the microtask queue until it is empty.
+    /// "Clean up after running script" performs it when the JavaScript
+    /// execution context stack is empty.
+    performMicrotaskCheckpoint: ?*const fn (
+        realm: Context,
+    ) EngineError!void,
+
+    /// HTML "queue a global task" (8.1.7.1), the task's run side: run
+    /// `steps` as a task of `realm` - entering the realm (for a
+    /// worker realm on this thread, its agent too), and afterwards doing
+    /// what ends a task there: the microtask checkpoint, and for a worker
+    /// whatever else its event loop does at the end of a task. For a caller
+    /// on the host's event loop - a network completion, a timer - that is not
+    /// already running script in that realm.
+    runTaskInRealm: ?*const fn (
+        realm: Context,
+        steps: RealmSteps,
+        data: ?*anyopaque,
+    ) EngineError!void,
+
+    /// Run `steps` synchronously with `realm` as the current realm - what "create X in the relevant realm of Y" needs when the
+    /// caller is running in another one. No task boundary, no checkpoint.
+    runInRealm: ?*const fn (
+        realm: Context,
+        steps: RealmSteps,
+        data: ?*anyopaque,
+    ) EngineError!void,
+
+    /// WebIDL "create a DOMException" named `name` with `message`, in
+    /// `realm`. OWNED: the caller releases the result with
+    /// `releaseValue` (or hands it to an operation documented to take it).
+    createDOMException: ?*const fn (
+        realm: Context,
+        name: []const u8,
+        message: []const u8,
+    ) EngineError!JSValue,
+
+    /// Release a value an operation documented as OWNED returned. A value
+    /// with `needs_disposal = false`, or one that is not a handle, is left
+    /// alone, so any JSValue may be passed.
+    releaseValue: ?*const fn (
+        value: JSValue,
+    ) void,
+
     /// Compile an ES module from source
     ///
     /// Compiles JavaScript module source code into a module object.
@@ -968,6 +1074,12 @@ pub const stub_engine: EngineInterface = .{
     .chainPromiseHandlers = stubChainPromiseHandlers,
     .compileScript = stubCompileScript,
     .runScript = stubRunScript,
+    .runClassicScript = null,
+    .performMicrotaskCheckpoint = null,
+    .runTaskInRealm = null,
+    .runInRealm = null,
+    .createDOMException = null,
+    .releaseValue = null,
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
     .disposeScript = stubDisposeScript,

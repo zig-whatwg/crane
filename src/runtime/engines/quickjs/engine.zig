@@ -70,6 +70,14 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .isFrozen = quickjsIsFrozen,
     .name = "QuickJS",
     .version = "2024-01",
+    // Realm operations (AGENTS.md, "The engine boundary"): not yet provided
+    // by this engine - explicit, so a build on it fails loudly, never silently.
+    .runClassicScript = notSupportedRunClassicScript,
+    .performMicrotaskCheckpoint = notSupportedPerformMicrotaskCheckpoint,
+    .runTaskInRealm = notSupportedRunTaskInRealm,
+    .runInRealm = notSupportedRunInRealm,
+    .createDOMException = notSupportedCreateDOMException,
+    .releaseValue = notSupportedReleaseValue,
 };
 
 /// Promise handle for tracking QuickJS promise state
@@ -755,3 +763,21 @@ test "quickjs_engine_interface - has all required functions" {
     try testing.expect(quickjs_engine_interface.destroyCallbackWrapper != null);
     try testing.expectEqualStrings("QuickJS", quickjs_engine_interface.name);
 }
+
+// TODO(engine adapter): the realm operations on this engine.
+fn notSupportedRunClassicScript(_: runtime.Context, _: []const u8, _: ?[]const u8, _: runtime.ReportExceptionFn, _: ?*anyopaque) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedPerformMicrotaskCheckpoint(_: runtime.Context) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedRunTaskInRealm(_: runtime.Context, _: runtime.RealmSteps, _: ?*anyopaque) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedRunInRealm(_: runtime.Context, _: runtime.RealmSteps, _: ?*anyopaque) EngineError!void {
+    return EngineError.NotSupported;
+}
+fn notSupportedCreateDOMException(_: runtime.Context, _: []const u8, _: []const u8) EngineError!runtime.JSValue {
+    return EngineError.NotSupported;
+}
+fn notSupportedReleaseValue(_: runtime.JSValue) void {}

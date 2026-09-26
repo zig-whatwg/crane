@@ -458,6 +458,73 @@ and was 138/434 by the time anyone checked.
 
 ---
 
+## The engine boundary
+
+**Crane's JavaScript engine is an adapter.** V8 is one implementation of it,
+statically linked on desktop and server; on iOS Crane links the system
+JavaScriptCore dynamically instead. Behaviour may differ between targets only
+where the difference is declared - never by accident.
+
+```
+src/runtime/engines/v8/   the V8 adapter: v8_wrapper.cpp, ffi.zig, interface.zig,
+                          conversions.zig, wrapper_cache, context_manager,
+                          snapshot_loader, event_loop, legacy_factory_functions
+tests/v8/                 the adapter's tests
+everything else           runtime.Instance, runtime.JSValue, runtime.Context and
+                          the Engine table (src/runtime/engine_interface.zig)
+```
+
+1. **V8 types and calls live only in the adapter.** Outside
+   `src/runtime/engines/v8/` and `tests/v8/` - impls, src/html, src/dom,
+   src/fetch, src/browser, src/websocket, streams, the parsers, tools - there
+   is no `@import("v8")`, no `v8_*`, and no Isolate, Global, Local or
+   HandleScope. The generated WebIDL interfaces are engine-neutral comptime
+   tables the adapter consumes; codegen never emits an engine call.
+2. **An engine need is an Engine operation, named after the spec concept** -
+   create, resolve or reject a promise; invoke a callback; wrap an instance;
+   run a microtask checkpoint; create a realm, or one reusing a WindowProxy;
+   serialize a value; read a dictionary member (`getPropertyBoolean`,
+   `getPropertyInstance` are the model). Never a pass-through with a V8-shaped
+   signature: a seam that mirrors V8's API is not an adapter.
+3. **Every new Engine operation** gets its V8 implementation and an explicit
+   `error.NotSupported` (or TODO-marked) entry in the jsc/ and quickjs/
+   tables, so a non-V8 build fails loudly. The integrator owns
+   engine_interface.zig; lanes request additions the way they request grants.
+4. **Ownership never crosses the seam implicitly.** The adapter owns engine
+   handles. An operation whose result the caller must release says so in its
+   type and at its declaration (explicit retain/release on `runtime.JSValue`,
+   or borrowed for the call). "Every `v8_*` return is owned" is an
+   adapter-internal rule.
+5. **Engine-specific capabilities are declared, not assumed** - snapshots,
+   detaching and reusing a global proxy, synchronous module resolve, explicit
+   microtask control are capability flags or optional Engine functions, and
+   callers handle "unsupported". The no-snapshot startup path keeps working,
+   because JavaScriptCore runs on it.
+6. **Existing debt is paid file by file.** Editing a file that makes direct V8
+   calls means moving that file's calls behind the Engine table in the same
+   change. The engine is selected at build time (`-Dengine=v8|jsc|quickjs`);
+   the Engine table stays function pointers, so static and dynamic linking both
+   work.
+
+**Checked, and `zig build test` runs the check:**
+
+```bash
+zig build lint-engine -j2 --cache-dir /tmp/crane-z16-cache               # fails on any new V8 reference outside the adapter
+zig build lint-engine -j2 --cache-dir /tmp/crane-z16-cache -- --update   # after paying debt down: record the lower baseline
+```
+
+`tools/lint_engine_boundary.zig` counts, per file AND per name, every import
+whose path names V8, every `v8_*` identifier, and every member reached through
+an alias of a V8 import (`v8.context_manager`, `v8.ffi.Isolate`), against
+`tools/engine_boundary_baseline.txt`. A count that rises fails, and so does a
+pair the baseline lacks - which catches a swap. The baseline only goes down;
+when it reaches zero, "v8" leaves the non-adapter modules' imports in build.zig
+and the module graph enforces the rule. Report the baseline's total in every
+summary, beside blocking files and passing subtests. Why this rule exists:
+[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md).
+
+---
+
 ## Golden rules
 
 1. **Algorithm precision.** WHATWG specs define web platform behaviour.
@@ -537,6 +604,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 - Committing a hand-edited generated file
 - Calling impls across the boundary in **new** code - `zig build lint-impls`
   (part of `zig build test`) enforces it
+- V8 outside the V8 adapter in **new** code - `zig build lint-engine` (part of
+  `zig build test`) enforces it; see "The engine boundary"
 - A `get_`/`set_`/`call_` name on a function the generated code does not bind -
   see "Names are the binding map"; `zig build lint-impls` enforces it
 - A new tool written in anything but Zig (the existing WPT tools excepted) -
@@ -555,6 +624,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
   `tools/impls_boundary_baseline.txt`, which may only go down
 - API-named functions in mixin impls that nothing calls - recorded in
   `tools/impls_naming_baseline.txt`, which may only go down
+- V8 references outside src/runtime/engines/v8/ - recorded in
+  `tools/engine_boundary_baseline.txt`, which may only go down
 - Non-Zig tools outside the WPT exception: `tools/update_impl_signatures.py`
 - Untested and undocumented code exists
 
@@ -710,6 +781,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An object the engine makes for a Zig holder must be wrapped or pinned](docs/lessons/architecture-an-object-the-engine-makes-for-a-zig-holder-must-be-pinned.md) - Before you store a pointer to an Instance, decide whether the wrapper cache or a pin keeps it alive.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
+- [Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md) - An engine reached from everywhere cannot be swapped anywhere; hold the seam with a ratchet before the coupling grows.
 - [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
 - [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
 - ["Is this still its Window's document?" stops working once navigations make new Windows](docs/lessons/architecture-ask-the-document-whether-it-is-fully-active-not-its-window.md) - Ask the document whether it is fully active, not its Window.
