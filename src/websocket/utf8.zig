@@ -31,6 +31,36 @@ pub fn isValidUtf8(data: []const u8) bool {
     return std.unicode.utf8ValidateSlice(data);
 }
 
+/// A string as a sequence of Unicode scalar values (WebIDL § 3.2.12,
+/// USVString), for bytes that may carry lone surrogates.
+///
+/// V8 writes a lone surrogate - U+D800 to U+DFFF, which is not a scalar value -
+/// as its three-byte generalized encoding: ED A0..BF 80..BF. That is not UTF-8,
+/// and a text frame carrying it makes the peer fail the connection. Each one
+/// becomes U+FFFD, which is also three bytes, so lengths do not change.
+/// A surrogate PAIR arrives as one four-byte character and is untouched.
+///
+/// Returns null when there is nothing to replace; otherwise a copy the caller
+/// owns.
+pub fn toScalarValues(allocator: std.mem.Allocator, bytes: []const u8) !?[]u8 {
+    var first = findSurrogate(bytes, 0) orelse return null;
+    const out = try allocator.dupe(u8, bytes);
+    while (true) {
+        out[first..][0..3].* = .{ 0xEF, 0xBF, 0xBD };
+        first = findSurrogate(bytes, first + 3) orelse return out;
+    }
+}
+
+/// The offset of the next encoded surrogate at or after `from`.
+fn findSurrogate(bytes: []const u8, from: usize) ?usize {
+    var i = from;
+    while (i + 2 < bytes.len) : (i += 1) {
+        if (bytes[i] == 0xED and bytes[i + 1] >= 0xA0 and bytes[i + 1] <= 0xBF and
+            bytes[i + 2] >= 0x80 and bytes[i + 2] <= 0xBF) return i;
+    }
+    return null;
+}
+
 /// Streaming UTF-8 validator for fragmented messages.
 ///
 /// Handles multi-byte UTF-8 sequences that may span fragment boundaries.
