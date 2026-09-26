@@ -702,6 +702,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Anything with network activity pending must hold its own wrapper](docs/lessons/architecture-anything-with-network-activity-pending-must-hold.md) - When moving work off the call stack, ask what keeps the object alive until the work finishes.
 - [Single-threaded networking must send the request before the script ends, and let the timer decide timeouts](docs/lessons/architecture-single-threaded-networking-must-send-the-request.md) - "In parallel" in a spec means the network makes progress while script runs.
 - [A defer that frees `self` runs before the earlier defers that read it](docs/lessons/architecture-a-defer-that-frees-self-runs-before-earlier-defers.md) - When a function frees its own receiver in a defer, every other defer that touches the receiver must be declared after it - or read what it needs into a local first.
+- [An object wrapped in two realms must outlive both wrappers](docs/lessons/architecture-an-object-wrapped-in-two-realms-outlives-both.md) - Ask how many wrappers an object can have before freeing it when one dies.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
 
 ### Spec Compliance
