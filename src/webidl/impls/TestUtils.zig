@@ -19,20 +19,19 @@
 //!
 //! ## Engine Abstraction
 //!
-//! GC and the promise both go through the runtime's EngineInterface, not
-//! direct V8 calls (AGENTS.md, "The engine boundary").
+//! GC and the promise both go through the engine protocol
+//! (`@import("engine")`), not direct V8 calls (AGENTS.md, "The engine
+//! boundary"): static calls into the build's engine adapter.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 
 /// Error set for TestUtils operations
 pub const TestUtilsError = error{
-    /// No JavaScript engine available in context
-    NoEngine,
-    /// Engine context not available
-    NoEngineContext,
-    /// The engine does not provide an operation gc() needs
-    NotSupported,
+    /// The realm has no agent recorded: the engine did not create it, so
+    /// there is no heap of its to collect.
+    NoAgent,
 };
 
 /// Operation: gc
@@ -53,18 +52,16 @@ pub const TestUtilsError = error{
 /// already happened when step 3 returns - `p` is a promise resolved with
 /// undefined, made in the current realm.
 pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
-    const engine = ctx.getEngine() orelse return TestUtilsError.NoEngine;
-    const engine_ctx = ctx.getEngineContext() orelse return TestUtilsError.NoEngineContext;
-    const collect = engine.requestGarbageCollection orelse return TestUtilsError.NotSupported;
-    const resolved_with = engine.createResolvedPromise orelse return TestUtilsError.NotSupported;
-    const current_realm = engine.currentRealm orelse return TestUtilsError.NotSupported;
+    const realm = engine.currentRealm() orelse ctx;
 
-    // Step 2.1: implementation-defined steps to collect garbage.
-    try collect(engine_ctx);
+    // Step 2.1: implementation-defined steps to collect garbage - the whole
+    // heap of the realm's agent, which covers the entry realm.
+    engine.requestGarbageCollection(realm.agent orelse return TestUtilsError.NoAgent);
 
     // Steps 1, 2.2 and 3: p, resolved with undefined (Promise<undefined>).
     // OWNED: the binding takes it.
-    return resolved_with(current_realm() orelse ctx, runtime.JSValue.jsUndefined);
+    const p = try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined);
+    return p.take();
 }
 
 // ============================================================================
