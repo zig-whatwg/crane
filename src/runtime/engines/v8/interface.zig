@@ -2006,6 +2006,22 @@ pub fn V8Interface(comptime Interface: type) type {
             return ptr_child_info == .@"fn";
         }
 
+        /// The Window of the realm a [Global] accessor or operation belongs to.
+        ///
+        /// V8 calls a global's accessors and operations with the global PROXY as
+        /// `this`, and the proxy's internal field names the Window it is attached
+        /// to now. A navigation that makes a new Window reattaches the proxy, so
+        /// for code left behind in the old realm - an unload handler, a timer, a
+        /// function another window kept - the field names the NEW Window, while
+        /// an unqualified `document` there resolves on the old realm's own global
+        /// object (the old Window) by the spec. Blink reads the holder, the global
+        /// object itself; here the context manager records each realm's Window.
+        /// For an attached realm both answers are the same Window.
+        fn realmWindow(method_ctx: *v8.Context, method_global: *v8.Object) ?*anyopaque {
+            if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| return @ptrCast(window);
+            return v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+        }
+
         /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
         /// platform object that implements the interface, throw a TypeError"
         /// ([LegacyLenientThis]: return undefined). The receiver checks in
@@ -2143,7 +2159,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // Check if this IS the method's global object
                                         // (handles normal case: window.name where this === window)
                                         if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            const global_ptr = realmWindow(method_ctx, method_global);
                                             if (global_ptr != null) {
                                                 break :blk global_ptr;
                                             }
@@ -2179,7 +2195,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // Check if it's a DIFFERENT global (cross-realm case)
                                             // If this_obj is caller's global (different from method's global),
                                             // use method's global per WebIDL implicit this rules
-                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            const global_ptr = realmWindow(method_ctx, method_global);
 
                                             // Check if this_obj is a global object from any context
                                             // by checking if it equals its own context's global
@@ -2848,7 +2864,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
@@ -2871,7 +2887,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
@@ -2951,7 +2967,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(context_global);
                                     // Check if this_obj IS the current context's global
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
+                                        const global_ptr = realmWindow(ctx, context_global);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
@@ -7585,7 +7601,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (global_ptr != null) {
                                             break :blk global_ptr;
                                         }
@@ -7608,7 +7624,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
