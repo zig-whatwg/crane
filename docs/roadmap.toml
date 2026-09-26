@@ -403,7 +403,7 @@ paths = ["src/runtime/ (bindings, conversions, wrapper cache, v8_wrapper.cpp)", 
 name = "Asynchronous networking"
 infra = "networking"
 owner = "agent"
-status = "doing"
+status = "paused"
 branch = "lane/networking"
 paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "conversions.zig: convertBodyInit and the union Instance-arm implements check", "interface.zig: the argument-cleanup predicates' BodyInit entries", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
 
@@ -443,7 +443,7 @@ paths = ["src/websocket/", "src/webidl/impls/{WebSocket,CloseEvent}.zig", "tests
 name = "Scripting (the script element)"
 area = "html/semantics/scripting-1/"
 owner = "agent"
-status = "doing"
+status = "paused"
 branch = "lane/scripting"
 paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "increment 2: src/html/parser/, src/html/scripted_parser.zig, src/html/dom_tree_adapter.zig, src/webidl/impls/HTMLParser.zig, Document.call_write/call_writeln, the script registration in src/dom/attribute_change_steps.zig, html/syntax/ and html/webappapis/dynamic-markup-insertion/", "tests/html/script*", "tests/html/module*", "tests/html/parser*", "tests/wpt/crane/script-*", "tests/wpt/crane/parse-*"]
 
