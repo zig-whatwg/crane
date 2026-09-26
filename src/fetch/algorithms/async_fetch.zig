@@ -6,11 +6,14 @@
 //! step (`pump`). Nothing waits in between: script, timers and other fetches
 //! run while the response is on its way.
 //!
-//! A response is handed on as soon as its headers are in, as HTTP-network
-//! fetch does (step 20): its body arrives afterwards, through the pipe the
-//! response's body reads (`internal/body_pipe.zig`), which this fetch fills
-//! from the transfer. A client that wants the whole body at once asks for
-//! `collect`, and hears nothing until the body has arrived.
+//! `start` hands the response on with its whole body, as bytes: the client
+//! hears nothing until the body has arrived. `startStreaming` hands it on as
+//! soon as its headers are in, as HTTP-network fetch does (step 20): its body
+//! arrives afterwards, through the pipe the response's body reads
+//! (`internal/body_pipe.zig`), which this fetch fills from the transfer.
+//! Streaming is the opt-in: a client that reads `body.getBytes()` and knows
+//! nothing of pipes would otherwise read an empty body - and freeing the
+//! response would cancel the transfer.
 //!
 //! Its client - `fetch()`, the method, or an XMLHttpRequest - hears the
 //! response through `done`, and only ever from `pump`: never from inside
@@ -82,14 +85,9 @@ pub const AsyncFetch = struct {
         finished: ?*const fn (context: *anyopaque) void = null,
     };
 
-    pub const Options = struct {
-        /// Hand the response on only once its whole body has arrived, as
-        /// bytes - for a client that reads nothing until then.
-        collect: bool = false,
-    };
-
     /// Start fetching `request`, whose ownership passes to the fetch - even
-    /// when this fails. The client hears nothing before the next `pump`.
+    /// when this fails. The client hears nothing before the next `pump`, and
+    /// then hears the response with its whole body, as bytes.
     pub fn start(
         allocator: Allocator,
         request: *InternalRequest,
@@ -97,14 +95,26 @@ pub const AsyncFetch = struct {
         scheduler: *NetworkScheduler,
         client: Client,
     ) FetchError!*AsyncFetch {
-        return startWith(allocator, request, options, .{}, scheduler, client);
+        return begin(allocator, request, options, true, scheduler, client);
     }
 
-    pub fn startWith(
+    /// As `start`, but the client hears the response at its headers, with
+    /// its body still arriving through its pipe.
+    pub fn startStreaming(
         allocator: Allocator,
         request: *InternalRequest,
         options: FetchOptions,
-        async_options: Options,
+        scheduler: *NetworkScheduler,
+        client: Client,
+    ) FetchError!*AsyncFetch {
+        return begin(allocator, request, options, false, scheduler, client);
+    }
+
+    fn begin(
+        allocator: Allocator,
+        request: *InternalRequest,
+        options: FetchOptions,
+        collect: bool,
         scheduler: *NetworkScheduler,
         client: Client,
     ) FetchError!*AsyncFetch {
@@ -120,7 +130,7 @@ pub const AsyncFetch = struct {
             .allocator = allocator,
             .job = job,
             .scheduler = scheduler,
-            .collect = async_options.collect,
+            .collect = collect,
             .client = client,
         };
         live.append(std.heap.smp_allocator, self) catch return FetchError.OutOfMemory;
@@ -130,10 +140,16 @@ pub const AsyncFetch = struct {
     }
 
     /// End the fetch now: its transfer is cancelled, a body still arriving
-    /// ends with `failure`, and the client hears nothing more. The handle is
-    /// gone. `failure`'s reason, if any, is the body's from here - or freed,
-    /// if there is no body to fail.
-    pub fn terminate(self: *AsyncFetch, failure: Failure) void {
+    /// fails as aborted, and the client hears nothing more. The handle is
+    /// gone.
+    pub fn terminate(self: *AsyncFetch) void {
+        self.terminateWith(.{ .kind = .aborted });
+    }
+
+    /// As `terminate`, with the failure a body still arriving ends with.
+    /// `failure`'s reason, if any, is the body's from here - or freed, if
+    /// there is no body to fail.
+    pub fn terminateWith(self: *AsyncFetch, failure: Failure) void {
         if (self.transfer) |transfer| self.scheduler.cancel(transfer);
         self.transfer = null;
         if (self.source) |source| {
@@ -352,7 +368,7 @@ pub fn sweep() bool {
             continue;
         }
         const client = f.client;
-        f.terminate(.{ .kind = .network });
+        f.terminateWith(.{ .kind = .network });
         client.gone(client.context);
         terminated = true;
     }
