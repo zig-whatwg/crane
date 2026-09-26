@@ -8,7 +8,6 @@
 //! a range of records from an object store or index.
 
 const std = @import("std");
-const v8 = @import("v8");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -315,46 +314,12 @@ fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
             // Note: BackendKey may need to copy the string if it outlives jsvalue
             return BackendKey.string(str.data);
         },
-        .handle => |h| {
-            // Handle is an engine-managed value - need to extract the actual value
-            // For now, try to convert via the anyopaque pointer
-            const ptr = h.ptr;
-            const v8_value: *v8.ffi.Value = @ptrCast(ptr);
-
-            // Check for number
-            if (v8.ffi.v8_Value_IsNumber(v8_value)) {
-                const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.DataError;
-                const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.DataError;
-                defer v8.ffi.v8_Context_Dispose(context);
-                const num = v8.ffi.v8_Value_NumberValue(v8_value, context);
-
-                // Check for NaN
-                if (num != num) {
-                    return error.DataError;
-                }
-                return BackendKey.number(num);
-            }
-
-            // Check for string
-            if (v8.ffi.v8_Value_IsString(v8_value)) {
-                // TODO: Implement proper string key extraction
-                return error.DataError;
-            }
-
-            // Check for Array
-            if (v8.ffi.v8_Value_IsArray(v8_value)) {
-                // TODO: Implement array key conversion
-                return error.DataError;
-            }
-
-            // Check for object (could be Date)
-            if (v8.ffi.v8_Value_IsObject(v8_value)) {
-                // TODO: Implement Date and ArrayBuffer key support
-                return error.DataError;
-            }
-
-            return error.DataError;
-        },
+        // An object: a Date, a buffer source or an Array key. Reading one (a
+        // Date's time value, a buffer's bytes, an Array's elements) needs
+        // Engine operations that do not exist yet, so it is an invalid key -
+        // as it was when this read V8 values: the binding hands numbers and
+        // strings over as `.number` and `.string`, never as handles.
+        .handle => return error.DataError,
         .undefined, .null => return error.DataError,
         .boolean => return error.DataError,
         .instance => return error.DataError,
