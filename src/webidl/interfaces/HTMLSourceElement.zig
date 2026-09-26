@@ -286,9 +286,9 @@ pub const HTMLSourceElement = struct {
         return try HTMLSourceElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLSourceElementImpl, "get_src")) return try HTMLSourceElementImpl.get_src(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });

@@ -420,9 +420,9 @@ pub const HTMLTableElement = struct {
         return value;
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLTableElementImpl, "get_align")) return try HTMLTableElementImpl.get_align(instance);
         return try reflection.get(DOMString, instance, .{ .name = "align" });

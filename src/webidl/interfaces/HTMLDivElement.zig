@@ -256,9 +256,9 @@ pub const HTMLDivElement = struct {
         return try HTMLDivElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLDivElementImpl, "get_align")) return try HTMLDivElementImpl.get_align(instance);
         return try reflection.get(DOMString, instance, .{ .name = "align" });

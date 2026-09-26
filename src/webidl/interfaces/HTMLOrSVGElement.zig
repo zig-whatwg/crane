@@ -133,9 +133,9 @@ pub const HTMLOrSVGElement = struct {
         try HTMLOrSVGElementImpl.set_nonce(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLOrSVGElementImpl, "get_autofocus")) return try HTMLOrSVGElementImpl.get_autofocus(instance);
         return try reflection.get(bool, instance, .{ .name = "autofocus" });

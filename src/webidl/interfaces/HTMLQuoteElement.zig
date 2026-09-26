@@ -256,9 +256,9 @@ pub const HTMLQuoteElement = struct {
         return try HTMLQuoteElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLQuoteElementImpl, "get_cite")) return try HTMLQuoteElementImpl.get_cite(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "cite", .url = true });

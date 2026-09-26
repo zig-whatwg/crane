@@ -301,9 +301,9 @@ pub const HTMLFieldSetElement = struct {
         return try HTMLFieldSetElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "get_disabled")) return try HTMLFieldSetElementImpl.get_disabled(instance);
         return try reflection.get(bool, instance, .{ .name = "disabled" });

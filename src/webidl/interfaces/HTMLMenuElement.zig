@@ -256,9 +256,9 @@ pub const HTMLMenuElement = struct {
         return try HTMLMenuElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLMenuElementImpl, "get_compact")) return try HTMLMenuElementImpl.get_compact(instance);
         return try reflection.get(bool, instance, .{ .name = "compact" });

@@ -271,9 +271,9 @@ pub const HTMLOListElement = struct {
         return try HTMLOListElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_reversed(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLOListElementImpl, "get_reversed")) return try HTMLOListElementImpl.get_reversed(instance);
         return try reflection.get(bool, instance, .{ .name = "reversed" });

@@ -3551,29 +3551,12 @@ pub fn writeDelegateFunctions(
         const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
         defer if (name_was_sanitized) allocator.free(sanitized_name);
 
-        // Write extended attributes as comment
-        try writeExtendedAttributesComment(writer, attr.extAttrs);
-
-        const get_prefix = getterPrefix(attr);
-        const set_prefix = setterPrefix(attr);
-
         // An inherited mixin member is the includer's by inheritance (WebIDL
         // `includes`): it takes the mixin module's function, the one place the
         // member reaches the mixin's impl. Only a [SameObject] one is written
         // out below, to cache in this interface's own State around the
         // inherited getter.
         const inherited = inheritedFrom(options, attr.mixin);
-        const caches = has_same_object and !attr.static and options.same_object_cache;
-        if (inherited) |mixin| if (!caches) {
-            try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
-            if (mixinModuleHasSetter(attr)) {
-                try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ set_prefix, sanitized_name, mixin, set_prefix, sanitized_name });
-            }
-            try writer.writeAll("\n");
-            continue;
-        };
-        const member_impl = if (inherited) |mixin| try std.fmt.allocPrint(allocator, "mixins.{s}", .{mixin}) else impl_name;
-        defer if (inherited != null) allocator.free(member_impl);
 
         // HTML 2.6: a [Reflect*] attribute reflects its content attribute
         // unless the impl implements it. An inherited member reflects in its
@@ -3587,6 +3570,24 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("    const reflection = @import(\"impls\").reflection;\n\n");
             reflection_declared = true;
         }
+
+        // Write extended attributes as comment
+        try writeExtendedAttributesComment(writer, attr.extAttrs);
+
+        const get_prefix = getterPrefix(attr);
+        const set_prefix = setterPrefix(attr);
+
+        const caches = has_same_object and !attr.static and options.same_object_cache;
+        if (inherited) |mixin| if (!caches) {
+            try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
+            if (mixinModuleHasSetter(attr)) {
+                try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ set_prefix, sanitized_name, mixin, set_prefix, sanitized_name });
+            }
+            try writer.writeAll("\n");
+            continue;
+        };
+        const member_impl = if (inherited) |mixin| try std.fmt.allocPrint(allocator, "mixins.{s}", .{mixin}) else impl_name;
+        defer if (inherited != null) allocator.free(member_impl);
         // The Zig type the getter returns and the setter takes.
         const value_type = if (is_nullable)
             try std.fmt.allocPrint(allocator, "?{s}", .{return_type})

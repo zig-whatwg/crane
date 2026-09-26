@@ -373,9 +373,9 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLObjectElementImpl, "get_data")) return try HTMLObjectElementImpl.get_data(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "data", .url = true });

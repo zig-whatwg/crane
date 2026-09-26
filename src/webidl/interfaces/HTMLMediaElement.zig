@@ -520,9 +520,9 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.get_error(instance);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLMediaElementImpl, "get_src")) return try HTMLMediaElementImpl.get_src(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });

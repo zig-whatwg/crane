@@ -343,9 +343,9 @@ pub const HTMLScriptElement = struct {
         return try HTMLScriptElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_type")) return try HTMLScriptElementImpl.get_type(instance);
         return try reflection.get(DOMString, instance, .{ .name = "type" });

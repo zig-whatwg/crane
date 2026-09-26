@@ -276,9 +276,9 @@ pub const HTMLHRElement = struct {
         return try HTMLHRElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLHRElementImpl, "get_align")) return try HTMLHRElementImpl.get_align(instance);
         return try reflection.get(DOMString, instance, .{ .name = "align" });

@@ -350,9 +350,9 @@ pub const HTMLFrameSetElement = struct {
         return try HTMLFrameSetElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_cols(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "get_cols")) return try HTMLFrameSetElementImpl.get_cols(instance);
         return try reflection.get(DOMString, instance, .{ .name = "cols" });

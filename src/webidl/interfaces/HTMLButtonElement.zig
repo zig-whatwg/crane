@@ -353,9 +353,9 @@ pub const HTMLButtonElement = struct {
         return try HTMLButtonElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectSetter]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_command(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLButtonElementImpl.get_command(instance);
     }

@@ -256,9 +256,9 @@ pub const HTMLHtmlElement = struct {
         return try HTMLHtmlElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLHtmlElementImpl, "get_version")) return try HTMLHtmlElementImpl.get_version(instance);
         return try reflection.get(DOMString, instance, .{ .name = "version" });

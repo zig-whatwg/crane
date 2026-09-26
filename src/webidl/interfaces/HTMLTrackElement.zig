@@ -335,9 +335,9 @@ pub const HTMLTrackElement = struct {
         try HTMLTrackElementImpl.set_kind(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLTrackElementImpl, "get_src")) return try HTMLTrackElementImpl.get_src(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });

@@ -261,9 +261,9 @@ pub const HTMLUListElement = struct {
         return try HTMLUListElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLUListElementImpl, "get_compact")) return try HTMLUListElementImpl.get_compact(instance);
         return try reflection.get(bool, instance, .{ .name = "compact" });

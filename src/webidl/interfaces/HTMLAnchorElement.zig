@@ -406,9 +406,9 @@ pub const HTMLAnchorElement = struct {
         return try HTMLAnchorElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLAnchorElementImpl, "get_target")) return try HTMLAnchorElementImpl.get_target(instance);
         return try reflection.get(DOMString, instance, .{ .name = "target" });

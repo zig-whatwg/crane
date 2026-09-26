@@ -256,9 +256,9 @@ pub const HTMLBRElement = struct {
         return try HTMLBRElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_clear(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLBRElementImpl, "get_clear")) return try HTMLBRElementImpl.get_clear(instance);
         return try reflection.get(DOMString, instance, .{ .name = "clear" });

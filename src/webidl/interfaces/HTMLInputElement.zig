@@ -543,9 +543,9 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_accept(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLInputElementImpl, "get_accept")) return try HTMLInputElementImpl.get_accept(instance);
         return try reflection.get(DOMString, instance, .{ .name = "accept" });

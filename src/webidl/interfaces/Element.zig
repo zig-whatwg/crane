@@ -874,9 +874,9 @@ pub const Element = struct {
         try ElementImpl.set_onfullscreenerror(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_elementTiming(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(ElementImpl, "get_elementTiming")) return try ElementImpl.get_elementTiming(instance);
         return try reflection.get(DOMString, instance, .{ .name = "elementtiming" });

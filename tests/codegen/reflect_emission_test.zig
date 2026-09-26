@@ -51,6 +51,9 @@ test "a [Reflect] DOMString falls back to reflecting its lowercased name when th
     const out = buffer.written();
 
     try testing.expect(contains(out, "const reflection = @import(\"impls\").reflection;"));
+    // Declared ahead of the accessor's doc comment, which stays the getter's.
+    try testing.expect(contains(out, "/// Extended attributes: [CEReactions], [Reflect]\n    pub fn get_vAlign("));
+    try testing.expect(std.mem.indexOf(u8, out, "const reflection").? < std.mem.indexOf(u8, out, "/// Extended attributes").?);
     try testing.expect(contains(out, "if (comptime @hasDecl(CellImpl, \"get_vAlign\")) return try CellImpl.get_vAlign(instance);"));
     try testing.expect(contains(out, "return try reflection.get(runtime.DOMString, instance, .{ .name = \"valign\" });"));
     try testing.expect(contains(out, "if (comptime @hasDecl(CellImpl, \"set_vAlign\")) return try CellImpl.set_vAlign(instance, value);"));
@@ -107,7 +110,9 @@ test "[ReflectSetter] reflects on setting only: the getter stays the impl's" {
 
 test "numeric reflections carry their limit, default and range" {
     var span_ext = [_]types.ExtendedAttribute{
-        ext("CEReactions"),                              ext("Reflect"), extId("ReflectDefault", "1"),
+        ext("CEReactions"),
+        ext("Reflect"),
+        extId("ReflectDefault", "1"),
         .{ .name = "ReflectRange", .rhs = .{ .identifierList = @constCast(&[_][]const u8{ "1", "1000" }) } },
     };
     var max_ext = [_]types.ExtendedAttribute{ ext("CEReactions"), ext("ReflectPositive"), extId("ReflectDefault", "1.0") };

@@ -888,9 +888,9 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLElementImpl, "get_title")) return try HTMLElementImpl.get_title(instance);
         return try reflection.get(DOMString, instance, .{ .name = "title" });

@@ -276,9 +276,9 @@ pub const HTMLMetaElement = struct {
         return try HTMLMetaElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_name")) return try HTMLMetaElementImpl.get_name(instance);
         return try reflection.get(DOMString, instance, .{ .name = "name" });

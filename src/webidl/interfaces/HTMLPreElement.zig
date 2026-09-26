@@ -256,9 +256,9 @@ pub const HTMLPreElement = struct {
         return try HTMLPreElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!i32 {
         if (comptime @hasDecl(HTMLPreElementImpl, "get_width")) return try HTMLPreElementImpl.get_width(instance);
         return try reflection.get(i32, instance, .{ .name = "width" });

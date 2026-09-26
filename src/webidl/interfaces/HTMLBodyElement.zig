@@ -382,9 +382,9 @@ pub const HTMLBodyElement = struct {
         try HTMLBodyElementImpl.set_onorientationchange(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_text")) return try HTMLBodyElementImpl.get_text(instance);
         return try reflection.get(DOMString, instance, .{ .name = "text" });

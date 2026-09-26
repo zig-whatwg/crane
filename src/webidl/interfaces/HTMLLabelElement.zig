@@ -269,9 +269,9 @@ pub const HTMLLabelElement = struct {
         return try HTMLLabelElementImpl.get_form(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect="for"]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLLabelElementImpl, "get_htmlFor")) return try HTMLLabelElementImpl.get_htmlFor(instance);
         return try reflection.get(DOMString, instance, .{ .name = "for" });

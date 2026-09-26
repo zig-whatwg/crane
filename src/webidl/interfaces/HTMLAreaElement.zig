@@ -376,9 +376,9 @@ pub const HTMLAreaElement = struct {
         return try HTMLAreaElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alt(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLAreaElementImpl, "get_alt")) return try HTMLAreaElementImpl.get_alt(instance);
         return try reflection.get(DOMString, instance, .{ .name = "alt" });

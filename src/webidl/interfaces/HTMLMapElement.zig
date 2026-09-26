@@ -261,9 +261,9 @@ pub const HTMLMapElement = struct {
         return try HTMLMapElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLMapElementImpl, "get_name")) return try HTMLMapElementImpl.get_name(instance);
         return try reflection.get(DOMString, instance, .{ .name = "name" });

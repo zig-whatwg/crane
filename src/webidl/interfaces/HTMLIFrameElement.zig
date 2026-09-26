@@ -395,9 +395,9 @@ pub const HTMLIFrameElement = struct {
         return try HTMLIFrameElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_src")) return try HTMLIFrameElementImpl.get_src(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });

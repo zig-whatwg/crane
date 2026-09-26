@@ -344,9 +344,9 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
     pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLFormElementImpl, "get_acceptCharset")) return try HTMLFormElementImpl.get_acceptCharset(instance);
         return try reflection.get(DOMString, instance, .{ .name = "accept-charset" });

@@ -325,9 +325,9 @@ pub const HTMLTableCellElement = struct {
         return try HTMLTableCellElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
     pub fn get_colSpan(instance: *runtime.Instance) anyerror!u32 {
         if (comptime @hasDecl(HTMLTableCellElementImpl, "get_colSpan")) return try HTMLTableCellElementImpl.get_colSpan(instance);
         return try reflection.get(u32, instance, .{ .name = "colspan", .default = 1, .range = .{ 1, 1000 } });

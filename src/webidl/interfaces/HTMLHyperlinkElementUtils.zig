@@ -139,9 +139,9 @@ pub const HTMLHyperlinkElementUtils = struct {
         HTMLHyperlinkElementUtilsImpl.deinit(instance);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLHyperlinkElementUtilsImpl.get_href(instance);
     }

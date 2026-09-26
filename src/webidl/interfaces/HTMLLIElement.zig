@@ -261,9 +261,9 @@ pub const HTMLLIElement = struct {
         return try HTMLLIElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!i32 {
         if (comptime @hasDecl(HTMLLIElementImpl, "get_value")) return try HTMLLIElementImpl.get_value(instance);
         return try reflection.get(i32, instance, .{ .name = "value" });

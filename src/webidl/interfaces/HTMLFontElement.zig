@@ -266,9 +266,9 @@ pub const HTMLFontElement = struct {
         return try HTMLFontElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLFontElementImpl, "get_color")) return try HTMLFontElementImpl.get_color(instance);
         return try reflection.get(DOMString, instance, .{ .name = "color" });

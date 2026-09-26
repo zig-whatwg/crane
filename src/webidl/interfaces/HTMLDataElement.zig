@@ -256,9 +256,9 @@ pub const HTMLDataElement = struct {
         return try HTMLDataElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLDataElementImpl, "get_value")) return try HTMLDataElementImpl.get_value(instance);
         return try reflection.get(DOMString, instance, .{ .name = "value" });

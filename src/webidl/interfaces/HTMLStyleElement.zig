@@ -295,9 +295,9 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_disabled(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLStyleElementImpl, "get_media")) return try HTMLStyleElementImpl.get_media(instance);
         return try reflection.get(DOMString, instance, .{ .name = "media" });

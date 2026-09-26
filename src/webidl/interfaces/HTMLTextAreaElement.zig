@@ -388,9 +388,9 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectSetter]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLTextAreaElementImpl.get_autocomplete(instance);
     }

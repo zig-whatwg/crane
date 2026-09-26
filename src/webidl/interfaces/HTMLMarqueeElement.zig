@@ -315,9 +315,9 @@ pub const HTMLMarqueeElement = struct {
         return try HTMLMarqueeElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_behavior(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_behavior")) return try HTMLMarqueeElementImpl.get_behavior(instance);
         return try reflection.get(DOMString, instance, .{ .name = "behavior" });

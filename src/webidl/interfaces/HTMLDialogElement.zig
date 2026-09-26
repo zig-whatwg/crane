@@ -281,9 +281,9 @@ pub const HTMLDialogElement = struct {
         return try HTMLDialogElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_open(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLDialogElementImpl, "get_open")) return try HTMLDialogElementImpl.get_open(instance);
         return try reflection.get(bool, instance, .{ .name = "open" });

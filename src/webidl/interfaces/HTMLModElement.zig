@@ -261,9 +261,9 @@ pub const HTMLModElement = struct {
         return try HTMLModElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
         if (comptime @hasDecl(HTMLModElementImpl, "get_cite")) return try HTMLModElementImpl.get_cite(instance);
         return try reflection.get(runtime.USVString, instance, .{ .name = "cite", .url = true });

@@ -316,9 +316,9 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance

@@ -397,9 +397,9 @@ pub const HTMLImageElement = struct {
         return try HTMLImageElementImpl.call_constructor(ctx);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alt(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLImageElementImpl, "get_alt")) return try HTMLImageElementImpl.get_alt(instance);
         return try reflection.get(DOMString, instance, .{ .name = "alt" });

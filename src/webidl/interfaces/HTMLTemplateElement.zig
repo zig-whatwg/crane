@@ -299,9 +299,9 @@ pub const HTMLTemplateElement = struct {
         try HTMLTemplateElementImpl.set_shadowRootMode(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
     const reflection = @import("impls").reflection;
 
+    /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shadowRootDelegatesFocus(instance: *runtime.Instance) anyerror!bool {
         if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootDelegatesFocus")) return try HTMLTemplateElementImpl.get_shadowRootDelegatesFocus(instance);
         return try reflection.get(bool, instance, .{ .name = "shadowrootdelegatesfocus" });
