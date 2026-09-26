@@ -712,7 +712,7 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
             .global_object = window_instance, // Set directly since we have the Window
         });
         // Populate intrinsics for cross-realm support
-        _ = realm.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
         // Store realm in entry and runtime context
         entry.realm = realm;
@@ -820,7 +820,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         errdefer if (realm) |r| r.deinit();
 
         // Populate realm intrinsics for cross-realm support
-        _ = realm.?.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm.?);
 
         // Set realm on runtime context so impl code can access via instance.ctx.realm
         ctx_data.setRealm(realm.?);
@@ -1953,7 +1953,7 @@ fn createWindowForExistingBrowsingContext(
         .context_type = .window,
         .global_object = null, // Will be set to Window instance below
     }) catch return null;
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     const inherited = inheritedEventLoop(parent_entry);
@@ -2650,7 +2650,7 @@ pub fn createChildContext(
     // 5b. Populate realm intrinsics for cross-realm support
     // This caches the realm's built-in constructors (TypeError, Object, Array, etc.)
     // which are needed for proper cross-realm object/error creation.
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     // Optionally inherit event loop from parent

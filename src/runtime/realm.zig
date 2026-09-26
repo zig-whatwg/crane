@@ -383,7 +383,8 @@ pub const Realm = struct {
     /// Initialize a new Realm
     ///
     /// Creates a realm with the given V8 context and configuration.
-    /// Intrinsics start unpopulated; populateIntrinsics fills them.
+    /// Intrinsics start unpopulated; the engine adapter fills them
+    /// (realm_v8.zig's populateIntrinsics).
     pub fn init(allocator: Allocator, options: InitOptions) !*Self {
         const realm = try allocator.create(Self);
         errdefer allocator.destroy(realm);
@@ -556,8 +557,9 @@ pub const Realm = struct {
 
     /// Populate this realm's intrinsics from its engine context.
     ///
-    /// Engine work, kept here only while context_manager.zig (the adapter)
-    /// still calls it as a method; the adapter's realm_v8.zig does it.
+    /// Engine work, kept here only while src/browser/Context.zig still calls
+    /// it as a method (the adapter's own callers use realm_v8.zig's, which v8
+    /// re-exports as `populateRealmIntrinsics`).
     pub fn populateIntrinsics(self: *Self) bool {
         const v8 = @import("v8");
         return v8.realm_v8.populateIntrinsics(self);
