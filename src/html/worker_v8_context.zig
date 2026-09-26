@@ -899,10 +899,9 @@ pub const WorkerV8Context = struct {
             // Left holding this isolate's, the page's next `for await` over a
             // stream reset a handle of the disposed isolate: V8_Fatal in
             // GlobalHandles::NodeSpace::Release. Cleared now, while this
-            // isolate lives. If it held another isolate's template, that one
-            // is rebuilt on its next use - as it is every time the cache
-            // changes isolate.
-            v8.ffi.v8_ClearAsyncIteratorTemplateCache();
+            // isolate lives - and only if it is this isolate's, so the page's
+            // cached template survives a worker's teardown.
+            v8.ffi.v8_ClearAsyncIteratorTemplateCacheFor(self.isolate);
         }
 
         // MessagePort objects made in the realm used this, and went with the

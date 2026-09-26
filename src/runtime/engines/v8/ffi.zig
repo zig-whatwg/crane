@@ -2535,6 +2535,8 @@ pub extern fn v8_AsyncIterator_Dispose(iterator: *Object) void;
 /// an isolate and creating a new one will cause crashes when the stale
 /// template pointer is dereferenced.
 pub extern fn v8_ClearAsyncIteratorTemplateCache() void;
+/// Clear the async iterator template cache only if it belongs to `isolate`.
+pub extern fn v8_ClearAsyncIteratorTemplateCacheFor(isolate: *Isolate) void;
 
 /// Clear the module resolve callback
 /// MUST be called before disposing an isolate to prevent use-after-free crashes.
