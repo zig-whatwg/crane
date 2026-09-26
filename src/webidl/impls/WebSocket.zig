@@ -184,35 +184,58 @@ fn pumpCallback(user_data: ?*anyopaque) void {
 /// unscoped, and reports itself live so the next turn can try again. A socket
 /// that never pumps times out; one that pumps unscoped takes the process down
 /// and every remaining test file with it.
+///
+/// ## A worker socket
+///
+/// A worker realm has no event loop of its own: its tasks run as timers on the
+/// page's loop, so a worker socket's pump turn starts with the PAGE's isolate
+/// entered. Three things make it a turn of the worker instead:
+///
+/// 1. ENTER the socket's isolate (`v8_Isolate_Enter`). A HandleScope on the
+///    worker's isolate is not enough, and neither is entering the worker's
+///    context: everything below - `JsScope`, the event wrappers,
+///    `invokeIdlHandler`, `binaryPayload` - asks `v8_Isolate_GetCurrent()`, and
+///    until the isolate is entered that answers with the page's. Handles made
+///    there, under a scope opened on the worker's isolate, are the "Cannot
+///    create a handle without a HandleScope" abort that kept worker sockets
+///    unpumped until now. AbortSignal.timeout()'s task hit the same wall
+///    (AGENTS.md, "A task fired into a worker from outside must end the
+///    worker's turn").
+/// 2. A `JsScope` on the socket's own realm: a HandleScope plus its context.
+/// 3. END the worker's turn (`finishTaskIn`), with the isolate still entered:
+///    a microtask checkpoint, then whatever the worker posted to the page. The
+///    harness in a worker reports its results by message, so a close event
+///    that ran `test.done()` and stopped there would still read as a timeout.
+///
+/// Every step is a no-op for a window socket: its isolate is already the
+/// current one, and `finishTaskIn` finds no worker with that isolate.
+///
+/// A worker realm that ends frees every Instance in its wrapper cache, and
+/// `InternalState.deinit` cancels the token on the way, so no turn is ever
+/// pumped into a disposed isolate.
 fn pumpInScope(instance: *runtime.Instance) bool {
     const ffi = v8_engine.ffi;
 
-    // The SOCKET's isolate, not the entered one. A worker's timers run on the
-    // parent's TimerManager, so a pump turn for a worker socket is entered with
-    // the parent's isolate current while every handle the turn creates belongs
-    // to the worker's. A scope opened on the wrong isolate is no scope at all,
-    // and the abort looks identical to having opened none.
     const internal = getInternal(instance) orelse return false;
     const isolate = internal.isolate orelse ffi.v8_Isolate_GetCurrent() orelse return true;
 
-    const scope = ffi.v8_HandleScope_New(isolate) orelse return true;
-    defer ffi.v8_HandleScope_Dispose(scope);
+    // 1. The socket's isolate, entered for the whole turn.
+    const entered = ffi.v8_Isolate_GetCurrent() != isolate;
+    if (entered) ffi.v8_Isolate_Enter(isolate);
+    defer if (entered) ffi.v8_Isolate_Exit(isolate);
 
-    // ENTER the socket's realm as well. A scope alone is not enough: V8 creates
-    // handles in whichever context is entered on this isolate, and a turn
-    // entered from the event loop has none - or, for a worker socket whose
-    // timers run on the parent's TimerManager, has the PARENT's. Dispatching
-    // into the wrong realm is the same abort as dispatching into no realm.
-    //
-    // The window case worked without this only because the browser leaves the
-    // page's context entered, which is exactly the kind of accident that makes
-    // a worker the first thing to break.
-    const engine_ctx = instance.ctx.engine_ctx orelse return pump(instance);
-    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    ffi.v8_Context_Enter(v8_context);
-    defer ffi.v8_Context_Exit(v8_context);
+    // 2. A scope and the socket's realm. `pump` may run script that frees the
+    //    WebSocket, so nothing after it reads `instance` - the scope carries
+    //    its own context and isolate.
+    const live = blk: {
+        const scope = v8_engine.JsScope.init(instance.ctx) orelse break :blk true;
+        defer scope.deinit();
+        break :blk pump(instance);
+    };
 
-    return pump(instance);
+    // 3. The end of the turn, for a worker; nothing for a window.
+    @import("html").worker_v8_context.finishTaskIn(isolate);
+    return live;
 }
 
 /// Internal state for WebSocket implementation
@@ -873,39 +896,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // inline would block the constructor on a network handshake and, worse,
     // leave readyState at OPEN before the caller had a chance to see
     // CONNECTING - which several tests in `websockets/` assert directly.
-    // TODO(websockets): pump worker realms.
     //
-    // A worker's timers are scheduled on the PARENT's TimerManager
-    // (`Worker.zig` hands `ctx.timer` to `WorkerV8Context.setTimerInterface`),
-    // so a pump turn for a worker socket is entered from the parent's event
-    // loop with the parent's realm current. Creating the event objects there
-    // aborts the process outright:
-    //
-    //     # Fatal error in v8::HandleScope::CreateHandle()
-    //     # Cannot create a handle without a HandleScope
-    //
-    // Measured, not assumed: `websockets/Create-invalid-urls.any.js`, whose
-    // sockets all throw in the constructor so no pump is ever armed, runs
-    // clean in both realms (OK, 12/16), while every file that constructs a
-    // live socket took the whole process down on its worker run. A
-    // HandleScope on the entered isolate, one on the socket's own isolate,
-    // and `Context::Enter` on the socket's context were each tried and each
-    // still aborted, so the gap is in how a worker realm is entered from the
-    // parent's loop - worker infrastructure, not this impl.
-    //
-    // Until that is fixed a worker socket stays in CONNECTING and its tests
-    // time out. That is the behaviour they already had, and a timeout is a
-    // result; an abort takes every remaining file in the shard with it.
-    // `ctx.isWorker()` is NOT the test - it reports false for the realm a WPT
-    // `.any.worker.js` runs in, because nothing sets that context's realm_info.
-    // Asking the global object whether it has `window` is the same distinction
-    // WPT's own `GLOBAL.isWindow()` draws, and it is answered here, inside a
-    // constructor call, where a HandleScope certainly exists.
-    if (!realmIsWindow(ctx)) {
-        log.warn("WebSocket in a non-window realm is not pumped yet: {s}", .{url});
-        return instance;
-    }
-
+    // A worker realm is pumped the same way: its timer is the page's, and
+    // `pumpInScope` enters the worker's isolate for each turn.
     const timer = ctx.getOptionalTimer() orelse {
         // No timer means no event loop, so nothing could ever deliver an event.
         // Leave the socket in CONNECTING rather than pretending otherwise.
@@ -917,22 +910,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     token.arm();
 
     return instance;
-}
-
-/// Does this realm have a `window` on its global?
-///
-/// A Window global does; a WorkerGlobalScope does not. Called from the
-/// constructor, so a HandleScope is already on the stack.
-fn realmIsWindow(ctx: runtime.Context) bool {
-    const ffi = v8_engine.ffi;
-    const engine_ctx = ctx.engine_ctx orelse return false;
-    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-    // `v8_Context_Global` hands back a Global the caller owns.
-    const global = ffi.v8_Context_Global(v8_context) orelse return false;
-    defer ffi.v8_Value_Dispose(@ptrCast(global));
-
-    return ffi.v8_Object_Has(v8_context, global, "window");
 }
 
 /// Steps 6-7 of the constructor: validate and copy the requested subprotocols.
