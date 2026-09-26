@@ -85,7 +85,17 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .markPromiseAsHandled = notSupportedMarkPromiseAsHandled,
     .createSequenceOfPlatformObjects = notSupportedCreateSequenceOfPlatformObjects,
     .relevantGlobalObject = notSupportedRelevantGlobalObject,
+    // ---- lane: page-realm ----
+    // ---- end lane: page-realm ----
+    // ---- lane: runtime-impls ----
+    // ---- end lane: runtime-impls ----
 };
+
+// Lane regions for this engine's NotSupported entries (see engine_interface.zig).
+// ---- lane: page-realm ----
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ---- end lane: runtime-impls ----
 
 /// Promise handle for tracking QuickJS promise state
 const QuickJSPromiseHandle = struct {

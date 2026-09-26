@@ -101,6 +101,10 @@ pub const v8_engine_interface: EngineInterface = .{
     .markPromiseAsHandled = v8MarkPromiseAsHandled,
     .createSequenceOfPlatformObjects = v8CreateSequenceOfPlatformObjects,
     .relevantGlobalObject = v8RelevantGlobalObject,
+    // ---- lane: page-realm ----
+    // ---- end lane: page-realm ----
+    // ---- lane: runtime-impls ----
+    // ---- end lane: runtime-impls ----
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,
     .createArrayBuffer = v8CreateArrayBuffer,

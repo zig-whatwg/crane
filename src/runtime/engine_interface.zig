@@ -859,6 +859,14 @@ pub const EngineInterface = struct {
         value: JSValue,
     ) void,
 
+    // Lane regions (AGENTS.md "The engine boundary"): each V8-abstraction lane
+    // adds its operations only inside its own region, here and in every
+    // engine's table, so parallel lanes never edit the same lines.
+    // ---- lane: page-realm ----
+    // ---- end lane: page-realm ----
+    // ---- lane: runtime-impls ----
+    // ---- end lane: runtime-impls ----
+
     /// Compile an ES module from source
     ///
     /// Compiles JavaScript module source code into a module object.
@@ -1148,6 +1156,10 @@ pub const stub_engine: EngineInterface = .{
     .markPromiseAsHandled = null,
     .createSequenceOfPlatformObjects = null,
     .relevantGlobalObject = null,
+    // ---- lane: page-realm ----
+    // ---- end lane: page-realm ----
+    // ---- lane: runtime-impls ----
+    // ---- end lane: runtime-impls ----
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
     .disposeScript = stubDisposeScript,
