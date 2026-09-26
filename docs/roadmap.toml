@@ -224,7 +224,7 @@ progress = [
 
   [[infra.items]]
   name = "[Reflect] extended attributes implemented by codegen (HTML 2.6), not by 240 impl stubs"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "A promise-returning operation rejects, not throws, on an argument-conversion exception"
@@ -236,7 +236,7 @@ progress = [
 
   [[infra.items]]
   name = "The runtime restores the snapshot its own build generated (a January one is tracked in git and loaded first), with the global built as Window's"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Dictionary members read in WebIDL order (inherited first, then lexicographic)"
@@ -386,7 +386,7 @@ infra = "navigation"
 owner = "agent"
 status = "doing"
 branch = "lane/navigation"
-paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "Document.call_open steps 8 and 13", "src/dom/attribute_change_steps.zig and its call in Element.attributeChangeSteps", "BeforeUnloadEvent.zig", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
+paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "Document.call_open steps 8 and 13", "src/dom/attribute_change_steps.zig and its call in Element.attributeChangeSteps", "BeforeUnloadEvent.zig", "src/dom/navigables.zig (hook)", "increment 3: Document.get_defaultView, the about base URL (a Document field and Node.get_baseURI), src/webidl/impls/Storage.zig, the activation install and steps in input/button/label impls", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
 
 [[lane]]
 name = "Reflected IDL attributes"
@@ -394,7 +394,7 @@ infra = "bindings"
 owner = "agent"
 status = "doing"
 branch = "lane/reflection"
-paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/interfaces/ and mixins", "src/webidl/impls/reflection.zig (new helper)", "src/webidl/impls/HTML*.zig: deleting reflected-attribute stubs only, except the navigation lane's files and HTMLScriptElement.zig", "src/dom/token_lists.zig (new hook) and its install in DOMTokenList.zig", "tests/codegen/reflect_*", "tests/html/reflection*", "tests/wpt/crane/reflect-*"]
+paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/interfaces/ and mixins", "src/webidl/impls/reflection.zig (new helper)", "src/webidl/impls/HTML*.zig: deleting reflected-attribute stubs only, except the navigation lane's files and HTMLScriptElement.zig", "src/dom/token_lists.zig (new hook) and its install in DOMTokenList.zig", "increment 4: DOMTokenList attribute change steps, property_classifier / lazy_properties emission and interface.zig lazy interceptor, [PutForwards] in codegen and runtime.setPropertyOnInstance, input.size in HTMLInputElement.zig, restricted double in codegen and conversions.fromV8Value", "tests/codegen/reflect_*", "tests/html/reflection*", "tests/wpt/crane/reflect-*"]
 
 [[lane]]
 name = "WebSockets"
