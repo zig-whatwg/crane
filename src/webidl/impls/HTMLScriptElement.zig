@@ -593,15 +593,29 @@ pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString
 /// Returns the child text content (concatenation of all Text node descendants).
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
 pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Per spec: "On getting, it must return this element's child text content."
-    // For now, return cached source text if available
-    if (getInternal(instance)) |internal| {
-        if (internal.cached_source_text) |text| {
-            return runtime.DOMString.initInterned(text);
-        }
+    // "On getting, it must return this element's child text content": the
+    // data of its Text children, in tree order - not its descendants', and
+    // not the source it was last prepared with, which the children may have
+    // changed since (script-text.html's "Getter").
+    //
+    // Spec: https://dom.spec.whatwg.org/#concept-child-text-content
+    // The binding frees the returned string with the context's allocator.
+    const allocator = instance.ctx.allocator;
+    var result = std.ArrayListUnmanaged(u8).empty;
+    errdefer result.deinit(allocator);
+
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        const node_type = NodeImpl.getNodeType(c) orelse continue;
+        // A CDATASection is a Text node.
+        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        var data = try interfaces.CharacterData.get_data(c);
+        defer data.deinit(allocator);
+        try result.appendSlice(allocator, data.asSlice());
     }
-    // TODO: Implement proper child text content collection
-    return runtime.DOMString.initEmpty();
+
+    if (result.items.len == 0) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initOwned(try result.toOwnedSlice(allocator));
 }
 
 /// Getter for charset (obsolete)
