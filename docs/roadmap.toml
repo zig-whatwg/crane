@@ -455,6 +455,22 @@ status = "doing"
 branch = "lane/engine-boundary"
 paths = ["src/html/worker_v8_context.zig", "src/html/workers/", "src/webidl/impls/{Worker,AbstractWorker,DedicatedWorkerGlobalScope,WorkerGlobalScope,MessagePort,MessageChannel,MessageEvent,WebSocket,AbortSignal}.zig", "new files under src/runtime/engines/v8/ for the moved engine parts", "additive Engine operations in engine_interface.zig and the jsc/quickjs tables, announced to the integrator", "tests/v8/ (new)", "tests/html/workers/", "tests/websocket/", "tests/wpt/crane/eb-*"]
 
+[[lane]]
+name = "Engine boundary: the page realm"
+infra = "engine-adapter"
+owner = "agent"
+status = "doing"
+branch = "lane/page-realm"
+paths = ["src/browser/Context.zig", "src/browser/navigation.zig", "src/webdriver/session.zig", "tools/repl.zig", "new adapter files for the page realm's engine half", "its Engine table region", "tests/v8/ (new)", "tests/wpt/crane/eb-page-realm-*"]
+
+[[lane]]
+name = "Engine boundary: runtime internals and unclaimed impls"
+infra = "engine-adapter"
+owner = "agent"
+status = "doing"
+branch = "lane/runtime-impls"
+paths = ["src/runtime/*.zig outside engines/ (not engine_interface, context, root)", "src/runtime/typedefs/", "src/streams/internal/{v8_promise_chaining,iterator_record,from_iterable_algorithm}.zig", "unclaimed impls not in tmp/plans/held-files.md (observers, cookie store, canvas, events, IndexedDB, URL, ...)", "its Engine table region", "tests/v8/ (new)", "tests/wpt/crane/eb-runtime-impls-*"]
+
 # ---------------------------------------------------------------------------
 # Areas to hand out once their infrastructure is done
 # ---------------------------------------------------------------------------
