@@ -30,6 +30,7 @@ const webidl = @import("webidl");
 
 const Request = interfaces.Request;
 const same_object = @import("same_object.zig");
+const fetch_body = @import("fetch_body.zig");
 
 pub const State = Request.State;
 
@@ -532,54 +533,33 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     state.own.signal = try abort_algorithms.createDependent(ctx, signals);
     internal.signal_pin.hold(state.own.signal);
 
-    // Steps 36-42: Handle body from init
+    // Steps 36-37: If init["body"] exists and is non-null, initBody is the
+    // body of extracting it, with keepalive set to request's keepalive, and
+    // its type is appended as `Content-Type` unless the headers have one.
     if (init_opts.body) |body_init| {
-        // Handle BodyInit union type
-        switch (body_init) {
-            .readable_stream => |stream_instance| {
-                // ReadableStream body - store reference
-                // TODO: Implement proper ReadableStream body handling
-                _ = stream_instance;
-            },
-            .xmlhttp_request_body_init => |xhr_body| {
-                // Handle XMLHttpRequestBodyInit variants
-                switch (xhr_body) {
-                    .usvstring => |body_string| {
-                        // String body - USVString is []const u8
-                        const body_bytes = body_string;
-                        if (body_bytes.len > 0) {
-                            // Create Body from bytes - Body.fromBytes copies internally,
-                            // so no need to dupe first (which would leak)
-                            const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, body_bytes) catch {
-                                return instance;
-                            };
-                            internal.request.body = .{ .body = fetch_body };
+        var extracted = fetch_body.extract(ctx.allocator, body_init, internal.request.keepalive) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.TypeError => error.TypeError,
+        };
+        defer extracted.deinit();
 
-                            // Set Content-Type header if not already set
-                            const has_content_type = internal.request.header_list.contains("content-type");
-                            if (!has_content_type) {
-                                internal.request.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
-                            }
-                        }
-                    },
-                    .blob => |blob_instance| {
-                        // TODO: Implement Blob body handling
-                        _ = blob_instance;
-                    },
-                    .buffer_source => |buffer| {
-                        // TODO: Implement BufferSource body handling
-                        _ = buffer;
-                    },
-                    .form_data => |form_instance| {
-                        // TODO: Implement FormData body handling
-                        _ = form_instance;
-                    },
-                    .urlsearch_params => |params_instance| {
-                        // TODO: Implement URLSearchParams body handling
-                        _ = params_instance;
-                    },
-                }
-            },
+        if (extracted.stream != null) {
+            // Step 39: a body with a null source - a stream - needs
+            // init["duplex"], and a same-origin or CORS request.
+            if (init_opts.duplex == null) return error.TypeError;
+            if (internal.request.mode != .same_origin and internal.request.mode != .cors) return error.TypeError;
+            // TODO(networking): keep the stream as this Request's body -
+            // the body mixin's stream plumbing is Response's alone so far.
+            // Until then the body is empty.
+        }
+
+        // Step 42: Set this's request's body to finalBody.
+        if (extracted.takeBody()) |b| internal.request.body = .{ .body = b };
+
+        if (extracted.content_type) |content_type| {
+            if (!internal.request.header_list.contains("Content-Type")) {
+                try internal.request.header_list.append("Content-Type", content_type);
+            }
         }
     }
 

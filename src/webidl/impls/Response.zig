@@ -27,6 +27,7 @@ const js = @import("streams_js.zig");
 const srd = @import("streams_readable.zig");
 const v8 = @import("v8");
 const BodyPipe = fetch.internal.BodyPipe;
+const fetch_body = @import("fetch_body.zig");
 
 pub const State = Response.State;
 
@@ -215,49 +216,35 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
     // Inventing "OK" from the status code was a deviation, and it pointed the
     // field at a string literal that the binding layer then tried to free.
 
-    // Handle body parameter
+    // "Initialize a response" step 6, with the result of extracting body
+    // (the constructor's steps 2-3: "If body is non-null, then set bodyWithType
+    // to the result of extracting body").
     if (body.wasPassed()) {
         if (body.value) |body_init| {
-            // Per Fetch spec: If init["status"] is a null body status, then throw a TypeError
-            // Null body statuses are: 204, 205, 304
-            const status = internal.response.status;
-            if (status == 204 or status == 205 or status == 304) {
-                return error.TypeError;
+            // Step 6.1: If response's status is a null body status, throw a
+            // TypeError.
+            if (fetch.internal.isNullBodyStatus(internal.response.status)) return error.TypeError;
+
+            var extracted = fetch_body.extract(internal.allocator, body_init, false) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.TypeError => error.TypeError,
+            };
+            defer extracted.deinit();
+
+            // Step 6.2: Set response's body to body's body.
+            internal.response.body = extracted.takeBody();
+            if (extracted.stream) |stream| {
+                // A ReadableStream is the body's stream itself.
+                state.own.body = stream;
+                internal.body_pin.hold(stream);
             }
 
-            // Extract body bytes based on BodyInit variant
-            // BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
-            // XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
-            const body_bytes: ?[]const u8 = switch (body_init) {
-                .readable_stream => null, // ReadableStream not yet supported for body extraction
-                .xmlhttp_request_body_init => |xhr_body| switch (xhr_body) {
-                    .usvstring => |s| s,
-                    .blob, .form_data, .urlsearch_params => null, // Not yet supported
-                    .buffer_source => null, // BufferSource not yet fully implemented
-                },
-            };
-
-            const is_string = if (body_init == .xmlhttp_request_body_init)
-                body_init.xmlhttp_request_body_init == .usvstring
-            else
-                false;
-
-            if (body_bytes) |bytes| {
-                if (bytes.len > 0) {
-                    // Create Body from bytes
-                    const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, bytes) catch {
-                        return error.OutOfMemory;
-                    };
-                    internal.response.body = fetch_body;
-
-                    // Set Content-Type header if not already set and body is string
-                    if (is_string) {
-                        // Per spec: if body is USVString, set Content-Type to text/plain;charset=UTF-8
-                        const has_content_type = internal.response.header_list.contains("content-type");
-                        if (!has_content_type) {
-                            internal.response.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
-                        }
-                    }
+            // Step 6.3: If body's type is non-null and response's header
+            // list does not contain `Content-Type`, then append
+            // (`Content-Type`, body's type).
+            if (extracted.content_type) |content_type| {
+                if (!internal.response.header_list.contains("Content-Type")) {
+                    try internal.response.header_list.append("Content-Type", content_type);
                 }
             }
         }
@@ -450,10 +437,8 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
     const body = internal.response.body orelse return null;
     const pipe = if (body.pipe) |p| p else blk: {
-        // A body with no bytes and no source is null (a Response made with
-        // no body leaves it that way).
-        if (body.data.items.len == 0 and body.source == .none) return null;
-        // Bytes: the stream of them is a pipe that has already ended.
+        // Bytes - none, for an empty body, which is still a body: the
+        // stream of them is a pipe that has already ended.
         const source = try fetch.internal.PipeSource.create(internal.allocator);
         const p = source.branch() catch |err| {
             source.finish();
