@@ -268,7 +268,9 @@ pub fn prepareScriptElement(
 
         // Step 33.5: Let url be the result of encoding-parsing a URL given src,
         // relative to el's node document.
-        const base_url = documentBaseUrl(node_document, script_element);
+        const base_url = documentBaseUrlAlloc(allocator, node_document, script_element) orelse
+            return ScriptExecutionError.OutOfMemory;
+        defer allocator.free(base_url);
         const parsed_url = parseUrl(script_element, src, base_url) orelse {
             // Step 33.6: If url is failure, queue an element task to fire error
             // at el, and return.
@@ -313,7 +315,7 @@ pub fn prepareScriptElement(
             } else {
                 HTMLScriptElementImpl.setResult(script_element, .null);
             }
-            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
+            // Step 35 decides when the result counts as ready.
             return handleScriptScheduling(allocator, script_element, parser_document, script_type);
         }
 
@@ -341,21 +343,27 @@ pub fn prepareScriptElement(
             HTMLScriptElementImpl.setResult(script_element, .null);
         }
 
-        // Mark as ready.
-        HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
-
-        // Step 35: scheduling.
+        // Step 35: scheduling - which also decides when the result, already
+        // in hand, is delivered ("mark as ready").
         return handleScriptScheduling(allocator, script_element, parser_document, script_type);
     }
 
     // Step 34: Inline script (no src attribute)
     if (node_document) |doc| {
-        const base_url = documentBaseUrl(doc, script_element);
+        // Step 34.1: "Let base URL be el's node document's document base URL."
+        const base_url = documentBaseUrlAlloc(allocator, doc, script_element) orelse
+            return ScriptExecutionError.OutOfMemory;
+        defer allocator.free(base_url);
 
         switch (script_type) {
             .classic => {
-                // Step 34.2.1: Create a classic script
-                const script = ClassicScript.init(source_text, base_url);
+                // Step 34.2.1: Create a classic script. Its base URL here is
+                // the document's URL, not the document base URL: the script
+                // result keeps it as the resource name V8 compiles with, which
+                // is also the filename its errors report - the document's URL
+                // for an inline script. It is borrowed from the document, so
+                // it lives as long as the result.
+                const script = ClassicScript.init(source_text, documentUrl(doc, script_element));
 
                 // Step 34.2.2: Mark as ready
                 HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
@@ -367,17 +375,12 @@ pub fn prepareScriptElement(
             },
             .module => {
                 // Step 34.2 "module", step 3: fetch an inline module script
-                // graph given source text and base URL, then mark el ready with
-                // the result.
-                //
-                // The spec marks it ready from a QUEUED task, so an inline
-                // module never executes synchronously inside the insertion
-                // that prepared it. Crane marks it ready here, the same way its
-                // synchronous fetch readies external scripts; the scheduling
-                // below still defers a parser-inserted one to the end of
-                // parsing, which is the ordering most pages observe.
+                // graph given source text and base URL. Its onComplete queues
+                // the task that marks el ready - "even if the inline module
+                // script has no dependencies or synchronously results in a
+                // parse error, we won't proceed to execute the script element
+                // synchronously" - which step 35's scheduling below does.
                 prepareInlineModuleScript(script_element, doc, source_text, base_url);
-                HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
             },
             .importmap => {
                 // Parse and register import map
@@ -453,8 +456,25 @@ pub fn prepareScriptElement(
     return handleScriptScheduling(allocator, script_element, parser_document, script_type);
 }
 
-/// Handle script scheduling based on script type, parser insertion, and attributes
-/// Spec: Steps 35-36 of "prepare the script element"
+/// "Prepare the script element" steps 35 and 36: where the element goes, and
+/// what happens once its result is ready.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+///
+/// The result is already in hand when this runs - Crane fetches scripts
+/// synchronously - so the only question left is WHEN it counts as ready ("mark
+/// as ready", which runs the element's "steps to run when the result is
+/// ready"):
+///
+/// - For step 35's first two cases, the async set and the in-order list, the
+///   spec's onComplete runs from a task (fetch's processResponseConsumeBody,
+///   or the networking task step 34 queues for an inline module), never inside
+///   the insertion that prepared the element. So it is queued here too
+///   (`queueMarkAsReady`). Marking these ready on the spot ran a
+///   script-inserted `<script src>` inside `appendChild`, before the caller's
+///   next statement could attach its `onload`.
+/// - For the parser's cases (35.4 and 35.5) the parser executes the script,
+///   and it reads "ready to be parser-executed" as soon as it asks.
 fn handleScriptScheduling(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
@@ -467,125 +487,189 @@ fn handleScriptScheduling(
     const internal = HTMLScriptElementImpl.getInternal(script_element);
     const force_async = if (internal) |int| int.force_async else true;
 
+    // Step 16 made the node document the preparation-time document; its lists
+    // are the ones step 35 appends to.
     const node_document = getNodeDocument(script_element);
 
-    // Determine if parser-inserted
     const is_parser_inserted = parser_document != null;
 
     switch (script_type) {
-        .classic => {
-            if (!has_src) {
-                // Inline classic script
-                if (is_parser_inserted) {
-                    // Parser-inserted inline classic script
-                    // Step 36.2: Check if document has a style sheet that is blocking scripts
-                    // Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
-                    if (node_document) |doc| {
-                        if (doc_state.hasStyleSheetBlockingScripts(doc)) {
-                            // Document has blocking stylesheets - defer execution
-                            // The script will be executed when stylesheets complete loading
-                            // via the blocking resolved callback mechanism
-                            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
-                            doc_state.setPendingParsingBlockingScript(doc, script_element);
-                            return true;
-                        }
-                    }
-
-                    // Step 36.3: Immediately execute the script element
-                    _ = executeScriptElement(allocator, script_element) catch {
-                        // Script errors are handled internally
-                    };
-                    return true;
-                } else {
-                    // Non-parser-inserted inline classic script - execute immediately
-                    _ = executeScriptElement(allocator, script_element) catch {};
-                    return true;
-                }
-            } else {
-                // External classic script (has src).
-                //
-                // Step 35's four cases, tested in the spec's own order. The
-                // order is load-bearing: the async case is first and is gated on
-                // "el has an async attribute OR el's force async is true", so a
-                // script the parser never touched takes it whether or not the
-                // author wrote `async`. Testing `has_async` alone - as this did -
-                // dropped every dynamically-inserted `<script src>` through all
-                // four cases and onto a bare `return true`, and it was never
-                // executed at all.
-                const doc = node_document orelse return true;
-
-                if (has_async or force_async) {
-                    // 35.1: set of scripts that will execute as soon as possible.
-                    doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
-                    drainReadyScripts(allocator, doc);
-                } else if (!is_parser_inserted) {
-                    // 35.2: list of scripts that will execute in order as soon
-                    // as possible.
-                    doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
-                    drainReadyScripts(allocator, doc);
-                } else if (has_defer) {
-                    // 35.3: list of scripts that will execute when the document
-                    // has finished parsing. The parser drains this one.
-                    doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
-                } else if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script_element)) {
-                    // 35.4: parser-blocking, and the content is already in hand
-                    // because the fetch above is synchronous - so this IS the
-                    // moment the spec's "mark as ready" would arrive.
-                    _ = executeScriptElement(allocator, script_element) catch {};
-                } else {
-                    // 35.4: parser-blocking and not yet fetched.
-                    doc_state.setPendingParsingBlockingScript(doc, script_element);
-                }
-                return true;
-            }
-        },
-        .module => {
-            // Module scripts are always deferred by default
-            // Spec: https://html.spec.whatwg.org/multipage/scripting.html#attr-script-async
-            if (!has_src) {
-                // Inline module script
-                if (is_parser_inserted and !has_async) {
-                    // Parser-inserted inline module without async - defer until parsing finishes
-                    if (node_document) |doc| {
-                        doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
-                    }
-                    return true;
-                } else {
-                    // Not parser-inserted or has async - execute immediately
-                    // For inline modules with no imports, we can execute now
-                    _ = executeScriptElement(allocator, script_element) catch {};
-                    return true;
-                }
-            } else {
-                // External module script. Same step 35 as above; a module has
-                // no defer case of its own because case 35.3 already reads
-                // "el has a defer attribute OR el's type is module".
-                const doc = node_document orelse return true;
-
-                if (has_async or force_async) {
-                    doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
-                    drainReadyScripts(allocator, doc);
-                } else if (!is_parser_inserted) {
-                    doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
-                    drainReadyScripts(allocator, doc);
-                } else {
-                    doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
-                }
-                return true;
-            }
-        },
-        .importmap => {
-            // Import maps must be processed before any module scripts
-            // Not yet implemented
-            return false;
-        },
-        .speculationrules => {
-            // Speculation rules for prefetching/prerendering
-            // Not yet implemented
-            return false;
-        },
-        .null => return false,
+        .classic, .module => {},
+        // Import maps are registered and speculation rules parsed during
+        // preparation; nothing is left to schedule.
+        .importmap, .speculationrules, .null => return false,
     }
+
+    // Step 35: a classic script with a src attribute, or any module script.
+    if (script_type == .module or has_src) {
+        const doc = node_document orelse return true;
+
+        if (has_async or force_async) {
+            // 35.2: the set of scripts that will execute as soon as possible.
+            // Tested first, and gated on "async attribute OR force async", so
+            // a script the parser never touched lands here whether or not the
+            // author wrote `async`.
+            doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
+            queueMarkAsReady(script_element, doc);
+        } else if (!is_parser_inserted) {
+            // 35.3: the list of scripts that will execute in order as soon as
+            // possible.
+            doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
+            queueMarkAsReady(script_element, doc);
+        } else if (has_defer or script_type == .module) {
+            // 35.4: the list of scripts that will execute when the document
+            // has finished parsing; the parser runs it at "the end".
+            doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
+            markReady(script_element);
+        } else {
+            // 35.5: the pending parsing-blocking script. The parser would run
+            // it the moment it is ready to be parser-executed, and it already
+            // is - so this is that moment.
+            markReady(script_element);
+            _ = executeScriptElement(allocator, script_element) catch {};
+        }
+        return true;
+    }
+
+    // Step 36: an inline classic script.
+    if (is_parser_inserted) {
+        // 36.2: a parser-inserted script whose document has a style sheet that
+        // is blocking scripts waits for it, as the pending parsing-blocking
+        // script.
+        // Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
+        if (node_document) |doc| {
+            if (doc_state.hasStyleSheetBlockingScripts(doc)) {
+                markReady(script_element);
+                doc_state.setPendingParsingBlockingScript(doc, script_element);
+                return true;
+            }
+        }
+    }
+
+    // 36.3: otherwise, immediately execute the script element.
+    _ = executeScriptElement(allocator, script_element) catch {};
+    return true;
+}
+
+/// "Ready to be parser-executed", which Crane also reads as "the result is no
+/// longer uninitialized" for the two as-soon-as-possible queues.
+fn markReady(script_element: *runtime.Instance) void {
+    HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
+}
+
+/// Deliver the element's result from a task: "mark as ready", then run the
+/// steps to run when the result is ready - here, drain the preparation-time
+/// document's as-soon-as-possible queues.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#mark-as-ready
+/// For a fetched script the task is fetch's (the networking task source runs
+/// processResponseConsumeBody); for an inline module, prepare step 34 queues
+/// "an element task on the networking task source given el".
+fn queueMarkAsReady(script_element: *runtime.Instance, document: *runtime.Instance) void {
+    const ctx = script_element.ctx;
+    const loop = ctx.getOptionalEventLoop() orelse return markReadyNow(ctx.allocator, script_element, document);
+    const task = ctx.allocator.create(QueuedMarkAsReady) catch return markReadyNow(ctx.allocator, script_element, document);
+    task.* = .{
+        .element = script_element,
+        .generation = runtime.SlabAllocator.generationOf(script_element),
+        .document = document,
+        .document_generation = runtime.SlabAllocator.generationOf(document),
+        .allocator = ctx.allocator,
+    };
+    task.keep.hold(script_element);
+    loop.queueTask(.{ .callback = &runQueuedMarkAsReady, .context = task, .drop = &dropQueuedMarkAsReady });
+}
+
+/// No event loop to queue on (a context built for tests): the result is still
+/// owed, so deliver it now rather than lose it.
+fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: *runtime.Instance) void {
+    markReady(script_element);
+    drainReadyScripts(allocator, document);
+}
+
+/// A queued "mark as ready".
+///
+/// The element sits in one of its document's script queues until this runs,
+/// and the spec's queue keeps it alive: a script removed from the tree before
+/// its result arrives still executes (or is skipped by execute step 2) and
+/// still leaves the queue. Crane's queues hold bare pointers, which V8 cannot
+/// see, so the task holds the element's wrapper strongly (`keep`) until it
+/// has run - otherwise a collection in between would leave a freed element in
+/// the queue for the next drain to execute. With the fetch already done, a
+/// script's task is queued in the order its element joined the in-order list,
+/// so by the time the task has run, everything ahead of the element has run
+/// too and the drain has taken it out of its queue.
+///
+/// The document is held as (address, slab generation), like
+/// `QueuedElementEvent`'s element: nothing keeps it alive while the task
+/// waits, and the slab reuses a freed Instance's address.
+const QueuedMarkAsReady = struct {
+    element: *runtime.Instance,
+    generation: u64,
+    /// The preparation-time document, whose queues hold the element.
+    document: *runtime.Instance,
+    document_generation: u64,
+    allocator: std.mem.Allocator,
+    keep: WrapperHold = .{},
+
+    fn destroy(self: *QueuedMarkAsReady) void {
+        self.keep.release();
+        self.allocator.destroy(self);
+    }
+};
+
+/// `Task.drop`: the page ended with the result undelivered.
+fn dropQueuedMarkAsReady(data: ?*anyopaque) void {
+    const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data orelse return));
+    task.destroy();
+}
+
+/// A strong reference to one Instance's JavaScript wrapper - the shape of
+/// `impls/same_object.zig`'s Pin, which this module cannot import.
+const WrapperHold = struct {
+    handle: ?@import("v8").GlobalHandle = null,
+
+    /// Hold `instance`'s wrapper strongly, creating the wrapper if JavaScript
+    /// has not seen `instance` yet. Holds nothing when there is no isolate or
+    /// context to wrap in - a world with no collector to guard against.
+    ///
+    /// Enters the element's realm itself: preparation also runs from the
+    /// top-level parser, which has no scope open.
+    fn hold(self: *WrapperHold, instance: *runtime.Instance) void {
+        const v8 = @import("v8");
+        if (self.handle != null) return;
+        const scope = v8.JsScope.init(instance.ctx) orelse return;
+        defer scope.deinit();
+
+        // The wrapper cache's own Global - borrowed, never ours to dispose.
+        const name = v8.template_registry.getInstanceInterfaceName(instance);
+        const wrapper = v8.template_registry.wrapInstanceAsV8Object(instance, name, scope.isolate, scope.context) catch return;
+        // Our own Global to the same object, which `release` disposes.
+        const local = v8.ffi.v8_Global_Get(scope.isolate, @ptrCast(wrapper)) orelse return;
+        self.handle = v8.GlobalHandle.create(scope.isolate, local);
+    }
+
+    fn release(self: *WrapperHold) void {
+        if (self.handle) |handle| handle.dispose();
+        self.handle = null;
+    }
+};
+
+fn runQueuedMarkAsReady(data: ?*anyopaque) void {
+    const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data orelse return));
+    defer task.destroy();
+
+    if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
+    if (runtime.SlabAllocator.generationOf(task.document) != task.document_generation) return;
+
+    // From the event loop: no HandleScope and no entered context until we
+    // open them, and executing a script and firing its load or error event
+    // need both. A null scope means the element's realm is gone.
+    const v8_engine = @import("v8");
+    const scope = v8_engine.JsScope.init(task.element.ctx) orelse return;
+    defer scope.deinit();
+
+    markReadyNow(task.allocator, task.element, task.document);
 }
 
 /// Execute pending parser-blocking script if ready
@@ -619,6 +703,22 @@ pub fn executeScriptsWhenParsingFinished(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
 ) void {
+    // Step 5.1 spins the event loop until the first deferred script is ready,
+    // and while it spins, the scripts that execute as soon as possible run as
+    // their results arrive. Crane's parser does not yield while it parses and
+    // its fetches finish at preparation, so every result in that set has
+    // arrived - its delivery is only waiting for the task queued behind this
+    // parse. Delivered here, an async script runs before the deferred ones, as
+    // it does in a browser whenever it loaded no later than they did
+    // (execution-timing/085: a fast async script and a slow deferred one).
+    // Deviation, stated: with a real network an async script slower than the
+    // deferred scripts would run after them (execution-timing/088 and /112
+    // time it that way, and fail either way until fetches are asynchronous).
+    // The in-order list waits for its tasks: a script-inserted in-order script
+    // is not ahead of the parser's deferred scripts (execution-timing/092).
+    var guard: usize = 0;
+    while (guard < 1024 and runOneReadyAsapScript(allocator, document, .delivered_or_not)) : (guard += 1) {}
+
     const scripts = doc_state.getScriptsToExecuteWhenParsingFinished(document);
 
     for (scripts) |script| {
@@ -654,11 +754,10 @@ const max_drain_depth = 16;
 
 /// Run the document's ready scripts from both "as soon as possible" queues.
 ///
-/// Spec: the ready-steps of "prepare the script element" step 35.1 and 35.2 -
-/// "Execute the script element given el", then remove it. Crane's
-/// external-script fetch is synchronous (see `prepareScriptElement` step 33.8),
-/// so a script is already ready by the time it lands in a queue and this runs
-/// at the point the spec's "mark as ready" would.
+/// Spec: the steps to run when the result is ready of "prepare the script
+/// element" step 35.2 - execute el, then remove it from the set - and 35.3 -
+/// while the list's first script is ready, execute it and remove it. It runs
+/// from `runQueuedMarkAsReady`, the task that delivers a result.
 ///
 /// Nothing drained these queues at all before this existed, so every async or
 /// force-async script - which is every `<script src>` that script inserted -
@@ -678,11 +777,20 @@ fn drainReadyScripts(allocator: std.mem.Allocator, document: *runtime.Instance) 
     // Bounded so a script that reinserts itself cannot spin forever.
     var guard: usize = 0;
     while (guard < 1024) : (guard += 1) {
-        if (runOneReadyAsapScript(allocator, document)) continue;
+        if (runOneReadyAsapScript(allocator, document, .delivered)) continue;
         if (runOneReadyInOrderScript(allocator, document)) continue;
         break;
     }
 }
+
+/// Which scripts of the as-soon-as-possible set may run.
+const AsapResults = enum {
+    /// Those marked ready - the task delivering the result has run.
+    delivered,
+    /// Every one: Crane fetches at preparation, so each result is in hand
+    /// and only its delivery task is pending (the end of parsing).
+    delivered_or_not,
+};
 
 /// Run one ready script from the "execute as soon as possible" SET, if any.
 ///
@@ -690,10 +798,12 @@ fn drainReadyScripts(allocator: std.mem.Allocator, document: *runtime.Instance) 
 /// `getScriptsToExecuteAsap` returns the ArrayList's `items` slice, and
 /// executing a script can append to that list and reallocate it - walking the
 /// original slice would be a use-after-free on the hottest DOM path there is.
-fn runOneReadyAsapScript(allocator: std.mem.Allocator, document: *runtime.Instance) bool {
+fn runOneReadyAsapScript(allocator: std.mem.Allocator, document: *runtime.Instance, which: AsapResults) bool {
     const scripts = doc_state.getScriptsToExecuteAsap(document);
     for (scripts) |script| {
-        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) continue;
+        if (which == .delivered and !HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) continue;
+        // Its result is in hand (see `AsapResults`): deliver it now.
+        markReady(script);
         _ = doc_state.removeScriptFromExecuteAsap(document, script);
         _ = executeScriptElement(allocator, script) catch |err| {
             log.debug("ASAP script execution error: {}", .{err});
@@ -942,7 +1052,7 @@ pub fn runTimerHandlerString(context: *@import("v8").ffi.Context, source: *@impo
     // Steps 8.5.4-8.5.6: the settings object's API base URL - for a Window,
     // its document's base URL.
     const document = interfaces.Window.get_document(window) catch null;
-    runClassicSource(context, source, documentBaseUrl(document, window), false);
+    runClassicSource(context, source, documentUrl(document, window), false);
 }
 
 /// A classic script's muted errors flag (see `ClassicScript.muted_errors`).
@@ -1110,7 +1220,11 @@ fn onDynamicImport(
     };
 
     // Steps 8-9: resolve a module specifier, or reject with its TypeError.
-    const base_url = if (referrer.len > 0) referrer else documentBaseUrl(document, window);
+    // An event handler's [[ScriptOrModule]] is null, so V8 names no referrer
+    // and the base is the document base URL as it is now.
+    const document_base = if (referrer.len > 0) null else documentBaseUrlAlloc(window.ctx.allocator, document, window);
+    defer if (document_base) |b| window.ctx.allocator.free(b);
+    const base_url = if (referrer.len > 0) referrer else document_base orelse "";
     const url = module_script.resolve(&env, specifier, base_url) orelse {
         rejectImportWithTypeError(resolver, "Failed to resolve module specifier");
         return true;
@@ -1578,22 +1692,21 @@ fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
     return null;
 }
 
-/// The document base URL to resolve a script's `src` against.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
-/// "If there is no base element that has an href attribute ... then the
-///  document base URL is the document's fallback base URL", which for an
-///  ordinary document is its own URL.
+/// The document's URL, for the realm `script_element` is in: an inline
+/// classic script's resource name - the filename its errors report - and the
+/// URL a string timer handler is compiled with.
 ///
 /// `Document`'s `base_uri` field is written by nothing in the tree - it is
 /// initialised to "" in `InternalState.init` and never assigned - and
-/// `internal.url` is only ever set to "about:blank". The URL the document was
+/// `internal.url` may still read "about:blank". The URL the document was
 /// actually fetched from lives on the context entry, put there by
 /// `setDocumentUrl` during navigation. Reading `base_uri` alone made every
 /// relative `src` on a dynamically-inserted script resolve to itself, so the
 /// fetch went to a bare path with no origin and failed; an absolute URL in the
 /// same position worked, which is what isolated it.
-fn documentBaseUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
+///
+/// Not the document BASE URL: that honours `<base>` (`documentBaseUrlAlloc`).
+fn documentUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
     if (document) |doc| {
         if (doc_state.getInternal(doc)) |internal| {
             if (internal.base_uri.len > 0) return internal.base_uri;
@@ -1607,6 +1720,38 @@ fn documentBaseUrl(document: ?*runtime.Instance, script_element: *runtime.Instan
     const v8_engine = @import("v8");
     const v8_ctx: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
     return v8_engine.context_manager.getDocumentUrl(v8_ctx) orelse "";
+}
+
+/// The document base URL, as a copy owned by `allocator`, or null when it
+/// cannot be copied.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
+/// "1. If there is no base element that has an href attribute in the
+///  Document, then return the Document's fallback base URL.
+///  2. Otherwise, return the frozen base URL of the first base element in the
+///  Document that has an href attribute, in tree order."
+///
+/// `Node.baseURI` is that algorithm. A script's `src` resolves against it
+/// (prepare step 33.5), and so does everything an inline script's base URL
+/// feeds: an inline module's imports, an import map's addresses. Resolving
+/// against the document's own URL instead sent a frame's
+/// `<base href="../"><script src="resources/x.js">` to the wrong directory
+/// (module/dynamic-import/v8-code-cache.html).
+///
+/// An `about:` URL has no path to resolve against - an about:blank or
+/// about:srcdoc document's fallback base URL is its creator's, which
+/// `Node.baseURI` does not model - so for one of those it answers what
+/// `documentUrl` does, as it did before.
+fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instance, script_element: *runtime.Instance) ?[]const u8 {
+    if (document) |doc| {
+        if (interfaces.Node.get_baseURI(doc)) |base| {
+            defer doc.ctx.allocator.free(base);
+            if (base.len > 0 and !std.ascii.startsWithIgnoreCase(base, "about:")) {
+                return allocator.dupe(u8, base) catch null;
+            }
+        } else |_| {}
+    }
+    return allocator.dupe(u8, documentUrl(document, script_element)) catch null;
 }
 
 /// Parse `input` against `base` with the URL Standard's parser and return the
@@ -1695,12 +1840,26 @@ fn runQueuedErrorEvent(data: ?*anyopaque) void {
     fireErrorEvent(task.allocator, task.element);
 }
 
-/// Get child text content of an element
+/// The element's child text content.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-child-text-content
+/// "The child text content of a node node is the concatenation of the data of
+///  all the Text node children of node, in tree order."
+///
+/// CHILDREN, not descendants: "prepare the script element" step 5 reads it,
+/// and a script element can have element children - an SVG script the parser
+/// nests inside another (execution-timing/138-143), or anything script
+/// appends. Their text is not the script's source; walking into them fed the
+/// outer script the inner one's text and turned it into a SyntaxError.
+/// A CDATASection is a Text node, so its data counts.
 fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance) ![]const u8 {
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    try collectTextContent(element, &result);
+    var child = NodeImpl.getFirstChild(element);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isTextNode(c)) try appendCharacterData(c, &result);
+    }
 
     if (result.size() == 0) {
         result.deinit();
@@ -1710,26 +1869,17 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
     return try result.toOwnedSlice();
 }
 
-/// Recursively collect text content from a node and its descendants
-fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
-    const node_type = NodeImpl.getNodeType(node) orelse return;
+/// Text or CDATASection: the nodes whose data is child text content.
+fn isTextNode(node: *runtime.Instance) bool {
+    const node_type = NodeImpl.getNodeType(node) orelse return false;
+    return node_type == NodeImpl.NodeType.TEXT_NODE or
+        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
+}
 
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
-    {
-        // Get text content from Text/CDATASection node via CharacterData interface
-        // Text and CDATASection inherit from CharacterData which stores the data
-        var data = CharacterData.get_data(node) catch return;
-        defer data.deinit(result.allocator);
-        try result.appendSlice(data.asSlice());
-    } else {
-        // Recurse into children
-        var child = NodeImpl.getFirstChild(node);
-        while (child) |c| {
-            try collectTextContent(c, result);
-            child = NodeImpl.getNextSibling(c);
-        }
-    }
+fn appendCharacterData(node: *runtime.Instance, result: *infra.List(u8)) !void {
+    var data = CharacterData.get_data(node) catch return;
+    defer data.deinit(result.allocator);
+    try result.appendSlice(data.asSlice());
 }
 
 // =============================================================================
