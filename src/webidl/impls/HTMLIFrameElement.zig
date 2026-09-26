@@ -52,157 +52,16 @@ const scripted_parser = html_module.scripted_parser;
 const document_internals = dom_module.document_internals;
 
 // ============================================================================
-// Iframe Src Loading Hook (for WPT runner integration)
+// Node.call_appendChild's iframe hook
 // ============================================================================
-//
-// This hook allows the WPT runner to intercept iframe src loading for relative
-// and HTTP URLs. The WPT runner can:
-// 1. Resolve relative URLs against the test directory
-// 2. Fetch content from the WPT file system
-// 3. Parse the HTML and set up the document
-// 4. Fire the load event on the iframe
-//
-// The hook returns true if it handled the load, false otherwise.
 
-/// Type for the iframe src load hook
-/// Parameters: (iframe_instance, src_url) -> handled
-pub const IframeSrcLoadHook = *const fn (*runtime.Instance, []const u8) bool;
-
-/// Thread-local hook for iframe src loading
-/// Set by the WPT runner to intercept iframe navigations
-threadlocal var iframe_src_load_hook: ?IframeSrcLoadHook = null;
-
-/// Set the iframe src load hook
-/// Call with null to clear the hook
-pub fn setIframeSrcLoadHook(hook: ?IframeSrcLoadHook) void {
-    iframe_src_load_hook = hook;
-}
-
-/// Get the current iframe src load hook
-pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
-    return iframe_src_load_hook;
-}
-
-// ============================================================================
-// Post-Connection Steps for Iframe Load Event
-// ============================================================================
-//
-// Per HTML Standard §4.8.5, when an iframe element is inserted into a document:
-// 1. Create a nested browsing context
-// 2. Navigate to initial content (about:blank if no src/srcdoc)
-// 3. Fire the load event on the iframe element
-//
-// This callback is registered with the DOM mutation system to handle the
-// post-connection steps for iframe elements.
-
-/// Fire the iframe load event if this is an about:blank iframe, or trigger
-/// navigation for iframes with src/srcdoc that were set before connection.
-///
-/// Called from Node.call_appendChild after an iframe is inserted into the document.
-/// This function is called with the CORRECT runtime.Instance that JavaScript holds,
-/// ensuring event handlers stored on that instance are found.
-///
-/// Per HTML spec §4.8.5, the load event fires synchronously after:
-/// 1. The iframe is connected to a document
-/// 2. The about:blank document is created (for iframes without src/srcdoc)
-///
-/// For iframes with src/srcdoc, we need to trigger navigation here because
-/// the srcdoc/src attributes may have been set before the iframe was connected,
-/// and at that time the browsing context didn't exist.
+/// Nothing: the iframe's post-connection steps (`iframePostConnectionSteps`)
+/// create its content navigable and process its attributes for every
+/// insertion - the parser's, and every DOM method's - which this hook,
+/// called from Node.call_appendChild alone, never could: a parser-inserted
+/// `<iframe src>` never loaded. Kept only because Node.zig still calls it.
 pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
-    // Get the internal state to check if we need to fire the load event
-    // Note: We'll re-fetch this after get_contentWindow since that operation
-    // can trigger memory allocations that could invalidate pointers.
-    if (getInternal(instance) == null) return;
-
-    // Ensure the browsing context exists (via contentWindow access)
-    // This creates the BC and sets up parse_html_callback
-    // CRITICAL: This can trigger context creation, memory allocation, and potentially
-    // arena resets. We MUST re-fetch internal state after this call.
-    _ = get_contentWindow(instance) catch return;
-
-    // Re-fetch internal state after get_contentWindow.
-    // get_contentWindow does extensive work (context creation, Window instantiation,
-    // browsing context setup) that can invalidate previously captured pointers.
-    const internal = getInternal(instance) orelse return;
-
-    // Check for srcdoc content in the element's attribute list.
-    // This is critical for nested iframes created by HTML parsing, where the
-    // srcdoc attribute is set via Element.setAttribute rather than the IDL setter.
-    // The IDL setter (set_srcdoc) updates internal.srcdoc_attr, but HTML parsing
-    // only updates the element's attribute list.
-    const ElementImpl = @import("Element.zig");
-    const srcdoc_attr_name = runtime.DOMString.initInterned("srcdoc");
-    const srcdoc_value = ElementImpl.call_getAttribute(instance, srcdoc_attr_name) catch null;
-
-    if (srcdoc_value) |srcdoc_str| {
-        const srcdoc = srcdoc_str.asSlice();
-        if (srcdoc.len > 0) {
-            // Now that BC and callbacks are set up, trigger navigation
-            internal.integration.setSrcdoc(srcdoc) catch {};
-            // Fire load event after srcdoc navigation completes
-            fireLoadUnlessDocumentWill(instance);
-            return;
-        }
-    }
-
-    // Also check internal state (for iframes where srcdoc was set via JavaScript)
-    if (internal.srcdoc_attr) |srcdoc| {
-        // Now that BC and callbacks are set up, trigger navigation
-        internal.integration.setSrcdoc(srcdoc) catch {};
-        // Fire load event after srcdoc navigation completes
-        fireLoadUnlessDocumentWill(instance);
-        return;
-    }
-
-    // If we have src, trigger navigation and fire load event
-    if (internal.src_attr) |src| {
-        // Apply sandbox attribute before navigation if present
-        const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
-        if (ElementImpl.call_hasAttribute(instance, sandbox_attr_name) catch false) {
-            const sandbox_value = ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null;
-            const sandbox_str = if (sandbox_value) |sv| sv.asSlice() else "";
-            internal.integration.setSandbox(sandbox_str) catch {};
-        }
-
-        // Navigate to src URL, parsed relative to the node document.
-        const src_url = resolveSrc(instance, src);
-        defer instance.ctx.allocator.free(src_url);
-
-        // "Process the iframe attributes" step 2.3: on initial insertion a URL
-        // that matches about:blank is not navigated to. The frame stays on its
-        // initial about:blank document - whose window never sees load or
-        // pageshow - and only the iframe load event steps run.
-        if (matchesAboutBlank(src_url)) {
-            fireLoadEventOnIframe(instance);
-            return;
-        }
-
-        internal.integration.setSrc(src_url) catch {};
-
-        // Fire the load event. `data:` and `javascript:` fire synchronously,
-        // as they always have - the parser has not run any script that could
-        // be listening yet, and changing their timing would move a case that
-        // already works.
-        //
-        // Everything else is deferred by a microtask. The navigation above
-        // completed synchronously, but a parser-created iframe is appended
-        // during tree construction, before the document's scripts have run, so
-        // a synchronous event would arrive before any of them could listen.
-        // Per HTML §4.8.5 the load event fires once the nested navigable's
-        // document has finished loading - including an error document, which
-        // is why a failed navigation still fires rather than leaving the page
-        // waiting forever.
-        if (std.mem.startsWith(u8, src, "data:") or std.mem.startsWith(u8, src, "javascript:")) {
-            fireLoadUnlessDocumentWill(instance);
-        } else {
-            queueIframeLoadEvent(instance);
-        }
-        return;
-    }
-
-    // For about:blank iframes (no src/srcdoc), the load event was already
-    // fired when get_contentWindow created the initial document.
+    _ = instance;
 }
 
 pub const State = HTMLIFrameElement.State;
@@ -225,9 +84,9 @@ pub const InternalState = struct {
     /// DOMTokenList for the sandbox attribute (lazily created)
     sandbox_token_list: ?*runtime.Instance = null,
 
-    /// Cached attribute values for reflection
-    src_attr: ?[]const u8 = null,
-    srcdoc_attr: ?[]const u8 = null,
+    /// Cached attribute values for reflection. `src` and `srcdoc` are not
+    /// cached: they reflect their content attributes, which "process the
+    /// iframe attributes" reads.
     name_attr: ?[]const u8 = null,
     allow_attr: ?[]const u8 = null,
     width_attr: ?[]const u8 = null,
@@ -250,16 +109,6 @@ pub const InternalState = struct {
     ad_auction_headers: bool = false,
     shared_storage_writable: bool = false,
 
-    /// Which navigation the pending load event belongs to, or 0 for none.
-    ///
-    /// Drawn from a process-wide counter rather than a per-instance one on
-    /// purpose. The slab RECYCLES instance addresses, so a deferred callback
-    /// holding a `*runtime.Instance` can find a *different* element's state at
-    /// that address by the time it runs. A per-instance counter starting at
-    /// zero would match on that stale state and dispatch a load event at an
-    /// unrelated iframe; a value no other live state can hold cannot.
-    pending_load_token: u64 = 0,
-
     pub fn init(allocator: std.mem.Allocator) !*InternalState {
         const ArenaAllocator = runtime.ArenaAllocator;
         const state = try ArenaAllocator.get().create(InternalState);
@@ -280,11 +129,13 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         // Clean up integration, then return ITS block too - `init` takes a second
         // arena allocation for it, and releasing only what it points to left the
-        // struct held for the life of the process.
-        self.integration.deinit();
-        {
-            const Arena = runtime.ArenaAllocator;
-            if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, self.integration);
+        // struct held for the life of the process. A navigation step running
+        // script with it in hand puts that off until it is done (see
+        // `IFrameIntegration.busy`).
+        if (self.integration.busy > 0) {
+            self.integration.deinit_pending = true;
+        } else {
+            destroyIntegration(self.integration);
         }
 
         // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
@@ -323,8 +174,12 @@ pub fn init(
     // Ensure the iframe DOM mutation callbacks are registered.
     // These only register once and are no-ops on subsequent calls.
     ensureRemovingStepsRegistered();
-    ensureInsertionStepsRegistered();
+    ensurePostConnectionStepsRegistered();
     dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable });
+    dom_module.content_navigables.install(.{
+        .delays_load_event = &iframesDelayLoadEvent,
+        .run_load_event_steps = &contentNavigableLoadEventSteps,
+    });
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -382,6 +237,13 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // ============================================================================
 // Content Accessors (§4.8.5)
 // ============================================================================
+
+/// IFrameIntegration's `retired_realm_destroy`: a context retired when its
+/// iframe was inserted again is destroyed with the integration.
+fn destroyRetiredRealm(data: *anyopaque, allocator: std.mem.Allocator) void {
+    const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
+    context_manager.destroyChildContext(entry, allocator);
+}
 
 /// Cleanup callback for iframe context
 /// Called when the iframe is removed from the document to clean up V8 resources
@@ -747,178 +609,914 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
     LocationImpl.setURLFromString(location, url) catch {};
 }
 
-/// Navigation callback for Location.assign/replace/href setter in iframes.
-/// Called when JavaScript sets iframe.contentWindow.location or similar.
-/// Parameters: (IFrameIntegration* as context, url) -> success
-fn navigateIframe(ctx: ?*anyopaque, url: []const u8) bool {
-    const integration: *IFrameIntegration = @ptrCast(@alignCast(ctx orelse return false));
+// ============================================================================
+// Navigating a content or auxiliary navigable (HTML §7.4.2 "navigate")
+// ============================================================================
+//
+// Crane's navigable is an IFrameIntegration: an iframe's content navigable,
+// or a window.open() popup, which has no container. "Navigate" runs its
+// synchronous steps in the caller and everything the spec does "in parallel"
+// as tasks on the navigable's event loop:
+//
+//   navigate()         steps 1-22: history handling, a fragment navigation
+//                      (committed on the spot), the ongoing navigation, and
+//                      a javascript: URL, which runs in a task of its own
+//   runBeforeUnload    step 23.1: beforeunload at the active document
+//   (the fetch)        step 23.9: about:, data: and file: answered at once,
+//                      http(s) through the event loop's AsyncFetch
+//   runCommit          "finalize a cross-document navigation" and the history
+//                      step it applies: unload the active document and its
+//                      descendants, then make the new document active and
+//                      load it
+//
+// Every step finds its navigation by ID. One that finds another navigation
+// ongoing - a later navigate() replaced it - or no record at all - its
+// navigable went away - stops there. That is the spec's "ongoing navigation",
+// and it is how a second navigation in the same task aborts the first.
+//
+// The design is Blink's (not its code): FrameLoader::StartNavigation commits
+// a same-document navigation synchronously and hands everything else to the
+// browser process to fetch; FrameLoader::CommitNavigation then detaches the
+// old document - Document::DispatchUnloadEvents, pagehide, visibilitychange
+// and unload in that order - before the new DocumentLoader commits.
+//
+// Deviation, stated: the new document keeps the navigable's Window. HTML
+// "create and initialize a Document object" reuses the Window only for the
+// initial about:blank document; otherwise it is a new realm. Until contexts
+// can be recreated around the same global proxy, a navigated frame keeps its
+// realm, and handlers on its window persist into the next document.
 
-    // Check if the browsing context is still valid
-    if (integration.browsing_context == null or
-        integration.state == .uninitialized or
-        integration.state == .discarded)
-    {
-        return false;
-    }
+const navigate_steps = html_core.navigation.navigate_steps;
+const navigation_fetch = html_core.navigation.fetch_integration;
+const document_lifecycle = dom_module.document_lifecycle;
+const fetch_mod = @import("fetch");
 
-    // Perform navigation using the IFrameIntegration
-    // navigateToSrc handles different URL schemes (data:, file://, http://, etc.)
-    integration.navigateToSrc(url) catch |err| {
-        std.log.debug("[navigateIframe] Navigation failed: {}", .{err});
-        return false;
-    };
-
-    // Fire the load event on the iframe element after navigation completes
-    // Per HTML spec, the load event fires after the document is loaded
-    if (integration.fire_load_callback) |fire_load| {
-        fire_load(integration.iframe_element);
-    }
-
-    return true;
-}
-
-/// Callback wrapper for firing load event on iframe element.
-/// Used by IFrameIntegration after navigation completes.
-fn fireLoadCallback(iframe_instance_ptr: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(iframe_instance_ptr orelse return));
-    fireLoadUnlessDocumentWill(instance);
-}
-
-/// Source of `InternalState.pending_load_token`. Never reused, never zero.
-threadlocal var next_load_token: u64 = 1;
-
-/// The microtask that carries a deferred iframe load event.
-const PendingLoadEvent = struct {
-    instance: *runtime.Instance,
-    token: u64,
-    allocator: std.mem.Allocator,
+/// "Navigate"'s optional arguments that the callers here pass.
+pub const NavigateOptions = struct {
+    /// "sourceDocument": the document whose script (or element) navigates.
+    source_document: ?*runtime.Instance = null,
+    history_behavior: navigate_steps.HistoryBehavior = .auto,
+    /// "documentResource" as a string: an iframe srcdoc document's markup.
+    srcdoc: ?[]const u8 = null,
+    initial_insertion: bool = false,
 };
 
-/// Fire `load` at the iframe once the current script has finished.
-///
-/// Crane navigates an iframe SYNCHRONOUSLY: `IFrameIntegration.navigateToSrc`
-/// fetches, parses and commits the document before it returns. So by the time
-/// a `src` assignment returns there is nothing left to wait for - but there is
-/// also no listener yet, because the usual shape is
-///
-///     iframe.src = url;
-///     await new Promise(r => iframe.addEventListener("load", r));
-///
-/// and WPT's own helpers are written that way (`setupSentinelIframe` in
-/// `navigating-across-documents/replace-before-load/resources/helpers.js` sets
-/// `src`, appends, and only then awaits). Firing synchronously from the setter
-/// would deliver the event before anything could hear it.
-///
-/// A microtask is the smallest deferral that does that: it drains at the end
-/// of the current script, by which point the listener is attached. The same
-/// applies to a parser-created `<iframe src>`, whose event is queued during
-/// tree construction and delivered after the next script runs.
-///
-/// §4.8.5 queues a TASK, and that was tried: it is bounded where a microtask
-/// is not, because `waitForCompletion` pumps the event loop in <=50ms slices
-/// against the per-file deadline while a microtask chain has nowhere to
-/// yield. It measured WORSE - on the same 52-file slice, the task form left
-/// more files looping in `replace-before-load/location-setter-*` than the
-/// microtask form did, because delivering later let those tests re-navigate.
-/// And `V8EventLoop.runOnceBlocking` drains its queue with
-/// `while (self.tasks.items.len > 0)`, so a task that queues a task does not
-/// return to the deadline either - the bound was theoretical. Measurement
-/// wins; the residual loops are caught by the supervisor's stall watchdog.
-fn queueIframeLoadEvent(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
+/// One navigation, from "navigate" step 19 until its document commits or it
+/// is abandoned.
+const Navigation = struct {
+    id: u64,
+    integration: *IFrameIntegration,
+    allocator: std.mem.Allocator,
+    url: []u8,
+    srcdoc: ?[]u8 = null,
+    history_handling: navigate_steps.HistoryHandling,
+    initial_insertion: bool,
+    /// The fetch in flight, until it answers.
+    fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
+    /// What the fetch answered, until the commit takes it.
+    response: ?navigation_fetch.NavigationFetchResult = null,
 
-    // Only a document that never went through the parser - the initial
-    // about:blank, an error document - is this function's to load.
-    if (loadFiresFromDocument(instance)) return;
+    fn destroy(self: *Navigation) void {
+        // Terminating a fetch runs neither `done` nor `gone`.
+        if (self.fetch) |f| f.terminate();
+        if (self.response) |*r| r.deinit();
+        if (self.srcdoc) |s| self.allocator.free(s);
+        self.allocator.free(self.url);
+        self.allocator.destroy(self);
+    }
+};
 
-    const token = next_load_token;
-    next_load_token += 1;
-    internal.pending_load_token = token;
+/// Source of navigation IDs: never reused, never zero.
+threadlocal var next_navigation_id: u64 = 1;
 
-    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
-        // No event loop - a unit test, or a context torn down far enough that
-        // nothing will drain a queue. Delivering synchronously is better than
-        // not at all, and there is no listener-ordering hazard without
-        // scripts.
-        internal.pending_load_token = 0;
-        fireLoadEventOnIframe(instance);
-        return;
-    };
+/// Every navigation in flight, by ID. A task holds only the ID, so a
+/// navigation ended while its task waited is simply not found.
+threadlocal var navigations: std.AutoHashMapUnmanaged(u64, *Navigation) = .empty;
 
-    const allocator = instance.ctx.allocator;
-    const pending = allocator.create(PendingLoadEvent) catch {
-        internal.pending_load_token = 0;
-        fireLoadEventOnIframe(instance);
-        return;
-    };
-    pending.* = .{ .instance = instance, .token = token, .allocator = allocator };
-
-    event_loop.queueMicrotask(.{
-        .callback = &deliverPendingLoadEvent,
-        .context = pending,
-    });
+fn navigationById(id: u64) ?*Navigation {
+    return navigations.get(id);
 }
 
-fn deliverPendingLoadEvent(data: ?*anyopaque) void {
-    const pending: *PendingLoadEvent = @ptrCast(@alignCast(data orelse return));
-    defer pending.allocator.destroy(pending);
-
-    // The instance may have been collected and its slab address handed to
-    // something else since this was queued. Only a state still carrying this
-    // navigation's token is the one we queued for.
-    const internal = getInternal(pending.instance) orelse return;
-    if (internal.pending_load_token != pending.token) return;
-    internal.pending_load_token = 0;
-
-    // A microtask runs inside V8's own checkpoint, which supplies a
-    // HandleScope and an entered context - but this is cheap and the task form
-    // of this callback showed what their absence costs:
-    // `Event.call_constructor` dies in `HandleScope::CreateHandle` with
-    // "Cannot create a handle without a HandleScope", a SIGTRAP rather than an
-    // error return, taking the whole file down as CRASH. A null scope means
-    // the context is gone; there is nobody left to hear the event.
-    const scope = v8.JsScope.init(pending.instance.ctx) orelse return;
-    defer scope.deinit();
-
-    fireLoadEventOnIframe(pending.instance);
+/// End navigation `id`: aborted, superseded, or its navigable gone.
+fn endNavigation(id: u64) void {
+    const kv = navigations.fetchRemove(id) orelse return;
+    kv.value.destroy();
 }
 
-/// The active document of this iframe's content navigable, if it has one.
-fn childDocument(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    const browsing_context = internal.integration.browsing_context orelse return null;
-    // The navigable's own record, not `window.document`: that is script's
-    // getter, and it refuses a cross-origin reader - so every data: frame
-    // (opaque origin) looked as if it had no document at all.
+/// HTML "set the ongoing navigation" (§7.4.2.5). The navigation it replaces
+/// ends here - the spec lets it notice at its next step; ending it now also
+/// cancels its fetch.
+fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.OngoingNavigation) void {
+    // Step 1: "If navigable's ongoing navigation is equal to newValue, then return."
+    if (integration.ongoing_navigation.eql(value)) return;
+    // Step 2 (inform the navigation API) is not modelled.
+    switch (integration.ongoing_navigation) {
+        .id => |old| endNavigation(old),
+        else => {},
+    }
+    // Step 3.
+    integration.ongoing_navigation = value;
+}
+
+/// IFrameIntegration's abandon hook: the navigable is going, and so is its
+/// navigation in flight.
+fn abandonNavigationsOf(integration: *IFrameIntegration) void {
+    setOngoingNavigation(integration, .none);
+}
+
+/// The navigable's active document, as its browsing context records it -
+/// not `window.document`, which is script's getter and refuses a
+/// cross-origin reader.
+fn activeDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
+    const browsing_context = integration.browsing_context orelse return null;
     const document = browsing_context.getActiveDocument() orelse return null;
     return @ptrCast(@alignCast(document));
 }
 
-/// URL "matches about:blank": scheme "about", path "blank", no credentials
-/// or host - query and fragment aside. `url` is serialized, as resolveSrc
-/// returns it.
-fn matchesAboutBlank(url: []const u8) bool {
-    const blank = "about:blank";
-    if (!std.mem.startsWith(u8, url, blank)) return false;
-    return url.len == blank.len or url[blank.len] == '?' or url[blank.len] == '#';
+/// `document`'s URL, serialized and owned by `allocator`; "about:blank"
+/// when there is no document to ask.
+fn documentUrlOf(document: ?*runtime.Instance, allocator: std.mem.Allocator) ![]u8 {
+    const doc = document orelse return allocator.dupe(u8, "about:blank");
+    const url = interfaces.Document.get_URL(doc) catch return allocator.dupe(u8, "about:blank");
+    defer doc.ctx.allocator.free(url);
+    if (url.len == 0) return allocator.dupe(u8, "about:blank");
+    return allocator.dupe(u8, url);
 }
 
-/// Whether the frame's document fires the frame's load event itself. A
-/// document the parser just finished is still "interactive": its own "the
-/// end" is queued (dom.document_lifecycle), and the last step of that,
-/// "completely finish loading", fires load at the container after the
-/// document's own load and pageshow. Firing here too gave every data:,
-/// srcdoc and location-navigated frame a second load event.
-fn loadFiresFromDocument(instance: *runtime.Instance) bool {
-    const child = childDocument(instance) orelse return false;
-    return (interfaces.Document.get_readyState(child) catch ._complete_) == ._interactive_;
+/// The origin of a serialized http(s) URL - "scheme://host[:port]" - or null
+/// for any other scheme, whose origin is opaque or inherited.
+fn tupleOriginOf(url: []const u8) ?[]const u8 {
+    const scheme = navigate_steps.schemeOf(url);
+    if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https")) return null;
+    const after = scheme.len + 3; // "://"
+    if (url.len < after) return null;
+    const end = std.mem.indexOfAnyPos(u8, url, after, "/?#") orelse url.len;
+    return url[0..end];
 }
 
-/// The iframe load event steps after a navigation that completed before this
-/// returned - unless the frame's document runs them itself.
-fn fireLoadUnlessDocumentWill(instance: *runtime.Instance) void {
-    if (loadFiresFromDocument(instance)) return;
-    fireLoadEventOnIframe(instance);
+/// Whether `source` - navigate's initiator - is same origin with `active`,
+/// for step 12.1. Deviation, stated: compared by URL, so a document whose
+/// origin is inherited (about:blank, srcdoc) or changed by document.domain
+/// counts as same origin.
+fn initiatorSameOrigin(source: ?*runtime.Instance, active_url: []const u8, allocator: std.mem.Allocator) bool {
+    const doc = source orelse return true;
+    const source_url = documentUrlOf(doc, allocator) catch return true;
+    defer allocator.free(source_url);
+    const a = tupleOriginOf(source_url) orelse return true;
+    const b = tupleOriginOf(active_url) orelse return true;
+    return std.mem.eql(u8, a, b);
+}
+
+/// HTML "navigate" `integration`'s navigable to `url` (serialized, absolute).
+/// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
+///
+/// Steps not modelled, stated: source snapshot params and sandboxed
+/// navigation (1-7), the navigate event (21), deferred fetch quota (22),
+/// WebDriver BiDi, and lazy loading (11).
+pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
+    // A navigable that is going, or never came: nothing to navigate.
+    if (integration.state == .discarded) return;
+    const browsing_context = integration.browsing_context orelse return;
+    if (browsing_context.is_closed) return;
+    const allocator = integration.allocator;
+    const active = activeDocumentOf(integration);
+
+    // Step 9: "If navigable's active document's unload counter is greater
+    // than 0, then ... return."
+    if (active) |doc| {
+        if (document_lifecycle.isUnloading(doc)) return;
+    }
+
+    // Steps 12-13: history handling.
+    const active_url = documentUrlOf(active, allocator) catch return;
+    defer allocator.free(active_url);
+    const history_handling = navigate_steps.resolveHistoryHandling(options.history_behavior, url, .{
+        .url = active_url,
+        .is_initial_about_blank = if (active) |doc| document_lifecycle.isInitialAboutBlank(doc) else false,
+    }, initiatorSameOrigin(options.source_document, active_url, allocator));
+
+    // Step 14: a fragment navigation commits now, in the same document.
+    if (navigate_steps.isFragmentNavigation(url, active_url, options.srcdoc != null)) {
+        navigateToFragment(integration, url, active_url);
+        return;
+    }
+
+    // Step 15: "If navigable's parent is non-null, then set navigable's is
+    // delaying load events to true." A popup has no parent.
+    if (integration.iframe_element != null) integration.delaying_load = true;
+
+    // Step 18: a navigable that is traversing ignores navigations. Nothing
+    // traverses yet, so this never holds.
+    if (integration.ongoing_navigation == .traversal) return;
+
+    // Step 7's navigation ID, and step 19: set the ongoing navigation - which
+    // ends any earlier one.
+    const id = next_navigation_id;
+    next_navigation_id += 1;
+    setOngoingNavigation(integration, .{ .id = id });
+
+    const record = allocator.create(Navigation) catch return;
+    record.* = .{
+        .id = id,
+        .integration = integration,
+        .allocator = allocator,
+        .url = allocator.dupe(u8, url) catch {
+            allocator.destroy(record);
+            return;
+        },
+        .history_handling = history_handling,
+        .initial_insertion = options.initial_insertion,
+    };
+    if (options.srcdoc) |html| {
+        record.srcdoc = allocator.dupe(u8, html) catch {
+            record.destroy();
+            return;
+        };
+    }
+    navigations.put(std.heap.page_allocator, id, record) catch {
+        record.destroy();
+        return;
+    };
+
+    // Step 20: a javascript: URL runs in a task, not the caller.
+    if (navigate_steps.isJavascript(url)) {
+        queueNavigationTask(integration, id, &runJavascriptNavigation);
+        return;
+    }
+    // Step 23: "In parallel": beforeunload, then the fetch.
+    queueNavigationTask(integration, id, &runBeforeUnload);
+}
+
+/// Queue `callback` for navigation `id` on the navigable's event loop - a
+/// global task on the navigation and traversal task source. With no loop (a
+/// context built for tests) it runs now.
+fn queueNavigationTask(integration: *IFrameIntegration, id: u64, callback: *const fn (?*anyopaque) void) void {
+    const context: ?*anyopaque = @ptrFromInt(id);
+    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse return callback(context)));
+    const loop = runtime_ctx.getOptionalEventLoop() orelse return callback(context);
+    loop.queueTask(.{ .callback = callback, .context = context });
+}
+
+fn idOf(context: ?*anyopaque) u64 {
+    return @intFromPtr(context);
+}
+
+/// Whether navigation `id` is still `integration`'s ongoing navigation.
+fn isOngoing(integration: *IFrameIntegration, id: u64) bool {
+    return integration.ongoing_navigation.eql(.{ .id = id });
+}
+
+/// The runtime context of `integration`'s content navigable, if it has one.
+fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
+    return @ptrCast(@alignCast(integration.runtime_context orelse return null));
+}
+
+/// Step 23.1: "checking if unloading is canceled" for the active document's
+/// inclusive descendant navigables - beforeunload at each, parents first.
+/// Step 23.2: canceled, or navigated again meanwhile, and this navigation
+/// ends. Step 23.3 (abort the active document) is not modelled.
+fn runBeforeUnload(context: ?*anyopaque) void {
+    const id = idOf(context);
+    const record = navigationById(id) orelse return;
+    const integration = record.integration;
+    if (!isOngoing(integration, id)) return endNavigation(id);
+
+    if (activeDocumentOf(integration)) |document| {
+        var canceled = false;
+        var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
+        defer documents.deinit(integration.allocator);
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
+        }
+        // The handlers ran script: a later navigation replaces this one -
+        // and ends its record - and a navigable taken away ends it too.
+        const again = navigationById(id) orelse return;
+        if (canceled) {
+            setOngoingNavigation(again.integration, .none);
+            endLoadDelay(again.integration);
+            return;
+        }
+    }
+    startFetch(navigationById(id) orelse return);
+}
+
+/// Step 23.9: "attempt to populate the history entry's document" - its fetch.
+/// about:blank, srcdoc, data: and file: are answered without the network and
+/// committed by a task; http(s) goes to the network through the event loop.
+fn startFetch(record: *Navigation) void {
+    const allocator = record.allocator;
+    const url = record.url;
+
+    if (record.srcdoc) |html| {
+        record.response = htmlResponse(allocator, "about:srcdoc", html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
+    if (navigate_steps.matchesAboutBlank(url)) {
+        record.response = htmlResponse(allocator, url, "") catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
+
+    const scheme = navigate_steps.schemeOf(url);
+    if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https")) {
+        const request = navigation_fetch.navigationRequest(allocator, url, .{
+            .destination = if (record.integration.iframe_element != null) .iframe else .document,
+            .mode = .navigate,
+            .redirect = .follow,
+        }) catch {
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        const client: fetch_mod.algorithms.AsyncFetch.Client = .{
+            .context = @ptrFromInt(record.id),
+            .done = &fetchDone,
+            .alive = &fetchAlive,
+            .gone = &fetchGone,
+        };
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{}, fetch_mod.network.scheduler.threadScheduler(), client) catch {
+            // The fetch owned the request, and freed it.
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        return;
+    }
+
+    // Everything else this engine can load without the network.
+    record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
+        .destination = .iframe,
+        .mode = .navigate,
+        .redirect = .follow,
+    }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+    queueNavigationTask(record.integration, record.id, &runCommit);
+}
+
+/// A response made of `html`, as a fetch would have answered it.
+fn htmlResponse(allocator: std.mem.Allocator, url: []const u8, html: []const u8) !navigation_fetch.NavigationFetchResult {
+    var result = navigation_fetch.NavigationFetchResult.init(allocator);
+    errdefer result.deinit();
+    result.final_url = try allocator.dupe(u8, url);
+    result.content_type = try allocator.dupe(u8, "text/html;charset=utf-8");
+    result.body = try allocator.dupe(u8, html);
+    result.status = 200;
+    result.ok = true;
+    result.is_network_error = false;
+    return result;
+}
+
+/// Whether the navigation that started a fetch is still there to hear it:
+/// its record, and the realm of its navigable. A page torn down with the
+/// fetch in flight retires its contexts, and Fetch's "terminate a fetch
+/// group" ends the fetch at the next sweep.
+fn fetchAlive(context: *anyopaque) bool {
+    const record = navigationById(@intFromPtr(context)) orelse return false;
+    const ctx = navigableContext(record.integration) orelse return false;
+    return ctx.engine_ctx != null;
+}
+
+/// The fetch was terminated because its navigation's realm went: the
+/// navigation ends with it.
+fn fetchGone(context: *anyopaque) void {
+    const id = @intFromPtr(context);
+    const record = navigationById(id) orelse return;
+    record.fetch = null;
+    endNavigation(id);
+}
+
+/// The navigation fetch answered (from the event loop's network step):
+/// keep the response and queue the task that commits it.
+fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+    const id = @intFromPtr(context);
+    var result = outcome catch null;
+    defer if (result) |*r| r.deinit();
+    const record = navigationById(id) orelse return;
+    record.fetch = null;
+    record.response = if (result) |r|
+        navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
+    else
+        null;
+    if (record.response == null) {
+        record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
+    }
+    queueNavigationTask(record.integration, id, &runCommit);
+}
+
+/// The task that ends a navigation with a response: HTML "finalize a
+/// cross-document navigation" and the history step it applies. Unload the
+/// active document and its descendants, then create the new document, make
+/// it active, and load it.
+fn runCommit(context: ?*anyopaque) void {
+    const id = idOf(context);
+    const kv = navigations.fetchRemove(id) orelse return;
+    const record = kv.value;
+    defer record.destroy();
+    const integration = record.integration;
+    if (!isOngoing(integration, id)) return;
+    const response = if (record.response) |*r| r else return;
+
+    // A 204, a 205 or a download commits no document: the navigable keeps
+    // the one it has, and no load event is owed. Decided before anything is
+    // unloaded.
+    if (!integration.responseMakesDocument(response)) {
+        integration.ongoing_navigation = .none;
+        endLoadDelay(integration);
+        return;
+    }
+
+    // Script runs below and may take the iframe away; the integration stays
+    // until this is done with it - and is freed, if it has to be, only after
+    // the realm scope below has been left.
+    integration.busy += 1;
+    defer finishBusy(integration);
+    commitNavigation(integration, record, response);
+}
+
+/// `runCommit`'s work, inside the navigable's realm.
+fn commitNavigation(integration: *IFrameIntegration, record: *Navigation, response: *navigation_fetch.NavigationFetchResult) void {
+    const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
+    // The document's scripts and unload handlers run from the event loop,
+    // not from script: the navigable's realm is entered here.
+    const scope = v8.JsScope.init(ctx) orelse return endLoadDelay(integration);
+    defer scope.deinit();
+
+    // "Deactivate a document for a cross-document navigation" step 5.2: the
+    // ongoing navigation is null - new navigations may start.
+    integration.ongoing_navigation = .none;
+
+    // Step 5.3: "Unload a document and its descendants".
+    if (activeDocumentOf(integration)) |old| unloadDocumentAndDescendants(old, integration);
+    if (integration.state == .discarded or integration.browsing_context == null) return;
+
+    integration.commitResponse(record.url, response) catch |err| {
+        log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
+        endLoadDelay(integration);
+        return;
+    };
+    loadEventStepsIfNothingWill(integration);
+}
+
+/// A document that never goes through the parser - an XML document, which
+/// has no parser yet - has no "the end" to finish loading it, so nothing
+/// would run its container's load event steps. Run them now.
+fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
+    const document = activeDocumentOf(integration) orelse return endLoadDelay(integration);
+    const readiness = interfaces.Document.get_readyState(document) catch return;
+    if (readiness != ._loading_) return;
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return endLoadDelay(integration)));
+    runIframeLoadEventSteps(element);
+}
+
+/// "Unload a document and its descendants": its child navigables' documents
+/// first, then `document`. Their navigations in flight end with them, and
+/// their windows' timers stop ("unloading document cleanup steps" 4.2).
+fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFrameIntegration) void {
+    var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
+    defer documents.deinit(integration.allocator);
+    // Children first: the list is parents-first, so walk it backwards.
+    var i = documents.items.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = documents.items[i];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        if (entry.integration) |child| {
+            if (child != integration) abandonNavigationsOf(child);
+        }
+        document_lifecycle.unload(entry.document);
+    }
+    if (integration.engine_context) |engine_ctx| {
+        context_manager.cleanUpChildWindows(@ptrCast(@alignCast(engine_ctx)));
+    }
+}
+
+const DocumentEntry = struct {
+    document: *runtime.Instance,
+    generation: u64,
+    /// The navigable whose active document this is; null for the root.
+    integration: ?*IFrameIntegration,
+};
+
+/// `document` and the active documents of its descendant navigables, parents
+/// first - HTML "inclusive descendant navigables" by their active documents.
+/// Each is held with its slab generation, since script runs between the
+/// collection and the use.
+fn collectInclusiveDescendantDocuments(document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(DocumentEntry) {
+    var out: std.ArrayListUnmanaged(DocumentEntry) = .empty;
+    out.append(allocator, .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document), .integration = null }) catch return out;
+    var index: usize = 0;
+    while (index < out.items.len and out.items.len < 256) : (index += 1) {
+        const parent = out.items[index].document;
+        var iframes = iframesIn(parent, allocator);
+        defer iframes.deinit(allocator);
+        for (iframes.items) |iframe| {
+            const internal = getInternal(iframe) orelse continue;
+            const child = activeDocumentOf(internal.integration) orelse continue;
+            out.append(allocator, .{
+                .document = child,
+                .generation = runtime.SlabAllocator.generationOf(child),
+                .integration = internal.integration,
+            }) catch break;
+        }
+    }
+    return out;
+}
+
+/// The iframe elements in `document`, in tree order.
+fn iframesIn(document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(*runtime.Instance) {
+    var out: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    const NodeImpl = @import("Node.zig");
+    const node_internal = NodeImpl.getInternalState(document) orelse return out;
+    const root = node_internal.node_base orelse return out;
+    collectIframes(root, &out, allocator, 0);
+    return out;
+}
+
+fn collectIframes(node: *NodeBase, out: *std.ArrayListUnmanaged(*runtime.Instance), allocator: std.mem.Allocator, depth: usize) void {
+    if (depth > 512) return;
+    for (node.child_nodes.items()) |child| {
+        if (child.node_type == 1 and std.ascii.eqlIgnoreCase(child.node_name, "iframe")) {
+            if (instance_bridge.getInstance(child)) |ptr| {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+                if (instance.stateAs(State) != null) out.append(allocator, instance) catch return;
+            }
+        }
+        collectIframes(child, out, allocator, depth + 1);
+    }
+}
+
+/// HTML "navigate to a fragment" (§7.4.2.3.3) - synchronous: the document's
+/// URL changes now, and hashchange is queued if the fragment did.
+///
+/// Not modelled, stated: the navigate event (steps 1-5), the session history
+/// entry and history object (6-11, 13, 16-17: item 3 of the navigation
+/// work), and scrolling (15: no layout).
+fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url: []const u8) void {
+    // Step 12: "Set navigable's active document's URL to url."
+    integration.setDocumentUrl(url);
+    // Step 14, "update document for history step application" step 6.4.5:
+    // "If oldURL's fragment is not equal to entry's URL's fragment, then
+    // queue a global task ... to fire an event named hashchange".
+    const old_fragment = navigate_steps.fragmentOf(old_url);
+    const new_fragment = navigate_steps.fragmentOf(url);
+    const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
+    if (!same) queueHashChange(integration, old_url, url);
+}
+
+/// A queued hashchange: the window it fires at, held with its slab
+/// generation, and the two URLs, owned.
+const HashChange = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    old_url: []u8,
+    new_url: []u8,
+    allocator: std.mem.Allocator,
+
+    fn destroy(self: *HashChange) void {
+        self.allocator.free(self.old_url);
+        self.allocator.free(self.new_url);
+        self.allocator.destroy(self);
+    }
+};
+
+fn queueHashChange(integration: *IFrameIntegration, old_url: []const u8, new_url: []const u8) void {
+    const browsing_context = integration.browsing_context orelse return;
+    const window: *runtime.Instance = @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return));
+    const allocator = integration.allocator;
+    const task = allocator.create(HashChange) catch return;
+    task.* = .{
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .old_url = allocator.dupe(u8, old_url) catch {
+            allocator.destroy(task);
+            return;
+        },
+        .new_url = allocator.dupe(u8, new_url) catch {
+            allocator.free(task.old_url);
+            allocator.destroy(task);
+            return;
+        },
+        .allocator = allocator,
+    };
+    const loop = window.ctx.getOptionalEventLoop() orelse return runHashChange(task);
+    loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
+}
+
+fn dropHashChange(context: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(context orelse return));
+    task.destroy();
+}
+
+fn runHashChange(context: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(context orelse return));
+    defer task.destroy();
+    if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
+    const scope = v8.JsScope.init(task.window.ctx) orelse return;
+    defer scope.deinit();
+    const event = interfaces.HashChangeEvent.call_constructor(
+        task.window.ctx,
+        runtime.DOMString.initInterned("hashchange"),
+        webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = interfaces.EventTarget.call_dispatchEvent(task.window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// HTML "navigate to a javascript: URL" (§7.4.2.3.2), as its task.
+///
+/// Steps 3-5 (the initiator's origin, CSP) are not modelled. The new
+/// document's origin is the container's, not the initiator's - the same
+/// when, as in every case this engine reaches, the page navigates its own
+/// frame.
+fn runJavascriptNavigation(context: ?*anyopaque) void {
+    const id = idOf(context);
+    const kv = navigations.fetchRemove(id) orelse return;
+    const record = kv.value;
+    defer record.destroy();
+    const integration = record.integration;
+    if (!isOngoing(integration, id)) return;
+    // Step 2: "Set the ongoing navigation for targetNavigable to null."
+    integration.ongoing_navigation = .none;
+
+    integration.busy += 1;
+    defer finishBusy(integration);
+    javascriptNavigation(integration, record);
+}
+
+/// `runJavascriptNavigation`'s work, inside the navigable's realm.
+fn javascriptNavigation(integration: *IFrameIntegration, record: *Navigation) void {
+    const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
+    const scope = v8.JsScope.init(ctx) orelse return endLoadDelay(integration);
+    defer scope.deinit();
+
+    // Step 6: "evaluate a javascript: URL".
+    const result = evaluateJavascriptUrl(integration, record.url);
+    const html = result orelse {
+        // Step 7: no new document. On initial insertion into an initial
+        // about:blank document, the iframe load event steps still run.
+        const initial = if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false;
+        if (record.initial_insertion and initial) {
+            if (integration.iframe_element) |element| return runIframeLoadEventSteps(@ptrCast(@alignCast(element)));
+        }
+        endLoadDelay(integration);
+        return;
+    };
+    defer integration.allocator.free(html);
+    if (integration.state == .discarded or integration.browsing_context == null) return;
+
+    // Steps 9-12: the new document's URL is the active entry's URL - a
+    // javascript: URL is never a document's URL.
+    const active = activeDocumentOf(integration);
+    const url = documentUrlOf(active, integration.allocator) catch return endLoadDelay(integration);
+    defer integration.allocator.free(url);
+    if (active) |old| unloadDocumentAndDescendants(old, integration);
+    if (integration.state == .discarded or integration.browsing_context == null) return;
+    // Step 17 ("load an HTML document" given the result as its body).
+    integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
+}
+
+/// HTML "evaluate a javascript: URL" steps 1-10: the script is the URL after
+/// "javascript:", percent-decoded, run as a classic script in the navigable's
+/// realm. Its completion value, if it is a String, is the new document's
+/// markup (owned); anything else - or a throw - is null.
+fn evaluateJavascriptUrl(integration: *IFrameIntegration, url: []const u8) ?[]u8 {
+    const allocator = integration.allocator;
+    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(integration.engine_context orelse return null));
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
+    // Steps 1-3: strip the scheme, percent-decode.
+    const encoded = url["javascript:".len..];
+    const source = percentDecode(allocator, encoded) catch return null;
+    defer allocator.free(source);
+
+    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return null;
+    defer v8.ffi.v8_String_Dispose(source_str);
+    const script = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse return null;
+    defer v8.ffi.v8_Script_Dispose(script);
+    // Step 7: run it. A throw is reported by the safe runner's TryCatch and
+    // is not a String.
+    const run = v8.ffi.v8_Script_Run_Safe(v8_ctx, script);
+    defer v8.ffi.v8_FreeScriptRunResult(run);
+    if (run.error_info != null) return null;
+    const value = run.value orelse return null;
+    // Step 9: only a String replaces the document.
+    if (!v8.ffi.v8_Value_IsString(value)) return null;
+    const string = v8.ffi.v8_Value_ToString(value, v8_ctx) orelse return null;
+    defer v8.ffi.v8_String_Dispose(string);
+    const length = v8.ffi.v8_String_Utf8Length(string);
+    if (length < 0) return null;
+    const buffer = allocator.alloc(u8, @as(usize, @intCast(length)) + 1) catch return null;
+    defer allocator.free(buffer);
+    const written = v8.helpers.writtenUtf8(buffer, v8.ffi.v8_String_WriteUtf8(string, buffer.ptr, @intCast(buffer.len))) orelse return null;
+    return allocator.dupe(u8, written) catch null;
+}
+
+fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var i: usize = 0;
+    while (i < input.len) {
+        if (input[i] == '%' and i + 2 < input.len) {
+            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |byte| {
+                try out.append(allocator, byte);
+                i += 3;
+                continue;
+            } else |_| {}
+        }
+        try out.append(allocator, input[i]);
+        i += 1;
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+/// The script behind `integration.busy` is done with the integration; if its
+/// element was deinited meanwhile, the deinit it put off happens now.
+fn finishBusy(integration: *IFrameIntegration) void {
+    integration.busy -= 1;
+    if (integration.busy == 0 and integration.deinit_pending) destroyIntegration(integration);
+}
+
+/// Deinit `integration` and return its block to the arena it came from.
+fn destroyIntegration(integration: *IFrameIntegration) void {
+    integration.deinit();
+    const Arena = runtime.ArenaAllocator;
+    if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, integration);
+}
+
+// ----------------------------------------------------------------------------
+// Delaying the container document's load event (HTML §4.8.5)
+// ----------------------------------------------------------------------------
+
+/// The navigable stops delaying its container document's load event: its
+/// navigation finished (the iframe load event steps ran) or ended without a
+/// document. The container document may be waiting on it.
+fn endLoadDelay(integration: *IFrameIntegration) void {
+    if (!integration.delaying_load) return;
+    integration.delaying_load = false;
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return));
+    const NodeImpl = @import("Node.zig");
+    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+/// dom.content_navigables: whether an iframe in `document` delays its load
+/// event - its content navigable is navigating, and has not yet run the
+/// iframe load event steps for it.
+fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
+    var iframes = iframesIn(document, std.heap.page_allocator);
+    defer iframes.deinit(std.heap.page_allocator);
+    for (iframes.items) |iframe| {
+        const internal = getInternal(iframe) orelse continue;
+        if (internal.integration.delaying_load) return true;
+    }
+    return false;
+}
+
+/// dom.content_navigables: `container`'s load event steps, when it is an
+/// iframe.
+fn contentNavigableLoadEventSteps(container: *runtime.Instance) bool {
+    if (container.stateAs(State) == null) return false;
+    runIframeLoadEventSteps(container);
+    return true;
+}
+
+/// HTML "iframe load event steps" (§4.8.5): fire load at the element - and
+/// with that, its navigation no longer delays its node document's load
+/// event.
+///
+/// The delay ends before the event and the document hears of it after: a
+/// load handler that navigates the frame again sets the delay again, and
+/// "that will further delay the load event" (§4.8.5) - the document's load
+/// waits for that navigation too, as it does in browsers.
+fn runIframeLoadEventSteps(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    const was_delaying = internal.integration.delaying_load;
+    internal.integration.delaying_load = false;
+    const generation = runtime.SlabAllocator.generationOf(element);
+    // Steps 1-3 (mute iframe load) and 4 (resource timing) are not modelled.
+    // Step 6: "Fire an event named load at element."
+    fireLoadEventOnIframe(element);
+    // The handlers may have taken the element away.
+    if (!was_delaying or runtime.SlabAllocator.generationOf(element) != generation) return;
+    const NodeImpl = @import("Node.zig");
+    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+// ----------------------------------------------------------------------------
+// Entry points
+// ----------------------------------------------------------------------------
+
+/// IFrameIntegration's navigate hook - window.open()'s navigation of a
+/// popup, and any caller without engine access.
+fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, request: html_core.window.iframe_integration.NavigateRequest) void {
+    navigate(integration, url, .{
+        .source_document = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null,
+        .history_behavior = request.history_behavior,
+    });
+}
+
+/// Location's navigate callback: HTML "Location-object navigate" steps 3-4,
+/// for a frame's or popup's Location. Step 3 - a relevant document that is
+/// not completely loaded makes it a replace - is read here, from the
+/// navigable's own record of its document.
+fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.window.iframe_integration.NavigateRequest) bool {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(ctx orelse return false));
+    if (integration.browsing_context == null or integration.state == .discarded) return false;
+    var behavior = request.history_behavior;
+    if (activeDocumentOf(integration)) |document| {
+        if (!document_lifecycle.isCompletelyLoaded(document)) behavior = .replace;
+    }
+    navigate(integration, url, .{
+        .source_document = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null,
+        .history_behavior = behavior,
+    });
+    return true;
+}
+
+/// HTML "process the iframe attributes" (§4.8.5).
+///
+/// Lazy loading (steps 1.1-1.2 and 2.5-2.6) is not modelled: every frame
+/// loads eagerly.
+fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) void {
+    const internal = getInternal(element) orelse return;
+    const ElementImpl = @import("Element.zig");
+    // Step 1: "If element's srcdoc attribute is specified" - navigate to the
+    // srcdoc resource.
+    if (ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
+        const markup = internal.allocator.dupe(u8, srcdoc.asSlice()) catch return;
+        defer internal.allocator.free(markup);
+        navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
+        return;
+    }
+    // Step 2.1: the shared attribute processing steps.
+    const url = sharedAttributeProcessingSteps(element) orelse return;
+    defer element.ctx.allocator.free(url);
+    // Step 2.3: a URL that matches about:blank, on initial insertion, is not
+    // navigated to: the frame keeps its initial about:blank document - whose
+    // window never sees load or pageshow - and only the iframe load event
+    // steps run.
+    if (navigate_steps.matchesAboutBlank(url) and initial_insertion) {
+        runIframeLoadEventSteps(element);
+        return;
+    }
+    // Step 2.7: navigate.
+    navigateIframeOrFrame(element, url, null, initial_insertion);
+}
+
+/// HTML "shared attribute processing steps for iframe and frame elements":
+/// the src URL (owned by the element's context allocator), about:blank when
+/// src is absent, empty or does not parse, or null when an inclusive
+/// ancestor navigable already shows it (step 3: no infinite nesting).
+/// Step 4 (URL and history update steps for about:blank?query) is not
+/// modelled.
+fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
+    const ElementImpl = @import("Element.zig");
+    const src = ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
+    const value: []const u8 = if (src) |s| s.asSlice() else "";
+    const url = resolveSrc(element, value);
+    if (ancestorShows(element, url)) {
+        element.ctx.allocator.free(url);
+        return null;
+    }
+    return url;
+}
+
+/// Step 3: whether a navigable among `element`'s node navigable and its
+/// ancestors shows a document whose URL equals `url` without fragments.
+fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
+    if (navigate_steps.matchesAboutBlank(url)) return false;
+    const NodeImpl = @import("Node.zig");
+    var document = NodeImpl.getOwnerDocument(element);
+    var depth: usize = 0;
+    while (document) |doc| : (depth += 1) {
+        if (depth > 32) return false;
+        const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return false;
+        defer element.ctx.allocator.free(doc_url);
+        if (navigate_steps.equalsExcludingFragments(doc_url, url)) return true;
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
+        const container = dom_module.navigable_container.of(window) orelse return false;
+        document = NodeImpl.getOwnerDocument(container);
+    }
+    return false;
+}
+
+/// HTML "navigate an iframe or frame" (§4.8.5).
+fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
+    const internal = getInternal(element) orelse return;
+    const integration = internal.integration;
+    // Step 1: "Let historyHandling be "auto"."
+    var behavior: navigate_steps.HistoryBehavior = .auto;
+    // Step 2: "If element's content navigable's active document is not
+    // completely loaded, then set historyHandling to "replace"."
+    if (activeDocumentOf(integration)) |document| {
+        if (!document_lifecycle.isCompletelyLoaded(document)) behavior = .replace;
+    }
+    // Step 4: navigate, using element's node document.
+    const NodeImpl = @import("Node.zig");
+    navigate(integration, url, .{
+        .source_document = NodeImpl.getOwnerDocument(element),
+        .history_behavior = behavior,
+        .srcdoc = srcdoc,
+        .initial_insertion = initial_insertion,
+    });
 }
 
 /// Fire a load event on the iframe element.
@@ -958,15 +1556,12 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
 }
 
 /// Getter for contentWindow
-/// Returns the WindowProxy for the nested browsing context, or null if none.
+/// HTML "content window": the content navigable's active WindowProxy, or null
+/// when the element has no content navigable.
 ///
-/// Per HTML Standard §4.8.5, the contentWindow getter returns the WindowProxy
-/// for the nested browsing context. This WindowProxy provides access to the
-/// Window object in the iframe's realm.
-///
-/// IMPORTANT: Per spec, contentWindow returns null if the iframe is not connected
-/// (not inserted into the document). The content navigable is only created when
-/// the iframe element is inserted into the DOM via the "post-connection steps".
+/// The navigable is made by the element's post-connection steps. One that
+/// never ran them - an element connected before any iframe existed to
+/// register them - gets one here, without its attributes processed.
 ///
 /// Phase 4 (Window-as-V8-Global): The Window instance IS bound to the V8 global
 /// object, enabling proper cross-realm access:
@@ -978,169 +1573,17 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 
     // Per HTML spec: If the iframe is not connected (not in the document),
     // there is no content navigable, so contentWindow must return null.
-    // The content navigable is only created during "post-connection steps"
-    // when the iframe is inserted into the DOM.
     const NodeImpl = @import("Node.zig");
     const is_connected = NodeImpl.get_isConnected(instance) catch false;
     if (!is_connected) {
         return null;
     }
+    if (internal.integration.state == .discarded) return null;
 
-    // Ensure the realm and V8 context are created (lazy initialization)
-    // This creates a child V8 context with all interface bindings
     if (!internal.integration.hasRealmContext()) {
-        // Get the current V8 isolate
-        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
-            // Fall back to WindowProxy if no V8 isolate
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
+        if (!createChildNavigable(instance)) {
+            if (internal.integration.getContentWindow()) |proxy| return @ptrCast(proxy);
             return null;
-        };
-
-        // Get the current V8 context (used for context creation later)
-        const current_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-            // Fall back to WindowProxy if no current context
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
-            return null;
-        };
-        // Owned, and only read below: createChildContext uses the parent
-        // context to find its entry and copy its security token. Leaked, it kept
-        // the page alive.
-        defer v8.ffi.v8_Context_Dispose(current_v8_ctx);
-
-        // CRITICAL: Find the correct parent window.
-        // For nested iframes (inside another iframe's srcdoc), we need to find the parent
-        // through the DOM tree, not through v8_Isolate_GetCurrentContext().
-        //
-        // The correct parent is the window of the iframe's ownerDocument.
-        // For a nested iframe in outer iframe's srcdoc:
-        // - instance.ownerDocument = outer iframe's document
-        // - outer iframe's document.defaultView = outer iframe's window
-        // - outer iframe's window.browsing_context = correct parent BC
-        const DocumentImpl = @import("Document.zig");
-
-        // Try to get parent through ownerDocument.defaultView (correct for nested iframes)
-        const parent_window: *runtime.Instance = blk: {
-            // Get this iframe's ownerDocument (NodeImpl already imported above)
-            if (NodeImpl.getOwnerDocument(instance)) |owner_doc| {
-                // Get the document's defaultView (the window that contains this document)
-                if (DocumentImpl.get_defaultView(owner_doc) catch null) |default_view| {
-                    break :blk default_view;
-                }
-            }
-            // Fall back to window from current V8 context (for top-level iframes)
-            break :blk context_manager.getWindowForContext(current_v8_ctx) orelse {
-                if (internal.integration.getContentWindow()) |proxy| {
-                    return @ptrCast(proxy);
-                }
-                return null;
-            };
-        };
-        const WindowImpl = @import("Window.zig");
-
-        // Use current V8 context for child context creation
-        const parent_v8_ctx = current_v8_ctx;
-
-        const parent_window_internal = WindowImpl.getInternal(parent_window) orelse {
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
-            return null;
-        };
-
-        // Set the container_origin from the parent window's origin.
-        // This is required for same-origin checks in contentDocument.
-        // Per spec, the container origin is the origin of the parent document.
-        // The Window stores its origin as a string (e.g., "http://localhost:8000"),
-        // so we need to parse it into an Origin struct.
-        const parent_origin_str = parent_window_internal.origin;
-        const parent_origin = parseOriginFromString(parent_origin_str);
-        internal.integration.container_origin = parent_origin;
-
-        // Ensure the iframe's browsing context exists (lazy creation)
-        const existing_bc = internal.integration.ensureBrowsingContext(
-            @ptrCast(parent_window_internal.browsing_context),
-        ) orelse {
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
-            return null;
-        };
-        // This element is the new navigable's container.
-        existing_bc.container = instance;
-
-        // CRITICAL: Determine if this iframe should use an opaque origin BEFORE
-        // creating the V8 context. Per HTML spec §4.8.5 and Chromium's implementation:
-        // - Sandboxed iframes WITHOUT allow-same-origin get a unique opaque origin
-        // - This requires setting V8's default security token (isolated from parent)
-        // - Otherwise, share parent's security token for same-origin access
-        //
-        // This MUST be calculated before createChildContext because V8's security
-        // token is set during context creation and affects all subsequent property
-        // access attempts (e.g., `parent.document` from within the iframe).
-        const use_opaque_origin = blk: {
-            if (internal.integration.sandbox_flags) |flags| {
-                // Sandboxed without allow-same-origin = opaque origin
-                break :blk !flags.allow_same_origin;
-            }
-            break :blk false;
-        };
-
-        // This element is the navigable's container: its load event steps run
-        // once a navigation completes (e.g. contentWindow.location = url).
-        internal.integration.fire_load_callback = &fireLoadCallback;
-        internal.integration.iframe_element = @ptrCast(instance);
-
-        // The navigable's context, Window and initial about:blank document.
-        // Per HTML spec §4.8.5, sandboxed without allow-same-origin its origin
-        // is opaque; otherwise it inherits the container document's.
-        _ = attachNavigableContext(
-            internal.integration,
-            parent_v8_ctx,
-            isolate,
-            existing_bc,
-            if (use_opaque_origin) null else parent_origin_str,
-            internal.allocator,
-        ) orelse {
-            // Fall back to WindowProxy if context creation fails
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
-            return null;
-        };
-        // Fire the load event on the iframe element ONLY if no srcdoc/src navigation is pending.
-        // Per HTML spec §4.8.5, the "iframe load event steps" fire a load event
-        // at the iframe element after the document is completely loaded.
-        // For about:blank documents (no srcdoc/src), this happens synchronously.
-        // If srcdoc or src is set, the load event will be fired after navigation completes.
-        //
-        // CRITICAL: Also check the element's attribute list for srcdoc, not just internal state.
-        // For nested iframes created by HTML parsing, the srcdoc attribute is in the element's
-        // attribute list but not in internal.srcdoc_attr (because Element.setAttribute doesn't
-        // call the IDL setter).
-        const has_srcdoc_attr = blk: {
-            const ElementImpl = @import("Element.zig");
-            const srcdoc_attr_name = runtime.DOMString.initInterned("srcdoc");
-            const srcdoc_value = ElementImpl.call_getAttribute(instance, srcdoc_attr_name) catch null;
-            if (srcdoc_value) |sv| {
-                break :blk sv.asSlice().len > 0;
-            }
-            break :blk false;
-        };
-        const has_src_attr = blk: {
-            const ElementImpl = @import("Element.zig");
-            const src_attr_name = runtime.DOMString.initInterned("src");
-            const src_value = ElementImpl.call_getAttribute(instance, src_attr_name) catch null;
-            if (src_value) |sv| {
-                break :blk sv.asSlice().len > 0;
-            }
-            break :blk false;
-        };
-        if (internal.srcdoc_attr == null and internal.src_attr == null and !has_srcdoc_attr and !has_src_attr) {
-            fireLoadEventOnIframe(instance);
         }
     }
 
@@ -1160,6 +1603,76 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         return @ptrCast(proxy);
     }
     return null;
+}
+
+/// HTML "create a new child navigable" for `instance`: a browsing context in
+/// its node document's navigable, and a V8 context with a Window and the
+/// initial about:blank document. False when the element's node document has
+/// no browsing context - a document made by createHTMLDocument() or
+/// DOMParser has no navigable to be the parent - or creation failed.
+fn createChildNavigable(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return false;
+    const NodeImpl = @import("Node.zig");
+    const DocumentImpl = @import("Document.zig");
+
+    // The parent is the window of the element's node document - for a frame
+    // nested in another frame's document, that frame's window.
+    const owner_doc = NodeImpl.getOwnerDocument(instance) orelse return false;
+    const parent_window: *runtime.Instance = (DocumentImpl.get_defaultView(owner_doc) catch null) orelse return false;
+    const WindowImpl = @import("Window.zig");
+    const parent_window_internal = WindowImpl.getInternal(parent_window) orelse return false;
+    // The parent's context: createChildContext finds its entry by it and
+    // copies its security token. A window whose realm was never recorded
+    // falls back to the current context, which is what this always used.
+    var owned_ctx: ?*v8.ffi.Context = null;
+    defer if (owned_ctx) |c| v8.ffi.v8_Context_Dispose(c);
+    const parent_v8_ctx: *v8.ffi.Context = blk: {
+        if (parent_window.ctx.realm) |realm| {
+            if (realm.getV8Context()) |c| break :blk @ptrCast(@alignCast(c));
+        }
+        owned_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+        break :blk owned_ctx.?;
+    };
+
+    // The container document's origin, for same-origin checks on
+    // contentDocument. The Window stores its origin as a string (e.g.,
+    // "http://localhost:8000").
+    const parent_origin_str = parent_window_internal.origin;
+    const parent_origin = parseOriginFromString(parent_origin_str);
+    internal.integration.container_origin = parent_origin;
+
+    // The browsing context, a child of the container document's.
+    const existing_bc = internal.integration.ensureBrowsingContext(
+        @ptrCast(parent_window_internal.browsing_context),
+    ) orelse return false;
+    // This element is the new navigable's container.
+    existing_bc.container = instance;
+
+    // Sandboxed without allow-same-origin, the navigable's origin is opaque
+    // - decided before the context exists, since V8's security token is set
+    // as it is created.
+    const use_opaque_origin = blk: {
+        if (internal.integration.sandbox_flags) |flags| {
+            break :blk !flags.allow_same_origin;
+        }
+        break :blk false;
+    };
+
+    // This element is the navigable's container: its load event steps run
+    // once a navigation completes.
+    internal.integration.iframe_element = @ptrCast(instance);
+
+    // The navigable's context, Window and initial about:blank document.
+    _ = attachNavigableContext(
+        internal.integration,
+        parent_v8_ctx,
+        isolate,
+        existing_bc,
+        if (use_opaque_origin) null else parent_origin_str,
+        internal.allocator,
+    ) orelse return false;
+    return true;
 }
 
 /// A navigable's V8 context, Window and initial about:blank document, wired to
@@ -1211,6 +1724,11 @@ fn attachNavigableContext(
     // Set script execution callbacks (for script execution in iframe documents)
     integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
+    // Navigation: this engine's "navigate", the hook that ends a navigation
+    // in flight when the navigable goes, and how a retired context ends.
+    integration.navigate_callback = &navigateFromIntegration;
+    integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.retired_realm_destroy = &destroyRetiredRealm;
 
     // Set up Location's navigate callback for programmatic navigation
     // (e.g., iframe.contentWindow.location = 'url' or location.assign())
@@ -1222,7 +1740,7 @@ fn attachNavigableContext(
                 // Set up bi-directional link: Location knows its Window
                 LocationImpl.setWindow(location, window_instance);
                 // Set up navigation callback with IFrameIntegration as context
-                LocationImpl.setNavigateCallback(location, &navigateIframe, @ptrCast(integration));
+                LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
             }
         }
     }
@@ -1246,7 +1764,12 @@ fn attachNavigableContext(
     // context is created, not through navigation.
     // We call the createDocumentForIframe callback directly to create and
     // associate the Document with the browsing context.
-    _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), browsing_context);
+    // HTML "create a new browsing context and document" step 15: this
+    // document "is initial about:blank"; step 21 completely finishes loading
+    // it.
+    if (createDocumentForIframe(@ptrCast(&entry.runtime_ctx), browsing_context)) |document| {
+        dom_module.document_lifecycle.markInitialAboutBlank(@ptrCast(@alignCast(document)));
+    }
 
     return entry;
 }
@@ -1356,136 +1879,73 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 // ============================================================================
 
 /// Getter for src
-/// Returns a newly allocated copy of the src attribute.
-/// The V8 interface layer will free the returned string after converting to V8.
+/// HTML "reflect" for a USVString URL attribute: the content attribute,
+/// encoding-parsed and serialized relative to the node document - or, when
+/// that fails, the attribute's value as given; "" without one. Owned: the
+/// binding frees what a getter returns.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return "";
-
-    if (internal.src_attr) |src| {
-        // Must dupe - V8 interface layer frees getter results
-        return try internal.allocator.dupe(u8, src);
-    }
-    return "";
+    const ElementImpl = @import("Element.zig");
+    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("src"))) orelse return "";
+    const raw = value.asSlice();
+    if (raw.len == 0) return instance.ctx.allocator.dupe(u8, "");
+    const base = interfaces.Node.get_baseURI(instance) catch return instance.ctx.allocator.dupe(u8, raw);
+    defer instance.ctx.allocator.free(base);
+    const base_arg = if (base.len > 0)
+        webidl.Opt(runtime.USVString).passed(base)
+    else
+        webidl.Opt(runtime.USVString).notPassed();
+    const url = (interfaces.URL.call_static_parse(instance, raw, base_arg) catch null) orelse
+        return instance.ctx.allocator.dupe(u8, raw);
+    defer runtime.Instance.deinit(url);
+    return interfaces.URL.get_href(url);
 }
 
 /// Setter for src
-/// Setting src triggers navigation to the new URL.
+/// HTML "reflect": set the src content attribute.
 ///
-/// Per HTML Standard §4.8.5, setting src navigates the iframe to the given URL.
-/// For WPT tests, we check if an external hook is registered to handle relative
-/// and HTTP URLs. This allows the WPT runner to load content from its file system.
+/// HTML §4.8.5: "whenever an iframe element with a non-null content navigable
+/// but with no srcdoc attribute specified has its src attribute set, changed,
+/// or removed, the user agent must process the iframe attributes." Element's
+/// attribute change steps do not reach this element yet, so the setter does
+/// it; `setAttribute("src", ...)` does not navigate.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Free old value
-    if (internal.src_attr) |old| {
-        internal.allocator.free(old);
-    }
-
-    // Store new value - USVString is []const u8
-    internal.src_attr = try internal.allocator.dupe(u8, value);
-
-    // Ensure the V8 context exists before navigation.
-    // Per HTML spec, when src is set, the iframe should navigate to the URL.
-    // Scripts in the navigated document need a V8 context to execute.
-    // Accessing contentWindow lazily creates the V8 context if needed.
-    //
-    // A null answer means the element is not connected, so there is no content
-    // navigable and `IFrameIntegration.setSrc` will store the URL without
-    // navigating. Nothing loads, so nothing may fire a load event.
-    const has_navigable = (try get_contentWindow(instance)) != null;
-
-    // Check if an external hook is registered to handle this URL
-    // The hook handles relative URLs and HTTP URLs for WPT tests
-    if (iframe_src_load_hook) |hook| {
-        // Check if this URL needs external handling (relative or HTTP)
-        const needs_external = !std.mem.startsWith(u8, value, "about:") and
-            !std.mem.startsWith(u8, value, "data:") and
-            !std.mem.startsWith(u8, value, "file://") and
-            !std.mem.startsWith(u8, value, "javascript:");
-
-        if (needs_external) {
-            // Try the external hook first
-            if (hook(instance, value)) {
-                // Hook handled the load - don't call integration.setSrc
-                return;
-            }
-        }
-    }
-
-    // Trigger navigation via integration, with the URL parsed relative to the
-    // node document. Navigation errors are typically silent for iframe src.
-    const src_url = resolveSrc(instance, value);
-    defer instance.ctx.allocator.free(src_url);
-    internal.integration.setSrc(src_url) catch {};
-
-    // Fire load event after navigation completes.
-    // Per HTML spec §4.8.5, the load event fires after the document is loaded.
-    // For data: URLs, this is synchronous.
-    // For javascript: URLs, the document content is the result of the script.
-    //
-    // Everything else went through `navigateToSrc`, which fetches, parses and
-    // commits before it returns - so the document IS loaded here. It is only
-    // the listener that is not attached yet: `iframe.src = url` is almost
-    // always followed by the `addEventListener("load", ...)` that waits for
-    // it. Hence the microtask; see `queueIframeLoadEvent`. Firing on a failed
-    // navigation too is deliberate - §4.8.5 fires load for the error document
-    // as well, and not firing leaves every waiting page hung.
-    if (!has_navigable) {
-        // Not connected: nothing navigated, so nothing has loaded.
-    } else if (std.mem.startsWith(u8, value, "data:") or std.mem.startsWith(u8, value, "javascript:")) {
-        fireLoadUnlessDocumentWill(instance);
-    } else if (value.len > 0) {
-        queueIframeLoadEvent(instance);
-    }
+    const ElementImpl = @import("Element.zig");
+    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("src"), runtime.DOMString.initInterned(value));
+    if (!hasContentNavigable(instance)) return;
+    if (try ElementImpl.call_hasAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) return;
+    processIframeAttributes(instance, false);
 }
 
 /// Getter for srcdoc
+/// HTML "reflect": the srcdoc content attribute, or "". A copy - the binding
+/// frees what a getter returns, and the attribute can change under it.
 pub fn get_srcdoc(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.srcdoc_attr) |srcdoc| {
-        return runtime.DOMString.initInterned(srcdoc);
-    }
-    return runtime.DOMString.initInterned("");
+    const ElementImpl = @import("Element.zig");
+    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) orelse
+        return runtime.DOMString.initInterned("");
+    return runtime.DOMString.initDupe(instance.ctx.allocator, value.asSlice());
 }
 
 /// Setter for srcdoc
-/// Setting srcdoc loads inline HTML content.
+/// HTML "reflect": set the srcdoc content attribute - and, the attribute
+/// change steps not reaching this element yet, process the iframe attributes
+/// (§4.8.5: "whenever an iframe element with a non-null content navigable
+/// has its srcdoc attribute set, changed, or removed").
 pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Free old value
-    if (internal.srcdoc_attr) |old| {
-        internal.allocator.free(old);
-    }
-
-    // Store new value - DOMString.asSlice() gets the underlying []const u8
-    const str = value.asSlice();
-    internal.srcdoc_attr = try internal.allocator.dupe(u8, str);
-
-    // CRITICAL: Read and apply the sandbox attribute BEFORE creating the browsing context.
-    // Per HTML spec §4.8.5, the sandbox attribute affects script execution in the iframe.
-    // When setAttribute('sandbox', '') is called, it sets the attribute on the Element,
-    // but the IFrameIntegration needs to be notified to set sandbox flags on the
-    // BrowsingContext. Without this, scripts will execute even in sandboxed iframes.
     const ElementImpl = @import("Element.zig");
-    const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
-    if (ElementImpl.call_hasAttribute(instance, sandbox_attr_name) catch false) {
-        // Sandbox attribute exists (even if empty string)
-        const sandbox_value = ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null;
-        const sandbox_str = if (sandbox_value) |sv| sv.asSlice() else "";
-        // Apply sandbox flags to the integration
-        internal.integration.setSandbox(sandbox_str) catch {};
-    }
+    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("srcdoc"), value);
+    if (!hasContentNavigable(instance)) return;
+    processIframeAttributes(instance, false);
+}
 
-    // Ensure the V8 context exists before navigation.
-    // Scripts in srcdoc content need a V8 context to execute.
-    _ = try get_contentWindow(instance);
-
-    // Trigger navigation via integration
-    // Navigation errors are typically silent
-    internal.integration.setSrcdoc(str) catch {};
+/// Whether the element has a content navigable: it is connected and its
+/// post-connection steps made one.
+fn hasContentNavigable(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    if (internal.integration.state == .discarded or internal.integration.state == .uninitialized) return false;
+    if (internal.integration.browsing_context == null) return false;
+    const NodeImpl = @import("Node.zig");
+    return NodeImpl.get_isConnected(instance) catch false;
 }
 
 /// Getter for name
@@ -1995,7 +2455,14 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
             context_manager.cleanUpChildWindows(@ptrCast(@alignCast(engine_ctx)));
         }
     }
+    const was_delaying = internal.integration.delaying_load;
     internal.integration.onRemovedFromDocument();
+    // The node document may have been waiting on this frame's navigation to
+    // fire its load event. It has no content navigable now.
+    if (was_delaying) {
+        const NodeImpl = @import("Node.zig");
+        if (NodeImpl.getOwnerDocument(instance)) |document| dom_module.document_lifecycle.loadDelayMayHaveEnded(document);
+    }
 }
 
 /// Register the iframe removing steps callback with the DOM mutation system.
@@ -2009,7 +2476,7 @@ pub fn registerIframeRemovingSteps() !void {
 
 /// Flag to track if the callbacks have been registered
 var removing_steps_registered: bool = false;
-var insertion_steps_registered: bool = false;
+var post_connection_steps_registered: bool = false;
 
 /// Ensure the iframe removing steps callback is registered.
 /// This is called lazily during iframe creation to ensure the callback is set up.
@@ -2020,68 +2487,65 @@ pub fn ensureRemovingStepsRegistered() void {
 }
 
 // ============================================================================
-// Insertion Steps Callback for Iframe Browsing Context Creation
+// Post-connection steps (HTML §4.8.5)
 // ============================================================================
 
-/// Insertion steps callback for iframe elements.
-/// This callback is registered with the DOM mutation system and is called whenever
-/// a node is inserted into the document. If the node is an iframe element, this
-/// function triggers browsing context creation if not already created.
+/// The iframe HTML element post-connection steps, given `node`:
+/// 1. create a new child navigable for it;
+/// 2. parse its sandbox attribute, if it has one;
+/// 3. process the iframe attributes, with initialInsertion true.
 ///
-/// Per HTML spec §4.8.5, when an iframe is inserted into a document that has
-/// a browsing context:
-/// 1. Create a nested browsing context for the element
-/// 2. Process the iframe attributes (src, srcdoc, etc.)
+/// Every insertion reaches this - the parsers' as much as script's - once
+/// the whole batch is in the tree, so a frame's load event and its scripts
+/// never run in the middle of an insertion.
 ///
-/// This is critical for window.frames[name] to work - the browsing context must
-/// exist and have its name set before JavaScript can access it via the frames collection.
-fn iframeInsertionStepsCallback(node: *NodeBase) void {
-    // Only process ELEMENT_NODE (nodeType == 1)
+/// An element that was removed and is inserted again gets a NEW navigable
+/// and a new initial about:blank document; its old context is retired, not
+/// destroyed (see `IFrameIntegration.retireRealmContext`).
+fn iframePostConnectionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
-
-    // Check if this is an iframe element by looking at the node_name.
-    // For HTML elements, node_name is the uppercase tag name (e.g., "IFRAME").
-    // We also check for lowercase "iframe" for robustness.
     if (!std.ascii.eqlIgnoreCase(node.node_name, "iframe")) return;
-
-    // Get the runtime.Instance from the NodeBase using the instance bridge
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-    // Get the iframe's internal state
     const internal = getInternal(instance) orelse return;
+    const NodeImpl = @import("Node.zig");
+    if (!(NodeImpl.get_isConnected(instance) catch false)) return;
 
-    // If the browsing context already exists, we're done
-    // (this handles re-insertion of an iframe that was previously in the document)
-    if (internal.integration.browsing_context != null) {
-        return;
+    // Inserted again after a removal: the old navigable is gone.
+    if (internal.integration.state == .discarded) {
+        internal.integration.retireRealmContext() catch return;
     }
 
-    // Trigger lazy creation of the browsing context by accessing contentWindow.
-    // This will:
-    // 1. Create the child V8 context
-    // 2. Create the browsing context and add it to the parent's children list
-    // 3. Set the target_name on the browsing context (if name attribute is set)
-    // 4. Create the initial about:blank document
-    //
-    // After this, window.frames[name] will work because the browsing context
-    // is in the parent's children list with its name set.
-    _ = get_contentWindow(instance) catch return;
+    // Step 2 comes first here: the sandboxing flags decide the new context's
+    // security token as it is created.
+    const ElementImpl = @import("Element.zig");
+    if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox")) catch null) |sandbox| {
+        internal.integration.setSandbox(sandbox.asSlice()) catch {};
+    }
 
-    // If the iframe has a name set, ensure it's propagated to the browsing context.
-    // This handles the case where name was set before insertion.
-    if (internal.name_attr) |name| {
-        internal.integration.setName(name) catch {};
-        // Also set on the browsing context directly
-        if (internal.integration.browsing_context) |bc| {
-            bc.setTargetName(name) catch {};
+    // Step 1: create a new child navigable.
+    if (!internal.integration.hasRealmContext()) {
+        if (!createChildNavigable(instance)) return;
+    }
+
+    // The navigable's target name is the element's name attribute, and the
+    // parent's global reaches it by that name.
+    const name: ?[]const u8 = blk: {
+        if (internal.name_attr) |n| break :blk n;
+        if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
+        break :blk null;
+    };
+    if (name) |n| {
+        if (n.len > 0) {
+            const owned = internal.allocator.dupe(u8, n) catch return;
+            defer internal.allocator.free(owned);
+            internal.integration.setName(owned) catch {};
+            registerNamedPropertyOnParentGlobal(instance, owned);
         }
-
-        // Register the named property on the parent window's global object
-        // This is needed because V8's named property interceptors don't work after snapshot restore.
-        // By setting window[name] = contentWindow, we enable window.frames['name'] to work.
-        registerNamedPropertyOnParentGlobal(instance, name);
     }
+
+    // Step 3.
+    processIframeAttributes(instance, true);
 }
 
 /// Register a named property on the parent window's global object for iframe access.
@@ -2117,8 +2581,10 @@ fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name:
     const parent_v8_ctx_ptr = realm.getV8Context() orelse return;
     const parent_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(parent_v8_ctx_ptr));
 
-    // Get the parent's global object
+    // Get the parent's global object. Every handle below is owned, and one
+    // to a global keeps its whole page alive: each is released here.
     const global = v8.ffi.v8_Context_Global(parent_v8_ctx) orelse return;
+    defer v8.ffi.v8_Object_Dispose(global);
 
     // Get the child Window instance and its V8 context from its realm
     const child_window_ptr = child_bc.active_window orelse return;
@@ -2131,24 +2597,25 @@ fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name:
 
     // Get the child window's V8 wrapper (the global object of the child context)
     const child_global = v8.ffi.v8_Context_Global(child_v8_ctx) orelse return;
+    defer v8.ffi.v8_Object_Dispose(child_global);
 
     // Create the property name string
     const name_str = v8.ffi.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return;
+    defer v8.ffi.v8_String_Dispose(name_str);
 
     // Set the property: window[name] = child's global (contentWindow)
     _ = v8.ffi.v8_Object_Set(global, parent_v8_ctx, @ptrCast(name_str), @ptrCast(child_global));
 }
 
-/// Register the iframe insertion steps callback with the DOM mutation system.
-/// This should be called during application initialization.
-pub fn registerIframeInsertionSteps() !void {
-    try dom_module.mutation.registerInsertionStepsCallback(&iframeInsertionStepsCallback);
+/// Register the iframe post-connection steps with the DOM mutation system.
+pub fn registerIframePostConnectionSteps() !void {
+    try dom_module.mutation.registerPostConnectionStepsCallback(&iframePostConnectionSteps);
 }
 
-/// Ensure the iframe insertion steps callback is registered.
-/// This is called lazily during iframe creation to ensure the callback is set up.
-pub fn ensureInsertionStepsRegistered() void {
-    if (insertion_steps_registered) return;
-    registerIframeInsertionSteps() catch return;
-    insertion_steps_registered = true;
+/// Ensure the iframe post-connection steps are registered - once, when the
+/// first iframe element is made.
+pub fn ensurePostConnectionStepsRegistered() void {
+    if (post_connection_steps_registered) return;
+    registerIframePostConnectionSteps() catch return;
+    post_connection_steps_registered = true;
 }
