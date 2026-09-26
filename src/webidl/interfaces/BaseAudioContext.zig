@@ -338,4 +338,10 @@ pub const BaseAudioContext = struct {
     pub fn call_createPeriodicWave(instance: *runtime.Instance, real: runtime.JSValue, imag: runtime.JSValue, constraints: webidl.Opt(PeriodicWaveConstraints)) anyerror!*runtime.Instance {
         return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_decodeAudioData",
+    };
 };

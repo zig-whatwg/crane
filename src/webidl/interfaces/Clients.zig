@@ -126,4 +126,13 @@ pub const Clients = struct {
 
         return try ClientsImpl.call_openWindow(instance, url);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_claim",
+        "call_matchAll",
+        "call_get",
+        "call_openWindow",
+    };
 };

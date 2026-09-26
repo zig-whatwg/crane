@@ -105,4 +105,10 @@ pub const SFrameKeyManagement = struct {
     pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
         return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_setEncryptionKey",
+    };
 };

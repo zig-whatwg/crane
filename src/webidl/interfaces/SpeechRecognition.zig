@@ -407,4 +407,11 @@ pub const SpeechRecognition = struct {
             .{ .function = "call_start__1", .implemented = @hasDecl(SpeechRecognitionImpl, "call_start__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MediaStreamTrack")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MediaStreamTrack.State) } else .other)} }} },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_install",
+        "call_static_available",
+    };
 };

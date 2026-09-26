@@ -586,4 +586,22 @@ pub const RTCPeerConnection = struct {
             .{ .function = "call_setLocalDescription__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_setLocalDescription__1"), .args = &.{ .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_generateCertificate",
+        "call_getStats",
+        "call_setRemoteDescription",
+        "call_setRemoteDescription__1",
+        "call_addIceCandidate",
+        "call_addIceCandidate__1",
+        "call_getIdentityAssertion",
+        "call_createAnswer",
+        "call_createAnswer__1",
+        "call_createOffer",
+        "call_createOffer__1",
+        "call_setLocalDescription",
+        "call_setLocalDescription__1",
+    };
 };

@@ -1766,6 +1766,28 @@ void v8_FreeFunctionCallResult(V8FunctionCallResult* result) {
 // to the caller's caller unchanged (Streams: `start()` throwing `error1` must
 // make the constructor throw `error1`, not a TypeError describing it).
 
+/// Run `body(data)` under a TryCatch - the completion of native code rather
+/// than of a JS function. Returns whether it threw; the thrown value is handed
+/// back as a new Global in `*exception` (the caller owns it) and the exception
+/// is cleared, for the caller to settle - a promise-returning operation
+/// rejects with it (WebIDL 3.7.6). A terminating isolate is rethrown, not
+/// caught, and reports false. A TryCatch keys off its own stack address, so
+/// the FFI takes a callback rather than handing out a scope.
+bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Value>** exception) {
+    *exception = nullptr;
+    TryCatch try_catch(isolate);
+    body(data);
+    if (!try_catch.HasCaught()) return false;
+    if (try_catch.HasTerminated()) {
+        try_catch.ReThrow();
+        return false;
+    }
+    HandleScope handle_scope(isolate);
+    *exception = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    try_catch.Reset();
+    return true;
+}
+
 /// Call `function` with `recv` (null = undefined) under a TryCatch and return
 /// the completion. On a normal return the result is returned and `*threw` is
 /// false; on a throw the thrown value is returned and `*threw` is true - the

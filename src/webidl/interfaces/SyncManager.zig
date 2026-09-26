@@ -101,4 +101,11 @@ pub const SyncManager = struct {
     pub fn call_register(instance: *runtime.Instance, tag: DOMString) anyerror!runtime.JSValue {
         return try SyncManagerImpl.call_register(instance, tag);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getTags",
+        "call_register",
+    };
 };

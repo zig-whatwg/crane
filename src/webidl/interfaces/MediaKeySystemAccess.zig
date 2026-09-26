@@ -112,4 +112,10 @@ pub const MediaKeySystemAccess = struct {
     pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!MediaKeySystemConfiguration {
         return try MediaKeySystemAccessImpl.call_getConfiguration(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_createMediaKeys",
+    };
 };

@@ -109,4 +109,12 @@ pub const ContentIndex = struct {
     pub fn call_add(instance: *runtime.Instance, description: ContentDescription) anyerror!runtime.JSValue {
         return try ContentIndexImpl.call_add(instance, description);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_delete",
+        "call_getAll",
+        "call_add",
+    };
 };

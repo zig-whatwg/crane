@@ -269,4 +269,13 @@ pub const WebTransport = struct {
     pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!runtime.JSValue {
         return try WebTransportImpl.call_createBidirectionalStream(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getStats",
+        "call_createUnidirectionalStream",
+        "call_exportKeyingMaterial",
+        "call_createBidirectionalStream",
+    };
 };

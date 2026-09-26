@@ -106,4 +106,10 @@ pub const WebTransportWriter = struct {
     pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try WebTransportWriterImpl.call_atomicWrite(instance, chunk);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_atomicWrite",
+    };
 };

@@ -502,6 +502,42 @@ fn convertArgReleasing(
 /// JavaScript null converts to "" instead of "null". Codegen writes the table
 /// (`legacy_null_to_empty` in a generated interface) from the IDL; an
 /// interface without one answers 0 and converts as before.
+/// Whether `fn_name` is a promise-returning operation of `Interface`: codegen
+/// lists them in `promise_returning` (WebIDL 3.7.6).
+pub fn returnsPromise(comptime Interface: type, comptime fn_name: []const u8) bool {
+    if (!@hasDecl(Interface, "promise_returning")) return false;
+    inline for (Interface.promise_returning) |name| {
+        if (comptime std.mem.eql(u8, name, fn_name)) return true;
+    }
+    return false;
+}
+
+/// WebIDL 3.7.6, for an operation whose return type is a promise: its steps -
+/// the brand check, argument conversion and the operation itself - run with
+/// an exception handler, and an exception becomes a promise rejected with it.
+/// `fetch(url, {referrerPolicy: "foo"})` threw where it must reject, and so
+/// did every promise-returning API's failed conversion.
+fn rejectOnThrow(info: *const v8.FunctionCallbackInfo, comptime body: fn (*const v8.FunctionCallbackInfo) void) void {
+    const Thunk = struct {
+        fn run(data: ?*anyopaque) callconv(.c) void {
+            body(@ptrCast(@alignCast(data.?)));
+        }
+    };
+    const isolate = info.getIsolate();
+    var thrown: ?*v8.Value = null;
+    if (!v8.v8_RunCatching(isolate, Thunk.run, @ptrCast(@constCast(info)), &thrown)) return;
+    const reason = thrown orelse return;
+    defer v8.v8_Value_Dispose(reason);
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
+    const resolver = v8.v8_PromiseResolver_New(context) orelse return;
+    defer v8.v8_PromiseResolver_Dispose(resolver);
+    _ = v8.v8_PromiseResolver_Reject(resolver, context, reason);
+    const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return;
+    defer v8.v8_Promise_Dispose(promise);
+    info.setReturnValue(@ptrCast(promise));
+}
+
 pub fn legacyNullToEmptyMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
     if (!@hasDecl(Interface, "legacy_null_to_empty")) return 0;
     inline for (Interface.legacy_null_to_empty) |entry| {
@@ -2698,6 +2734,11 @@ pub fn V8Interface(comptime Interface: type) type {
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, body);
+                    body(info);
+                }
+
+                fn body(info: *const v8.FunctionCallbackInfo) void {
                     // An overloaded operation is installed as its FIRST
                     // overload; pick the one the arguments mean.
                     if (comptime overloadSetFor(zig_name)) |set| {
@@ -7971,6 +8012,11 @@ pub fn V8Interface(comptime Interface: type) type {
         fn StaticMethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, body);
+                    body(info);
+                }
+
+                fn body(info: *const v8.FunctionCallbackInfo) void {
                     const isolate = info.getIsolate();
 
                     // Get V8 context

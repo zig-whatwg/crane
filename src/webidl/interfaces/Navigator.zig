@@ -1212,4 +1212,26 @@ pub const Navigator = struct {
             .{ .function = "call_getAutoplayPolicy__2", .implemented = @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__2"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioContext")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioContext.State) } else .other)} }} },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_deprecatedURNtoURL",
+        "call_requestMediaKeySystemAccess",
+        "call_clearAppBadge",
+        "call_createAuctionNonce",
+        "call_queryHandwritingRecognizer",
+        "call_requestMIDIAccess",
+        "call_joinAdInterestGroup",
+        "call_runAdAuction",
+        "call_createHandwritingRecognizer",
+        "call_deprecatedReplaceInURN",
+        "call_getInterestGroupAdAuctionData",
+        "call_share",
+        "call_getInstalledRelatedApps",
+        "call_getBattery",
+        "call_setAppBadge",
+        "call_leaveAdInterestGroup",
+        "call_clearOriginJoinedAdInterestGroups",
+    };
 };

@@ -153,4 +153,12 @@ pub const MediaSession = struct {
     pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
         return try MediaSessionImpl.call_setPositionState(instance, state);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_setMicrophoneActive",
+        "call_setCameraActive",
+        "call_setScreenshareActive",
+    };
 };

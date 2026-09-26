@@ -217,4 +217,17 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     pub fn call_startNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.call_startNotifications(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_stopNotifications",
+        "call_getDescriptors",
+        "call_writeValueWithoutResponse",
+        "call_writeValue",
+        "call_getDescriptor",
+        "call_readValue",
+        "call_writeValueWithResponse",
+        "call_startNotifications",
+    };
 };

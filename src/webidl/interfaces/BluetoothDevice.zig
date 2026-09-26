@@ -206,4 +206,11 @@ pub const BluetoothDevice = struct {
     pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!runtime.JSValue {
         return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_forget",
+        "call_watchAdvertisements",
+    };
 };

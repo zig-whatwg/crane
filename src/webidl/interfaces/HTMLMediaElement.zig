@@ -843,4 +843,12 @@ pub const HTMLMediaElement = struct {
     pub fn call_load(instance: *runtime.Instance) anyerror!void {
         return try HTMLMediaElementImpl.call_load(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_play",
+        "call_setSinkId",
+        "call_setMediaKeys",
+    };
 };

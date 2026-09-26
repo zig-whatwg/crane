@@ -140,4 +140,14 @@ pub const CacheStorage = struct {
 
         return try CacheStorageImpl.call_open(instance, cacheName);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_match",
+        "call_has",
+        "call_delete",
+        "call_keys",
+        "call_open",
+    };
 };

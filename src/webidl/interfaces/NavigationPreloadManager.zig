@@ -117,4 +117,13 @@ pub const NavigationPreloadManager = struct {
     pub fn call_disable(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigationPreloadManagerImpl.call_disable(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getState",
+        "call_setHeaderValue",
+        "call_enable",
+        "call_disable",
+    };
 };

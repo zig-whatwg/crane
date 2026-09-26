@@ -167,4 +167,12 @@ pub const Blob = struct {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_stream(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_arrayBuffer",
+        "call_text",
+        "call_bytes",
+    };
 };

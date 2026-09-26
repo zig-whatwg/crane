@@ -2450,6 +2450,21 @@ pub const Document = struct {
         .{ "set_bgColor", 0b1 },
     };
 
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_browsingTopics",
+        "call_exitPictureInPicture",
+        "call_hasRedemptionRecord",
+        "call_requestStorageAccessFor",
+        "call_hasStorageAccess",
+        "call_hasPrivateToken",
+        "call_requestStorageAccess",
+        "call_requestStorageAccess__1",
+        "call_exitFullscreen",
+        "call_hasUnpartitionedCookieAccess",
+    };
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

@@ -283,4 +283,15 @@ pub const Response = struct {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_clone(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_arrayBuffer",
+        "call_json",
+        "call_text",
+        "call_blob",
+        "call_bytes",
+        "call_formData",
+    };
 };

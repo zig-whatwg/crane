@@ -132,4 +132,10 @@ pub const ClipboardItem = struct {
     pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         return try ClipboardItemImpl.call_static_supports(instance, @"type");
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getType",
+    };
 };

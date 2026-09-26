@@ -148,4 +148,12 @@ pub const PresentationRequest = struct {
     pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!runtime.JSValue {
         return try PresentationRequestImpl.call_reconnect(instance, presentationId);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_start",
+        "call_getAvailability",
+        "call_reconnect",
+    };
 };

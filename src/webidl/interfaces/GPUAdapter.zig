@@ -153,4 +153,10 @@ pub const GPUAdapter = struct {
     pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(GPUDeviceDescriptor)) anyerror!runtime.JSValue {
         return try GPUAdapterImpl.call_requestDevice(instance, descriptor);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestDevice",
+    };
 };

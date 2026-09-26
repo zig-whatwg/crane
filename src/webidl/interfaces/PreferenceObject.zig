@@ -154,4 +154,10 @@ pub const PreferenceObject = struct {
     pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
         return try PreferenceObjectImpl.call_clearOverride(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestOverride",
+    };
 };

@@ -202,4 +202,12 @@ pub const ServiceWorkerContainer = struct {
 
         return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getRegistration",
+        "call_getRegistrations",
+        "call_register",
+    };
 };

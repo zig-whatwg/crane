@@ -149,4 +149,10 @@ pub const DeviceOrientationEvent = struct {
     pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
         return try DeviceOrientationEventImpl.call_static_requestPermission(instance, absolute);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_requestPermission",
+    };
 };

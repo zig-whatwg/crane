@@ -162,4 +162,13 @@ pub const Translator = struct {
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!runtime.JSValue {
         return try TranslatorImpl.call_measureInputUsage(instance, input, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_translate",
+        "call_static_create",
+        "call_static_availability",
+        "call_measureInputUsage",
+    };
 };

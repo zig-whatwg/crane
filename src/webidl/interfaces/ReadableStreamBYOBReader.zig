@@ -130,4 +130,11 @@ pub const ReadableStreamBYOBReader = struct {
     pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
         return try ReadableStreamBYOBReaderImpl.call_releaseLock(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_cancel",
+        "call_read",
+    };
 };

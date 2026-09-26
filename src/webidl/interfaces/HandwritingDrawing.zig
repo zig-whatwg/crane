@@ -120,4 +120,10 @@ pub const HandwritingDrawing = struct {
     pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
         return try HandwritingDrawingImpl.call_removeStroke(instance, stroke);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getPrediction",
+    };
 };

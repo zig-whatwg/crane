@@ -182,4 +182,13 @@ pub const MLContext = struct {
             .{ .function = "call_readTensor__1", .implemented = @hasDecl(MLContextImpl, "call_readTensor__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MLTensor")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MLTensor.State) } else .other)} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } } } },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_createConstantTensor",
+        "call_createTensor",
+        "call_readTensor",
+        "call_readTensor__1",
+    };
 };

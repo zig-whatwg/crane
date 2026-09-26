@@ -206,4 +206,13 @@ pub const BluetoothRemoteGATTService = struct {
     pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedService(instance, service);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getCharacteristics",
+        "call_getIncludedServices",
+        "call_getCharacteristic",
+        "call_getIncludedService",
+    };
 };

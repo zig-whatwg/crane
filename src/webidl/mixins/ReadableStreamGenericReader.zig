@@ -20,3 +20,9 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     return try ReadableStreamGenericReaderImpl.call_cancel(instance, reason);
 }
+
+/// WebIDL: operations whose return type is a promise - an exception in
+/// their steps becomes a rejected promise.
+pub const promise_returning = .{
+    "call_cancel",
+};

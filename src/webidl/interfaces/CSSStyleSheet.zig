@@ -190,4 +190,10 @@ pub const CSSStyleSheet = struct {
     pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
         return try CSSStyleSheetImpl.call_deleteRule(instance, index);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_replace",
+    };
 };

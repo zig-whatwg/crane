@@ -110,4 +110,11 @@ pub const MediaKeys = struct {
     pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(MediaKeysPolicy)) anyerror!runtime.JSValue {
         return try MediaKeysImpl.call_getStatusForPolicy(instance, policy);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_setServerCertificate",
+        "call_getStatusForPolicy",
+    };
 };

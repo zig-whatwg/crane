@@ -97,4 +97,10 @@ pub const SmartCardResourceManager = struct {
     pub fn call_establishContext(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SmartCardResourceManagerImpl.call_establishContext(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_establishContext",
+    };
 };

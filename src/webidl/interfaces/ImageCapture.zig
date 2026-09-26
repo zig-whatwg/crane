@@ -136,4 +136,13 @@ pub const ImageCapture = struct {
     pub fn call_grabFrame(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageCaptureImpl.call_grabFrame(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_takePhoto",
+        "call_getPhotoCapabilities",
+        "call_getPhotoSettings",
+        "call_grabFrame",
+    };
 };

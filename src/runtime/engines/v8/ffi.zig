@@ -1254,6 +1254,11 @@ pub extern fn v8_FreeFunctionCallResult(result: ?*V8FunctionCallResult) void;
 /// with `threw.* == true` - caught, not left pending. Null (with `threw`
 /// true) only when `function` is not callable or the isolate is terminating.
 /// A non-null result is a new Global<Value>* the caller owns.
+/// Run `body(data)` under a TryCatch. Returns whether it threw; the thrown
+/// value (the caller owns it) is in `exception.*` and the exception is
+/// cleared. A terminating isolate is rethrown and reports false.
+pub extern fn v8_RunCatching(isolate: *Isolate, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, exception: *?*Value) bool;
+
 pub extern fn v8_Function_CallCatching(
     context: *Context,
     function: *Value,

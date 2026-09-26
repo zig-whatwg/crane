@@ -296,4 +296,10 @@ pub const Performance = struct {
     pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_measureUserAgentSpecificMemory",
+    };
 };

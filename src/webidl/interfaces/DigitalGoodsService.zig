@@ -113,4 +113,13 @@ pub const DigitalGoodsService = struct {
     pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalGoodsServiceImpl.call_listPurchaseHistory(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_listPurchases",
+        "call_getDetails",
+        "call_consume",
+        "call_listPurchaseHistory",
+    };
 };

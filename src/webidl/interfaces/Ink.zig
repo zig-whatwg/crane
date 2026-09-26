@@ -92,4 +92,10 @@ pub const Ink = struct {
     pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(InkPresenterParam)) anyerror!runtime.JSValue {
         return try InkImpl.call_requestPresenter(instance, param);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestPresenter",
+    };
 };

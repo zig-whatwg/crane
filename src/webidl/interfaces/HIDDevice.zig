@@ -213,4 +213,15 @@ pub const HIDDevice = struct {
 
         return try HIDDeviceImpl.call_sendReport(instance, reportId, data);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_sendFeatureReport",
+        "call_receiveFeatureReport",
+        "call_close",
+        "call_forget",
+        "call_open",
+        "call_sendReport",
+    };
 };

@@ -23,3 +23,10 @@ pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) 
 
     return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
 }
+
+/// WebIDL: operations whose return type is a promise - an exception in
+/// their steps becomes a rejected promise.
+pub const promise_returning = .{
+    "call_clearAppBadge",
+    "call_setAppBadge",
+};

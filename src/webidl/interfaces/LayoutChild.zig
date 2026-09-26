@@ -113,4 +113,11 @@ pub const LayoutChild = struct {
     pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: LayoutConstraintsOptions, breakToken: *runtime.Instance) anyerror!runtime.JSValue {
         return try LayoutChildImpl.call_layoutNextFragment(instance, constraints, breakToken);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_intrinsicSizes",
+        "call_layoutNextFragment",
+    };
 };

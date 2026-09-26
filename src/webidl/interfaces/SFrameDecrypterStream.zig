@@ -152,4 +152,10 @@ pub const SFrameDecrypterStream = struct {
     pub const set_onerror = mixins.SFrameKeyManagement.set_onerror;
 
     pub const call_setEncryptionKey = mixins.SFrameKeyManagement.call_setEncryptionKey;
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_setEncryptionKey",
+    };
 };

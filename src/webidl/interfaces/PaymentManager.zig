@@ -112,4 +112,10 @@ pub const PaymentManager = struct {
     pub fn call_enableDelegations(instance: *runtime.Instance, delegations: runtime.JSValue) anyerror!runtime.JSValue {
         return try PaymentManagerImpl.call_enableDelegations(instance, delegations);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_enableDelegations",
+    };
 };

@@ -283,4 +283,13 @@ pub const AudioContext = struct {
     pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_resume",
+        "call_setSinkId",
+        "call_suspend",
+        "call_close",
+    };
 };

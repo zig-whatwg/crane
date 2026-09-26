@@ -199,4 +199,14 @@ pub const MediaKeySession = struct {
     pub fn call_generateRequest(instance: *runtime.Instance, initDataType: DOMString, initData: BufferSource) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.call_generateRequest(instance, initDataType, initData);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_update",
+        "call_remove",
+        "call_close",
+        "call_load",
+        "call_generateRequest",
+    };
 };

@@ -97,4 +97,10 @@ pub const CropTarget = struct {
     pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
         return try CropTargetImpl.call_static_fromElement(instance, element);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_fromElement",
+    };
 };

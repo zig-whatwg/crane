@@ -128,4 +128,13 @@ pub const Clipboard = struct {
     pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!runtime.JSValue {
         return try ClipboardImpl.call_writeText(instance, data);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_readText",
+        "call_read",
+        "call_write",
+        "call_writeText",
+    };
 };

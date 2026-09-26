@@ -211,4 +211,20 @@ pub const SharedStorage = struct {
     pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(SharedStorageWorkletOptions)) anyerror!runtime.JSValue {
         return try SharedStorageImpl.call_createWorklet(instance, moduleURL, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_clear",
+        "call_get",
+        "call_selectURL",
+        "call_run",
+        "call_append",
+        "call_delete",
+        "call_remainingBudget",
+        "call_length",
+        "call_batchUpdate",
+        "call_set",
+        "call_createWorklet",
+    };
 };

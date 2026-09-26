@@ -149,4 +149,11 @@ pub const Serial = struct {
     pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(SerialPortRequestOptions)) anyerror!runtime.JSValue {
         return try SerialImpl.call_requestPort(instance, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_getPorts",
+        "call_requestPort",
+    };
 };

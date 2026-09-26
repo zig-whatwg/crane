@@ -876,4 +876,10 @@ pub const MLGraphBuilder = struct {
             .{ .function = "call_constant__2", .implemented = @hasDecl(MLGraphBuilderImpl, "call_constant__2"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MLTensor")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MLTensor.State) } else .other)} }} },
         } },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_build",
+    };
 };

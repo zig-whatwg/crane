@@ -111,4 +111,12 @@ pub const BackgroundFetchManager = struct {
     pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_get",
+        "call_getIds",
+        "call_fetch",
+    };
 };

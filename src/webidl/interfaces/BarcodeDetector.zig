@@ -114,4 +114,11 @@ pub const BarcodeDetector = struct {
     pub fn call_detect(instance: *runtime.Instance, image: ImageBitmapSource) anyerror!runtime.JSValue {
         return try BarcodeDetectorImpl.call_detect(instance, image);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_static_getSupportedFormats",
+        "call_detect",
+    };
 };

@@ -125,4 +125,10 @@ pub const GPU = struct {
     pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) anyerror!GPUTextureFormat {
         return try GPUImpl.call_getPreferredCanvasFormat(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestAdapter",
+    };
 };

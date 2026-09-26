@@ -563,3 +563,9 @@ pub fn call_getError(instance: *runtime.Instance) anyerror!GLenum {
 pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: GLenum, attachment: GLenum, pname: GLenum) anyerror!runtime.JSValue {
     return try WebGLRenderingContextBaseImpl.call_getFramebufferAttachmentParameter(instance, target, attachment, pname);
 }
+
+/// WebIDL: operations whose return type is a promise - an exception in
+/// their steps becomes a rejected promise.
+pub const promise_returning = .{
+    "call_makeXRCompatible",
+};

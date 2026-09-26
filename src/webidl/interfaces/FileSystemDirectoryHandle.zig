@@ -151,4 +151,13 @@ pub const FileSystemDirectoryHandle = struct {
     pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!runtime.JSValue {
         return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_removeEntry",
+        "call_resolve",
+        "call_getDirectoryHandle",
+        "call_getFileHandle",
+    };
 };

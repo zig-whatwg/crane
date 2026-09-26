@@ -122,4 +122,10 @@ pub const Fence = struct {
     pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FenceImpl.call_disableUntrustedNetwork(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_disableUntrustedNetwork",
+    };
 };

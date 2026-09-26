@@ -153,4 +153,16 @@ pub const SmartCardConnection = struct {
     pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!runtime.JSValue {
         return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_status",
+        "call_control",
+        "call_getAttribute",
+        "call_disconnect",
+        "call_transmit",
+        "call_setAttribute",
+        "call_startTransaction",
+    };
 };

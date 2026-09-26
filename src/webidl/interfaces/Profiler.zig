@@ -134,4 +134,10 @@ pub const Profiler = struct {
     pub fn call_stop(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ProfilerImpl.call_stop(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_stop",
+    };
 };

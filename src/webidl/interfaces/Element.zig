@@ -2084,4 +2084,18 @@ pub const Element = struct {
         .{ "set_innerHTML", 0b1 },
         .{ "set_outerHTML", 0b1 },
     };
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_requestPointerLock",
+        "call_scroll",
+        "call_scroll__1",
+        "call_scrollBy",
+        "call_scrollBy__1",
+        "call_scrollTo",
+        "call_scrollTo__1",
+        "call_requestFullscreen",
+        "call_scrollIntoView",
+    };
 };

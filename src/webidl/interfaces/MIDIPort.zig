@@ -192,4 +192,11 @@ pub const MIDIPort = struct {
     pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MIDIPortImpl.call_open(instance);
     }
+
+    /// WebIDL: operations whose return type is a promise - an exception in
+    /// their steps becomes a rejected promise.
+    pub const promise_returning = .{
+        "call_close",
+        "call_open",
+    };
 };
