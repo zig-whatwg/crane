@@ -1561,89 +1561,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // V8 Promise chaining utility for bridging V8 Promises to AsyncPromise
-    // Note: This module needs readable_stream_async_iterator for iterator callbacks
-    // The import is added after streams_readable_stream_async_iterator_mod is created (below)
-    const streams_v8_promise_chaining_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/v8_promise_chaining.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-        },
-    });
-
-    const streams_v8_resources_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/v8_resources.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const streams_iterator_record_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/iterator_record.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "v8_resources", .module = streams_v8_resources_mod },
-        },
-    });
-
-    const streams_from_iterable_algorithm_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/from_iterable_algorithm.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "algorithm", .module = streams_algorithm_mod },
-            .{ .name = "iterator_record", .module = streams_iterator_record_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-        },
-    });
-
-    const streams_reader_ops_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/algorithms/reader_ops.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
-    const streams_readable_stream_async_iterator_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/readable_stream_async_iterator.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "typedefs", .module = typedefs_mod },
-            .{ .name = "dictionaries", .module = dictionaries_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "reader_ops", .module = streams_reader_ops_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
-    // Resolve circular dependency between v8_promise_chaining and readable_stream_async_iterator
-    // by using addImport after both modules are created
-    streams_v8_promise_chaining_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
-    streams_readable_stream_async_iterator_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
-
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),
         .target = target,
@@ -1677,8 +1594,6 @@ pub fn build(b: *std.Build) void {
     // Add event loop to runtime and v8 for async operations (streams, promises)
     runtime_mod.addImport("event_loop", streams_event_loop_mod);
     v8_mod.addImport("event_loop", streams_event_loop_mod);
-    // V8 async_iterator module needs streams modules for iterator wrapping
-    v8_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
 
     // Add v8 to runtime so context can create V8EventLoop
@@ -1700,11 +1615,6 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
     streams_mod.addImport("algorithm", streams_algorithm_mod);
-    streams_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
-    streams_mod.addImport("v8_resources", streams_v8_resources_mod);
-    streams_mod.addImport("iterator_record", streams_iterator_record_mod);
-    streams_mod.addImport("from_iterable_algorithm", streams_from_iterable_algorithm_mod);
-    streams_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -1723,11 +1633,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
     impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
-    impls_mod.addImport("streams_v8_promise_chaining", streams_v8_promise_chaining_mod);
-    impls_mod.addImport("streams_v8_resources", streams_v8_resources_mod);
-    impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
-    impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);
-    impls_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
     // DOM module for XPath implementations
