@@ -2584,8 +2584,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Blink traces the same edge - or a collection frees it
                         // under the cache.
                         if (comptime stateCachesSameObject("cached_" ++ prop_name)) {
-                            const key = "crane:SameObject:" ++ prop_name;
-                            v8.v8_Object_SetPrivateRef(this_obj, key.ptr, key.len, v8_value);
+                            recordSameObjectEdge(isolate_inner, this_obj, prop_name, v8_value);
                         }
 
                         info.setReturnValue(v8_value);
@@ -2617,6 +2616,20 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Whether this interface's own or mixin state has the generated
         /// [SameObject] cache field `name` (an inherited attribute binds
         /// through its own interface, so its own State answers).
+        /// Tie the wrapper of a [SameObject] child to its owner's wrapper - the
+        /// edge Blink traces - with one edge per realm. An element has one
+        /// wrapper whatever realm reads it, but its child gets a wrapper in
+        /// each realm that reads it, and one shared key let each realm's read
+        /// cut the edge to the other realm's wrapper.
+        fn recordSameObjectEdge(isolate: *v8.Isolate, owner: *v8.Object, comptime prop_name: []const u8, child: *v8.Value) void {
+            const realm = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            defer v8.v8_Context_Dispose(realm);
+            const addr = @intFromPtr(v8.v8_Context_GetRawAddress(realm));
+            var buf: [160]u8 = undefined;
+            const key = std.fmt.bufPrint(&buf, "crane:SameObject:" ++ prop_name ++ "@{x}", .{addr}) catch return;
+            v8.v8_Object_SetPrivateRef(owner, key.ptr, @intCast(key.len), child);
+        }
+
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
             const S = Interface.State;
             if (@typeInfo(S) != .@"struct") return false;
@@ -4464,7 +4477,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (std.mem.eql(u8, prop_name, lazy_name)) {
                     // Call the getter function
                     const zig_getter = @field(Interface, getter_name);
-                    callLazyGetter(zig_getter, instance, isolate, info);
+                    callLazyGetter(zig_getter, lazy_name, instance, isolate, info);
                     return .kYes;
                 }
             }
@@ -4474,6 +4487,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Helper to call a lazy property getter and convert result to V8
         fn callLazyGetter(
             comptime zig_getter: anytype,
+            comptime prop_name: []const u8,
             instance: *runtime.Instance,
             isolate: *v8.Isolate,
             info: *const v8.PropertyCallbackInfo,
@@ -4550,6 +4564,15 @@ pub fn V8Interface(comptime Interface: type) type {
             // Convert to V8 value
             const v8_value = convertToV8Value(PayloadType, result, isolate);
             if (v8_value) |val| {
+                // [SameObject]: the same edge the accessor path records - a
+                // lazily installed attribute (an element's dataset) caches its
+                // child just the same, and without the edge a collection freed
+                // the child under the cache.
+                if (comptime stateCachesSameObject("cached_" ++ prop_name)) {
+                    const owner = info.getThis();
+                    defer v8.v8_Object_Dispose(owner);
+                    recordSameObjectEdge(isolate, owner, prop_name, @ptrCast(val));
+                }
                 info.setReturnValue(val);
             } else {
                 // null result - return JavaScript null

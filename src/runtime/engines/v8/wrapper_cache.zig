@@ -310,6 +310,28 @@ fn setStrong(instance: *runtime.Instance, strong: bool) void {
     entry.strong = strong;
 }
 
+/// Every live WrapperCache on this thread - one per realm. A node has one
+/// wrapper whatever realm reads it (its bound wrapper), but any other platform
+/// object gets a wrapper in each realm's cache that wraps it: a span's
+/// DOMStringMap read by its frame and by the frame's parent has two. The
+/// instance must outlive all of them - Blink traces it from every world's
+/// wrapper - so a cache frees an instance only when no other live cache still
+/// wraps it. Freeing it on the first wrapper's death left the other realm's
+/// wrapper, and the element's [SameObject] cache, on freed memory.
+threadlocal var live_caches: std.ArrayListUnmanaged(*WrapperCache) = .empty;
+
+/// Whether a live cache other than `except` holds a wrapper for this very
+/// instance - same slot, same generation.
+fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bool {
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    for (live_caches.items) |other| {
+        if (other == except) continue;
+        const entry = other.cache.get(instance) orelse continue;
+        if (entry.original_generation == generation and entry.original_vtable == instance.vtable) return true;
+    }
+    return false;
+}
+
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 
@@ -399,8 +421,11 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         if (runtime.cleanup_coordinator.isContextTearingDown()) {
             // Note: entry already removed from cache above
 
-            // Check if this instance was already cleaned up
-            if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+            // Check if this instance was already cleaned up, and whether
+            // another realm still wraps it.
+            if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance) and
+                !wrappedElsewhere(entry.instance, entry.cache))
+            {
                 // Not yet cleaned up - call onObjectFreed to trigger deinit
                 runtime.gc.onObjectFreed(entry.instance);
             }
@@ -439,6 +464,14 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
             return;
         }
 
+        // Another realm's cache still wraps this instance: only this
+        // realm's wrapper goes. See `live_caches`.
+        if (wrappedElsewhere(entry.instance, entry.cache)) {
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
         // Step 4: Clean up the Zig instance via GC integration
         // This calls the type's deinit function (e.g., Response.deinit)
         // which frees all owned resources (headers, body, URL list, etc.)
@@ -470,6 +503,9 @@ pub const WrapperCache = struct {
 
     /// V8 Context (unused currently, kept for future extensions)
     context: *v8.Context,
+
+    /// Whether this cache is in `live_caches`.
+    registered: bool = false,
 
     const Self = @This();
 
@@ -599,6 +635,8 @@ pub const WrapperCache = struct {
                 // 5. Yet another instance Z was allocated at same address
                 // 6. Cache deinit runs, entry.instance points to Z, not Y
                 log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*} orig_vtable={*} curr_vtable={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable });
+            } else if (wrappedElsewhere(entry.instance, self)) {
+                // Another realm's cache still wraps it; that one frees it.
             } else {
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] DEINIT iframe instance={*}", .{entry.instance});
@@ -616,6 +654,7 @@ pub const WrapperCache = struct {
         }
 
         log.debug("[wrapper_cache.deinit] Summary: processed={}, iframes={}, skipped_cleaned={}, skipped_started={}", .{ processed, iframe_count, skipped_cleaned, skipped_started });
+        self.unregister();
         self.cache.deinit();
     }
 
@@ -675,7 +714,27 @@ pub const WrapperCache = struct {
             }
         }
 
+        self.unregister();
         self.cache.deinit();
+    }
+
+    /// Join `live_caches` - on first use, when this cache's address is
+    /// final (callers copy `init`'s result into place).
+    fn register(self: *Self) void {
+        if (self.registered) return;
+        live_caches.append(std.heap.page_allocator, self) catch return;
+        self.registered = true;
+    }
+
+    fn unregister(self: *Self) void {
+        if (!self.registered) return;
+        for (live_caches.items, 0..) |c, i| {
+            if (c == self) {
+                _ = live_caches.swapRemove(i);
+                break;
+            }
+        }
+        self.registered = false;
     }
 
     /// Get cached wrapper for an instance
@@ -710,6 +769,7 @@ pub const WrapperCache = struct {
         isolate: *v8.Isolate,
     ) !void {
         _ = isolate; // Will be used for weak callback in next commit
+        self.register();
 
         // Allocate CacheEntry
         const entry = try self.allocator.create(CacheEntry);
@@ -786,7 +846,7 @@ pub const WrapperCache = struct {
 
             // Call GC integration to invoke type-specific deinit
             // This is essential for cleanup since weak callbacks were disabled
-            runtime.gc.onObjectFreed(entry.instance);
+            if (!wrappedElsewhere(entry.instance, self)) runtime.gc.onObjectFreed(entry.instance);
 
             // Dispose the Global<Object>* handle
             disposeEntryWrapper(entry);
