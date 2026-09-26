@@ -2006,6 +2006,22 @@ pub fn V8Interface(comptime Interface: type) type {
             return ptr_child_info == .@"fn";
         }
 
+        /// The Window of the realm a [Global] accessor or operation belongs to.
+        ///
+        /// V8 calls a global's accessors and operations with the global PROXY as
+        /// `this`, and the proxy's internal field names the Window it is attached
+        /// to now. A navigation that makes a new Window reattaches the proxy, so
+        /// for code left behind in the old realm - an unload handler, a timer, a
+        /// function another window kept - the field names the NEW Window, while
+        /// an unqualified `document` there resolves on the old realm's own global
+        /// object (the old Window) by the spec. Blink reads the holder, the global
+        /// object itself; here the context manager records each realm's Window.
+        /// For an attached realm both answers are the same Window.
+        fn realmWindow(method_ctx: *v8.Context, method_global: *v8.Object) ?*anyopaque {
+            if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| return @ptrCast(window);
+            return v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+        }
+
         /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
         /// platform object that implements the interface, throw a TypeError"
         /// ([LegacyLenientThis]: return undefined). The receiver checks in
@@ -2143,7 +2159,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // Check if this IS the method's global object
                                         // (handles normal case: window.name where this === window)
                                         if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            const global_ptr = realmWindow(method_ctx, method_global);
                                             if (global_ptr != null) {
                                                 break :blk global_ptr;
                                             }
@@ -2179,7 +2195,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // Check if it's a DIFFERENT global (cross-realm case)
                                             // If this_obj is caller's global (different from method's global),
                                             // use method's global per WebIDL implicit this rules
-                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            const global_ptr = realmWindow(method_ctx, method_global);
 
                                             // Check if this_obj is a global object from any context
                                             // by checking if it equals its own context's global
@@ -2367,7 +2383,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Return info.This() - the actual receiver object
                                 // For a property access on the global, this is the global proxy
                                 // that JS uses for variable resolution
+                                // Owned, like every getThis(): the return value
+                                // is a copy, so the handle goes when this returns.
+                                // Kept, it leaked one handle to the global per
+                                // `window`/`self` read - and a handle to the
+                                // global pins its whole page.
                                 const global_this = info.getThis();
+                                defer v8.v8_Object_Dispose(global_this);
                                 info.setReturnValue(@ptrCast(global_this));
                                 return;
                             }
@@ -2848,7 +2870,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
@@ -2871,7 +2893,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
@@ -2951,7 +2973,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(context_global);
                                     // Check if this_obj IS the current context's global
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
+                                        const global_ptr = realmWindow(ctx, context_global);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
@@ -7578,6 +7600,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     const resolved_instance: ?*anyopaque = blk: {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
+                                // Owned, as in the getter: one Global<Context> per [Global] setter
+                                // call leaked, pinning the page.
+                                defer v8.v8_Context_Dispose(method_ctx);
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
                                     // Owned: v8_Context_Global allocates where V8's Context::Global()
                                     // returns a borrowed Local. Everything below only compares it or
@@ -7585,7 +7610,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     defer v8.v8_Object_Dispose(method_global);
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (global_ptr != null) {
                                             break :blk global_ptr;
                                         }
@@ -7608,7 +7633,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        const global_ptr = realmWindow(method_ctx, method_global);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             defer v8.v8_Context_Dispose(this_ctx);
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
@@ -7817,36 +7842,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     obj: *v8.Object,
                     key: *v8.Value,
                 ) ?*v8.Value {
-                    // Check if the object has an own property descriptor for this key
-                    // This is needed to properly invoke user-defined getters
-                    if (v8.v8_Object_GetOwnPropertyDescriptor(obj, context, key)) |desc_value| {
-                        // We have an own property descriptor - check if it has a "get" function
-                        if (v8.v8_Value_IsObject(desc_value)) {
-                            const desc_obj: *v8.Object = @ptrCast(desc_value);
-
-                            // Create "get" key to access the getter from descriptor
-                            const get_key = v8.v8_String_NewFromUtf8(isolate, "get", 3) orelse {
-                                // Fall back to normal Get
-                                return v8.v8_Object_Get(obj, context, key);
-                            };
-
-                            // Get the "get" property from the descriptor
-                            const getter_value = v8.v8_Object_Get(desc_obj, context, @ptrCast(get_key)) orelse {
-                                // Fall back to normal Get
-                                return v8.v8_Object_Get(obj, context, key);
-                            };
-
-                            // Check if it's a function
-                            if (v8.v8_Value_IsFunction(getter_value)) {
-                                // Call the custom getter with obj as 'this'
-                                const getter_fn: *v8.Function = @ptrCast(getter_value);
-                                // Use a dummy args pointer since argc is 0
-                                var dummy_args: [1]*v8.Value = undefined;
-                                return v8.v8_Function_Call(getter_fn, context, @ptrCast(obj), 0, &dummy_args);
-                            }
-                        }
-                    }
-
+                    // Object::Get is a full [[Get]]: it runs an own accessor's getter
+                    // with `obj` as the receiver already. The descriptor walk this
+                    // did first leaked its descriptor, key and getter every call.
+                    _ = isolate;
                     // No own property getter - use standard property access
                     return v8.v8_Object_Get(obj, context, key);
                 }
@@ -7860,7 +7859,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined
+                    // Every handle below is owned and released here: this path had
+                    // released only `this`, so each `location = url` or
+                    // `el.relList = x` leaked the context, the value, both keys
+                    // and the forwarded object - and a context handle pins a page.
+                    defer v8.v8_Context_Dispose(context);
                     const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
+                    defer v8.v8_Value_Dispose(new_value_v8);
                     // Get 'this' object
                     const this_obj = info.getThis();
                     defer v8.v8_Object_Dispose(this_obj);
@@ -7876,6 +7881,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "Failed to create property name");
                         return;
                     };
+                    defer v8.v8_String_Dispose(attr_name_v8);
 
                     // Use our helper that properly invokes own property getters
                     const target_value = getPropertyWithOwnGetterSupport(
@@ -7888,6 +7894,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // The exception is already set on the context, just return
                         return;
                     };
+                    defer v8.v8_Value_Dispose(target_value);
 
                     // Step 2: Check if the target is an object (not null/undefined)
                     // Per WebIDL spec: "if the result is not an object, throw a TypeError"
@@ -7925,6 +7932,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "Failed to create forward property name");
                         return;
                     };
+                    defer v8.v8_String_Dispose(forward_prop_v8);
 
                     const target_obj: *v8.Object = @ptrCast(target_value);
                     _ = v8.v8_Object_Set(target_obj, context, @ptrCast(forward_prop_v8), new_value_v8);
