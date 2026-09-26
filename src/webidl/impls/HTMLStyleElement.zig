@@ -62,12 +62,6 @@ pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Getter for blocking
-pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for sheet
 pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;

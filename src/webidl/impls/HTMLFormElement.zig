@@ -21,7 +21,6 @@ const log = std.log.scoped(.forms);
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
-const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 pub const State = HTMLFormElement.State;
 
@@ -37,9 +36,6 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
-    /// Cached relList DOMTokenList instance
-    rel_list: ?*runtime.Instance = null,
-
     /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
     /// that will navigate, or 0 for null.
     planned_navigation: u64 = 0,
@@ -187,36 +183,6 @@ pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Missing and invalid both default to "get".
     return reflectEnumerated(instance, "method", &.{ "get", "post", "dialog" }, "get", "get");
-}
-
-/// Getter for relList
-/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-rellist
-/// Returns a DOMTokenList reflecting the rel attribute.
-pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Return cached DOMTokenList if it exists
-    if (internal.rel_list) |existing| {
-        return existing;
-    }
-
-    // Create a new DOMTokenList
-    const token_list = interfaces.DOMTokenList.init(elem_internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    errdefer interfaces.DOMTokenList.deinit(token_list);
-
-    // Initialize with current rel attribute value
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
-        interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
-    }
-
-    // Associate with this element and the "rel" attribute
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("rel"));
-
-    // Cache for future access
-    internal.rel_list = token_list;
-
-    return token_list;
 }
 
 /// The form's "listed elements", per

@@ -56,12 +56,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for htmlFor
-pub fn get_htmlFor(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;

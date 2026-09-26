@@ -9,10 +9,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLLinkElement = interfaces.HTMLLinkElement;
 
-// Import related impls for attribute access
-const ElementImpl = @import("Element.zig");
-const DOMTokenListImpl = @import("DOMTokenList.zig");
-
 pub const State = HTMLLinkElement.State;
 
 pub const ImplError = error{
@@ -21,19 +17,10 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-// Use shared InstanceRegistry utility for internal state management
-const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
-
-/// Internal state for HTMLLinkElement implementation
-pub const InternalState = struct {
-    /// Cached relList DOMTokenList instance
-    rel_list: ?*runtime.Instance = null,
-
-    pub fn deinit(self: *InternalState) void {
-        _ = self;
-    }
-};
+/// Internal state for HTMLLinkElement implementation. Nothing yet: relList,
+/// the one thing it held, is a reflected DOMTokenList the generated interface
+/// makes and caches ([SameObject]).
+pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -45,28 +32,11 @@ pub fn init(
 ) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer interfaces.HTMLElement.deinit(instance);
-
-    // Initialize HTMLLinkElement's own internal state in registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    // The registry owns this block, so `Registry.remove` returns it to the
-    // arena. With `set` it was dropped from the map and held to process
-    // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
-    internal.* = .{};
-
-    return instance;
+    return HTMLElementImpl.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up from registry
-    if (Registry.get(instance)) |internal| {
-        internal.deinit();
-    }
-    Registry.remove(instance);
-
     // Chain to parent class (via interface per Golden Rule #13)
     interfaces.HTMLElement.deinit(instance);
 }
@@ -95,50 +65,8 @@ pub fn get_as(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for relList
-/// Spec: https://html.spec.whatwg.org/multipage/semantics.html#dom-link-rellist
-/// Returns a DOMTokenList reflecting the rel attribute.
-pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    // Return cached DOMTokenList if it exists
-    if (internal.rel_list) |existing| {
-        return existing;
-    }
-
-    // Create a new DOMTokenList
-    const token_list = interfaces.DOMTokenList.init(elem_internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    errdefer interfaces.DOMTokenList.deinit(token_list);
-
-    // Initialize with current rel attribute value
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
-        interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
-    }
-
-    // Associate with this element and the "rel" attribute
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("rel"));
-
-    // Cache for future access
-    internal.rel_list = token_list;
-
-    return token_list;
-}
-
-/// Getter for sizes
-pub fn get_sizes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for blocking
-pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
