@@ -115,6 +115,88 @@ pub fn parseClosePayload(payload: []const u8) error{ProtocolError}!ClosePayload 
     };
 }
 
+/// Room for a handshake key: a host (a domain is at most 253 bytes; a
+/// bracketed IPv6 address is shorter) and ":65535".
+pub const max_host_key = 300;
+
+/// The remote endpoint of a serialized ws: or wss: URL, as "host:port", for
+/// RFC 6455 § 4.1 step 2. The URL serializer leaves out a default port, so the
+/// scheme's (80, 443) is put back. Null for anything else.
+pub fn hostKey(buffer: *[max_host_key]u8, url: []const u8) ?[]const u8 {
+    const default_port: []const u8 = if (std.mem.startsWith(u8, url, "ws://"))
+        "80"
+    else if (std.mem.startsWith(u8, url, "wss://"))
+        "443"
+    else
+        return null;
+    const rest = url[(std.mem.indexOf(u8, url, "://") orelse return null) + 3 ..];
+    var authority = rest[0 .. std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len];
+    if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
+
+    // A port follows the last ':' - unless that ':' is inside an IPv6 address.
+    const has_port = if (std.mem.lastIndexOfScalar(u8, authority, ':')) |colon|
+        if (std.mem.lastIndexOfScalar(u8, authority, ']')) |bracket| colon > bracket else true
+    else
+        false;
+    if (has_port) {
+        if (authority.len > buffer.len) return null;
+        @memcpy(buffer[0..authority.len], authority);
+        return buffer[0..authority.len];
+    }
+    return std.fmt.bufPrint(buffer, "{s}:{s}", .{ authority, default_port }) catch null;
+}
+
+/// RFC 6455 § 4.1 step 2, which WebSockets § 2.1 keeps: "If the client already
+/// has a WebSocket connection to the remote host ... identified by /host/ and
+/// port /port/ pair ..., the client MUST wait until that connection has been
+/// established or for that connection to have failed. There MUST be no more
+/// than one connection in a CONNECTING state."
+///
+/// One holder per key: the connection whose handshake is in flight. Every
+/// other connection to that host and port waits, handshake unstarted, until
+/// the holder releases - websockets/constructor/014.html times two sockets to a
+/// server that stalls each handshake for two seconds. When the handshake
+/// blocked the whole event loop the rule held by accident.
+pub const HandshakeGate = struct {
+    entries: std.ArrayListUnmanaged(Entry) = .empty,
+
+    const Entry = struct {
+        key: [max_host_key]u8,
+        len: usize,
+        holder: *const anyopaque,
+    };
+
+    /// Take `key` for `holder`, or report that someone else holds it.
+    pub fn tryAcquire(self: *HandshakeGate, allocator: std.mem.Allocator, key: []const u8, holder: *const anyopaque) !bool {
+        for (self.entries.items) |e| {
+            if (std.mem.eql(u8, e.key[0..e.len], key)) return e.holder == holder;
+        }
+        var entry: Entry = .{ .key = undefined, .len = key.len, .holder = holder };
+        @memcpy(entry.key[0..key.len], key);
+        try self.entries.append(allocator, entry);
+        return true;
+    }
+
+    /// Let go of whatever `holder` holds.
+    pub fn release(self: *HandshakeGate, holder: *const anyopaque) void {
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            if (self.entries.items[i].holder == holder) {
+                _ = self.entries.swapRemove(i);
+            } else i += 1;
+        }
+    }
+
+    pub fn deinit(self: *HandshakeGate, allocator: std.mem.Allocator) void {
+        self.entries.deinit(allocator);
+        self.* = .{};
+    }
+};
+
+/// The client's gate. Threadlocal: the page and its workers run on this
+/// thread, and together they are the one client RFC 6455 speaks of.
+threadlocal var handshake_gate: HandshakeGate = .{};
+
 /// A frame queued for the socket.
 const OutgoingFrame = struct {
     kind: FrameKind,
@@ -249,6 +331,13 @@ pub const WebSocketConnection = struct {
     /// A Close frame's body, assembled across receive calls.
     incoming_close: std.ArrayListUnmanaged(u8) = .empty,
 
+    /// Whether the handshake has been sent. It waits while another connection
+    /// to the same host and port is CONNECTING; see `HandshakeGate`.
+    handshake_started: bool = false,
+
+    /// Whether this connection holds its host's place in `handshake_gate`.
+    gate_held: bool = false,
+
     const Self = @This();
 
     /// Initialize a new WebSocket connection.
@@ -297,6 +386,7 @@ pub const WebSocketConnection = struct {
                 }
             }
         }
+        self.releaseGate();
         self.releaseTransport();
         self.outgoing.deinit(self.allocator);
         self.incoming.deinit(self.allocator);
@@ -331,27 +421,57 @@ pub const WebSocketConnection = struct {
         while (!try self.pollConnect()) {
             const backend = self.backend orelse return error.HandshakeFailed;
             var numfds: c_int = 0;
+            // No multi handle yet: the handshake is waiting its turn.
             if (backend.multi) |multi| _ = @import("fetch").network.curl_ffi.multi_poll(multi, 100, &numfds);
         }
     }
 
-    /// Begin the opening handshake (WebSockets § 2.2). `pollConnect` finishes
-    /// it, one event-loop turn at a time.
+    /// Begin the opening handshake (WebSockets § 2.2) - now, or once no other
+    /// connection to the same host and port is CONNECTING. `pollConnect`
+    /// finishes it, one event-loop turn at a time.
     pub fn startConnect(self: *Self, options: ConnectOptions) !void {
         if (self.state != .CONNECTING or self.backend != null or self.closed) {
             return error.InvalidState;
         }
 
+        // The request, made now: the backend copies the protocols and origin,
+        // so they need not outlive this call even if the handshake waits.
         const backend = try curl_backend.CurlWebSocket.initWithOptions(self.allocator, self.url, .{
             .protocols = options.protocols,
             .origin = options.origin,
         });
         self.backend = backend;
 
+        try self.beginHandshakeIfFree();
+    }
+
+    /// Send the handshake if this connection's host and port are free (RFC
+    /// 6455 § 4.1 step 2); otherwise leave it waiting for a later turn.
+    fn beginHandshakeIfFree(self: *Self) !void {
+        if (self.handshake_started) return;
+        const backend = self.backend orelse return error.NotConnected;
+
+        var buffer: [max_host_key]u8 = undefined;
+        if (hostKey(&buffer, self.url)) |key| {
+            const free = handshake_gate.tryAcquire(std.heap.page_allocator, key, self) catch |err| {
+                self.fail();
+                return err;
+            };
+            if (!free) return;
+            self.gate_held = true;
+        }
+
+        self.handshake_started = true;
         backend.startConnect() catch |err| {
             self.fail();
             return err;
         };
+    }
+
+    fn releaseGate(self: *Self) void {
+        if (!self.gate_held) return;
+        handshake_gate.release(self);
+        self.gate_held = false;
     }
 
     /// Advance the opening handshake. True once the connection is established
@@ -362,6 +482,11 @@ pub const WebSocketConnection = struct {
         if (self.state != .CONNECTING or self.closed) return error.InvalidState;
         const backend = self.backend orelse return error.NotConnected;
 
+        if (!self.handshake_started) {
+            try self.beginHandshakeIfFree();
+            if (!self.handshake_started) return false;
+        }
+
         const established = backend.pollConnect() catch |err| {
             // WebSockets § 2.2 step 11: any failure of the handshake fails the
             // WebSocket connection.
@@ -369,6 +494,9 @@ pub const WebSocketConnection = struct {
             return err;
         };
         if (!established) return false;
+
+        // Established: the next connection to this host may start.
+        self.releaseGate();
 
         if (backend.getProtocol()) |proto| {
             self.protocol = try self.allocator.dupe(u8, proto);
@@ -609,6 +737,8 @@ pub const WebSocketConnection = struct {
     fn markClosed(self: *Self) void {
         if (self.close_code == null) self.close_code = CloseCodes.ABNORMAL_CLOSURE;
         self.closed = true;
+        // Failed while CONNECTING: the next connection to this host may start.
+        self.releaseGate();
         self.releaseTransport();
     }
 

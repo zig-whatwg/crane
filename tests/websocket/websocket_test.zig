@@ -552,6 +552,46 @@ test "curl backend: a protocol list is joined with exactly N-1 commas" {
     try testing.expect(empty.protocols == null);
 }
 
+// =============================================================================
+// RFC 6455 § 4.1 step 2: one handshake in flight per host and port
+// =============================================================================
+
+test "handshake key: host and port, with the scheme's default port filled in" {
+    var buffer: [connection_mod.max_host_key]u8 = undefined;
+    try testing.expectEqualStrings("example.com:80", connection_mod.hostKey(&buffer, "ws://example.com/echo").?);
+    try testing.expectEqualStrings("example.com:443", connection_mod.hostKey(&buffer, "wss://example.com").?);
+    try testing.expectEqualStrings("example.com:8666", connection_mod.hostKey(&buffer, "wss://example.com:8666/x?y").?);
+    try testing.expectEqualStrings("[::1]:9001", connection_mod.hostKey(&buffer, "ws://[::1]:9001/").?);
+    // The same host and port under either scheme is the same remote endpoint.
+    try testing.expectEqualStrings("h:8000", connection_mod.hostKey(&buffer, "wss://h:8000/").?);
+}
+
+test "handshake gate: a second handshake to a host waits for the first" {
+    // "If the client already has a WebSocket connection to the remote host
+    // ... the client MUST wait until that connection has been established or
+    // for that connection to have failed. There MUST be no more than one
+    // connection in a CONNECTING state."
+    var gate: connection_mod.HandshakeGate = .{};
+    defer gate.deinit(testing.allocator);
+    var first: u8 = 0;
+    var second: u8 = 0;
+
+    try testing.expect(try gate.tryAcquire(testing.allocator, "h:80", &first));
+    try testing.expect(!try gate.tryAcquire(testing.allocator, "h:80", &second));
+    // Another host is not held up.
+    try testing.expect(try gate.tryAcquire(testing.allocator, "other:80", &second));
+    gate.release(&second);
+
+    // Asking again while holding it is still yes.
+    try testing.expect(try gate.tryAcquire(testing.allocator, "h:80", &first));
+
+    gate.release(&first);
+    try testing.expect(try gate.tryAcquire(testing.allocator, "h:80", &second));
+    gate.release(&second);
+    // Releasing what is not held does nothing.
+    gate.release(&first);
+}
+
 test "startConnect: a handshake that fails on its first step frees everything once" {
     // startConnect sends the request at once, so a connection refused on the
     // spot (port 0, the first port websockets/Create-blocked-port.any.js
