@@ -817,6 +817,14 @@ pub inline fn sameValue(realm: Context, a: JSValue, b: JSValue) bool {
     return impl.sameValue(realm, a, b);
 }
 
+/// ECMAScript ToBoolean(`value`) (7.1.2): false for undefined, null, false,
+/// +0, -0, NaN, 0n and the empty string - and an [[IsHTMLDDA]] object
+/// (`document.all`) - and true for anything else, every other object
+/// included. Never runs script.
+pub inline fn toBoolean(realm: Context, value: JSValue) bool {
+    return impl.toBoolean(realm, value);
+}
+
 /// Hold `value` past the call. OWNED. Undefined, null, a boolean or a
 /// number holds no engine resource: it is held by value, with nothing entered
 /// (any realm will do), and releasing it does nothing. A platform object is
@@ -1161,6 +1169,33 @@ pub inline fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 pub inline fn diagnosticCounters(allocator: std.mem.Allocator) Error![]Counter {
     comptime gate(.diagnostic_counters, "diagnosticCounters");
     return impl.diagnosticCounters(allocator);
+}
+
+// ============================================================================
+// Helpers over the operations (not operations: an adapter provides nothing
+// for them)
+// ============================================================================
+
+/// A dictionary member of type boolean, as WebIDL 3.2.18 reads one: Get(O,
+/// P), then - when it is not undefined - ToBoolean. Null when the member is
+/// not present. What a getter throws is pending (ExceptionPending); an
+/// `object` that is not an Object is a TypeError.
+pub fn getPropertyBoolean(realm: Context, object: JSValue, property: []const u8) Error!?bool {
+    const member = try getProperty(realm, object, property);
+    defer member.release();
+    if (typeOf(realm, member.value) == .undefined) return null;
+    return toBoolean(realm, member.value);
+}
+
+/// A dictionary member of an interface type, as WebIDL 3.2.18 reads one:
+/// null when not present (undefined); the platform object otherwise, or a
+/// TypeError when it is not one (null included). BORROWED: the object lives
+/// as long as its wrapper, which `object` keeps.
+pub fn getPropertyPlatformObject(realm: Context, object: JSValue, property: []const u8) Error!?*Instance {
+    const member = try getProperty(realm, object, property);
+    defer member.release();
+    if (typeOf(realm, member.value) == .undefined) return null;
+    return convertToPlatformObject(realm, member.value) orelse error.TypeError;
 }
 
 // ============================================================================

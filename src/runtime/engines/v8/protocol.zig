@@ -383,6 +383,7 @@ pub const defineOwnProperty = protocol_values.defineOwnProperty;
 pub const hasProperty = protocol_values.hasProperty;
 pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
+pub const toBoolean = protocol_values.toBoolean;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
     switch (value) {

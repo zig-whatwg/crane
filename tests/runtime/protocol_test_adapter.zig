@@ -192,6 +192,17 @@ pub fn sameValue(_: Context, a: JSValue, b: JSValue) bool {
         .instance => |x| b == .instance and x == b.instance,
     };
 }
+/// ECMAScript ToBoolean over the IDL arms. Only an engine makes a handle,
+/// and this adapter has none: a handle is an object.
+pub fn toBoolean(_: Context, value: JSValue) bool {
+    return switch (value) {
+        .undefined, .null => false,
+        .boolean => |b| b,
+        .number => |n| !(n == 0 or std.math.isNan(n)),
+        .string => |text| text.data.len != 0,
+        .handle, .instance => true,
+    };
+}
 pub fn retainValue(_: Context, value: JSValue) Error!Owned {
     return switch (value) {
         // No engine resource: held by value (the protocol's contract).
