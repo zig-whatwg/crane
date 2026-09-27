@@ -1127,134 +1127,167 @@ fn documentResolveImport(context: *anyopaque, specifier: []const u8, base_url: [
 /// is never reused, even across documents.
 var next_inline_module_id: u64 = 0;
 
+/// The engine protocol, for this section's module scripts (the rest of this
+/// file still reaches V8 directly).
+const engine = @import("engine");
+
 /// The module loading environment for a script element's node document.
 fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
     const internal = doc_state.getInternal(document) orelse return null;
-    const engine_ctx = script_element.ctx.getEngineContext() orelse return null;
     return .{
         .allocator = internal.allocator,
         .context_instance = script_element,
-        .v8_context = @ptrCast(@alignCast(engine_ctx)),
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
     };
-}
-
-// =============================================================================
-// import() - HostLoadImportedModule for a dynamic import, ContinueDynamicImport
-// =============================================================================
-
-/// The isolate the import() hook serves. Worker isolates run their own
-/// threads and their own handler (context_manager's), so the hook declines
-/// anything else.
-var dynamic_import_isolate: ?*@import("v8").ffi.Isolate = null;
-
-/// Route import() in `isolate`'s Window realms through the module loader, so a
-/// dynamically imported module shares the document's module map with its
-/// static imports and scripts, and is evaluated from a task.
-pub fn installDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
-    const v8_engine = @import("v8");
-    dynamic_import_isolate = isolate;
-    v8_engine.engine.embedder_dynamic_import = &onDynamicImport;
-}
-
-pub fn uninstallDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
-    if (dynamic_import_isolate != isolate) return;
-    @import("v8").engine.embedder_dynamic_import = null;
-    dynamic_import_isolate = null;
 }
 
 /// The module loading environment for a Window's document.
 fn moduleEnvironmentForWindow(window: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
     const internal = doc_state.getInternal(document) orelse return null;
-    const engine_ctx = window.ctx.getEngineContext() orelse return null;
     return .{
         .allocator = internal.allocator,
         .context_instance = window,
-        .v8_context = @ptrCast(@alignCast(engine_ctx)),
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
     };
 }
 
-/// Settle `resolver` by rejecting it with a new TypeError.
-fn rejectImportWithTypeError(resolver: @import("v8").engine.DynamicImportResolver, message: []const u8) void {
-    const ffi = @import("v8").ffi;
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return resolver.reject(message);
-    const msg = ffi.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse return resolver.reject(message);
-    defer ffi.v8_String_Dispose(msg);
-    const err = ffi.v8_Exception_TypeErrorInContext(@ptrCast(@alignCast(resolver.context)), msg) orelse return resolver.reject(message);
-    defer ffi.v8_Global_Dispose(err);
-    resolver.rejectWithValue(err);
+/// The Window whose realm `realm` is - its settings object's global object -
+/// or null for a realm whose global is not a Window.
+fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
 }
 
-/// The import() hook (V8's HostImportModuleDynamically).
+/// HTML "report an exception" `value` (BORROWED) for the global of `realm`.
+fn reportModuleException(realm: runtime.Context, value: runtime.JSValue) void {
+    const window = windowOfRealm(realm) orelse return;
+    const allocator = window.ctx.allocator;
+    // Step 2: extract error information.
+    const info = engine.extractErrorInformation(realm, value, allocator) catch return;
+    defer allocator.free(info.message);
+    defer allocator.free(info.filename);
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = info.error_value,
+    };
+    _ = report_exception.reportErrorInfo(window, &extracted, .{});
+}
+
+// =============================================================================
+// import() - HostLoadImportedModule for a dynamic import
+// =============================================================================
+
+/// The engine's module hooks for a Window agent: HostLoadImportedModule for
+/// import(), finished with engine.finishDynamicImport, and
+/// HostGetImportMetaProperties. The agent's creator installs them
+/// (AgentOptions.hooks), beside rejected_promises.hooks.
+pub const module_hooks: engine.HostHooks = .{
+    .loadImportedModule = if (module_script.supported) loadImportedModule else null,
+    .importMetaUrl = if (module_script.supported) module_script.importMetaUrl else null,
+};
+
+/// FinishLoadingImportedModule for an import(): ends the host's hold on
+/// `request`. (Only an engine with modules makes one.)
+fn finishImport(request: *engine.ImportRequest, outcome: engine.DynamicImportOutcome) void {
+    if (module_script.supported) engine.finishDynamicImport(request, outcome);
+}
+
+/// What an import()'s specifier resolves against: the referencing script's
+/// base URL, or - with none - the settings object's API base URL, the
+/// document's base URL as it is now.
+const ImportBase = union(enum) {
+    /// BORROWED for the call.
+    url: []const u8,
+    document,
+};
+
+/// HTML HostLoadImportedModule(referrer, moduleRequest, loadState: undefined,
+/// payload) for an import() - `HostHooks.loadImportedModule`.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
-/// with loadState undefined, and ECMA-262 ContinueDynamicImport. The
-/// referrer's base URL is V8's resource name for the calling script - the
-/// script URL for an external classic script or a module, the document URL for
-/// an inline one - and the document base URL when there is none (an event
-/// handler, whose [[ScriptOrModule]] is null).
-fn onDynamicImport(
-    context_ptr: *anyopaque,
-    referrer: []const u8,
+fn loadImportedModule(
+    host: ?*anyopaque,
+    realm: runtime.Context,
+    referrer: engine.ImportReferrer,
     specifier: []const u8,
     type_attribute: ?[]const u8,
-    resolver: @import("v8").engine.DynamicImportResolver,
-) bool {
-    const v8_engine = @import("v8");
-    const ffi = v8_engine.ffi;
-    if (ffi.v8_Isolate_GetCurrent() != dynamic_import_isolate) return false;
-
-    const context: *ffi.Context = @ptrCast(@alignCast(context_ptr));
-    const window = v8_engine.context_manager.getWindowForContext(context) orelse return false;
-    const document = interfaces.Window.get_document(window) catch return false;
-    const env = moduleEnvironmentForWindow(window, document) orelse return false;
-
-    // HostLoadImportedModule steps 7.1.4-7.1.5 (for the one request an
-    // import() makes): an unsupported type is a TypeError.
-    const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse {
-        rejectImportWithTypeError(resolver, "Unsupported module type");
-        return true;
+    request: *engine.ImportRequest,
+) void {
+    _ = host;
+    // Steps 1-6: the settings object is the current one, unless the referrer
+    // is a Script or Module Record: then referencingScript is its
+    // [[HostDefined]], whose base URL the specifier resolves against. An event
+    // handler's, eval's or a timer string's [[ScriptOrModule]] is null.
+    const base: ImportBase = switch (referrer) {
+        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .url = script.base_url } else .document,
+        .script => |host_defined| .{ .url = module_script.classicScriptBaseUrl(host_defined) },
+        .realm => .document,
     };
+    loadImport(realm, base, specifier, type_attribute, request);
+}
 
-    // Steps 8-9: resolve a module specifier, or reject with its TypeError.
-    // An event handler's [[ScriptOrModule]] is null, so V8 names no referrer
-    // and the base is the document base URL as it is now.
-    const document_base = if (referrer.len > 0) null else documentBaseUrlAlloc(window.ctx.allocator, document, window);
+/// HostLoadImportedModule from step 7 on, for the request of an import() in
+/// `realm`: every path finishes `request` (engine.finishDynamicImport).
+fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, request: *engine.ImportRequest) void {
+    const window = windowOfRealm(realm) orelse return finishImportWithTypeError(realm, request, "import() is not supported here");
+    const document = interfaces.Window.get_document(window) catch
+        return finishImportWithTypeError(realm, request, "import() has no document to load for");
+    const env = moduleEnvironmentForWindow(window, document) orelse
+        return finishImportWithTypeError(realm, request, "import() has no document to load for");
+
+    // Steps 7.1.4-7.1.5 (for the one request an import() makes): an
+    // unsupported type is a TypeError.
+    const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse
+        return finishImportWithTypeError(realm, request, "Unsupported module type");
+
+    // Steps 8-9: resolve a module specifier against the referrer's base URL,
+    // or reject with its TypeError.
+    const document_base = switch (base) {
+        .url => null,
+        .document => documentBaseUrlAlloc(window.ctx.allocator, document, window),
+    };
     defer if (document_base) |b| window.ctx.allocator.free(b);
-    const base_url = if (referrer.len > 0) referrer else document_base orelse "";
-    const url = module_script.resolve(&env, specifier, base_url) orelse {
-        rejectImportWithTypeError(resolver, "Failed to resolve module specifier");
-        return true;
+    const base_url = switch (base) {
+        .url => |url| url,
+        .document => document_base orelse "",
     };
+    const url = module_script.resolve(&env, specifier, base_url) orelse
+        return finishImportWithTypeError(realm, request, "Failed to resolve module specifier");
     defer window.ctx.allocator.free(url);
 
     // Step 14: fetch - as a task, so the imported module is fetched and
     // evaluated after the script that called import() and its microtasks,
     // the way a real network fetch completes.
-    const loop = window.ctx.getOptionalEventLoop() orelse {
-        rejectImportWithTypeError(resolver, "No event loop to load the module on");
-        return true;
-    };
-    const task = std.heap.c_allocator.create(DynamicImportTask) catch {
-        rejectImportWithTypeError(resolver, "Out of memory");
-        return true;
-    };
+    const loop = window.ctx.getOptionalEventLoop() orelse
+        return finishImportWithTypeError(realm, request, "No event loop to load the module on");
+    const task = std.heap.c_allocator.create(DynamicImportTask) catch
+        return finishImportWithTypeError(realm, request, "Out of memory");
     task.* = .{
         .window = window,
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = std.heap.c_allocator.dupe(u8, url) catch {
             std.heap.c_allocator.destroy(task);
-            rejectImportWithTypeError(resolver, "Out of memory");
-            return true;
+            return finishImportWithTypeError(realm, request, "Out of memory");
         },
         .module_type = module_type,
-        .resolver = resolver,
+        .request = request,
     };
     loop.queueTask(.{ .callback = &runDynamicImport, .context = task });
-    return true;
+}
+
+/// FinishLoadingImportedModule with ThrowCompletion(a new TypeError).
+fn finishImportWithTypeError(realm: runtime.Context, request: *engine.ImportRequest, message: []const u8) void {
+    const exception = engine.createSimpleException(realm, .TypeError, message) catch
+        return finishImport(request, .{ .failure = runtime.JSValue.jsUndefined });
+    defer exception.release();
+    finishImport(request, .{ .failure = exception.value });
 }
 
 const DynamicImportTask = struct {
@@ -1264,87 +1297,123 @@ const DynamicImportTask = struct {
     /// Owned (c_allocator).
     url: []const u8,
     module_type: module_script.ModuleType,
-    /// Owns the promise's context and resolver handles until it settles.
-    resolver: @import("v8").engine.DynamicImportResolver,
+    /// The host's until finished.
+    request: *engine.ImportRequest,
 };
 
 fn runDynamicImport(data: ?*anyopaque) void {
-    const v8_engine = @import("v8");
     const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
     defer {
         std.heap.c_allocator.free(task.url);
         std.heap.c_allocator.destroy(task);
     }
 
-    // The importing Window is gone: settle the promise anyway, to release the
-    // handles it holds; nobody is left to observe how.
-    if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return task.resolver.rejectWithValue(null);
+    // The importing Window is gone: finish the request anyway, to release
+    // what it holds; nobody is left to observe how.
+    if (runtime.SlabAllocator.generationOf(task.window) != task.generation)
+        return finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
 
-    // A task runs from the event loop, with no HandleScope and no entered
-    // context of its own.
-    const scope = v8_engine.JsScope.init(task.window.ctx) orelse return task.resolver.rejectWithValue(null);
-    defer scope.deinit();
+    engine.runTaskInRealm(task.window.ctx, dynamicImportSteps, task) catch
+        finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
+}
 
-    const document = interfaces.Window.get_document(task.window) catch return task.resolver.rejectWithValue(null);
-    const env = moduleEnvironmentForWindow(task.window, document) orelse return task.resolver.rejectWithValue(null);
+/// The fetch task: fetch a single imported module script and its
+/// descendants, link, then FinishLoadingImportedModule - ContinueDynamicImport
+/// (evaluate, and settle with the namespace or the reason) is the engine's.
+fn dynamicImportSteps(data: ?*anyopaque) void {
+    const task: *DynamicImportTask = @ptrCast(@alignCast(data.?));
+    const realm = task.window.ctx;
+    const document = interfaces.Window.get_document(task.window) catch
+        return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
+    const env = moduleEnvironmentForWindow(task.window, document) orelse
+        return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
 
     // A null graph is a failed fetch: TypeError.
     const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
-        return rejectImportWithTypeError(task.resolver, "Failed to fetch dynamically imported module");
+        return finishImportWithTypeError(realm, task.request, "Failed to fetch dynamically imported module");
 
-    // ContinueDynamicImport: link (done above), evaluate, and settle with the
-    // namespace or the reason.
-    switch (module_script.evaluateForImport(&env, graph)) {
-        .fulfilled => resolveImportWithNamespace(task.resolver, graph),
-        .rejected => |reason| {
-            defer v8_engine.ffi.v8_Global_Dispose(reason);
-            task.resolver.rejectWithValue(reason);
-        },
-        .pending => |promise| {
-            defer v8_engine.ffi.v8_Global_Dispose(promise);
-            const pending = std.heap.c_allocator.create(PendingImport) catch return task.resolver.rejectWithValue(null);
-            pending.* = .{
-                .window = task.window,
-                .generation = task.generation,
-                .graph = graph,
-                .resolver = task.resolver,
-            };
-            if (!v8_engine.ffi.v8_Promise_React(env.v8_context, promise, &onImportEvaluationSettled, pending)) {
-                std.heap.c_allocator.destroy(pending);
-                task.resolver.rejectWithValue(null);
-            }
-        },
-    }
+    // A graph that could not be loaded or linked rejects with its error to
+    // rethrow; else the engine continues with its record.
+    if (graph.error_to_rethrow) |reason| return finishImport(task.request, .{ .failure = reason.value });
+    const record = graph.record orelse
+        return finishImportWithTypeError(realm, task.request, "Failed to load dynamically imported module");
+    finishImport(task.request, .{ .module = record });
 }
 
-fn resolveImportWithNamespace(resolver: @import("v8").engine.DynamicImportResolver, graph: *module_script.ModuleScript) void {
-    const ffi = @import("v8").ffi;
-    const record = graph.record orelse return resolver.rejectWithValue(null);
-    const namespace = ffi.v8_Module_GetModuleNamespace(record) orelse return resolver.rejectWithValue(null);
-    defer ffi.v8_Global_Dispose(@ptrCast(namespace));
-    resolver.resolve(namespace);
+// -----------------------------------------------------------------------------
+// The legacy entry points' shim.
+//
+// TODO(protocol): removed when Browser creates its agent with
+// engine.createAgent (navigation lane resume), installing `module_hooks` -
+// and with it go installDynamicImport / uninstallDynamicImport,
+// onLegacyDynamicImport, onLegacyImportMetaUrl and dynamic_import_isolate;
+// protocol_modules.zig's adoptLegacyImport and hostDefinedOf, and the v8
+// root's protocol_modules re-export and installLegacyImportMetaUrl; engine.zig's setDynamicImportHandler guard, with
+// context_manager's two setDynamicImportHandler calls.
+//
+// Until then the page's agent is a bare isolate with no HostHooks: import()
+// arrives through engine.zig's legacy handler, and import.meta through V8's
+// import.meta callback. Both forward into the same host code the hooks run.
+// -----------------------------------------------------------------------------
+
+/// The isolate the shim serves. Worker isolates run their own threads and
+/// their own handler (context_manager's), so it declines anything else.
+var dynamic_import_isolate: ?*@import("v8").ffi.Isolate = null;
+
+/// Route import() and import.meta in `isolate`'s Window realms through the
+/// module loader. TODO(protocol): the shim above.
+pub fn installDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    const v8_engine = @import("v8");
+    dynamic_import_isolate = isolate;
+    v8_engine.engine.embedder_dynamic_import = &onLegacyDynamicImport;
+    v8_engine.installLegacyImportMetaUrl(isolate, &onLegacyImportMetaUrl);
 }
 
-/// An import() whose module awaits top-level await.
-const PendingImport = struct {
-    window: *runtime.Instance,
-    generation: u64,
-    /// Owned by the document's module map, which outlives this reaction for
-    /// as long as the Window does - checked by generation before use.
-    graph: *module_script.ModuleScript,
+/// TODO(protocol): the shim above.
+pub fn uninstallDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
+    if (dynamic_import_isolate != isolate) return;
+    @import("v8").engine.embedder_dynamic_import = null;
+    dynamic_import_isolate = null;
+}
+
+/// engine.zig's legacy import() handler, into loadImport. The referrer is
+/// V8's resource name for the calling script - the script's URL, a module's
+/// base URL, the document's URL for an inline script - or none (an event
+/// handler), which is the document's base URL as it is now.
+/// TODO(protocol): the shim above.
+fn onLegacyDynamicImport(
+    context_ptr: *anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    type_attribute: ?[]const u8,
     resolver: @import("v8").engine.DynamicImportResolver,
-};
-
-fn onImportEvaluationSettled(data: ?*anyopaque, value: ?*@import("v8").ffi.Value, rejected: bool) callconv(.c) void {
-    const ffi = @import("v8").ffi;
-    const pending: *PendingImport = @ptrCast(@alignCast(data orelse return));
-    defer std.heap.c_allocator.destroy(pending);
-    defer if (value) |v| ffi.v8_Global_Dispose(v);
-
-    if (runtime.SlabAllocator.generationOf(pending.window) != pending.generation) return pending.resolver.rejectWithValue(null);
-    if (rejected) return pending.resolver.rejectWithValue(value);
-    resolveImportWithNamespace(pending.resolver, pending.graph);
+) bool {
+    const v8_engine = @import("v8");
+    if (v8_engine.ffi.v8_Isolate_GetCurrent() != dynamic_import_isolate) return false;
+    const realm = v8_engine.context_manager.get(@ptrCast(@alignCast(context_ptr))) orelse return false;
+    // A Window realm's import() only: a worker's or a ShadowRealm's is
+    // context_manager's handler's.
+    if (windowOfRealm(realm) == null) return false;
+    // The protocol's request owns the promise's handles from here.
+    const request = v8_engine.protocol_modules.adoptLegacyImport(resolver.context, resolver.resolver, realm) catch return false;
+    loadImport(realm, if (referrer.len > 0) .{ .url = referrer } else .document, specifier, type_attribute, request);
+    return true;
 }
+
+/// V8's import.meta callback, into module_script.importMetaUrl.
+/// TODO(protocol): the shim above.
+fn onLegacyImportMetaUrl(identity_hash: c_int, module: *@import("v8").ffi.Module, len: *usize) callconv(.c) ?[*]const u8 {
+    const v8_engine = @import("v8");
+    const host_defined = v8_engine.protocol_modules.hostDefinedOf(module, identity_hash) orelse return null;
+    if (module_script.scriptOf(host_defined) == null) return null;
+    const url = module_script.importMetaUrl(null, host_defined);
+    len.* = url.len;
+    return url.ptr;
+}
+
+// =============================================================================
+// Module script elements
+// =============================================================================
 
 /// Prepare step 33.11 "module": fetch an external module script graph, and
 /// mark the element ready with the result.
@@ -1355,13 +1424,8 @@ fn prepareExternalModuleScript(script_element: *runtime.Instance, document: *run
     defer HTMLScriptElementImpl.setResult(script_element, result);
 
     const env = moduleEnvironment(script_element, document) orelse return;
-
-    // Module loading compiles, links and creates errors in the document's
-    // realm: enter it, with a HandleScope, whoever called us.
-    const v8_engine = @import("v8");
-    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
-    defer scope.deinit();
-
+    // Module loading parses, links and makes errors in the document's realm:
+    // each engine operation enters it.
     const graph = module_script.fetchExternalModuleScriptGraph(&env, url) orelse return;
     result = moduleResult(graph);
 }
@@ -1375,11 +1439,8 @@ fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runti
 
     const env = moduleEnvironment(script_element, document) orelse return;
 
-    const v8_engine = @import("v8");
-    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
-    defer scope.deinit();
-
     // Step 1: create a JavaScript module script - a parse error is kept on it.
+    // (Where the engine has no modules there is none: the result stays null.)
     const script = module_script.createJavaScriptModuleScript(&env, source, base_url) catch return;
 
     // Owned by the document from here on, like every fetched module script.
@@ -1414,70 +1475,64 @@ fn runModuleScript(script_element: *runtime.Instance, document: *runtime.Instanc
         else => return,
     };
     const env = moduleEnvironment(script_element, document) orelse return;
+    const realm = env.realm();
 
-    const v8_engine = @import("v8");
-    const scope = v8_engine.JsScope.init(script_element.ctx) orelse return;
-    defer scope.deinit();
+    // Step 5: prepare to run script given settings.
+    const scope = engine.prepareToRunScript(realm) catch return;
+    // Step 9: clean up after running script - after the report, so it comes
+    // before the microtask checkpoint, as a classic script's does.
+    defer engine.cleanUpAfterRunningScript(scope);
 
-    // The script's settings object's global: the Window of its realm.
-    const global = v8_engine.context_manager.getWindowForContext(env.v8_context);
-
+    // Steps 6-8.
     switch (module_script.run(&env, script)) {
         .ok => {},
-        // Step 8: report an exception for the script's global - before "clean
-        // up after running script", like a classic script's.
+        // Step 8: report the exception for the script's global.
         .report => |exception| {
-            defer v8_engine.ffi.v8_Global_Dispose(exception);
-            const window = global orelse return;
-            var report = ModuleExceptionReport{ .global = window, .exception = exception };
-            report_exception.withMicrotasksSuppressed(&runModuleExceptionReport, &report);
+            defer exception.release();
+            reportModuleException(realm, exception.value);
         },
         // Step 8 "upon rejection" of a promise still waiting on top-level
         // await: react to it, and report the reason if it rejects.
         .pending => |promise| {
-            defer v8_engine.ffi.v8_Global_Dispose(promise);
-            const window = global orelse return;
-            reportModuleRejectionLater(env.v8_context, promise, window);
+            defer promise.release();
+            reportModuleRejectionLater(realm, promise.value);
         },
     }
 }
 
-const ModuleExceptionReport = struct {
-    global: *runtime.Instance,
-    exception: *@import("v8").ffi.Value,
-};
-
-fn runModuleExceptionReport(data: ?*anyopaque) callconv(.c) void {
-    const report: *ModuleExceptionReport = @ptrCast(@alignCast(data orelse return));
-    _ = report_exception.reportException(report.global, report.exception, .{});
-}
-
-/// A settled top-level-await evaluation promise's reaction data. The Window is
-/// held as (address, slab generation): the reaction runs whenever the promise
+/// A top-level-await evaluation promise's reaction data. The Window is held
+/// as (address, slab generation): the reaction runs whenever the promise
 /// settles, and the slab reuses a freed Window's slot.
 const PendingModuleEvaluation = struct {
+    realm: runtime.Context,
     global: *runtime.Instance,
     generation: u64,
-};
 
-fn reportModuleRejectionLater(context: *@import("v8").ffi.Context, promise: *@import("v8").ffi.Value, global: *runtime.Instance) void {
-    const ffi = @import("v8").ffi;
-    const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
-    pending.* = .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
-    if (!ffi.v8_Promise_React(context, promise, &onModuleEvaluationSettled, pending)) {
+    const steps: engine.PromiseReactionSteps = .{
+        .fulfilled = settled,
+        .rejected = rejected,
+    };
+
+    fn settled(data: ?*anyopaque, _: runtime.JSValue) void {
+        const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
         std.heap.c_allocator.destroy(pending);
     }
-}
 
-fn onModuleEvaluationSettled(data: ?*anyopaque, value: ?*@import("v8").ffi.Value, rejected: bool) callconv(.c) void {
-    const ffi = @import("v8").ffi;
-    const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
-    defer std.heap.c_allocator.destroy(pending);
-    defer if (value) |v| ffi.v8_Global_Dispose(v);
+    fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+        const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
+        defer std.heap.c_allocator.destroy(pending);
+        if (runtime.SlabAllocator.generationOf(pending.global) != pending.generation) return;
+        reportModuleException(pending.realm, reason);
+    }
+};
 
-    if (!rejected) return;
-    if (runtime.SlabAllocator.generationOf(pending.global) != pending.generation) return;
-    _ = report_exception.reportException(pending.global, value, .{});
+fn reportModuleRejectionLater(realm: runtime.Context, promise: runtime.JSValue) void {
+    const global = windowOfRealm(realm) orelse return;
+    const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
+    pending.* = .{ .realm = realm, .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    engine.reactToPromise(realm, promise, &PendingModuleEvaluation.steps, pending) catch {
+        std.heap.c_allocator.destroy(pending);
+    };
 }
 
 /// Check if a specifier looks like a URL (starts with /, ./, ../, or has a scheme)
