@@ -31,6 +31,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const Worker = interfaces.Worker;
 const MessageEvent = interfaces.MessageEvent;
 const EventTarget = interfaces.EventTarget;
@@ -248,11 +249,11 @@ fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
     return null;
 }
 
-/// `instance`'s relevant global object, when it is a Window.
+/// `instance`'s relevant global object, when it is a Window: its relevant
+/// realm's global object, from the realm record.
 fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
-    const engine = instance.ctx.getEngine() orelse return null;
-    const relevant_global = engine.relevantGlobalObject orelse return null;
-    const global = relevant_global(instance) orelse return null;
+    const record = instance.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     if (global.stateAs(interfaces.Window.State) == null) return null;
     return global;
 }
@@ -572,15 +573,10 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // See DedicatedWorkerMessagingProxy::was_script_evaluated_ flag.
     // The flush happens in executeWorkerScriptCallback AFTER script execution.
 
-    // The worker's agent ("run a worker" step 4), through this realm's
-    // engine, for the pre-fetched script's final URL.
-    const engine = ctx.getEngine() orelse {
-        std.log.warn("Worker: no engine in this realm", .{});
-        return;
-    };
+    // The worker's agent ("run a worker" step 4), for the pre-fetched
+    // script's final URL.
     const host = WorkerHost.init(
         allocator,
-        engine,
         script_final_url,
         worker_type,
     ) catch |err| {
@@ -767,16 +763,14 @@ fn keepAliveWhileRunning(internal: *InternalState) void {
     keepPendingActivity(internal.worker_instance orelse return);
 }
 
-/// Take the Engine table's pending-activity hold on a Worker.
+/// Take the engine's pending-activity hold on a Worker.
 fn keepPendingActivity(instance: *runtime.Instance) void {
-    const engine = instance.ctx.getEngine() orelse return;
-    if (engine.keepPlatformObjectAlive) |keep| keep(instance);
+    engine.keepPlatformObjectAlive(instance);
 }
 
 /// End it (idempotent).
 fn releasePendingActivity(instance: *runtime.Instance) void {
-    const engine = instance.ctx.getEngine() orelse return;
-    if (engine.releasePlatformObject) |release| release(instance);
+    engine.releasePlatformObject(instance);
 }
 
 /// Post the messages queued before the worker existed, in order.
@@ -1042,11 +1036,9 @@ fn dispatchWorkerErrorEvent(instance: *runtime.Instance, error_event: *WorkerErr
     defer error_event.deinit();
     const internal = getInternal(instance) orelse return;
     const ctx = internal.ctx orelse return;
-    const engine = ctx.getEngine() orelse return;
-    const run = engine.runInRealm orelse return;
     // A task of the owner's realm, entered from the event loop.
     var fire = ErrorFire{ .worker = instance, .error_event = error_event };
-    run(ctx, ErrorFire.steps, &fire) catch {};
+    engine.runInRealm(ctx, ErrorFire.steps, &fire) catch {};
 }
 
 const ErrorFire = struct {
@@ -1086,20 +1078,17 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     const internal = getInternal(instance) orelse return;
     const ctx = internal.ctx orelse return;
     const message = if (msg.engine_message) |*m| m else return;
-    const engine = ctx.getEngine() orelse return;
-    const run = engine.runInRealm orelse return;
-    var delivery = Delivery{ .worker = instance, .engine = engine, .message = message };
-    run(ctx, Delivery.steps, &delivery) catch {};
+    var delivery = Delivery{ .worker = instance, .message = message };
+    engine.runInRealm(ctx, Delivery.steps, &delivery) catch {};
 }
 
 const Delivery = struct {
     worker: *runtime.Instance,
-    engine: *const runtime.EngineInterface,
     message: *EngineMessage,
 
     fn steps(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
-        worker_host.deliverEngineMessage(self.engine, self.worker.ctx, self.worker, self.message, fireAtWorker);
+        worker_host.deliverEngineMessage(self.worker.ctx, self.worker, self.message, fireAtWorker);
     }
 };
 
@@ -1161,13 +1150,15 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 /// its outside port is entangled with - the message port post message steps
 /// with options «[ "transfer" → transfer ]».
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
-    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
-    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
     defer {
-        if (engine.releaseValue) |release| for (list) |item| release(item);
-        instance.ctx.allocator.free(list);
+        for (objects) |object| object.release();
+        allocator.free(objects);
     }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
     return postMessageSteps(instance, message, list);
 }
 
@@ -1185,8 +1176,7 @@ fn postMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, trans
     const internal = state.own._internal orelse return;
     if (internal.terminated) return; // Worker is terminated, ignore message
 
-    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
-    var serialized = try worker_host.serializeMessage(engine, instance.ctx, message, transfer, internal.allocator);
+    var serialized = try worker_host.serializeMessage(instance.ctx, message, transfer, internal.allocator);
 
     if (internal.dedicated_worker) |worker| {
         worker.port_pair.outside_port.postEngineMessage(serialized) catch |err| {

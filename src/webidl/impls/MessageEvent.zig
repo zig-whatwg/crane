@@ -24,6 +24,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const clock = @import("clock");
 const MessageEvent = interfaces.MessageEvent;
 
@@ -37,24 +38,26 @@ pub const ImplError = error{
 pub const InternalState = struct {
     /// Whether we own the origin string (should free on deinit)
     owns_origin: bool = false,
-    /// Whether `data` is a handle this event releases on deinit - one an
-    /// Engine operation handed over as OWNED. Only `createPostMessageEvent`
-    /// hands one over; every other path stores a handle that somebody else
-    /// frees.
-    owns_data_handle: bool = false,
-    /// Whether `ports` is the frozen array `get_ports` made for this event:
-    /// OWNED, released on deinit.
-    owns_ports_handle: bool = false,
+    /// The event's own hold on `data` when it is a script value: `data` is a
+    /// view of it. Released on deinit.
+    data_hold: ?engine.Owned = null,
+    /// The frozen array `get_ports` made for this event: `ports` is a view of
+    /// it. Released on deinit.
+    ports_hold: ?engine.Owned = null,
     /// The event's ports, as the MessagePort instances they are: the frozen
     /// array `ports` returns is made from them on first read. Owned slice
     /// (ctx.allocator); the ports themselves are not.
     ports: []*runtime.Instance = &.{},
 };
 
-/// Release a handle an Engine operation handed this event as OWNED.
-fn releaseHandle(ctx: runtime.Context, value: runtime.JSValue) void {
-    const engine = ctx.getEngine() orelse return;
-    if (engine.releaseValue) |release| release(value);
+/// Let go of the event's hold on `data`, if it has one: `data` is undefined
+/// after.
+fn releaseData(state: anytype, internal: *InternalState) void {
+    if (internal.data_hold) |held| {
+        held.release();
+        internal.data_hold = null;
+        state.own.data = runtime.JSValue.jsUndefined;
+    }
 }
 
 /// Initialize instance (creates the instance)
@@ -83,16 +86,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The handles this event owns: a deserialized postMessage payload, and
     // the frozen ports array.
     if (state.own._internal) |internal| {
-        if (internal.owns_data_handle and state.own.data == .handle) {
-            releaseHandle(instance.ctx, state.own.data);
-            state.own.data = runtime.JSValue.jsUndefined;
-        }
-        internal.owns_data_handle = false;
-        if (internal.owns_ports_handle and state.own.ports == .handle) {
-            releaseHandle(instance.ctx, state.own.ports);
+        releaseData(state, internal);
+        if (internal.ports_hold) |held| {
+            held.release();
+            internal.ports_hold = null;
             state.own.ports = runtime.JSValue.jsUndefined;
         }
-        internal.owns_ports_handle = false;
         if (internal.ports.len > 0) instance.ctx.allocator.free(internal.ports);
         internal.ports = &.{};
     }
@@ -197,17 +196,16 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 }
 
 /// The event's own hold on `data` (borrowed from the dictionary): a string
-/// is copied, and a script value is retained through the Engine table - OWNED
-/// by the event, released in deinit - so it lives as long as the event, not
-/// as long as whoever handed it over.
+/// is copied, and a script value is retained - OWNED by the event, released
+/// in deinit - so it lives as long as the event, not as long as whoever
+/// handed it over.
 fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSValue) !runtime.JSValue {
     switch (data) {
         .handle, .instance => {
-            const engine = ctx.getEngine() orelse return data.clone(ctx.allocator);
-            const retain = engine.retainValue orelse return data.clone(ctx.allocator);
-            const held = try retain(ctx, data);
-            if (instance.getState(State).own._internal) |internal| internal.owns_data_handle = true;
-            return held;
+            const internal = instance.getState(State).own._internal orelse return data.clone(ctx.allocator);
+            const held = try engine.retainValue(ctx, data);
+            internal.data_hold = held;
+            return held.value;
         },
         else => return data.clone(ctx.allocator),
     }
@@ -278,11 +276,14 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return runtime.JSValue.jsUndefined;
-    if (!internal.owns_ports_handle) {
-        const engine = instance.ctx.getEngine() orelse return error.NoEngine;
-        const create = engine.createFrozenArrayOfPlatformObjects orelse return error.NotSupported;
-        state.own.ports = try create(instance.ctx, internal.ports);
-        internal.owns_ports_handle = true;
+    if (internal.ports_hold == null) {
+        const allocator = instance.ctx.allocator;
+        const values = try allocator.alloc(runtime.JSValue, internal.ports.len);
+        defer allocator.free(values);
+        for (internal.ports, values) |port, *value| value.* = .{ .instance = port };
+        const ports = try engine.createFrozenArray(instance.ctx, values);
+        internal.ports_hold = ports;
+        state.own.ports = ports.value;
     }
     // Borrowed: the event keeps its array.
     return switch (state.own.ports) {
@@ -308,8 +309,7 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     // go, and it takes its own hold on the new values: the arguments are the
     // binding's, freed when this returns.
     if (state.own._internal) |internal| {
-        if (internal.owns_data_handle and state.own.data == .handle) releaseHandle(instance.ctx, state.own.data);
-        internal.owns_data_handle = false;
+        releaseData(state, internal);
         if (internal.owns_origin and state.own.origin.len > 0) instance.ctx.allocator.free(state.own.origin);
         internal.owns_origin = false;
     }
@@ -383,10 +383,11 @@ pub fn createPostMessageEvent(
     // window.postMessage call did, synchronously, before this line existed.
     try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
 
-    // Nothing can fail from here, so the event takes `data`.
+    // Nothing can fail from here, so the event takes `data`: a handle is
+    // the event's to release from now on.
     state.own.data = data;
     if (data == .handle) {
-        if (state.own._internal) |internal| internal.owns_data_handle = true;
+        if (state.own._internal) |internal| internal.data_hold = .{ .value = data };
     }
 
     return instance;
