@@ -4,7 +4,9 @@
 //! WHATWG DOM Standard §2.7
 
 const std = @import("std");
+const log = std.log.scoped(.event_target);
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const abort_algorithms = @import("dom").abort_algorithms;
 const typedefs = @import("typedefs");
@@ -29,8 +31,9 @@ pub const EventListenerRecord = struct {
     /// type (a string)
     type: runtime.DOMString,
 
-    /// callback (null or an EventListener callback)
-    callback: ?*runtime.Instance,
+    /// callback (null or an EventListener callback): the callback interface
+    /// value addEventListener converted, OWNED by the record.
+    callback: ?engine.CallbackInterface,
 
     /// capture (a boolean, initially false)
     capture: bool = false,
@@ -91,15 +94,15 @@ pub const InternalState = struct {
     /// HTML "event handler map" (§8.1.8.1): the event handlers whose target
     /// this is, by event type ("click" for onclick). Created with the first
     /// one - most targets never have any. A value is the handler as the
-    /// binding converted it, a tagged V8 Global, kept as its address so that
-    /// EventHandler, OnErrorEventHandler and OnBeforeUnloadEventHandler share
-    /// the map. The keys are the IDL attributes' literal event types.
+    /// binding converted it (HandlerValue), so that EventHandler,
+    /// OnErrorEventHandler and OnBeforeUnloadEventHandler share the map. The
+    /// keys are the IDL attributes' literal event types.
     ///
     /// The map owns each value: the binding hands the setter's argument over
-    /// as it is, and `setEventHandler` disposes a value it replaces or clears,
+    /// as it is, and `setEventHandler` releases a value it replaces or clears,
     /// `deinitEx` the rest. A value is a handle to a function in some page,
     /// and one never released kept that page alive for the process.
-    event_handler_map: ?*std.StringHashMapUnmanaged(usize) = null,
+    event_handler_map: ?*std.StringHashMapUnmanaged(HandlerValue) = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -113,37 +116,29 @@ pub const InternalState = struct {
         self.deinitEx(true);
     }
 
-    /// Deinitialize with option to skip V8 resource cleanup
-    /// When skip_v8_cleanup is true, V8 global handles are NOT disposed.
-    /// This is needed during final runtime cleanup when V8 isolate is already disposed.
-    pub fn deinitEx(self: *InternalState, cleanup_v8_resources: bool) void {
+    /// Deinitialize, releasing the engine values held - the listeners'
+    /// callbacks and the event handlers - only when `release_engine_values`:
+    /// during final runtime cleanup the engine's agent is already gone.
+    pub fn deinitEx(self: *InternalState, release_engine_values: bool) void {
         if (self.event_listener_list) |list| {
-            // Free any owned DOMStrings and clean up callbacks in event listeners
+            // Free each record's type string and, with an agent to give it
+            // back to, its callback.
             const slice = list.toSliceMut();
             for (slice) |*listener| {
                 var @"type" = listener.type;
                 @"type".deinit(self.allocator);
-
-                // Clean up callback wrapper (disposes Global handles)
-                // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
-                //
-                // NOTE: Callback disposal during cleanup is disabled because V8's internal
-                // Global handle slot gets corrupted at some point, causing crashes when
-                // calling Reset(). The callback identity fix (using StrictEquals) works
-                // correctly for addEventListener/removeEventListener, but the underlying
-                // corruption during browser shutdown needs further investigation.
-                // For now, we leak these handles during cleanup to avoid crashes.
-                // (callback_registry releases them when their context goes.)
-                _ = listener.callback;
+                if (release_engine_values) {
+                    if (listener.callback) |callback| callback.release();
+                }
             }
             list.deinit();
             self.allocator.destroy(list);
         }
         if (self.event_handler_map) |map| {
-            // Without an isolate there is nothing to dispose into.
-            if (cleanup_v8_resources) {
+            // Without an agent there is nothing to release into.
+            if (release_engine_values) {
                 var values = map.valueIterator();
-                while (values.next()) |address| disposeHandlerValue(address.*);
+                while (values.next()) |value| value.release();
             }
             map.deinit(self.allocator);
             self.allocator.destroy(map);
@@ -257,18 +252,18 @@ fn ensureRegistry() *std.AutoHashMap(usize, *InternalState) {
     return &internal_state_registry.?;
 }
 
-/// Clean up all remaining internal states WITH V8 resource cleanup.
-/// This should be called during browser/context cleanup, BEFORE V8 is disposed,
-/// to properly dispose V8 global handles in CallbackWrappers.
+/// Clean up all remaining internal states, releasing the engine values they
+/// hold (listeners' callbacks, event handlers). This should be called during
+/// browser/context cleanup, BEFORE the agent is destroyed.
 ///
 /// This is called from cleanup.cleanupAllDomRegistries() which runs before
-/// runtime.deinitializeRuntime(), ensuring V8 is still alive.
+/// runtime.deinitializeRuntime(), while the agent is still alive.
 pub fn cleanupAllRemainingInternal() void {
     if (internal_state_registry) |*registry| {
         // Clean up all internal states with V8 resource cleanup enabled
         var iter = registry.valueIterator();
         while (iter.next()) |internal_ptr| {
-            internal_ptr.*.deinitEx(true); // V8 is still alive, clean up global handles
+            internal_ptr.*.deinitEx(true); // the agent is alive: release its values
         }
         registry.deinit();
         internal_state_registry = null;
@@ -335,43 +330,22 @@ fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) boo
     return false;
 }
 
-/// Compare two callbacks for equality by V8 function identity
-/// The callbacks are stored as ?*runtime.Instance but are actually *runtime.CallbackWrapper
-/// which contains engine_handle pointing to the actual V8 CallbackWrapper
-fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
-    if (a == null and b == null) return true;
-    if (a == null or b == null) return false;
-
-    // The stored pointers are actually *runtime.CallbackWrapper (not V8 wrappers directly)
-    // runtime.CallbackWrapper contains engine_handle which is the V8 CallbackWrapper
-    const runtime_wrapper_a: *const runtime.CallbackWrapper = @ptrCast(@alignCast(a.?));
-    const runtime_wrapper_b: *const runtime.CallbackWrapper = @ptrCast(@alignCast(b.?));
-
-    // Get the V8 engine wrappers from the engine_handle field
-    const v8_engine = @import("v8");
-    const v8_wrapper_a: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(runtime_wrapper_a.engine_handle));
-    const v8_wrapper_b: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(runtime_wrapper_b.engine_handle));
-
-    // Get the underlying V8 Global<Value>* for each callback
-    const value_a = v8_wrapper_a.getGlobalValuePtr() orelse return false;
-    const value_b = v8_wrapper_b.getGlobalValuePtr() orelse return false;
-
-    // Use V8's StrictEquals to compare the underlying JavaScript functions
-    return v8_engine.v8_Value_StrictEquals(value_a, value_b);
+/// DOM "event listener whose callback is callback": two callback interface
+/// values are the same listener's when they are the same object (SameValue).
+fn callbackEquals(realm: runtime.Context, a: ?engine.CallbackInterface, b: ?engine.CallbackInterface) bool {
+    const x = a orelse return b == null;
+    const y = b orelse return false;
+    return engine.sameValue(realm, x.object.value, y.object.value);
 }
 
 threadlocal var next_listener_id: u64 = 1;
 
-/// Free what a listener record owns - its type string and its callback
-/// wrapper - for a record that was never stored, or has just left the list.
+/// Free what a listener record owns - its type string and its callback -
+/// for a record that was never stored, or has just left the list.
 fn releaseRecord(internal: *InternalState, record: EventListenerRecord) void {
     var record_type = record.type;
     record_type.deinit(internal.allocator);
-    if (record.callback) |callback_instance| {
-        // The stored callback is actually a *runtime.CallbackWrapper
-        const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-        runtime_wrapper.deinit();
-    }
+    if (record.callback) |callback| callback.release();
 }
 
 /// The abort steps of "add an event listener" step 6, as the signal holds
@@ -445,7 +419,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
         if (existing.event_handler) continue;
         if (std.mem.eql(u8, existing.type.asSlice(), listener.type.asSlice()) and
             existing.capture == listener.capture and
-            callbackEquals(existing.callback, listener.callback))
+            callbackEquals(instance.ctx, existing.callback, listener.callback))
         {
             already_exists = true;
             break;
@@ -486,7 +460,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 /// DOM §2.7 - remove an event listener
 /// To remove an event listener, given an EventTarget object eventTarget and
 /// an event listener listener, run these steps:
-fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord) void {
+fn removeAnEventListener(internal: *InternalState, realm: runtime.Context, listener: EventListenerRecord) void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
     // Early exit if no listeners have been added yet
@@ -508,16 +482,12 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
         // Match on type, callback, and capture
         if (std.mem.eql(u8, existing.type.asSlice(), listener.type.asSlice()) and
             existing.capture == listener.capture and
-            callbackEquals(existing.callback, listener.callback))
+            callbackEquals(realm, existing.callback, listener.callback))
         {
             existing.removed = true;
 
-            // Clean up the callback wrapper to dispose Global handles
-            // The callback is stored as ?*runtime.Instance but is actually a *runtime.CallbackWrapper
-            if (existing.callback) |callback_instance| {
-                const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                runtime_wrapper.deinit();
-            }
+            // The record's callback goes with it.
+            if (existing.callback) |callback| callback.release();
 
             // Free the type DOMString
             var existing_type = existing.type;
@@ -631,7 +601,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     // does its listener, which step 2 removes with the rest.
     if (internal.event_handler_map) |map| {
         var values = map.valueIterator();
-        while (values.next()) |address| disposeHandlerValue(address.*);
+        while (values.next()) |value| value.release();
         map.clearRetainingCapacity();
     }
     // Step 2: DOM "remove all event listeners" - for each listener, "remove
@@ -654,7 +624,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 /// compiled when their content attribute is set (Element's event handler
 /// content attribute steps), so there is no uncompiled value to compile here.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = eventHandlerAddress(target, event_type) orelse return null;
+    const address = (eventHandlerValue(target, event_type) orelse return null).address;
     // The address is a tagged Global, deliberately misaligned for a function
     // pointer, so no cast will make one of it; a byte copy performs no
     // alignment check (the same as conversions.zig). Everything that uses the
@@ -675,37 +645,55 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     // given eventTarget and name."
     const handler = value orelse {
         if (internal.event_handler_map) |map| {
-            if (map.fetchRemove(event_type)) |old| disposeHandlerValue(old.value);
+            if (map.fetchRemove(event_type)) |old| old.value.release();
         }
         deactivateEventHandler(target, event_type);
         return;
     };
     // Step 4: set eventHandler's value to the given value, then activate it.
+    // The map takes the binding's value over from here.
+    var address: usize = undefined;
+    @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
+    const handler_value: HandlerValue = .{
+        .callback = engine.takeCallbackFunction(@ptrFromInt(address)),
+        .address = address,
+    };
     const map = internal.event_handler_map orelse blk: {
-        const created = try internal.allocator.create(std.StringHashMapUnmanaged(usize));
+        const created = internal.allocator.create(std.StringHashMapUnmanaged(HandlerValue)) catch |err| {
+            handler_value.release();
+            return err;
+        };
         created.* = .empty;
         internal.event_handler_map = created;
         break :blk created;
     };
-    var address: usize = undefined;
-    @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
-    if (try map.fetchPut(internal.allocator, event_type, address)) |old| disposeHandlerValue(old.value);
+    const old = map.fetchPut(internal.allocator, event_type, handler_value) catch |err| {
+        handler_value.release();
+        return err;
+    };
+    if (old) |replaced| replaced.value.release();
     try activateEventHandler(target, event_type);
 }
 
-/// Release a value the event handler map owned: the tagged Global the binding
-/// made of the setter's argument. A running handler holds a clone of its own
-/// (invokeIdlEventHandler), so `this.onclick = null` inside one is safe.
-fn disposeHandlerValue(address: usize) void {
-    const v8_engine = @import("v8");
-    const raw: ?*anyopaque = @ptrFromInt(address);
-    const untagged = v8_engine.pointer_tag.untagPointer(raw orelse return);
-    if (untagged.tag != .global_handle) return;
-    v8_engine.ffi.v8_Global_Dispose(@ptrCast(@alignCast(untagged.ptr)));
-}
+/// An event handler's value in the map: the callback function the binding
+/// converted the setter's argument to (OWNED by the map), and the address the
+/// binding handed over, which the getter returns as it was given. A running
+/// handler holds a value of its own (invokeIdlEventHandler), so
+/// `this.onclick = null` inside one is safe.
+const HandlerValue = struct {
+    callback: engine.CallbackFunction,
+    /// The binding's representation of the same function - BORROWED from
+    /// `callback`, and valid while it is held.
+    address: usize,
 
-/// The tagged address `eventHandler` reads, for dispatch.
-fn eventHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
+    fn release(self: HandlerValue) void {
+        self.callback.release();
+    }
+};
+
+/// `target`'s event handler map entry for `event_type`, for the getter and
+/// for dispatch.
+fn eventHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
     const internal = getInternalFromRegistry(target) orelse return null;
     const map = internal.event_handler_map orelse return null;
     return map.get(event_type);
@@ -770,25 +758,21 @@ fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue), co
     if (!options.was_passed) return .{};
 
     if (options.value == .handle) {
-        const engine = ctx.getEngine() orelse return .{};
-        const engine_ctx = ctx.getEngineContext() orelse return .{};
-        const get_boolean = engine.getPropertyBoolean orelse return .{};
-        const object = options.value.handle.ptr;
+        const realm = engine.currentRealm() orelse ctx;
+        const object = options.value;
 
         // Members are ToBoolean-converted, so `{capture: 2}` is capture and
         // `{capture: 0}` is not - EventListenerOptions-capture.html.
-        var flat: FlatOptions = .{ .capture = (try get_boolean(engine_ctx, object, "capture")) orelse false };
+        var flat: FlatOptions = .{ .capture = (try engine.getPropertyBoolean(realm, object, "capture")) orelse false };
         if (!more) return flat;
 
-        flat.once = (try get_boolean(engine_ctx, object, "once")) orelse false;
+        flat.once = (try engine.getPropertyBoolean(realm, object, "once")) orelse false;
         // "If options[passive] exists": absent leaves the default passive
         // value to decide, which is not the same as `passive: false`.
-        flat.passive = try get_boolean(engine_ctx, object, "passive");
+        flat.passive = try engine.getPropertyBoolean(realm, object, "passive");
         // `signal` is an AbortSignal, not nullable: anything else - null
         // included - fails the member's conversion.
-        const get_instance = engine.getPropertyInstance orelse return flat;
-        if (try get_instance(engine_ctx, object, "signal")) |raw| {
-            const signal: *runtime.Instance = @ptrCast(@alignCast(raw));
+        if (try engine.getPropertyPlatformObject(realm, object, "signal")) |signal| {
             if (signal.stateAs(interfaces.AbortSignal.State) == null) return error.TypeError;
             flat.signal = signal;
         }
@@ -821,26 +805,27 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     const once = flat.once;
     const signal = flat.signal;
 
-    // Convert callback wrapper to Instance pointer if present
-    // The callback comes as ??*runtime.CallbackWrapper but we store ?*runtime.Instance
-    const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {
-        if (cb_opt) |cb| {
-            // Cast CallbackWrapper pointer to Instance pointer
-            // This is safe because CallbackWrapper wraps an Instance
-            break :blk @ptrCast(cb);
-        }
-        break :blk null;
+    // The callback interface value, with the incumbent realm now - the
+    // conversion's - as its callback context. The binding's wrapper is ours
+    // to free once it is taken.
+    const callback_value: ?engine.CallbackInterface = if (callback) |cb_opt| blk: {
+        const wrapper = cb_opt orelse break :blk null;
+        defer wrapper.deinit();
+        break :blk engine.takeCallbackInterface(wrapper);
     } else null;
 
     // Duplicate the type string with internal allocator to ensure ownership
     // The incoming DOMString may be allocated with a different allocator (from V8 conversion layer)
     // and we need to own it to safely free it in deinit()
-    const owned_type = runtime.DOMString.initDupe(internal.?.allocator, @"type".asSlice()) catch return error.OutOfMemory;
+    const owned_type = runtime.DOMString.initDupe(internal.?.allocator, @"type".asSlice()) catch {
+        if (callback_value) |value| value.release();
+        return error.OutOfMemory;
+    };
 
     // Create listener record with owned type string
     const listener = EventListenerRecord{
         .type = owned_type,
-        .callback = callback_instance,
+        .callback = callback_value,
         .capture = capture,
         .passive = passive,
         .once = once,
@@ -871,22 +856,18 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     // listener that `addEventListener(t, fn, true)` added.
     const capture = (try flattenOptions(instance.ctx, options, false)).capture;
 
-    // Convert callback wrapper to Instance pointer if present
-    const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {
-        if (cb_opt) |cb| {
-            break :blk @ptrCast(cb);
-        }
-        break :blk null;
-    } else null;
+    // The callback interface value, for the comparison only.
+    const callback_value: ?engine.CallbackInterface = if (raw_callback_wrapper) |wrapper| engine.takeCallbackInterface(wrapper) else null;
+    defer if (callback_value) |value| value.release();
 
     // Create listener record for matching
     const listener = EventListenerRecord{
         .type = @"type",
-        .callback = callback_instance,
+        .callback = callback_value,
         .capture = capture,
     };
 
-    removeAnEventListener(internal, listener);
+    removeAnEventListener(internal, instance.ctx, listener);
 }
 
 /// Operation: dispatchEvent
@@ -958,13 +939,11 @@ const ListenerPhase = enum { capturing, bubbling };
 /// both spec properties without holding a pointer into a list the callbacks we
 /// are about to run can mutate.
 const Invocation = struct {
-    /// Declared as *runtime.Instance to match the record, but always a
-    /// *runtime.CallbackWrapper. Doubles as the identity key: every
-    /// addEventListener call allocates a fresh wrapper, so pointer equality
-    /// distinguishes "still the listener we cloned" from "removed and re-added".
-    /// Null for an event handler's listener, which is identified by
+    /// The listener's record id - unique per "add an event listener", so it
+    /// distinguishes "still the listener we cloned" from "removed and
+    /// re-added". 0 for an event handler's listener, which is identified by
     /// `handler_serial` instead.
-    callback: ?*runtime.Instance,
+    listener_id: u64,
     handler_serial: u32 = 0,
     capture: bool,
     once: bool,
@@ -1273,7 +1252,7 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
         found = true;
         if (record.callback == null and !record.event_handler) continue;
         snapshot.append(.{
-            .callback = record.callback,
+            .listener_id = if (record.event_handler) 0 else record.id,
             .handler_serial = if (record.event_handler) record.handler_serial else 0,
             .capture = record.capture,
             .once = record.once,
@@ -1290,22 +1269,24 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
 
         // The spec's clone holds live listeners, so one an earlier callback
         // removed during this same dispatch is skipped via its removed field.
-        if (findListener(internal, candidate) == null) continue;
+        // The listener's callback, as the record holds it now.
+        const index = findListener(internal, candidate) orelse continue;
+        const callback = internal.event_listener_list.?.toSlice()[index].callback;
 
         // Step 2.5: remove a once listener BEFORE invoking it, so a re-entrant
-        // dispatch cannot reach it. The wrapper has to outlive the call though -
-        // disposing it first would hand V8 a destroyed handle.
-        var expired: ?*runtime.CallbackWrapper = null;
+        // dispatch cannot reach it. Its callback is then this call's to
+        // release, after the call.
+        var expired: ?engine.CallbackInterface = null;
         if (candidate.once) expired = detachListener(internal, candidate);
-        defer if (expired) |wrapper| wrapper.deinit();
+        defer if (expired) |value| value.release();
 
         // Step 2.9
         if (candidate.passive) EventImpl.setInPassiveListenerFlag(event, true);
 
         // Step 2.11 - an exception is reported, never propagated. An event
         // handler's listener runs the event handler processing algorithm.
-        if (candidate.callback) |callback| {
-            callListener(callback, event, current_target);
+        if (candidate.listener_id != 0) {
+            if (expired orelse callback) |value| callListener(value, event, current_target);
         } else {
             invokeIdlEventHandler(current_target, event);
         }
@@ -1323,18 +1304,16 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
 
 /// Index of a still-registered listener matching `candidate`, or null.
 ///
-/// Identity is the wrapper POINTER, not the JavaScript function: addEventListener
-/// allocates a fresh CallbackWrapper per call, so a listener removed and re-added
-/// during a dispatch gets a new pointer and is correctly treated as one added
-/// after the clone was taken.
+/// Identity is the record's id, not the JavaScript function: every "add an
+/// event listener" gives a new one, so a listener removed and re-added during
+/// a dispatch is correctly treated as one added after the clone was taken.
 fn findListener(internal: *InternalState, candidate: Invocation) ?usize {
     const list = internal.event_listener_list orelse return null;
     for (list.toSlice(), 0..) |record, i| {
         if (record.removed) continue;
         if (record.capture != candidate.capture) continue;
-        if (candidate.callback) |candidate_callback| {
-            const callback = record.callback orelse continue;
-            if (callback == candidate_callback) return i;
+        if (candidate.listener_id != 0) {
+            if (!record.event_handler and record.id == candidate.listener_id) return i;
         } else if (record.event_handler and record.handler_serial == candidate.handler_serial) {
             return i;
         }
@@ -1344,308 +1323,208 @@ fn findListener(internal: *InternalState, candidate: Invocation) ?usize {
 
 /// DOM §2.7 "remove an event listener", for inner invoke's step 2.5.
 ///
-/// Returns the callback wrapper WITHOUT disposing it - the caller owns it until
-/// the callback has finished running.
-fn detachListener(internal: *InternalState, candidate: Invocation) ?*runtime.CallbackWrapper {
+/// Returns the callback WITHOUT releasing it - the caller owns it until the
+/// callback has finished running.
+fn detachListener(internal: *InternalState, candidate: Invocation) ?engine.CallbackInterface {
     const index = findListener(internal, candidate) orelse return null;
     const list = internal.event_listener_list orelse return null;
 
+    list.toSliceMut()[index].removed = true;
     const removed = list.remove(index) catch return null;
     var removed_type = removed.type;
     removed_type.deinit(internal.allocator);
 
-    const callback = removed.callback orelse return null;
-    return @ptrCast(@alignCast(callback));
+    return removed.callback;
 }
 
 /// Inner invoke step 2.11 - "call a user object's operation" with the listener's
 /// callback, "handleEvent", « event », and event's currentTarget.
-fn callListener(callback_instance: *runtime.Instance, event: *runtime.Instance, current_target: *runtime.Instance) void {
-    const v8_engine = @import("v8");
+///
+/// `callback` is BORROWED: the record's, or the detached once listener's. The
+/// call holds a value of its own, since the callback can remove its listener
+/// and so release the record's.
+fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance) void {
+    const realm = current_target.ctx;
+    const object = engine.retainValue(realm, callback.object.value) catch |err| {
+        log.debug("listener not called: {}", .{err});
+        return;
+    };
+    const held: engine.CallbackInterface = .{ .object = object, .context = callback.context };
+    defer held.release();
 
-    // The record stores ?*runtime.Instance but it is always a
-    // *runtime.CallbackWrapper - see call_addEventListener.
-    const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-
-    const engine_ctx = current_target.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // Wrap the event with its ACTUAL interface: a MessageEvent wrapped as Event
-    // loses `.data`.
-    const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
-    const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-        event,
-        event_interface_name,
-        v8_isolate,
-        v8_context,
-    ) catch return;
-
-    // callN takes Locals; the wrapper is (usually cached and) owned elsewhere,
-    // so it is not disposed here.
-    const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_global)) orelse return;
-
-    // During the callback the accessor is the Window that REGISTERED the
-    // listener, not the one that triggered the event.
-    const callback_window = v8_engine.context_manager.getWindowForContext(v8_context);
-    if (callback_window) |win| {
-        v8_engine.context_manager.pushAccessorWindow(win);
-    }
-    defer {
-        if (callback_window != null) v8_engine.context_manager.popAccessorWindow();
-    }
-
-    // Step 2.11: call a user object's operation with the listener's callback;
-    // "if this throws an exception exception: report exception for listener's
-    // callback's corresponding JavaScript object's associated realm's global
-    // object". The call is made under a TryCatch that keeps the thrown VALUE,
-    // so the exception is reported rather than merely not propagated.
-    //
-    // The runtime wrapper is engine-agnostic; its engine handle is the V8
-    // wrapper this file already relies on.
-    const wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(runtime_wrapper.engine_handle));
-
-    // "...and event's currentTarget attribute value" - the thisArg. A
-    // function listener is called with `this` bound to it
-    // (EventTarget-this-of-listener.html). The wrapper is the cache's, so it
-    // is not disposed here.
-    const this_arg: ?*v8_engine.ffi.Value = if (v8_engine.template_registry.wrapInstanceAsV8Object(
-        current_target,
-        v8_engine.template_registry.getInstanceInterfaceName(current_target),
-        v8_isolate,
-        v8_context,
-    )) |w| @ptrCast(w) else |_| null;
-
-    // Steps 2.8-2.10: the listener's global's current event is the event
-    // for the duration of the call (`window.event`), and step 2.13 restores
-    // whatever it was before.
-    const listener_window = v8_engine.context_manager.getWindowForContext(wrapper.callback_context orelse v8_context);
+    // Steps 2.8-2.10: the global of the listener callback's associated realm
+    // has the event as its current event for the duration of the call
+    // (`window.event`), and step 2.13 restores whatever it was before.
+    const listener_window = windowOfRealm(associatedRealm(held.object.value) orelse held.context orelse realm);
     const previous_event = if (listener_window) |w| swapCurrentEvent(w, event) else null;
     defer if (listener_window) |w| {
         _ = swapCurrentEvent(w, previous_event);
     };
 
-    switch (wrapper.callNCatching(v8_context, this_arg, &.{@ptrCast(event_local)})) {
-        // Every result is a new Global the caller owns - dropping it leaked one
-        // Global per listener call, on the DOM's hottest path.
-        .normal => |value| if (value) |v| v8_engine.ffi.v8_Global_Dispose(v),
-        .thrown => |exception| if (exception) |e| {
-            defer v8_engine.ffi.v8_Global_Dispose(e);
-            const report = @import("html").report_exception;
-            const realm = wrapper.callback_context orelse v8_context;
-            const global = report.globalForContext(realm) orelse report.globalForContext(v8_context) orelse return;
-            _ = report.reportException(global, e, .{});
-        },
+    // Step 2.11: call a user object's operation with the listener's callback,
+    // "handleEvent", « event », and event's currentTarget attribute value -
+    // a function listener is called with `this` bound to it
+    // (EventTarget-this-of-listener.html). "If this throws an exception
+    // exception: report exception for listener's callback's corresponding
+    // JavaScript object's associated realm's global object."
+    const completion = engine.callUserObjectOperation(realm, &held, "handleEvent", .{ .value = .{ .instance = current_target } }, &.{.{ .instance = event }}, .{
+        .report = .{ .report = reportException, .host = realm },
+    }) catch |err| {
+        log.debug("listener call failed: {}", .{err});
+        return;
+    };
+    switch (completion) {
+        inline else => |value| value.release(),
     }
 }
 
-/// Invoke IDL event handler attribute (e.g., onload, onclick) for the given event
-/// Per HTML spec, event handler IDL attributes like `element.onload = fn` are stored
-/// separately from addEventListener callbacks and must also be invoked during dispatch.
+/// The event handler processing algorithm (HTML §8.1.8.1) for `instance`'s
+/// event handler for `event`'s type - the callback of the event handler's
+/// listener, run by inner invoke.
 fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) void {
-    const v8_engine = @import("v8");
-    const pointer_tag = v8_engine.pointer_tag;
-    const global_handles = v8_engine.global_handles;
-
-    // Get the event type
+    const realm = instance.ctx;
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
-    // The handler, from this target's event handler map. Every event handler
-    // IDL attribute keeps its value there, whichever interface declared it.
-    const handler_address = eventHandlerAddress(instance, event_type_str.asSlice()) orelse return;
-    const raw_ptr: ?*anyopaque = @ptrFromInt(handler_address);
+    // Step 1: "Let callback be the result of getting the current value of the
+    // event handler given eventTarget and name." Run a value of our own: the
+    // handler can replace or clear its own attribute, which releases the
+    // map's.
+    const value = eventHandlerValue(instance, event_type_str.asSlice()) orelse return;
+    const function = engine.retainValue(realm, value.callback.function.value) catch return;
+    const callback: engine.CallbackFunction = .{ .function = function, .context = value.callback.context };
+    defer callback.release();
 
-    // If no handler found, return early
-    const handler_ptr = raw_ptr orelse return;
+    // Step 2: "If callback is null, then return." A non-callable object -
+    // [LegacyTreatNonObjectAsNull] keeps one - is invoked as nothing (WebIDL
+    // "invoke a callback function" step 4).
+    if (!engine.isCallable(realm, callback.function.value)) return;
 
-    // Untag the pointer to get the GlobalHandle
-    const untagged = pointer_tag.untagPointer(handler_ptr);
-
-    // Verify it's a global_handle tag (set during fromV8Value conversion)
-    if (untagged.tag != .global_handle) {
-        // Not a V8 callback - might be a native Zig function (unlikely for IDL handlers)
-        return;
-    }
-
-    // Get V8 context and isolate
-    const engine_ctx = instance.ctx.engine_ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // Create a HandleScope for working with V8 Local handles.
-    // V8 Local handles are only valid within a HandleScope.
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Run a handle of our own: the handler can replace or clear its own
-    // attribute, which disposes the map's value, and the exception report
-    // after the call still needs the function.
-    const handler_copy = v8_engine.ffi.v8_Global_Clone(@ptrCast(@alignCast(untagged.ptr))) orelse return;
-    defer v8_engine.ffi.v8_Global_Dispose(handler_copy);
-    const global_handle = global_handles.GlobalHandle{ .ptr = @ptrCast(handler_copy) };
-
-    // Verify the global handle contains a function.
-    // v8_Value_IsFunction expects a Global<Value>* - pass the GlobalHandle directly.
-    // The C++ side will get the Local from the Global with proper HandleScope.
-    if (!v8_engine.ffi.v8_Value_IsFunction(global_handle.ptr)) {
-        return;
-    }
-
-    // Use the engine_ctx directly - it's already a Global<Context>* owned by the runtime context.
-    // No need to call v8_Isolate_GetCurrentContext which would create a new Global that needs disposal.
-
-    // Wrap the event as a V8 object using the correct interface name
-    // This is critical for event subclasses like MessageEvent - they need
-    // to be wrapped with their actual interface to expose properties like .data
-    // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle (not Local!)
-    const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
-    const event_wrapped_global = v8_engine.template_registry.wrapInstanceAsV8Object(
-        event,
-        event_interface_name,
-        v8_isolate,
-        v8_context,
-    ) catch return;
-
-    // Convert the wrapped Global to Local, then to a NEW Global that we own
-    // This is needed because the call below expects Global handles,
-    // and we need a Global we can dispose after the call
-    const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_wrapped_global)) orelse return;
-    const event_v8_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(event_local)) orelse return;
-    defer v8_engine.ffi.v8_Global_Dispose(event_v8_global);
-
-    // The callback this value is the event's currentTarget - the instance whose
-    // handler this is (the event handler processing algorithm, step 4: "with
-    // callback this value set to event's currentTarget"). A content attribute
-    // handler like `onclick="this.value = 1"` depends on it. The wrapper is
-    // the cache's (a Window's is its global), so it is not disposed here.
-    const this_wrapper = v8_engine.template_registry.wrapInstanceAsV8Object(
-        instance,
-        v8_engine.template_registry.getInstanceInterfaceName(instance),
-        v8_isolate,
-        v8_context,
-    ) catch null;
-    // Null is undefined to the call below; v8_Undefined would allocate a
-    // Global nobody disposes.
-    const recv_global: ?*v8_engine.ffi.Value = if (this_wrapper) |w| @ptrCast(w) else null;
-
-    // Step 4: special error event handling - an ErrorEvent named "error" whose
+    // Step 3: special error event handling - an ErrorEvent named "error" whose
     // currentTarget is a global (WindowOrWorkerGlobalScope). Brand checks go
     // through the vtable ancestry, never through a registry keyed on a
-    // recyclable address (see the HTMLElement lookup above).
+    // recyclable address.
     const special_error_event_handling = std.mem.eql(u8, event_type_str.asSlice(), "error") and
         event.stateAs(interfaces.ErrorEvent.State) != null and
         (instance.stateAs(interfaces.Window.State) != null or
             instance.stateAs(interfaces.WorkerGlobalScope.State) != null);
 
-    // Step 5: invoke callback with the event - or, for special error event
+    // Step 4: invoke callback with the event - or, for special error event
     // handling, with the event's message, filename, lineno, colno and error -
-    // "rethrow", with callback this value set to event's currentTarget.
-    var args: [5]*v8_engine.ffi.Value = undefined;
-    var argc: usize = 0;
-    var owned_args: usize = 0;
-    defer for (args[0..owned_args]) |arg| v8_engine.ffi.v8_Global_Dispose(arg);
-    if (special_error_event_handling) {
-        argc = errorEventHandlerArguments(event, v8_isolate, &args);
-        owned_args = argc;
-        if (argc != 5) return;
-    } else {
-        args[0] = event_v8_global;
-        argc = 1;
-    }
+    // with callback this value set to event's currentTarget.
+    const event_argument = [_]runtime.JSValue{.{ .instance = event }};
+    var error_arguments: ErrorEventArguments = undefined;
+    const args: []const runtime.JSValue = if (special_error_event_handling) blk: {
+        error_arguments = ErrorEventArguments.of(event) catch return;
+        break :blk &error_arguments.values;
+    } else &event_argument;
+    defer if (special_error_event_handling) error_arguments.deinit(event.ctx.allocator);
 
-    // DOM inner invoke steps 2.8-2.10 / 2.13 for the event handler's listener.
-    const handler_window = v8_engine.context_manager.getWindowForContext(v8_context);
+    // DOM inner invoke steps 2.8-2.10 / 2.13 for the event handler's listener,
+    // whose callback belongs to the target's realm.
+    const handler_window = windowOfRealm(realm);
     const previous_event = if (handler_window) |w| swapCurrentEvent(w, event) else null;
     defer if (handler_window) |w| {
         _ = swapCurrentEvent(w, previous_event);
     };
 
-    var threw = false;
-    const completion = v8_engine.ffi.v8_Function_CallCatching(
-        v8_context,
-        global_handle.ptr,
-        recv_global,
-        @intCast(argc),
-        &args,
-        &threw,
-    );
-    defer if (completion) |value| v8_engine.ffi.v8_Global_Dispose(value);
-
-    if (threw) {
-        // "If an exception gets thrown by the callback, it will be rethrown,
-        // ending these steps. The exception will propagate to the DOM event
-        // dispatch logic, which will then report it" - for the global of the
-        // realm the handler belongs to (DOM inner invoke step 2.11). A null
-        // completion means there is nothing to report (termination).
-        const exception = completion orelse return;
-        reportCallbackException(v8_context, @ptrCast(global_handle.ptr), exception);
+    // "If an exception gets thrown by the callback, it will be rethrown,
+    // ending these steps. The exception will propagate to the DOM event
+    // dispatch logic, which will then report it" - for the global of the
+    // callback's associated realm (DOM inner invoke step 2.11): reported
+    // here, and the completion is then normal undefined, which step 5 ignores.
+    const completion = engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, .{
+        .report = .{ .report = reportException, .host = realm },
+    }) catch |err| {
+        log.debug("event handler not invoked: {}", .{err});
         return;
-    }
+    };
+    const return_value = switch (completion) {
+        .normal => |normal| normal,
+        .throw => |thrown| {
+            thrown.release();
+            return;
+        },
+    };
+    defer return_value.release();
 
-    // Step 6: process the return value. Only an exact true (special error
+    // Step 5: process the return value. Only an exact true (special error
     // handling) or an exact false (everything else) cancels - through
     // preventDefault's "set the canceled flag", which respects cancelable and
     // the passive listener flag, as Blink's and WebKit's handlers do.
-    const return_value = completion orelse return;
-    if (!v8_engine.ffi.v8_Value_IsBoolean(return_value)) return;
-    const b = v8_engine.ffi.v8_Value_BooleanValue(return_value, v8_isolate);
-    if (b == special_error_event_handling) {
+    if (engine.typeOf(realm, return_value.value) != .boolean) return;
+    if (engine.toBoolean(realm, return_value.value) == special_error_event_handling) {
         interfaces.Event.call_preventDefault(event) catch {};
     }
 }
 
 /// The five arguments `onerror` on a global is invoked with: the ErrorEvent's
-/// message, filename, lineno, colno and error, as new Globals the caller owns.
-/// Returns how many were created; anything short of 5 means failure.
-fn errorEventHandlerArguments(event: *runtime.Instance, isolate: *@import("v8").ffi.Isolate, out: *[5]*@import("v8").ffi.Value) usize {
-    const ffi = @import("v8").ffi;
-    const ErrorEvent = interfaces.ErrorEvent;
-    const allocator = event.ctx.allocator;
-    var n: usize = 0;
+/// message, filename, lineno, colno and error. The strings are the getters'
+/// copies, freed by `deinit`; the error is the event's own, BORROWED.
+const ErrorEventArguments = struct {
+    message: runtime.DOMString,
+    filename: []const u8,
+    values: [5]runtime.JSValue,
 
-    // Getters hand ownership of their strings to the caller (AGENTS.md).
-    var message = ErrorEvent.get_message(event) catch return n;
-    defer message.deinit(allocator);
-    const message_slice = message.asSlice();
-    out[n] = @ptrCast(ffi.v8_String_NewFromUtf8(isolate, message_slice.ptr, @intCast(message_slice.len)) orelse return n);
-    n += 1;
+    fn of(event: *runtime.Instance) !ErrorEventArguments {
+        const ErrorEvent = interfaces.ErrorEvent;
+        const allocator = event.ctx.allocator;
+        // Getters hand ownership of their strings to the caller (AGENTS.md).
+        var message = try ErrorEvent.get_message(event);
+        errdefer message.deinit(allocator);
+        const filename = try ErrorEvent.get_filename(event);
+        return .{
+            .message = message,
+            .filename = filename,
+            .values = .{
+                runtime.JSValue.fromStringRef(message.asSlice()),
+                runtime.JSValue.fromStringRef(filename),
+                runtime.JSValue.fromNumber(@floatFromInt(ErrorEvent.get_lineno(event) catch 0)),
+                runtime.JSValue.fromNumber(@floatFromInt(ErrorEvent.get_colno(event) catch 0)),
+                ErrorEvent.get_error(event) catch runtime.JSValue.jsUndefined,
+            },
+        };
+    }
 
-    const filename = ErrorEvent.get_filename(event) catch return n;
-    defer if (filename.len > 0) allocator.free(filename);
-    out[n] = @ptrCast(ffi.v8_String_NewFromUtf8(isolate, filename.ptr, @intCast(filename.len)) orelse return n);
-    n += 1;
+    fn deinit(self: *ErrorEventArguments, allocator: std.mem.Allocator) void {
+        self.message.deinit(allocator);
+        if (self.filename.len > 0) allocator.free(self.filename);
+    }
+};
 
-    out[n] = @ptrCast(ffi.v8_Number_New(isolate, @floatFromInt(ErrorEvent.get_lineno(event) catch 0)));
-    n += 1;
-    out[n] = @ptrCast(ffi.v8_Number_New(isolate, @floatFromInt(ErrorEvent.get_colno(event) catch 0)));
-    n += 1;
+/// The realm of `value`, a callback's JavaScript object: its function realm
+/// where the engine knows it exactly, else null (the caller falls back to
+/// the callback context).
+fn associatedRealm(value: runtime.JSValue) ?runtime.Context {
+    if (comptime engine.capabilities.exact_function_realm == .unsupported) return null;
+    return engine.functionRealm(value);
+}
 
-    // `error` is the event's own Global; pass a clone the caller disposes.
-    const err = ErrorEvent.get_error(event) catch runtime.JSValue.jsUndefined;
-    out[n] = switch (err) {
-        .handle => |h| ffi.v8_Global_Clone(@ptrCast(@alignCast(h.ptr))),
-        .null => ffi.v8_Null(isolate),
-        // v8_Undefined allocates a new Global per call, like the rest.
-        else => ffi.v8_Undefined(isolate),
-    } orelse return n;
-    n += 1;
-    return n;
+/// `realm`'s global object, when it is a Window.
+fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
 }
 
 /// DOM inner invoke step 2.11 / the event handler processing algorithm's
-/// rethrow: report `exception` (a Global<Value>*) for the global object of the
-/// realm `callback` (Global<Function>*) was created in, falling back to the
-/// realm the listener is being invoked in.
-fn reportCallbackException(invoke_context: *@import("v8").ffi.Context, callback: ?*@import("v8").ffi.Function, exception: *@import("v8").ffi.Value) void {
-    const v8_engine = @import("v8");
-    const report = @import("html").report_exception;
-
-    const creation = if (callback) |f| v8_engine.ffi.v8_Function_GetCreationContext(f) else null;
-    defer if (creation) |c| v8_engine.ffi.v8_Context_Dispose(c);
-
-    const global = (if (creation) |c| report.globalForContext(c) else null) orelse
-        report.globalForContext(invoke_context) orelse return;
-    _ = report.reportException(global, exception, .{});
+/// rethrow: HTML "report an exception" for the global of the realm the engine
+/// names - the callback's associated realm - or else the target's (`host`).
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const target_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse target_realm;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    // Step 2's error information is the engine's, extracted where the
+    // exception was thrown.
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 /// Operation: when (Observable)
