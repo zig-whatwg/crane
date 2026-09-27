@@ -204,3 +204,21 @@ test "a hold recorded for a freed instance is not inherited by its slot's next o
     collect();
     try std.testing.expect(wasFreed(second));
 }
+
+// The protocol's operations are the table's: `engine` here names the table,
+// so the facade is `protocol`.
+const protocol = @import("engine");
+
+test "protocol: keepPlatformObjectAlive holds a wrapper through a full GC, and releasePlatformObject ends the hold" {
+    try setup();
+    const worker = try wrapped();
+    protocol.keepPlatformObjectAlive(worker.instance);
+    try std.testing.expect(isStrong(worker));
+    collect();
+    try std.testing.expect(!wasFreed(worker));
+
+    protocol.releasePlatformObject(worker.instance);
+    try std.testing.expect(!isStrong(worker));
+    collect();
+    try std.testing.expect(wasFreed(worker));
+}

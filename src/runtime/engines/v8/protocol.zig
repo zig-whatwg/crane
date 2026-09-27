@@ -698,10 +698,8 @@ pub fn keepPlatformObjectAlive(instance: *Instance) void {
     table.keepPlatformObjectAlive.?(instance);
 }
 
-// TODO(protocol): implement - design 4.12 (the engine-boundary lane's commit 4 adds the release of pending activity)
 pub fn releasePlatformObject(instance: *Instance) void {
-    _ = instance;
-    notImplemented("releasePlatformObject", "4.12");
+    table.releasePlatformObject.?(instance);
 }
 
 pub fn platformObjectDestroyed(instance: *Instance) void {
