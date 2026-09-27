@@ -7,7 +7,7 @@
 const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
-const worker_host = @import("html").worker_v8_context;
+const worker_host = @import("html").worker_host;
 
 test "a realm has no report_exception until its host installs one" {
     var realm = try runtime.ContextData.init(testing.allocator, .{});

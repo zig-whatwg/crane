@@ -528,6 +528,9 @@ pub const capabilities: Capabilities = impl.capabilities;
 /// The engine this build selected, for messages ("V8", "JavaScriptCore").
 pub const name: []const u8 = impl.name;
 
+/// The log scope the adapter logs under, for hosts that filter its output.
+pub const log_scope = impl.log_scope;
+
 const Capability = std.meta.FieldEnum(Capabilities);
 
 /// A gated operation reached where the engine lacks its capability: a compile
@@ -870,6 +873,17 @@ pub inline fn releaseValue(value: Owned) void {
 /// ExceptionPending.
 pub inline fn throwValue(realm: Context, value: JSValue) Error!void {
     return impl.throwValue(realm, value);
+}
+
+/// ECMAScript Completion(...): run `steps` in `realm`; if they leave an
+/// exception pending, catch it and return the thrown value OWNED, with nothing
+/// pending; null on a normal completion. A step's TypeError or DataCloneError
+/// ("the spec throws one here", nothing thrown yet) is a throw completion of a
+/// new one; any other error is the engine failing and propagates. For spec
+/// steps that consume an abrupt completion rather than propagate it - the
+/// Streams size algorithm's result conversion, say.
+pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) Error!void, data: ?*anyopaque) Error!?Owned {
+    return impl.completionOf(realm, steps, data);
 }
 
 /// Infra "parse JSON bytes to a JavaScript value".

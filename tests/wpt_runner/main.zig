@@ -67,17 +67,16 @@ const stall_watchdog = @import("stall_watchdog.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
 const host = @import("host");
-/// Phase 5 measuring instrument. The runner both reports its process-wide totals
-/// at the end and writes per-file deltas into the journal, so a sharded run can
-/// be added back up by the supervisor.
-const isolate_ownership = @import("v8").isolate_ownership;
-const v8_ffi = @import("v8").ffi;
+/// The JavaScript engine, for its diagnostics tier only: the runner prints what
+/// the adapter reports (heap statistics, its counters) and never reaches the
+/// engine itself.
+const engine = @import("engine");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
 
 /// Custom log function that suppresses error logs in non-verbose mode.
-/// This prevents V8 engine errors from cluttering the test output.
+/// This prevents the engine adapter's errors from cluttering the test output.
 pub const std_options: std.Options = .{
     // Control log level based on -Dwpt-debug build flag
     // When debug is disabled (default), only show warnings and errors
@@ -92,9 +91,9 @@ fn wptLogFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    // In non-verbose mode, suppress error-level logs from v8_engine
+    // In non-verbose mode, suppress error-level logs from the engine adapter.
     // These are expected during test execution (test failures cause JS errors)
-    if (!verbose_mode and level == .err and scope == .v8_engine) {
+    if (!verbose_mode and level == .err and scope == engine.log_scope) {
         return;
     }
 
@@ -552,18 +551,19 @@ pub const ProgressTracker = struct {
         // Duration
         print("  ⏱️  Duration: {s}\n", .{elapsed});
 
-        // Isolate ownership (Phase 5). Reported as violations/checks rather than
-        // violations alone: 0 violations out of 0 checks means the instrument never
-        // ran, which is NOT the same as the invariant holding, and the two are
-        // indistinguishable if only violations are shown.
-        if (isolate_ownership.mode != .off) {
-            const v = isolate_ownership.violations();
-            const c = isolate_ownership.checks();
-            if (c == 0) {
-                print("  🔒 Isolate ownership: not measured (0 checks ran)\n", .{});
+        // Agent ownership (Phase 5), as the engine adapter reports it. Reported as
+        // violations/checks rather than violations alone: 0 violations out of 0
+        // checks means the instrument never ran, which is NOT the same as the
+        // invariant holding, and the two are indistinguishable if only violations
+        // are shown.
+        if (readOwnership()) |ownership| {
+            if (ownership.checks == 0) {
+                print("  🔒 Agent ownership: not measured (0 checks ran)\n", .{});
             } else {
-                print("  🔒 Isolate ownership: {d} violation(s) in {d} checks\n", .{ v, c });
+                print("  🔒 Agent ownership: {d} violation(s) in {d} checks\n", .{ ownership.violations, ownership.checks });
             }
+        } else {
+            print("  🔒 Agent ownership: not measured ({s} reports no ownership counters)\n", .{engine.name});
         }
 
         // Top failing categories
@@ -707,7 +707,7 @@ pub fn executeTests(
             error_result.deinit(allocator);
 
             tally.status = .@"error";
-            if (run_journal) |*j| try tally.record(j, test_file.path);
+            if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
             continue;
         };
         defer allocator.free(content);
@@ -726,7 +726,7 @@ pub fn executeTests(
             error_result.deinit(allocator);
 
             tally.status = .@"error";
-            if (run_journal) |*j| try tally.record(j, test_file.path);
+            if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
             continue;
         };
         defer parsed.deinit();
@@ -844,7 +844,7 @@ pub fn executeTests(
         // so the file is done. Journal it before starting the next one:
         // anything after this point that kills the process must not be blamed
         // on this test.
-        if (run_journal) |*j| try tally.record(j, test_file.path);
+        if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
 
         // Reset HTTP connection pool between test files to prevent connection exhaustion
         // This ensures each test file starts with a fresh connection pool
@@ -900,7 +900,7 @@ const FileTally = struct {
     /// begins - so the most expensive files in the corpus score near zero on it.
     timer: ?clock.Timer = null,
 
-    /// Phase 5 isolate-ownership counters as they stood BEFORE this file ran.
+    /// Phase 5 agent-ownership counters as they stood BEFORE this file ran.
     ///
     /// The instrument's counters are process-global and monotonic, so the number
     /// belonging to one file is a delta. Snapshotting here rather than resetting
@@ -910,11 +910,12 @@ const FileTally = struct {
     ownership_violations_at_start: usize = 0,
 
     fn start() FileTally {
+        const ownership = readOwnership() orelse Ownership{};
         return .{
             .index = 0,
             .timer = clock.Timer.start(),
-            .ownership_checks_at_start = isolate_ownership.checks(),
-            .ownership_violations_at_start = isolate_ownership.violations(),
+            .ownership_checks_at_start = ownership.checks,
+            .ownership_violations_at_start = ownership.violations,
         };
     }
 
@@ -953,8 +954,10 @@ const FileTally = struct {
         }
     }
 
-    fn record(self: *const FileTally, j: *journal.Journal, path: []const u8) !void {
-        const heap = readHeap();
+    /// Journal this file. `agent`: the page's, whose heap the record reports.
+    fn record(self: *const FileTally, j: *journal.Journal, path: []const u8, agent: ?*engine.Agent) !void {
+        const heap = readHeap(agent);
+        const ownership = readOwnership() orelse Ownership{};
         try j.record(.{
             .index = self.index,
             .path = path,
@@ -967,8 +970,8 @@ const FileTally = struct {
             .nav_ms = self.nav_ms,
             .load_ms = self.load_ms,
             .wall_ms = self.wallMs(),
-            .ownership_checks = isolate_ownership.checks() -| self.ownership_checks_at_start,
-            .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
+            .ownership_checks = ownership.checks -| self.ownership_checks_at_start,
+            .ownership_violations = ownership.violations -| self.ownership_violations_at_start,
             .heap_used_kb = heap.used_kb,
             .native_contexts = heap.native_contexts,
             .message = self.message.get(),
@@ -978,26 +981,57 @@ const FileTally = struct {
 
 const HeapReading = struct { used_kb: u64 = 0, native_contexts: u64 = 0 };
 
-/// V8's used heap on the current isolate, in KiB, and the native contexts
-/// alive in it; zeros with no isolate. See `journal.Record.heap_used_kb` and
+/// The agent's used heap, in KiB, and the realms alive in it, as the engine
+/// reports them (engine.heapStatistics); zeros with no agent, or an engine
+/// without heap statistics. See `journal.Record.heap_used_kb` and
 /// `native_contexts` for how to read them.
 ///
 /// `CRANE_HEAP_GC=1` runs a full collection first, so the reading is what is
 /// actually retained rather than retained-plus-garbage - the difference
 /// between a leak and a collector that has not run yet. It costs a full GC per
 /// file, so it is for diagnosis, not sweeps.
-fn readHeap() HeapReading {
-    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return .{};
-    if (heapGcRequested()) v8_ffi.v8_Isolate_RequestGarbageCollection(isolate);
-    // `CRANE_HEAP_SNAPSHOT=<path>` writes a DevTools heap snapshot there after
-    // each file, overwriting the last: what the final file left alive. A
-    // leaked Global shows as a path from "(Global handles)" to its target.
-    if (std.c.getenv("CRANE_HEAP_SNAPSHOT")) |path| _ = v8_ffi.v8_Debug_WriteHeapSnapshot(isolate, path);
-    var used: usize = 0;
-    v8_ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, null);
-    var contexts: usize = 0;
-    v8_ffi.v8_Isolate_GetContextCounts(isolate, &contexts, null);
-    return .{ .used_kb = used / 1024, .native_contexts = contexts };
+fn readHeap(agent_or_null: ?*engine.Agent) HeapReading {
+    const agent = agent_or_null orelse return .{};
+    if (heapGcRequested()) engine.requestGarbageCollection(agent);
+    // `CRANE_HEAP_SNAPSHOT=<path>` writes a heap snapshot there after each
+    // file, overwriting the last: what the final file left alive. (V8's is a
+    // DevTools snapshot: a leaked handle shows as a path from "(Global
+    // handles)" to its target.)
+    if (engine.capabilities.heap_snapshots != .unsupported) {
+        if (std.c.getenv("CRANE_HEAP_SNAPSHOT")) |path| _ = engine.writeHeapSnapshot(agent, std.mem.span(path));
+    }
+    if (engine.capabilities.heap_statistics == .unsupported) return .{};
+    const statistics = engine.heapStatistics(agent);
+    return .{ .used_kb = statistics.used / 1024, .native_contexts = statistics.realm_count };
+}
+
+/// Phase 5's agent-ownership counters, process-wide and monotonic.
+const Ownership = struct { checks: usize = 0, violations: usize = 0 };
+
+/// The ownership counters the engine adapter reports among its diagnostic
+/// counters, or null when it reports neither - "not measured", which is not
+/// the same as clean.
+fn readOwnership() ?Ownership {
+    if (engine.capabilities.diagnostic_counters == .unsupported) return null;
+    // A handful of counters: no allocation worth a real allocator.
+    var buffer: [1024]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    const counters = engine.diagnosticCounters(fixed.allocator()) catch return null;
+    var checks: ?usize = null;
+    var violations: ?usize = null;
+    for (counters) |counter| {
+        if (std.mem.eql(u8, counter.name, "ownership_checks")) checks = @intCast(counter.value);
+        if (std.mem.eql(u8, counter.name, "ownership_violations")) violations = @intCast(counter.value);
+    }
+    return .{ .checks = checks orelse return null, .violations = violations orelse return null };
+}
+
+/// The agent the current page's realm lives in - the page's Window's - read
+/// from the browser without touching the engine; null before the first page.
+fn currentAgent(browser: *browser_adapter.BrowserAdapter) ?*engine.Agent {
+    const page = browser.wpt_browser.browser.current_context orelse return null;
+    const window = page.window_instance orelse return null;
+    return window.ctx.agent;
 }
 
 fn heapGcRequested() bool {
@@ -1854,9 +1888,9 @@ fn supervise(
     // numbers survive their exit. Printed as a pair because `0 violations` from an
     // instrument that never executed is indistinguishable from a clean run.
     if (s.ownership_checks == 0) {
-        print("Isolate ownership: not measured (0 checks across {d} records)\n", .{log.records.len});
+        print("Agent ownership: not measured (0 checks across {d} records)\n", .{log.records.len});
     } else {
-        print("Isolate ownership: {d} violation(s) in {d} checks\n", .{
+        print("Agent ownership: {d} violation(s) in {d} checks\n", .{
             s.ownership_violations,
             s.ownership_checks,
         });

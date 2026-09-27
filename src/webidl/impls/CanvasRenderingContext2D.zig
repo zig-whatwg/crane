@@ -9,7 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CanvasRenderingContext2D = interfaces.CanvasRenderingContext2D;
-const v8 = @import("v8");
+const engine = @import("engine");
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
@@ -189,43 +189,22 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) an
 }
 
 /// Operation: getLineDash
-/// Returns a copy of the current line dash pattern.
 /// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-getlinedash
-///
-/// NOTE: There is a known V8 limitation where if Array.prototype has a getter-only
-/// accessor at a specific index (e.g., Array.prototype[1] with only a getter),
-/// then v8_Array_Set will fail when trying to set that index on ANY array.
-/// This affects the WPT test "A holey array with fallback to an accessor on the prototype"
-/// in sequence-conversion.html. This is a JavaScript semantics issue in V8, not
-/// something we can work around without changing V8's internal array handling.
+/// "return a sequence whose values are the values of this's dash list, in
+/// the same order" - a new Array each call, in the current realm (WebIDL
+/// converts a result there). Its items are data properties
+/// (CreateDataProperty), so an accessor on Array.prototype is never reached:
+/// the old "known V8 limitation" here was Set used where the conversion
+/// defines.
 pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse {
-        // No internal state yet = empty dash (default)
-        // Return empty array
-        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-        _ = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-        // v8_Array_New returns a Global<Array>* which can be used directly as a Global handle
-        const array = v8.ffi.v8_Array_New(isolate, 0);
-        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
-    };
-
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-    defer v8.ffi.v8_Context_Dispose(context);
-
-    // Create V8 array from the stored line dash pattern
-    // v8_Array_New returns a Global<Array>* which can be used directly as a Global handle
-    const dash_len: u32 = @intCast(internal.line_dash.len);
-    const array = v8.ffi.v8_Array_New(isolate, @intCast(dash_len));
-
-    // Populate array with f64 values
-    for (internal.line_dash, 0..) |val, i| {
-        const num_val = v8.ffi.v8_Number_New(isolate, val);
-        _ = v8.ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(num_val));
-    }
-
-    // v8_Array_New already returns a Global handle - no need to persist again
-    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    const dash: []const f64 = if (getInternal(instance)) |internal| internal.line_dash else &.{};
+    const allocator = instance.ctx.allocator;
+    const values = try allocator.alloc(runtime.JSValue, dash.len);
+    defer allocator.free(values);
+    for (dash, values) |segment, *value| value.* = runtime.JSValue.fromNumber(segment);
+    const realm = engine.currentRealm() orelse instance.ctx;
+    // A new value made for the call: the binding takes it.
+    return (try engine.createSequenceOfValues(realm, values)).take();
 }
 
 /// Operation: ellipse
@@ -319,168 +298,57 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
     return error.NotImplemented;
 }
 
-/// Operation: setLineDash
-/// Helper to iterate using Symbol.iterator protocol and collect f64 values
-/// Per WebIDL spec, sequence conversion should use the iteration protocol
-fn iterateToF64Array(
+/// The IDL value of a `sequence<unrestricted double>` argument being
+/// converted, item by item (WebIDL 3.2.21 "create a sequence from an
+/// iterable", each item converted to unrestricted double).
+const DoubleSequence = struct {
+    realm: runtime.Context,
     allocator: std.mem.Allocator,
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
-    obj: *v8.ffi.Object,
-) !?[]f64 {
-    // Get Symbol.iterator from the object
-    const iterator_symbol = v8.ffi.v8_Symbol_GetIterator(isolate) orelse return error.TypeError;
-    const iterator_fn_val = v8.ffi.v8_Object_GetPropertyWithSymbol(context, obj, iterator_symbol) orelse return error.TypeError;
+    items: std.ArrayListUnmanaged(f64) = .empty,
 
-    // Check if it's a function
-    if (!v8.ffi.v8_Value_IsFunction(iterator_fn_val)) {
-        return error.TypeError;
+    fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
+        const self: *DoubleSequence = @ptrCast(@alignCast(data.?));
+        // ToNumber: what a valueOf throws is pending, and propagates.
+        const number = try engine.convertToUnrestrictedDouble(self.realm, item);
+        self.items.append(self.allocator, number) catch return error.OutOfMemory;
     }
-    const iterator_fn: *v8.ffi.Function = @ptrCast(iterator_fn_val);
-
-    // Call the iterator function to get the iterator object
-    const iterator_val = v8.ffi.v8_Function_CallWithReceiver(
-        context,
-        iterator_fn,
-        @ptrCast(obj), // receiver is the original object
-        0, // no arguments
-        null, // argv
-    ) orelse return error.TypeError;
-
-    if (!v8.ffi.v8_Value_IsObject(iterator_val)) {
-        return error.TypeError;
-    }
-    const iterator_obj: *v8.ffi.Object = @ptrCast(iterator_val);
-
-    // Get the 'next' method from the iterator
-    const next_str = v8.ffi.v8_String_NewFromUtf8(isolate, "next", 4) orelse return error.TypeError;
-    const next_fn_val = v8.ffi.v8_Object_Get(iterator_obj, context, @ptrCast(next_str)) orelse return error.TypeError;
-
-    if (!v8.ffi.v8_Value_IsFunction(next_fn_val)) {
-        return error.TypeError;
-    }
-    const next_fn: *v8.ffi.Function = @ptrCast(next_fn_val);
-
-    // Get "done" and "value" strings for property access
-    const done_str = v8.ffi.v8_String_NewFromUtf8(isolate, "done", 4) orelse return error.TypeError;
-    const value_str = v8.ffi.v8_String_NewFromUtf8(isolate, "value", 5) orelse return error.TypeError;
-
-    // Collect values by iterating
-    var values: std.ArrayList(f64) = .empty;
-    defer values.deinit(allocator);
-
-    const max_iterations: usize = 10000; // Safety limit
-    var iteration_count: usize = 0;
-
-    while (iteration_count < max_iterations) : (iteration_count += 1) {
-        // Call iterator.next()
-        const result_val = v8.ffi.v8_Function_CallWithReceiver(
-            context,
-            next_fn,
-            @ptrCast(iterator_obj),
-            0, // no arguments
-            null, // argv
-        ) orelse return error.TypeError;
-
-        if (!v8.ffi.v8_Value_IsObject(result_val)) {
-            return error.TypeError;
-        }
-        const result_obj: *v8.ffi.Object = @ptrCast(result_val);
-
-        // Check if done
-        const done_val = v8.ffi.v8_Object_Get(result_obj, context, @ptrCast(done_str)) orelse return error.TypeError;
-        if (v8.ffi.v8_Value_BooleanValue(done_val, isolate)) {
-            break;
-        }
-
-        // Get the value
-        const item_val = v8.ffi.v8_Object_Get(result_obj, context, @ptrCast(value_str)) orelse return error.TypeError;
-        const num = v8.ffi.v8_Value_NumberValue(item_val, context);
-
-        // Per spec: if any value is negative, non-finite, or NaN, return null (don't change dash)
-        if (num < 0 or std.math.isNan(num) or std.math.isInf(num)) {
-            return null;
-        }
-
-        try values.append(allocator, num);
-    }
-
-    // Return owned slice
-    return try values.toOwnedSlice(allocator);
-}
+};
 
 /// Operation: setLineDash
-/// Sets the current line dash list.
 /// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-setlinedash
+///
+/// `segments` is a `sequence<unrestricted double>`, which arrives unconverted:
+/// WebIDL converts the whole of it - any iterable object, anything else a
+/// TypeError, each item by ToNumber - before the method's steps run. (This
+/// used to take null and undefined as "clear", and to stop iterating at the
+/// first invalid item, so a later item's valueOf never ran.)
 pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
     const internal = try getOrCreateInternal(instance);
     const allocator = instance.ctx.allocator;
 
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-    defer v8.ffi.v8_Context_Dispose(context);
+    var sequence = DoubleSequence{ .realm = instance.ctx, .allocator = allocator };
+    defer sequence.items.deinit(allocator);
+    // WebIDL 3.2.21 steps 1-3: not an object, or no @@iterator, is a TypeError.
+    if (!try engine.iterate(instance.ctx, segments, DoubleSequence.each, &sequence)) return error.TypeError;
+    const values = sequence.items.items;
 
-    // Get the V8 value from runtime.JSValue
-    // Check what variant we have
-    const v8_global: *v8.ffi.Value = switch (segments) {
-        .handle => |h| @ptrCast(h.ptr),
-        .undefined, .null => {
-            // setLineDash(undefined/null) clears the dash pattern
-            if (internal.line_dash.len > 0) {
-                allocator.free(internal.line_dash);
-                internal.line_dash = &[_]f64{};
-            }
-            return;
-        },
-        // Per WebIDL spec, sequence<unrestricted double> should be iterable
-        .boolean, .number, .string, .instance => {
-            // Invalid types for sequence parameter - per spec should throw TypeError
-            return error.TypeError;
-        },
-    };
-
-    // Check if it's an object (required for iteration protocol).
-    //
-    // On the Global itself: every v8_* function here takes a Global<Value>*.
-    // This used to call v8_Global_Get first, which returns a LOCAL slot
-    // pointer merely typed *Value, and pass that on - one level of indirection
-    // off, so v8_Value_IsObject read an object's first word as a handle and
-    // crashed (webidl/ecmascript-binding/sequence-conversion.html).
-    if (!v8.ffi.v8_Value_IsObject(v8_global)) {
-        return error.TypeError;
-    }
-    const obj: *v8.ffi.Object = @ptrCast(v8_global);
-
-    // Use the iteration protocol to get values (per WebIDL spec)
-    const values = try iterateToF64Array(allocator, isolate, context, obj) orelse {
-        // null means invalid value found - return without changing (per spec)
-        return;
-    };
-
-    // Empty array is valid - clears the dash
-    if (values.len == 0) {
-        if (internal.line_dash.len > 0) {
-            allocator.free(internal.line_dash);
-            internal.line_dash = &[_]f64{};
-        }
-        allocator.free(values);
-        return;
+    // 1. If any value in segments is not finite (e.g. an Infinity or a NaN
+    // value), or if any value is negative (less than zero), then return
+    // (without throwing an exception).
+    for (values) |value| {
+        if (!std.math.isFinite(value) or value < 0) return;
     }
 
-    // Per spec: if odd length, duplicate the array (e.g., [5] becomes [5, 5])
-    const final_values = if (values.len % 2 != 0) blk: {
-        const doubled = try allocator.alloc(f64, values.len * 2);
-        @memcpy(doubled[0..values.len], values);
-        @memcpy(doubled[values.len..], values);
-        allocator.free(values);
-        break :blk doubled;
-    } else values;
+    // 2. If the number of elements in segments is odd, then let segments be
+    // the concatenation of two copies of segments.
+    const count = if (values.len % 2 != 0) values.len * 2 else values.len;
+    const dash = try allocator.alloc(f64, count);
+    @memcpy(dash[0..values.len], values);
+    if (count != values.len) @memcpy(dash[values.len..], values);
 
-    // Free old dash and store new one
-    if (internal.line_dash.len > 0) {
-        allocator.free(internal.line_dash);
-    }
-    internal.line_dash = final_values;
+    // 3. Set this's dash list to segments.
+    if (internal.line_dash.len > 0) allocator.free(internal.line_dash);
+    internal.line_dash = dash;
 }
 
 /// Operation: moveTo

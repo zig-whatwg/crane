@@ -266,6 +266,10 @@ pub const createTypeErrorInRealm = realm_v8.createTypeErrorInRealm;
 pub const throwTypeErrorFromRealm = realm_v8.throwTypeErrorFromRealm;
 pub const populateRealmIntrinsics = realm_v8.populateIntrinsics;
 
+/// Worker realms: createWorkerRealm and the realm record it makes (tests reach
+/// `recordRealm` here).
+pub const worker_realm = @import("worker_realm.zig");
+
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");
 pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;

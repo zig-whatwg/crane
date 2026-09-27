@@ -1598,19 +1598,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Algorithm infrastructure for ReadableStream.from() and async iterator support
-    const streams_algorithm_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/algorithm.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "callbacks", .module = callbacks_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),
         .target = target,
@@ -1661,7 +1648,6 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
-    streams_mod.addImport("algorithm", streams_algorithm_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -1679,7 +1665,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
-    impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
     // DOM module for XPath implementations
@@ -3255,7 +3240,9 @@ pub fn build(b: *std.Build) void {
     const snapshot_gen_exe = b.addExecutable(.{
         .name = "snapshot_generator",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
+            // so the generator lives inside the V8 adapter.
+            .root_source_file = b.path("src/runtime/engines/v8/snapshot_generator.zig"),
             // Build-time tool: must run on the HOST. It is executed via
             // `b.addRunArtifact` below, so building it for `target` means
             // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
@@ -3458,53 +3445,6 @@ pub fn build(b: *std.Build) void {
     gc_bench_step.dependOn(&run_gc_bench.step);
 
     // ========================================================================
-    // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
-    // ========================================================================
-
-    const minimal_snapshot_test_exe = b.addExecutable(.{
-        .name = "minimal_snapshot_test",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/minimal_snapshot_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "v8", .module = v8_mod },
-            },
-        }),
-    });
-
-    // Add V8 C++ wrapper
-    minimal_snapshot_test_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-
-    // Add V8 include paths
-    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    minimal_snapshot_test_exe.root_module.link_libcpp = true; //
-
-    // Install the binary
-    b.installArtifact(minimal_snapshot_test_exe);
-
-    // Add run step
-    const run_minimal_snapshot_test = b.addRunArtifact(minimal_snapshot_test_exe);
-    const minimal_snapshot_test_step = b.step("minimal-snapshot-test", "Run minimal V8 snapshot test to isolate failures");
-    minimal_snapshot_test_step.dependOn(&run_minimal_snapshot_test.step);
-
-    // ========================================================================
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================
 
@@ -3565,6 +3505,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "host", .module = host_mod },
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },

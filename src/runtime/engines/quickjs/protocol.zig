@@ -18,6 +18,9 @@ pub const protocol = @This();
 
 pub const name = "QuickJS";
 
+/// engine.log_scope.
+pub const log_scope = .quickjs_engine;
+
 pub const capabilities: engine.Capabilities = .{
     .module_scripts = .unsupported,
     .promise_rejection_tracking = .unsupported,
@@ -216,6 +219,9 @@ pub fn retainValue(_: Context, value: JSValue) Error!Owned {
 }
 pub fn releaseValue(_: Owned) void {}
 pub fn throwValue(_: Context, _: JSValue) Error!void {
+    return error.NotSupported;
+}
+pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
 }
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {

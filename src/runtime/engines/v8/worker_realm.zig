@@ -38,6 +38,7 @@ const isolate_templates = @import("isolate_templates.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const event_loop = @import("event_loop.zig");
 const wrapper_cache = @import("wrapper_cache.zig");
+const realm_v8 = @import("realm_v8.zig");
 
 fn isolateOf(agent: *runtime.Agent) *ffi.Isolate {
     return @ptrCast(@alignCast(agent));
@@ -202,7 +203,37 @@ pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOpti
         destroyWorkerRealmIn(isolate, context, realm, options.allocator, null, null);
         return err;
     };
+    recordRealm(isolate, context, realm, global_scope) catch |err| {
+        destroyWorkerRealmIn(isolate, context, realm, options.allocator, null, null);
+        return err;
+    };
     return .{ .realm = realm, .global_scope = global_scope };
+}
+
+/// The realm record (runtime.Realm) of a worker realm: a dedicated worker's,
+/// whose global object is the DedicatedWorkerGlobalScope and whose intrinsics
+/// are the context's - as a window realm's record has its Window and its
+/// intrinsics (context_manager.bindWindowToContext). The host reaches "the
+/// realm's global object" through it (report_exception: an exception a
+/// listener threw in the worker is reported to the global scope). Attached to
+/// the realm (ContextData.realm) and to the context manager's entry, whose
+/// removal - destroyWorkerRealm's removeContext - releases the intrinsics and
+/// frees the record.
+pub fn recordRealm(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context, global_scope: *runtime.Instance) EngineError!void {
+    const record = runtime.Realm.init(realm.allocator, .{
+        .v8_context = @ptrCast(context),
+        .isolate = @ptrCast(isolate),
+        .context_type = .dedicated_worker,
+        .global_object = @ptrCast(global_scope),
+    }) catch return EngineError.OutOfMemory;
+    // %Promise%, %TypeError% and friends, read while the context is entered.
+    _ = realm_v8.populateIntrinsics(record);
+    context_manager.setRealmForContext(context, record) catch {
+        realm_v8.disposeIntrinsics(record);
+        record.deinit();
+        return EngineError.OperationFailed;
+    };
+    realm.setRealm(record);
 }
 
 fn defineSelf(isolate: *ffi.Isolate, context: *ffi.Context) void {

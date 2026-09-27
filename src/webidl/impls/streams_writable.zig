@@ -15,6 +15,7 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 
 const Value = js.Value;
 const Realm = js.Realm;
@@ -300,13 +301,18 @@ pub fn extractHighWaterMark(strategy: dictionaries.QueuingStrategy, default_hwm:
 }
 
 /// ExtractSizeAlgorithm(strategy). `size` is the dictionary's callback
-/// member: a tagged Global the conversion layer made for this call, which
-/// nothing else disposes - so it is taken over here.
+/// member, which the conversion layer made for this call and nothing else
+/// releases - so it is taken over here (engine.takeCallbackFunction), and
+/// the algorithm keeps its own handle in the callback's realm.
 pub fn extractSizeAlgorithm(strategy: dictionaries.QueuingStrategy) js.Error!SizeAlgorithm {
     const size = strategy.size orelse return .one;
-    const untagged = @import("v8").pointer_tag.untagPointer(@ptrCast(size));
-    const global: Value = @ptrCast(@alignCast(@constCast(untagged.ptr)));
-    return .{ .callback = try js.clone(global) };
+    const callback = engine.takeCallbackFunction(@ptrCast(size));
+    defer callback.release();
+    // The callback context - the incumbent realm when it was converted - or
+    // the realm of the constructor running now.
+    const realm_context = callback.context orelse engine.currentRealm() orelse return error.NoContext;
+    const realm = try Realm.ofContext(realm_context);
+    return .{ .callback = try realm.fromRuntime(callback.function.value) };
 }
 
 /// IsNonNegativeNumber(v), for a size already known to be a Number.
@@ -1004,12 +1010,30 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
         .cleared => return 1,
         .callback => |c| c,
     };
-    // Step 2: Let returnValue be the result of performing the size algorithm.
+    // Step 2: Let returnValue be the result of performing the size algorithm,
+    // passing in chunk, and interpreting the result as a completion record.
+    // The algorithm invokes size() and converts what it returns to
+    // `unrestricted double` (WebIDL "invoke a callback function" step 14),
+    // and either can throw.
     const completion = realm.call(size_fn, null, &.{chunk}) catch return 1;
     defer completion.deinit();
     switch (completion) {
-        .normal => |v| return toNumber(realm, v),
-        // Step 3: an abrupt completion errors the stream and counts as 1.
+        .normal => |v| {
+            var conversion = SizeConversion{ .realm = controller_instance.ctx, .value = v };
+            // ECMAScript Completion(...): a throwing valueOf comes back here
+            // rather than staying pending for whatever script runs next.
+            const abrupt = engine.completionOf(controller_instance.ctx, SizeConversion.steps, &conversion) catch return 1;
+            const reason = abrupt orelse return conversion.number;
+            defer reason.release();
+            const thrown = realm.fromRuntime(reason.value) catch return 1;
+            defer js.dispose(thrown);
+            // Step 3 (below), for the conversion's abrupt completion.
+            controllerErrorIfNeeded(realm, controller_instance, thrown);
+            return 1;
+        },
+        // Step 3: If returnValue is an abrupt completion, perform
+        // ! WritableStreamDefaultControllerErrorIfNeeded(controller,
+        // returnValue.[[Value]]) and return 1.
         .thrown => |e| {
             controllerErrorIfNeeded(realm, controller_instance, e);
             return 1;
@@ -1017,12 +1041,18 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
     }
 }
 
-/// The size callback's return value as a WebIDL `unrestricted double`.
-/// Known gap: V8's ToNumber on an object whose valueOf throws leaves that
-/// exception pending rather than completing abruptly into step 3 above.
-fn toNumber(realm: Realm, value: Value) f64 {
-    return @import("v8").ffi.v8_Value_NumberValue(value, realm.context);
-}
+/// The size callback's result converted to `unrestricted double` (ToNumber),
+/// as steps engine.completionOf runs.
+const SizeConversion = struct {
+    realm: runtime.Context,
+    value: Value,
+    number: f64 = 0,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *SizeConversion = @ptrCast(@alignCast(data.?));
+        self.number = try engine.convertToUnrestrictedDouble(self.realm, js.toReturn(self.value));
+    }
+};
 
 /// WritableStreamDefaultControllerGetDesiredSize(controller)
 fn getDesiredSize(controller: *const Controller) f64 {
