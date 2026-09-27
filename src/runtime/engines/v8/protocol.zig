@@ -174,6 +174,10 @@ pub fn requestGarbageCollection(agent: *Agent) void {
     ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
 }
 
+pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
+    protocol_agents.notifyMemoryPressure(agent, level);
+}
+
 // ============================================================================
 // 4.2 Realms
 // ============================================================================
@@ -254,8 +258,8 @@ pub fn runTaskInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaqu
     return v8_engine.v8RunTaskInRealm(realm, steps, data) catch |err| protocolError(err);
 }
 
-pub fn performMicrotaskCheckpoint(realm: Context) Error!void {
-    return v8_engine.v8PerformMicrotaskCheckpoint(realm) catch |err| protocolError(err);
+pub fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    protocol_agents.performMicrotaskCheckpoint(agent);
 }
 
 pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {

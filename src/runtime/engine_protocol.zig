@@ -369,6 +369,14 @@ pub const EngineOptions = struct {
     snapshot: ?[]const u8 = null,
 };
 
+/// How hard the host wants memory back (notifyMemoryPressure).
+pub const MemoryPressure = enum {
+    /// Collect what is cheap to find, when convenient.
+    moderate,
+    /// Collect everything that can be collected, now: a page was let go.
+    critical,
+};
+
 /// HTML "obtain an agent".
 pub const AgentOptions = struct {
     /// [[CanBlock]] - honoured where `can_block_control`.
@@ -597,6 +605,14 @@ pub inline fn requestGarbageCollection(agent: *Agent) void {
     impl.requestGarbageCollection(agent);
 }
 
+/// The host wants `agent`'s memory back: it has just let go of what a page
+/// held (a navigation's old realm, a removed frame's), which is garbage now,
+/// or it is short of memory. The engine collects as `level` asks. No spec
+/// observes it; every engine answers, doing what it can.
+pub inline fn notifyMemoryPressure(agent: *Agent, level: MemoryPressure) void {
+    impl.notifyMemoryPressure(agent, level);
+}
+
 // ============================================================================
 // 4.2 Realms
 // ============================================================================
@@ -714,11 +730,12 @@ pub inline fn runTaskInRealm(realm: Context, steps: RealmSteps, data: ?*anyopaqu
     return impl.runTaskInRealm(realm, steps, data);
 }
 
-/// HTML "perform a microtask checkpoint" for `realm`'s agent. Where the engine
-/// lacks `microtask_checkpoint_control` it drains on its own, and this does
-/// nothing.
-pub inline fn performMicrotaskCheckpoint(realm: Context) Error!void {
-    return impl.performMicrotaskCheckpoint(realm);
+/// HTML "perform a microtask checkpoint" for `agent` - an event loop's, and
+/// an event loop is an agent's: its microtask queue is the agent's, whichever
+/// realm queued each microtask. Where the engine lacks
+/// `microtask_checkpoint_control` it drains on its own, and this does nothing.
+pub inline fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    return impl.performMicrotaskCheckpoint(agent);
 }
 
 /// HTML "queue a microtask": `steps(data)` at `realm`'s agent's next

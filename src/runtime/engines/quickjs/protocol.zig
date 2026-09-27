@@ -67,6 +67,8 @@ pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
 pub fn requestGarbageCollection(_: *Agent) void {}
+// TODO(protocol): JS_RunGC(rt) once the adapter has a runtime per agent.
+pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
@@ -119,7 +121,7 @@ pub fn runInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
 pub fn runTaskInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
-pub fn performMicrotaskCheckpoint(_: Context) Error!void {}
+pub fn performMicrotaskCheckpoint(_: *Agent) Error!void {}
 pub fn queueMicrotask(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }

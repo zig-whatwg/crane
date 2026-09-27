@@ -938,6 +938,51 @@ test "protocol: a frame's realm whose WindowProxy went on is severed from its Wi
     try expectEval(parent, "delete globalThis.reader", "true");
 }
 
+test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    // One microtask queued in each realm, from no script: nothing runs them
+    // until the agent's checkpoint, which runs both.
+    const Ran = struct {
+        count: usize = 0,
+        fn steps(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.count += 1;
+        }
+    };
+    var ran: Ran = .{};
+    try protocol.queueMicrotask(parent, Ran.steps, &ran);
+    try protocol.queueMicrotask(frame, Ran.steps, &ran);
+    try std.testing.expectEqual(@as(usize, 0), ran.count);
+    try protocol.performMicrotaskCheckpoint(parent.agent.?);
+    try std.testing.expectEqual(@as(usize, 2), ran.count);
+}
+
+test "protocol: notifyMemoryPressure critical collects what a realm that ended held" {
+    _ = try realm();
+    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const baseline = liveContexts();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    try expectEval(w, "globalThis.kept = [globalThis, self]; kept.length", "2");
+    protocol.destroyWindowRealm(w);
+    // What the page held is garbage now: the host asks for it back.
+    protocol.notifyMemoryPressure(agent, .critical);
+    var count: usize = 0;
+    ffi.v8_Isolate_GetContextCounts(isolate_once.?, &count, null);
+    if (count != baseline) {
+        std.debug.print("native contexts: {d} before, {d} after the realm ended and memory pressure\n", .{ baseline, count });
+        return error.RealmKeptAlive;
+    }
+    // A moderate hint collects nothing it must not, and returns.
+    protocol.notifyMemoryPressure(agent, .moderate);
+}
+
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
     // Two realms made here: the context manager names a realm by where its
     // context is, and a full collection (liveContexts, in earlier tests) can
@@ -1493,7 +1538,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     const m = try parsed(try protocol.parseModule(r, "export const value = 7; globalThis.metaUrl = import.meta.url; import('./n.js');", module_script.url, &module_script));
     defer protocol.releaseModuleRecord(m);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .module = m });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     // (Read through the protocol: globalInt reads the file's own agent.)
     try expectEval(r, "globalThis.done", "7");
     // HostGetImportMetaProperties: the host's module script's URL.
@@ -1509,7 +1554,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.runClassicScript(r, .{ .utf8 = "import('./x.js', { with: { type: 'json' } }).catch((e) => { globalThis.failed = e; });" }, "https://example.test/s.js", &classic_script, reports.reporter());
     try std.testing.expect(!host.type_attribute_was_null);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .failure = .{ .number = 5 } });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     try expectEval(r, "globalThis.failed", "5");
 
     // An event handler's function has no [[ScriptOrModule]]: the referrer is
@@ -1533,7 +1578,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.runClassicScript(r, .{ .utf8 = "handler().catch(() => {});" }, "", null, reports.reporter());
     try std.testing.expect(host.referrer.? == .realm);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .failure = .{ .number = 2 } });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
 

@@ -38,6 +38,8 @@ fn realm() !runtime.Context {
         .engine_ctx = context,
         .realm = r,
     });
+    // The realm's agent: the protocol's checkpoint is the agent's.
+    data.agent = @ptrCast(i);
     isolate_once = i;
     context_once = context;
     data_once = data;
@@ -612,7 +614,7 @@ test "protocol: react to a promise - upon fulfillment, upon rejection, and once"
     try protocol.reactToPromise(ctx, resolved.value, &Reacted.both, &reacted);
     // Reactions are jobs: nothing runs before the checkpoint.
     try std.testing.expectEqual(@as(usize, 0), reacted.fulfilled);
-    try protocol.performMicrotaskCheckpoint(ctx);
+    try protocol.performMicrotaskCheckpoint(ctx.agent.?);
     try std.testing.expectEqual(@as(usize, 1), reacted.fulfilled);
     try std.testing.expectEqual(@as(i32, 5), reacted.last);
 
@@ -624,7 +626,7 @@ test "protocol: react to a promise - upon fulfillment, upon rejection, and once"
     // Upon fulfillment only: the rejection passes by, and nothing is left
     // unhandled (the derived promise is marked handled).
     try protocol.reactToPromise(ctx, rejected.value, &Reacted.fulfilled_only, &reacted);
-    try protocol.performMicrotaskCheckpoint(ctx);
+    try protocol.performMicrotaskCheckpoint(ctx.agent.?);
     try std.testing.expectEqual(@as(usize, 1), reacted.rejected);
     try std.testing.expectEqual(@as(usize, 1), reacted.fulfilled);
 
@@ -639,7 +641,7 @@ test "protocol: reactions and simple exceptions leave no Global behind" {
             const promise = try protocol.createResolvedPromise(c, runtime.JSValue.fromNumber(1));
             defer promise.release();
             try protocol.reactToPromise(c, promise.value, &Reacted.both, r);
-            try protocol.performMicrotaskCheckpoint(c);
+            try protocol.performMicrotaskCheckpoint(c.agent.?);
             (try protocol.createSimpleException(c, .SyntaxError, "x")).release();
         }
     }.run;

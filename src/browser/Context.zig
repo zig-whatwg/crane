@@ -213,7 +213,7 @@ fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: []co
 /// "Clean up after running script" at the end of a timer or frame task: the
 /// microtask checkpoint of the agent `realm` belongs to.
 fn performMicrotaskCheckpoint(realm: runtime.Context) void {
-    engine.performMicrotaskCheckpoint(realm) catch {};
+    engine.performMicrotaskCheckpoint(realm.agent orelse return) catch {};
 }
 
 /// Set the current timer interface

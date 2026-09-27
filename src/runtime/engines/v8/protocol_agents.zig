@@ -169,6 +169,56 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     return @ptrCast(isolate);
 }
 
+// ============================================================================
+// Microtask checkpoints and memory
+// ============================================================================
+
+/// `agent` - its isolate - entered for the scope of a call, if it was not the
+/// current one: V8 runs microtasks and collections only in the entered
+/// isolate.
+const EnteredIsolate = struct {
+    isolate: *ffi.Isolate,
+    entered: bool,
+
+    fn of(agent: *Agent) EnteredIsolate {
+        const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+        const entered = ffi.v8_Isolate_GetCurrent() != isolate;
+        if (entered) ffi.v8_Isolate_Enter(isolate);
+        return .{ .isolate = isolate, .entered = entered };
+    }
+
+    fn leave(self: EnteredIsolate) void {
+        if (self.entered) ffi.v8_Isolate_Exit(self.isolate);
+    }
+};
+
+/// HTML "perform a microtask checkpoint" for the agent: V8's microtask queue
+/// is the isolate's, and each microtask runs in its own context.
+pub fn performMicrotaskCheckpoint(agent: *Agent) void {
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+}
+
+/// notifyMemoryPressure: `.critical` is LowMemoryNotification - a full,
+/// synchronous collection, run twice with a checkpoint between so that what
+/// the first pass's weak callbacks let go (and the reactions they queued)
+/// is collected by the second; `.moderate` is the hint V8 takes after a
+/// context is let go (ContextDisposedNotification, not forced), which moves
+/// its next collection up.
+pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    switch (level) {
+        .critical => {
+            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+            ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+        },
+        .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
+    }
+}
+
 /// Forget `agent`'s hooks, before its isolate is disposed.
 pub fn forgetAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));

@@ -427,7 +427,7 @@ pub fn main(init: std.process.Init) !void {
             // the first pass has cleared what referenced them, and a single
             // collection would under-report what V8 can actually reclaim.
             engine.requestGarbageCollection(page.agent);
-            engine.performMicrotaskCheckpoint(realm) catch {};
+            engine.performMicrotaskCheckpoint(page.agent) catch {};
             engine.requestGarbageCollection(page.agent);
         }
 

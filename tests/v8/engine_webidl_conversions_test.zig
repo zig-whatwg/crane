@@ -1288,7 +1288,7 @@ test "protocol: callback contexts, asynchronous iterators and async-from-sync le
             const record = try protocol.getIterator(c, v, .async);
             (try protocol.iteratorNext(c, record)).release();
             protocol.releaseIteratorRecord(record);
-            try protocol.performMicrotaskCheckpoint(c);
+            try protocol.performMicrotaskCheckpoint(c.agent.?);
         }
     }.run;
     try round(ctx, other, native.value(), values.value());
