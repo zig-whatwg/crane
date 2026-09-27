@@ -93,3 +93,44 @@ test "a worker realm's record lets its context go when the context is removed" {
     for (0..3) |_| try recordRound(isolate);
     try std.testing.expectEqual(start, liveRealms(agent));
 }
+
+// A whole worker realm, made and destroyed in one agent: every Global the
+// realm took - its interface objects, the names they were defined under, its
+// global scope - goes with it, and so does its context. Measured as V8 counts
+// them (global handle bytes: every live Global's slot) and as native
+// contexts after a full collection; the adapter's live counters count only
+// some kinds of Global.
+test "a worker realm made and destroyed leaves no global handle behind, and lets its context go" {
+    setup();
+    const agent = try table.createAgent.?();
+    defer table.destroyAgent.?(agent);
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    // What one handle costs in V8's count.
+    const handle_bytes = blk: {
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    // The first realm makes what every later one reuses.
+    {
+        const made = try workerRealm(agent);
+        table.destroyWorkerRealm.?(made.realm, null, null);
+    }
+    const contexts_before = liveRealms(agent);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 3;
+    for (0..rounds) |_| {
+        const made = try workerRealm(agent);
+        table.destroyWorkerRealm.?(made.realm, null, null);
+    }
+    const contexts_after = liveRealms(agent);
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes or contexts_after != contexts_before) {
+        std.debug.print("global handles {d} -> {d} bytes ({d} a handle), native contexts {d} -> {d}, over {d} worker realms\n", .{ before, after, handle_bytes, contexts_before, contexts_after, rounds });
+        return error.HandlesLeaked;
+    }
+}
