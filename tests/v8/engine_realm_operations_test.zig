@@ -252,3 +252,25 @@ test "a Uint8Array leaves no handle behind but its own" {
     }
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= before);
 }
+
+test "a context keeps its registry key across compacting garbage collections" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    var reports: Reports = .{};
+    // Contexts interleaved with old-space garbage: once the garbage is gone a
+    // full collection evacuates the sparse pages, moving whatever lives there.
+    // context_manager keys realms by this value, so it must not move with them.
+    var contexts: [16]*ffi.Context = undefined;
+    var keys: [16]?*anyopaque = undefined;
+    for (&contexts, &keys) |*c, *k| {
+        try engine.runClassicScript.?(data_once.?, "globalThis.junk = (globalThis.junk || []).concat(Array.from({ length: 20000 }, (_, i) => ({ i })));", null, Reports.report, &reports);
+        ffi.v8_Isolate_RequestGarbageCollection(isolate);
+        c.* = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        k.* = ffi.v8_Context_GetRawAddress(c.*);
+    }
+    defer for (contexts) |c| ffi.v8_Context_Dispose(c);
+    try engine.runClassicScript.?(data_once.?, "globalThis.junk = null;", null, Reports.report, &reports);
+    for (0..3) |_| ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    for (contexts, keys) |c, k| try std.testing.expectEqual(k, ffi.v8_Context_GetRawAddress(c));
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+}

@@ -2628,14 +2628,34 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
 
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
+// A context's identity for Crane's realm registry (context_manager and every
+// cache keyed like it): a number stored in the context's embedder data the
+// first time it is asked for, never reused. This used to return the
+// NativeContext's heap address, which a compacting GC changes - a realm
+// registered before a full collection was no longer found after it, and a
+// context moved onto a freed address would alias another realm's entry. Blink
+// keys its per-context data the same way (V8PerContextData in the context's
+// embedder data). Index 0 is V8's old debugger slot. Contexts made while a
+// snapshot is being built get no id: a snapshot must not carry pointer
+// embedder data, and nothing compacts during generation.
+static constexpr int kCraneContextIdIndex = 1;
+static std::atomic<uintptr_t> g_next_context_id{1};
+
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
-    // Get the internal V8 context pointer from the Global handle
-    // This address is stable and can be used as a HashMap key
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context_handle->Get(isolate);
-    // Return the raw internal pointer - this is stable across handle conversions
-    return *reinterpret_cast<void**>(*ctx);
+    if (g_snapshot_mode) return *reinterpret_cast<void**>(*ctx);
+    // Only Crane writes embedder data, and only this slot, so a slot within
+    // the array's length is ours.
+    if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCraneContextIdIndex)) {
+        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex)) return id;
+    }
+    // Shifted so the value is an aligned pointer, as the embedder-data API
+    // requires; never zero.
+    void* id = reinterpret_cast<void*>(g_next_context_id.fetch_add(1, std::memory_order_relaxed) << 3);
+    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id);
+    return id;
 }
 
 void v8_Isolate_ThrowException(Isolate* isolate, Global<Value>* exception) {

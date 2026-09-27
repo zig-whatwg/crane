@@ -757,6 +757,9 @@ pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc
 pub extern fn v8_Context_GetRealGlobal(context: *Context) ?*Object;
 
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
+/// The context's registry key: a never-reused id kept in its embedder data,
+/// stable across compacting GCs (despite the name, not an address - see the
+/// C++ side). Opaque; compare for equality only.
 pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 pub extern fn v8_Context_SetSecurityToken(context: *Context, token: *Value) void;
 pub extern fn v8_Context_GetSecurityToken(context: *Context) ?*Value;
