@@ -151,9 +151,6 @@ pub const InternalState = struct {
 
     // === HTML Document Properties ===
 
-    /// Document title (from <title> element or empty)
-    title: runtime.DOMString,
-
     /// Document dir (text direction: "ltr", "rtl", or "")
     dir: runtime.DOMString,
 
@@ -359,7 +356,6 @@ pub const InternalState = struct {
             .ranges = .empty,
             .node_iterators = .empty,
             // HTML properties
-            .title = runtime.DOMString.initEmpty(),
             .dir = runtime.DOMString.initEmpty(),
             .domain = "",
             .referrer = "",
@@ -461,7 +457,6 @@ pub const InternalState = struct {
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
-        self.title.deinit(self.allocator);
         self.dir.deinit(self.allocator);
         self.design_mode.deinit(self.allocator);
         self.fg_color.deinit(self.allocator);
@@ -1128,81 +1123,104 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.DocumentReadyS
     return internal.ready_state;
 }
 
-/// Getter for title
-/// HTML §3.1.3 - Returns the document's title
+/// HTML `document.title`'s getter.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
-///
-/// For HTML documents: Returns the text content of the first <title> element
-/// in the document (in document order), with whitespace stripped and collapsed.
-/// Returns empty string if no <title> element exists.
 pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Step 1: If this is an HTML document, find the title element
-    // The title element is the first <title> element in document tree order
-    if (internal.doc_type == .html) {
-        // Find the first <title> element in the document
-        if (findTitleElement(instance)) |title_element| {
-            // Get the text content of the title element
-            if (try interfaces.Node.get_textContent(title_element)) |tc| {
-                var text_content = tc;
-                defer text_content.deinit(instance.ctx.allocator);
-                // Strip and collapse whitespace per spec
-                const stripped = stripAndCollapseWhitespace(instance.ctx.allocator, text_content.asSlice()) catch {
-                    return runtime.DOMString.initEmpty();
-                };
-                return runtime.DOMString.initOwned(stripped);
-            }
-        }
-        // No title element found - return empty string
-        return runtime.DOMString.initEmpty();
-    }
+    // Step 1: "If the document element is an SVG svg element, then let value
+    // be the child text content of the first SVG title element that is a
+    // child of the document element."
+    // Step 2: "Otherwise, let value be the child text content of the title
+    // element, or the empty string if the title element is null."
+    const source: ?*runtime.Instance = if (svgDocumentElement(instance)) |svg|
+        firstChildNamed(svg, svg_namespace, "title")
+    else
+        titleElementOf(instance);
+    const value = if (source) |element| try childTextContent(allocator, element) else try allocator.dupe(u8, "");
+    defer allocator.free(value);
 
-    // For non-HTML documents (XML, SVG), return the cached title
-    // (SVG documents have different title element semantics)
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.title.clone(instance.ctx.allocator);
+    // Steps 3-4: "Strip and collapse ASCII whitespace in value. Return value."
+    return runtime.DOMString.initOwned(try stripAndCollapseWhitespace(allocator, value));
 }
 
-/// Find the first <title> element in the document tree
-fn findTitleElement(document: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(document) orelse return null;
-    const ElementImpl = @import("Element.zig");
+const svg_namespace = "http://www.w3.org/2000/svg";
 
-    // Start from document element (usually <html>)
-    const doc_element = documentElementOf(document) orelse return null;
-
-    // Recursively search for the first <title> element
-    return findTitleElementInSubtree(doc_element, ElementImpl, internal.doc_type == .html);
+/// Whether `node` is an element in `namespace` whose local name is
+/// `local_name`.
+fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []const u8) bool {
+    if ((NodeImpl.getNodeType(node) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    const allocator = node.ctx.allocator;
+    var name = interfaces.Element.get_localName(node) catch return false;
+    defer name.deinit(allocator);
+    if (!std.mem.eql(u8, name.asSlice(), local_name)) return false;
+    var element_namespace = (interfaces.Element.get_namespaceURI(node) catch return false) orelse return false;
+    defer element_namespace.deinit(allocator);
+    return std.mem.eql(u8, element_namespace.asSlice(), namespace);
 }
 
-/// Recursively search for <title> element in subtree
-fn findTitleElementInSubtree(node: *runtime.Instance, comptime ElementImpl: type, is_html: bool) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if this is a <title> element
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const tag_name = elem_internal.local_name.asSlice();
-                const is_title = if (is_html)
-                    std.ascii.eqlIgnoreCase(tag_name, "title")
-                else
-                    std.mem.eql(u8, tag_name, "title");
-
-                if (is_title) {
-                    return c;
-                }
-            }
-
-            // Recursively search descendants
-            if (findTitleElementInSubtree(c, ElementImpl, is_html)) |found| {
-                return found;
-            }
-        }
-        child = NodeImpl.getNextSibling(c);
+/// The first child of `parent` that is an element in `namespace` named
+/// `local_name`, or null.
+fn firstChildNamed(parent: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(parent);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isElementNamed(c, namespace, local_name)) return c;
     }
     return null;
+}
+
+/// The document element, if it is an SVG `svg` element.
+fn svgDocumentElement(document: *runtime.Instance) ?*runtime.Instance {
+    const element = documentElementOf(document) orelse return null;
+    return if (isElementNamed(element, svg_namespace, "svg")) element else null;
+}
+
+/// HTML "the html element": the document element, if it is an html
+/// element.
+fn htmlElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    const element = documentElementOf(document) orelse return null;
+    return if (isElementNamed(element, html_namespace, "html")) element else null;
+}
+
+/// HTML "the head element": the first head element that is a child of the
+/// html element, if there is one, or null otherwise.
+fn headElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    return firstChildNamed(htmlElementOf(document) orelse return null, html_namespace, "head");
+}
+
+/// HTML "the title element": the first title element in the document, in
+/// tree order, if there is one, or null otherwise.
+fn titleElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    return firstDescendantNamed(document, html_namespace, "title");
+}
+
+/// The first inclusive descendant of `root`'s children, in tree order, that
+/// is an element in `namespace` named `local_name`.
+fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isElementNamed(c, namespace, local_name)) return c;
+        if (firstDescendantNamed(c, namespace, local_name)) |found| return found;
+    }
+    return null;
+}
+
+/// DOM "child text content": the concatenation of the data of all the Text
+/// node children of `node`, in tree order. OWNED by `allocator`.
+fn childTextContent(allocator: std.mem.Allocator, node: *runtime.Instance) ![]u8 {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer text.deinit(allocator);
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        // A CDATASection is a Text node too.
+        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        var data = try interfaces.CharacterData.get_data(c);
+        defer data.deinit(c.ctx.allocator);
+        try text.appendSlice(allocator, data.asSlice());
+    }
+    return text.toOwnedSlice(allocator);
 }
 
 /// Strip leading/trailing whitespace and collapse internal whitespace to single spaces
@@ -1286,39 +1304,12 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null; // No body or frameset found
 }
 
-/// Getter for head
-/// HTML §3.1.3 - Returns the head element (the first head child of html element)
+/// HTML `document.head`: the head element - the first head element that is
+/// a child of the html element, if there is one, or null otherwise.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-head
 pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Get document element (should be <html>)
-    const doc_element = documentElementOf(instance) orelse return null;
-
-    // Find first head child of the document element
-    const ElementImpl = @import("Element.zig");
-    var child = NodeImpl.getFirstChild(doc_element);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const tag_name = elem_internal.local_name.asSlice();
-                // Check for head (case-insensitive for HTML)
-                if (internal.doc_type == .html) {
-                    if (std.ascii.eqlIgnoreCase(tag_name, "head")) {
-                        return c;
-                    }
-                } else {
-                    if (std.mem.eql(u8, tag_name, "head")) {
-                        return c;
-                    }
-                }
-            }
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    return null; // No head element found
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return headElementOf(instance);
 }
 
 /// Helper: Create an HTMLCollection containing elements matching a single tag name
@@ -1886,14 +1877,64 @@ pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) anyerro
     };
 }
 
-/// Setter for title
-/// HTML §3.1.3 - Sets the document's title
+/// HTML `document.title`'s setter: the steps of the first matching
+/// condition.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
 pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.title.deinit(internal.allocator);
-    internal.title = value.clone(internal.allocator) catch return error.OutOfMemory;
-    // TODO: Update the <title> element in the DOM if it exists
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+
+    const element: *runtime.Instance = if (svgDocumentElement(instance)) |svg| blk: {
+        // "If the document element is an SVG svg element":
+        // 1. "If there is an SVG title element that is a child of the
+        //    document element, let element be the first such element."
+        if (firstChildNamed(svg, svg_namespace, "title")) |title| break :blk title;
+        // 2. "Otherwise: let element be the result of creating an element
+        //    given the document element's node document, "title", and the
+        //    SVG namespace. Insert element as the first child of the
+        //    document element."
+        const title = try createTitle(instance, svg_namespace);
+        errdefer NodeImpl.deinitNodeByType(title);
+        _ = try interfaces.Node.call_insertBefore(svg, title, NodeImpl.getFirstChild(svg));
+        break :blk title;
+    } else if (documentElementInHtmlNamespace(instance)) blk: {
+        // "If the document element is in the HTML namespace":
+        // 2. "If the title element is non-null, let element be the title
+        //    element."
+        if (titleElementOf(instance)) |title| break :blk title;
+        // 1. "If the title element is null and the head element is null,
+        //    then return."
+        const head = headElementOf(instance) orelse return;
+        // 3. "Otherwise: let element be the result of creating an element
+        //    given the document element's node document, "title", and the
+        //    HTML namespace. Append element to the head element."
+        const title = try createTitle(instance, html_namespace);
+        errdefer NodeImpl.deinitNodeByType(title);
+        _ = try interfaces.Node.call_appendChild(head, title);
+        break :blk title;
+    } else {
+        // "Otherwise: do nothing."
+        return;
+    };
+
+    // "String replace all with the given value within element" - the
+    // textContent setter's steps for an element.
+    try interfaces.Node.set_textContent(element, value);
+}
+
+/// Whether the document element is in the HTML namespace.
+fn documentElementInHtmlNamespace(document: *runtime.Instance) bool {
+    const element = documentElementOf(document) orelse return false;
+    if ((NodeImpl.getNodeType(element) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    const allocator = element.ctx.allocator;
+    var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
+    defer namespace.deinit(allocator);
+    return std.mem.eql(u8, namespace.asSlice(), html_namespace);
+}
+
+/// "Create an element" given `document` (the document element's node
+/// document), "title" and `namespace`.
+fn createTitle(document: *runtime.Instance, namespace: []const u8) !*runtime.Instance {
+    return createAnElement(document, "title", namespace, null);
 }
 
 /// Setter for dir
