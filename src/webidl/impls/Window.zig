@@ -782,36 +782,55 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // This handles initialization cases where the entered context might not
     // be fully set up, but the access is clearly same-origin (self-access).
     if (accessor_window) |aw| {
-        if (aw == instance) {
-            // Accessing own document - always allowed
-            return internal.document orelse error.NotImplemented;
-        }
-    }
-
-    // Cross-origin check for accessing other Window's document
-    const accessor_origin: []const u8 = if (accessor_window) |aw|
-        if (getInternal(aw)) |aw_internal| effectiveOrigin(aw, aw_internal) else "null"
-    else
-        // No accessor window at all - likely internal call, allow access
-        effectiveOrigin(instance, internal);
-
-    // Get this Window's origin (target origin)
-    const target_origin = effectiveOrigin(instance, internal);
-
-    // Cross-origin check:
-    // - If accessor has opaque origin ("null"), it's always cross-origin (except self-access handled above)
-    // - If target has opaque origin ("null"), it's always cross-origin
-    // - Otherwise, compare origin strings
-    const is_same_origin = !std.mem.eql(u8, accessor_origin, "null") and
-        !std.mem.eql(u8, target_origin, "null") and
-        std.mem.eql(u8, accessor_origin, target_origin);
-
-    if (!is_same_origin) {
-        // Cross-origin access to document is blocked per spec.
+        if (aw == instance) return internal.document orelse error.NotImplemented;
+        // IsPlatformObjectSameOrigin: the accessor's origin and this window's
+        // must be same origin-domain - which document.domain can make two
+        // different origins.
+        if (!sameOriginDomain(aw, instance)) return error.SecurityError;
+    } else if (std.mem.eql(u8, effectiveOrigin(instance, internal), "null")) {
+        // No accessor window at all - an internal call - reaches a window
+        // with an opaque origin only from itself.
         return error.SecurityError;
     }
 
     return internal.document orelse error.NotImplemented;
+}
+
+/// HTML "same origin-domain" for two windows' origins - their documents'.
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
+fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
+    const a_internal = getInternal(a) orelse return false;
+    const b_internal = getInternal(b) orelse return false;
+    const a_origin = effectiveOrigin(a, a_internal);
+    const b_origin = effectiveOrigin(b, b_internal);
+    // 1. "If A and B are the same opaque origin, then return true." An
+    // opaque origin serializes as "null", which does not say which one it
+    // is: two different windows are not known to share one.
+    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
+    // 2. "If A and B are both tuple origins, run these substeps:"
+    const a_domain = originDomainOf(a_internal);
+    const b_domain = originDomainOf(b_internal);
+    // 2.1. "If A and B's schemes are identical, and their domains are
+    // identical and non-null, then return true."
+    if (a_domain != null and b_domain != null) {
+        return std.mem.eql(u8, schemeOf(a_origin), schemeOf(b_origin)) and std.mem.eql(u8, a_domain.?, b_domain.?);
+    }
+    // 2.2. "Otherwise, if A and B are same origin and their domains are
+    // identical and null, then return true."
+    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a_origin, b_origin);
+    // 3. "Return false."
+    return false;
+}
+
+/// The domain of the origin of `internal`'s window - its document's - or null.
+fn originDomainOf(internal: *InternalState) ?[]const u8 {
+    const document = internal.document orelse return null;
+    return @import("dom").document_origin.domain(document);
+}
+
+/// The scheme of a tuple origin's serialization.
+fn schemeOf(serialized: []const u8) []const u8 {
+    return serialized[0 .. std.mem.indexOf(u8, serialized, "://") orelse serialized.len];
 }
 
 /// Getter for name - The window's target name

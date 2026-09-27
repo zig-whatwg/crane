@@ -25,6 +25,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const url_mod = @import("url");
 const Document = interfaces.Document;
 
 // Use shared InstanceRegistry utility for internal state management
@@ -154,7 +155,8 @@ pub const InternalState = struct {
     /// Document dir (text direction: "ltr", "rtl", or "")
     dir: runtime.DOMString,
 
-    /// Document domain (for same-origin policy)
+    /// The document's origin's domain (HTML 7.1.1.2), serialized: what the
+    /// document.domain setter set. Empty while it is null. Owned.
     domain: []const u8,
 
     /// Document referrer (the URI of the page that linked to this page)
@@ -621,6 +623,7 @@ pub fn init(
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
     });
+    @import("dom").document_origin.install(.{ .domain = &originDomain });
 
     return instance;
 }
@@ -1042,13 +1045,111 @@ pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return interfaces.Window.get_location(window) catch null;
 }
 
-/// Getter for domain
-/// HTML §7.5.2 - Returns the document's domain
+/// HTML document.domain's getter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
 pub fn get_domain(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try instance.ctx.allocator.dupe(u8, internal.domain);
+    const allocator = instance.ctx.allocator;
+    // 1. "Let effectiveDomain be this's origin's effective domain."
+    // 2. "If effectiveDomain is null, then return the empty string."
+    // 3. "Return effectiveDomain, serialized." (The binding frees it.)
+    return (try effectiveDomain(instance, internal, allocator)) orelse try allocator.dupe(u8, "");
+}
+
+/// HTML "effective domain" of `document`'s origin, serialized: its domain
+/// when the document.domain setter set one, else its host; null for an
+/// opaque origin. OWNED by `allocator`.
+fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
+    if (internal.domain.len > 0) return try allocator.dupe(u8, internal.domain);
+    const serialized = (try serializedOrigin(document, internal, allocator)) orelse return null;
+    defer allocator.free(serialized);
+    const host = hostOfSerializedOrigin(serialized) orelse return null;
+    return try allocator.dupe(u8, host);
+}
+
+/// `document`'s origin, serialized - its window's (the relevant settings
+/// object's) when it has one, else its URL's - or null for an opaque origin.
+/// OWNED by `allocator`.
+fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
+    if (internal.default_view) |window| {
+        // The getter's string is the window realm's to free.
+        const serialized = try interfaces.Window.get_origin(window);
+        defer window.ctx.allocator.free(serialized);
+        if (std.mem.eql(u8, serialized, "null")) return null;
+        return try allocator.dupe(u8, serialized);
+    }
+    const url = try get_URL(document);
+    defer document.ctx.allocator.free(url);
+    const parsed = (interfaces.URL.call_static_parse(document, url, webidl.Opt(runtime.USVString).notPassed()) catch null) orelse
+        return null;
+    defer runtime.Instance.deinit(parsed);
+    const serialized = try interfaces.URL.get_origin(parsed);
+    defer parsed.ctx.allocator.free(serialized);
+    if (std.mem.eql(u8, serialized, "null")) return null;
+    return try allocator.dupe(u8, serialized);
+}
+
+/// The host of a tuple origin's serialization ("scheme://host[:port]"): an
+/// IPv6 address keeps its brackets. Null when it has no host.
+fn hostOfSerializedOrigin(serialized: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, serialized, "://") orelse return null) + 3;
+    const rest = serialized[start..];
+    if (rest.len == 0) return null;
+    if (rest[0] == '[') return rest[0 .. (std.mem.indexOfScalar(u8, rest, ']') orelse return null) + 1];
+    return rest[0 .. std.mem.indexOfScalar(u8, rest, ':') orelse rest.len];
+}
+
+/// HTML "is a registrable domain suffix of or is equal to":
+/// `host_suffix_string` against `original_host` (a host, serialized).
+fn isRegistrableDomainSuffixOfOrEqualTo(allocator: std.mem.Allocator, host_suffix_string: []const u8, original_host: []const u8) !bool {
+    // 1. "If hostSuffixString is the empty string, then return false."
+    if (host_suffix_string.len == 0) return false;
+    // 2-3. "Let hostSuffix be the result of parsing hostSuffixString. If
+    // hostSuffix is failure, then return false."
+    const host_suffix = url_mod.host_parser.parseHost(allocator, host_suffix_string, false, null) catch return false;
+    defer host_suffix.deinit(allocator);
+    const original = url_mod.host_parser.parseHost(allocator, original_host, false, null) catch return false;
+    defer original.deinit(allocator);
+    const suffix_serialized = try url_mod.host_serializer.serializeHost(allocator, host_suffix);
+    defer allocator.free(suffix_serialized);
+    const original_serialized = try url_mod.host_serializer.serializeHost(allocator, original);
+    defer allocator.free(original_serialized);
+
+    // 4. "If hostSuffix does not equal originalHost, then:"
+    if (!std.mem.eql(u8, suffix_serialized, original_serialized)) {
+        // 4.1. "If hostSuffix or originalHost is not a domain, then return
+        // false." (IP addresses.)
+        if (host_suffix != .domain or original != .domain) return false;
+        // 4.2. "If hostSuffix, prefixed by U+002E (.), does not match the end
+        // of originalHost, then return false."
+        if (!endsWithDotted(original_serialized, suffix_serialized)) return false;
+        // 4.3. "If hostSuffix equals hostSuffix's public suffix; or
+        // hostSuffix, prefixed by U+002E (.), matches the end of
+        // originalHost's public suffix, then return false."
+        const suffix_public = try url_mod.public_suffix.getPublicSuffix(allocator, host_suffix);
+        defer if (suffix_public) |p| allocator.free(p);
+        if (suffix_public) |p| {
+            if (std.mem.eql(u8, p, suffix_serialized)) return false;
+        }
+        const original_public = try url_mod.public_suffix.getPublicSuffix(allocator, original);
+        defer if (original_public) |p| allocator.free(p);
+        if (original_public) |p| {
+            if (endsWithDotted(p, suffix_serialized)) return false;
+        }
+    }
+    // 5. "Return true."
+    return true;
+}
+
+/// Whether `suffix`, prefixed by ".", matches the end of `host`.
+fn endsWithDotted(host: []const u8, suffix: []const u8) bool {
+    return host.len > suffix.len and std.mem.endsWith(u8, host, suffix) and host[host.len - suffix.len - 1] == '.';
+}
+
+/// dom.document_origin: `document`'s origin's domain, or null.
+fn originDomain(document: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(document) orelse return null;
+    return if (internal.domain.len > 0) internal.domain else null;
 }
 
 /// Getter for referrer
@@ -1785,20 +1886,42 @@ pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) a
     return setEventHandler(instance, "resume", value);
 }
 
-/// Setter for domain
-/// HTML §7.5.2 - Sets the document's domain (for same-origin policy relaxation)
+/// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
-/// Note: This is deprecated and has security implications
+///
+/// Deviation, stated: step 2's sandboxed document.domain browsing context
+/// flag is not read - a document here cannot see its browsing context's
+/// sandboxing flags. A sandboxed frame without allow-same-origin has an
+/// opaque origin and throws at step 4 anyway; one with allow-same-origin can
+/// set its domain, where the spec throws.
 pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Free old domain if it was allocated
-    if (internal.domain.len > 0) {
-        internal.allocator.free(internal.domain);
-    }
+    // 1. "If this's browsing context is null, then throw a SecurityError." A
+    // document has one here exactly when it has a window.
+    if (internal.default_view == null) return error.SecurityError;
 
-    // Clone the new domain value
-    internal.domain = internal.allocator.dupe(u8, value) catch return error.OutOfMemory;
+    // 3-4. "Let effectiveDomain be this's origin's effective domain. If
+    // effectiveDomain is null, then throw a SecurityError."
+    const effective = (try effectiveDomain(instance, internal, allocator)) orelse return error.SecurityError;
+    defer allocator.free(effective);
+
+    // 5. "If the given value is not a registrable domain suffix of and is not
+    // equal to effectiveDomain, then throw a SecurityError."
+    if (!try isRegistrableDomainSuffixOfOrEqualTo(allocator, value, effective)) return error.SecurityError;
+
+    // 6. "If the surrounding agent's agent cluster's is origin-keyed is true,
+    // then return." Crane's agent clusters are site-keyed
+    // (Window.originAgentCluster is false).
+
+    // 7. "Set this's origin's domain to the result of parsing the given
+    // value."
+    const host = url_mod.host_parser.parseHost(allocator, value, false, null) catch return error.SecurityError;
+    defer host.deinit(allocator);
+    const domain = try url_mod.host_serializer.serializeHost(internal.allocator, host);
+    if (internal.domain.len > 0) internal.allocator.free(internal.domain);
+    internal.domain = domain;
 }
 
 /// Setter for cookie
