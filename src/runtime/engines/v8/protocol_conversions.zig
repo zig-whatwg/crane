@@ -9,11 +9,13 @@
 //! (ExceptionPending); "throw a TypeError" with nothing thrown is TypeError,
 //! for the caller to throw.
 //!
-//! Deviations: GetIterator of a primitive (GetV's ToObject) is a TypeError -
-//! V8's embedder API reads properties of objects only - and an async
-//! iterator over a sync iterable (CreateAsyncFromSyncIterator) is not built:
-//! its continuation needs a closure per step, which the FFI makes only per
-//! context (see createAsyncIterator).
+//! An async iterator over a sync iterable is ECMAScript's
+//! CreateAsyncFromSyncIterator: the record keeps the sync iterator, and its
+//! next and return run %AsyncFromSyncIteratorPrototype%'s steps directly -
+//! the async-from-sync object is never exposed to script, so it is not made.
+//!
+//! Deviation: GetIterator of a primitive (GetV's ToObject) is a TypeError -
+//! V8's embedder API reads properties of objects only.
 
 const std = @import("std");
 const engine = @import("engine");
@@ -44,6 +46,10 @@ const Record = struct {
     /// Whether [[NextMethod]] answers with promises (an async iterator): its
     /// results are awaited by the caller before they are read.
     kind: engine.IteratorKind,
+    /// An async iterator over a sync one (CreateAsyncFromSyncIterator):
+    /// [[Iterator]] and [[NextMethod]] are the sync iterator's, and next and
+    /// return are %AsyncFromSyncIteratorPrototype%'s.
+    from_sync: bool = false,
     allocator: Allocator,
 
     fn of(record: *engine.IteratorRecord) *Record {
@@ -156,12 +162,15 @@ pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Er
             //    i. Let syncMethod be ? GetMethod(obj, %Symbol.iterator%).
             //    ii. If syncMethod is undefined, throw a TypeError exception.
             const sync_method = (try support.getSymbolMethod(entered, object, .iterator)) orelse return error.TypeError;
-            ffi.v8_Global_Dispose(sync_method);
+            defer ffi.v8_Global_Dispose(sync_method);
             //    iii. Let syncIteratorRecord be ? GetIteratorFromMethod(obj,
             //         syncMethod).
-            //    iv. Return CreateAsyncFromSyncIterator(syncIteratorRecord).
-            // TODO(protocol): implement - design 4.6 (CreateAsyncFromSyncIterator: a closure per continuation step, which the FFI makes only per context)
-            return error.NotSupported;
+            const record = try getIteratorFromMethod(entered, object, sync_method, .sync, realm.allocator);
+            //    iv. Return CreateAsyncFromSyncIterator(syncIteratorRecord):
+            //        the record, read through %AsyncFromSyncIteratorPrototype%.
+            record.kind = .async;
+            record.from_sync = true;
+            return @ptrCast(record);
         },
         // 2. Otherwise, let method be ? GetMethod(obj, %Symbol.iterator%).
         .sync => try support.getSymbolMethod(entered, object, .iterator),
@@ -178,7 +187,9 @@ pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Er
 pub fn iteratorNext(realm: Context, record: *engine.IteratorRecord) Error!Owned {
     const entered = try support.enter(realm);
     defer entered.leave();
-    return support.owned(try iteratorNextValue(entered, Record.of(record)));
+    const self = Record.of(record);
+    if (self.from_sync) return support.owned(try asyncFromSyncNext(entered, self));
+    return support.owned(try iteratorNextValue(entered, self));
 }
 
 /// The iterator's `return` called with `value` - IteratorClose's and
@@ -188,6 +199,7 @@ pub fn iteratorReturn(realm: Context, record: *engine.IteratorRecord, value: JSV
     const entered = try support.enter(realm);
     defer entered.leave();
     const self = Record.of(record);
+    if (self.from_sync) return support.owned(try asyncFromSyncReturn(entered, self, value));
     // 1. Let iterator be iteratorRecord.[[Iterator]].
     // 2. Let returnMethod be ? GetMethod(iterator, "return").
     const return_method = try support.get(entered, self.iterator, "return");
@@ -217,6 +229,202 @@ pub fn iteratorResult(realm: Context, result: JSValue) Error!engine.IteratorResu
     // IteratorValue: 1. Return ? Get(iterResult, "value").
     const value = try support.get(entered, object, "value");
     return .{ .done = done, .value = support.owned(value) };
+}
+
+// ============================================================================
+// CreateAsyncFromSyncIterator (ECMAScript 27.1.6)
+// ============================================================================
+
+/// IfAbruptRejectPromise: a promise rejected with what was thrown. Takes it.
+fn rejectWith(at: anytype, thrown: *ffi.Value) Error!*ffi.Value {
+    defer ffi.v8_Global_Dispose(thrown);
+    return support.promiseRejectedWith(at, thrown);
+}
+
+/// %AsyncFromSyncIteratorPrototype%.next(), with no value. OWNED promise.
+fn asyncFromSyncNext(at: anytype, record: *Record) Error!*ffi.Value {
+    // 1-2. Let O be the this value; its [[SyncIteratorRecord]]: `record`.
+    // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%) - made as
+    //    it settles, below; NewPromiseCapability of %Promise% observes nothing.
+    // 4. Let syncIteratorRecord be O.[[SyncIteratorRecord]].
+    // 5. Let result be Completion(IteratorNext(syncIteratorRecord)).
+    const result = switch (try syncIteratorNextCaught(at, record)) {
+        // 6. IfAbruptRejectPromise(result, promiseCapability).
+        .thrown => |thrown| return rejectWith(at, thrown),
+        .normal => |value| value,
+    };
+    defer ffi.v8_Global_Dispose(result);
+    // 7. Return AsyncFromSyncIteratorContinuation(result, promiseCapability,
+    //    syncIteratorRecord, true).
+    return asyncFromSyncContinuation(at, record, result, true);
+}
+
+/// %AsyncFromSyncIteratorPrototype%.return(value). OWNED promise.
+fn asyncFromSyncReturn(at: anytype, record: *Record, value: JSValue) Error!*ffi.Value {
+    const argument = try support.ownGlobal(at, value);
+    defer ffi.v8_Global_Dispose(argument);
+    // 5. Let syncIterator be syncIteratorRecord.[[Iterator]].
+    // 6. Let return be Completion(GetMethod(syncIterator, "return")).
+    const return_method = switch (try support.getCaught(at, record.iterator, "return")) {
+        // 7. IfAbruptRejectPromise(return, promiseCapability).
+        .thrown => |thrown| return rejectWith(at, thrown),
+        .normal => |method| method,
+    };
+    defer ffi.v8_Global_Dispose(return_method);
+    // 8. If return is undefined, then
+    if (ffi.v8_Value_IsUndefined(return_method) or ffi.v8_Value_IsNull(return_method)) {
+        // a. Let iteratorResult be CreateIteratorResultObject(value, true).
+        const iterator_result = try support.iteratorResultObject(at, argument, true);
+        defer ffi.v8_Global_Dispose(iterator_result);
+        // b. Perform ! Call(promiseCapability.[[Resolve]], undefined,
+        //    « iteratorResult »).
+        // c. Return promiseCapability.[[Promise]].
+        return support.promiseResolvedWith(at, iterator_result);
+    }
+    // (GetMethod: a value that is not callable is a TypeError.)
+    // 9. If value is present, then let result be Completion(Call(return,
+    //    syncIterator, « value »)).
+    const result = switch (try support.callCaught(at, return_method, record.iterator, &.{argument})) {
+        // 10. IfAbruptRejectPromise(result, promiseCapability).
+        .thrown => |thrown| return rejectWith(at, thrown),
+        .normal => |r| r,
+    };
+    defer ffi.v8_Global_Dispose(result);
+    // 11. If result is not an Object, then reject promiseCapability with a
+    //     new TypeError, and return its promise.
+    if (!ffi.v8_Value_IsObject(result)) return support.promiseRejectedWithTypeError(at, "The iterator's return did not answer an object");
+    // 12. Return AsyncFromSyncIteratorContinuation(result, promiseCapability,
+    //     syncIteratorRecord, false).
+    return asyncFromSyncContinuation(at, record, result, false);
+}
+
+/// IteratorNext(syncIteratorRecord), its Completion.
+fn syncIteratorNextCaught(at: anytype, record: *Record) Error!support.Caught {
+    // 1. Let result be Completion(Call(iteratorRecord.[[NextMethod]],
+    //    iteratorRecord.[[Iterator]])).
+    const result = try support.callCaught(at, record.next_method, record.iterator, &.{});
+    switch (result) {
+        // 3. If result is a throw completion, then set [[Done]] to true, and
+        //    return ? result.
+        .thrown => {
+            record.done = true;
+            return result;
+        },
+        .normal => |value| {
+            // 5. If result is not an Object, then set [[Done]] to true, and
+            //    throw a TypeError exception.
+            if (!ffi.v8_Value_IsObject(value)) {
+                ffi.v8_Global_Dispose(value);
+                record.done = true;
+                return .{ .thrown = try support.newTypeError(at.isolate, at.context(), "The iterator's next did not answer an object") };
+            }
+            // 6. Return result.
+            return result;
+        },
+    }
+}
+
+/// AsyncFromSyncIteratorContinuation(result, promiseCapability,
+/// syncIteratorRecord, closeOnRejection). OWNED promise.
+fn asyncFromSyncContinuation(at: anytype, record: *Record, result: *ffi.Value, close_on_rejection: bool) Error!*ffi.Value {
+    // 2. Let done be Completion(IteratorComplete(result)).
+    const done_value = switch (try support.getCaught(at, result, "done")) {
+        // 3. IfAbruptRejectPromise(done, promiseCapability).
+        .thrown => |thrown| return rejectWith(at, thrown),
+        .normal => |v| v,
+    };
+    const done = support.toBoolean(at, done_value);
+    ffi.v8_Global_Dispose(done_value);
+    // 4. Let value be Completion(IteratorValue(result)).
+    const value = switch (try support.getCaught(at, result, "value")) {
+        // 5. IfAbruptRejectPromise(value, promiseCapability).
+        .thrown => |thrown| return rejectWith(at, thrown),
+        .normal => |v| v,
+    };
+    defer ffi.v8_Global_Dispose(value);
+    // 6. Let valueWrapper be Completion(PromiseResolve(%Promise%, value)).
+    const value_wrapper = switch (try support.promiseResolve(at, value)) {
+        .thrown => |thrown| {
+            // 7. If valueWrapper is an abrupt completion, done is false, and
+            //    closeOnRejection is true, then set valueWrapper to
+            //    Completion(IteratorClose(syncIteratorRecord, valueWrapper)) -
+            //    which is valueWrapper again: IteratorClose returns a throw
+            //    completion it is given, whatever `return` does.
+            if (!done and close_on_rejection) closeQuietly(at, record.iterator);
+            // 8. IfAbruptRejectPromise(valueWrapper, promiseCapability).
+            return rejectWith(at, thrown);
+        },
+        .normal => |wrapper| wrapper,
+    };
+    defer ffi.v8_Global_Dispose(value_wrapper);
+    // 9. Let unwrap be a new Abstract Closure with parameters (v) that
+    //    captures done: return CreateIteratorResultObject(v, done).
+    // 10. Let onFulfilled be CreateBuiltinFunction(unwrap, 1, "", « »).
+    const done_data = ffi.v8_Boolean_New(at.isolate, done) orelse return error.OperationFailed;
+    defer ffi.v8_Value_Dispose(done_data);
+    const on_fulfilled = try support.newClosure(at, unwrapSteps, done_data, 1);
+    defer ffi.v8_Global_Dispose(on_fulfilled);
+    // 12. If done is true, or if closeOnRejection is false, then let
+    //     onRejected be undefined.
+    // 13. Else, let closeIterator be a new Abstract Closure with parameters
+    //     (error) that captures syncIteratorRecord: return ?
+    //     IteratorClose(syncIteratorRecord, ThrowCompletion(error)); and let
+    //     onRejected be CreateBuiltinFunction(closeIterator, 1, "", « »).
+    const on_rejected: ?*ffi.Value = if (done or !close_on_rejection) null else try support.newClosure(at, closeIteratorSteps, record.iterator, 1);
+    defer if (on_rejected) |f| ffi.v8_Global_Dispose(f);
+    // 14. Perform PerformPromiseThen(valueWrapper, onFulfilled, onRejected,
+    //     promiseCapability).
+    // 15. Return promiseCapability.[[Promise]].
+    return support.then(at, value_wrapper, on_fulfilled, on_rejected);
+}
+
+/// IteratorClose(iteratorRecord, completion) for a throw completion: the
+/// iterator's `return` called, and whatever it does ignored - step 5 returns
+/// the throw completion it was given.
+fn closeQuietly(at: anytype, iterator: *ffi.Value) void {
+    // 3. Let innerResult be Completion(GetMethod(iterator, "return")).
+    const caught = support.getCaught(at, iterator, "return") catch return;
+    defer caught.release();
+    // 4. If innerResult is a normal completion, then
+    const method = switch (caught) {
+        .normal => |m| m,
+        .thrown => return,
+    };
+    //    a. Let return be innerResult.[[Value]].
+    //    b. If return is undefined, return ? completion.
+    if (ffi.v8_Value_IsUndefined(method) or ffi.v8_Value_IsNull(method)) return;
+    //    c. Set innerResult to Completion(Call(return, iterator)).
+    const inner = support.callCaught(at, method, iterator, &.{}) catch return;
+    inner.release();
+    // 5. If completion is a throw completion, return ? completion.
+}
+
+/// unwrap (AsyncFromSyncIteratorContinuation step 9): (v) =>
+/// CreateIteratorResultObject(v, done), `done` its [[data]].
+fn unwrapSteps(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const here = support.Here.ofCall(info) orelse return;
+    defer here.deinit();
+    const done_data = support.closureData(info);
+    defer ffi.v8_Global_Dispose(done_data);
+    const v = support.closureArgument(info, 0);
+    defer ffi.v8_Global_Dispose(v);
+    // 1. Return CreateIteratorResultObject(v, done).
+    const result = support.iteratorResultObject(here, v, support.toBoolean(here, done_data)) catch return;
+    support.closureReturn(info, result);
+}
+
+/// closeIterator (AsyncFromSyncIteratorContinuation step 13): (error) =>
+/// IteratorClose(syncIteratorRecord, ThrowCompletion(error)), the sync
+/// iterator its [[data]].
+fn closeIteratorSteps(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const here = support.Here.ofCall(info) orelse return;
+    defer here.deinit();
+    const iterator = support.closureData(info);
+    defer ffi.v8_Global_Dispose(iterator);
+    // 1. Return ? IteratorClose(syncIteratorRecord, ThrowCompletion(error)):
+    //    close, then throw error.
+    closeQuietly(here, iterator);
+    support.closureThrow(here.isolate, support.closureArgument(info, 0));
 }
 
 pub fn releaseIteratorRecord(record: *engine.IteratorRecord) void {

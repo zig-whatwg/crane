@@ -152,17 +152,20 @@ pub fn finishDynamicImport(_: *engine.ImportRequest, _: engine.DynamicImportOutc
 pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
-pub fn invokeCallbackFunction(_: Context, _: JSValue, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
-pub fn callUserObjectOperation(_: Context, _: JSValue, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
 pub fn isCallable(_: Context, _: JSValue) bool {
     return false;
 }
-pub fn takeCallbackFunction(_: *const anyopaque) Owned {
-    return .{ .value = JSValue.jsUndefined };
+pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
+    return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
+}
+pub fn takeCallbackInterface(_: *const engine.CallbackWrapper) engine.CallbackInterface {
+    return .{ .object = .{ .value = JSValue.jsUndefined }, .context = null };
 }
 
 // 4.5 ECMAScript values

@@ -162,6 +162,35 @@ pub const ExceptionBehavior = union(enum) {
 /// The `this` value a callback is invoked with.
 pub const CallbackThis = runtime.CallbackThis;
 
+/// WebIDL: a callback function type's value (3.2.19) - "a reference to the
+/// function object, and a callback context": the incumbent realm when the
+/// value was converted (null when there was none). OWNED: `release` gives the
+/// function back.
+pub const CallbackFunction = struct {
+    function: Owned,
+    context: ?Context,
+
+    pub fn release(self: CallbackFunction) void {
+        self.function.release();
+    }
+};
+
+/// A callback interface value as the binding converts it today - what
+/// takeCallbackInterface takes. TRANSITIONAL.
+pub const CallbackWrapper = runtime.CallbackWrapper;
+
+/// WebIDL: a callback interface type's value (3.2.16) - the object, and a
+/// callback context as for CallbackFunction. OWNED: `release` gives the
+/// object back.
+pub const CallbackInterface = struct {
+    object: Owned,
+    context: ?Context,
+
+    pub fn release(self: CallbackInterface) void {
+        self.object.release();
+    }
+};
+
 /// A classic script's source: UTF-8 text, or a string value whose every code
 /// unit is kept (a timer's string handler).
 pub const ScriptSource = union(enum) {
@@ -218,15 +247,18 @@ pub const PromiseReactionSteps = struct {
     rejected: ?*const fn (data: ?*anyopaque, reason: JSValue) void = null,
 };
 
-/// WebIDL's steps behind an asynchronous iterator object.
+/// WebIDL's steps behind an asynchronous iterator object (3.7.10): the
+/// engine keeps the object's ongoing promise and is finished, and calls these.
 pub const AsyncIteratorSteps = struct {
-    /// "get the next iteration result": a promise for an iterator result
-    /// object. OWNED.
+    /// "get the next iteration result": a promise (or a value, resolving
+    /// one) for an iterator result object - `{ value, done: false }` for the
+    /// next value, `done: true` for end of iteration. OWNED.
     next: *const fn (data: ?*anyopaque) Error!Owned,
     /// "asynchronous iterator return", when the declaration has one: a
     /// promise. `value` BORROWED; the result OWNED.
     @"return": ?*const fn (data: ?*anyopaque, value: JSValue) Error!Owned = null,
-    /// The iterator object is gone: free `data`.
+    /// The iterator object was collected: free `data`. Called during garbage
+    /// collection, so it must not touch the engine.
     finalize: ?*const fn (data: ?*anyopaque) void = null,
 };
 
@@ -700,16 +732,18 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 // ============================================================================
 
 /// WebIDL "invoke a callback function". `realm` is where the callback is read
-/// - a realm of its agent; the call runs in the callback's own associated
-/// realm (prepare to run script there, call, clean up).
-pub inline fn invokeCallbackFunction(realm: Context, callback: JSValue, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+/// - a realm of its agent; the call runs in the function's associated realm
+/// (prepare to run script there), with the callback's context as the
+/// incumbent (prepare to run a callback), then cleans up. `callback` is
+/// BORROWED.
+pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
 /// WebIDL "call a user object's operation": a callback interface value
-/// called as a function, or through its `operation`. `realm` as for
-/// invokeCallbackFunction.
-pub inline fn callUserObjectOperation(realm: Context, callback: JSValue, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+/// called as a function, or through its `operation`. `realm` and the
+/// incumbent as for invokeCallbackFunction; `callback` is BORROWED.
+pub inline fn callUserObjectOperation(realm: Context, callback: *const CallbackInterface, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
@@ -718,10 +752,20 @@ pub inline fn isCallable(realm: Context, value: JSValue) bool {
     return impl.isCallable(realm, value);
 }
 
-/// A callback-function argument as the binding hands it over, as an OWNED
-/// value. TRANSITIONAL, until codegen types callback parameters as JSValue.
-pub inline fn takeCallbackFunction(argument: *const anyopaque) Owned {
+/// A callback-function argument as the binding hands it over, as a
+/// CallbackFunction (OWNED) whose context is the incumbent realm now - the
+/// operation being called is converting its arguments. TRANSITIONAL, until
+/// codegen types callback parameters as CallbackFunction.
+pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction {
     return impl.takeCallbackFunction(argument);
+}
+
+/// A callback-interface argument as the binding hands it over (the
+/// runtime.CallbackWrapper it converted), as a CallbackInterface of its own
+/// (OWNED) whose context is the incumbent realm now. The wrapper stays its
+/// holder's to release. TRANSITIONAL, as takeCallbackFunction.
+pub inline fn takeCallbackInterface(argument: *const CallbackWrapper) CallbackInterface {
+    return impl.takeCallbackInterface(argument);
 }
 
 // ============================================================================

@@ -473,6 +473,17 @@ fn holds(name: []const u8, value: *anyopaque, expression: []const u8) !bool {
     return try evalInt(expression) == 1;
 }
 
+/// A callback function value over a value the test keeps (BORROWED into the
+/// tuple: nothing here releases it), with `context` as its callback context.
+fn callbackFunction(value: runtime.JSValue, context: ?runtime.Context) protocol.CallbackFunction {
+    return .{ .function = .{ .value = value }, .context = context };
+}
+
+/// A callback interface value, as callbackFunction.
+fn callbackInterface(value: runtime.JSValue, context: ?runtime.Context) protocol.CallbackInterface {
+    return .{ .object = .{ .value = value }, .context = context };
+}
+
 fn int32Of(owned: protocol.Owned) i32 {
     return ffi.v8_Value_Int32Value(@ptrCast(@alignCast(owned.value.handle.ptr)), context_once.?);
 }
@@ -647,10 +658,10 @@ test "protocol: invoke a callback function - the value, a rethrown or a reported
     defer callback.deinit(allocator);
     const args = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromNumber(2) };
 
-    const plain = try protocol.invokeCallbackFunction(ctx, callback, .undefined, &args, .rethrow);
+    const plain = try protocol.invokeCallbackFunction(ctx, &callbackFunction(callback, ctx), .undefined, &args, .rethrow);
     try std.testing.expectEqual(@as(i32, 3), int32Of(plain.normal));
     plain.normal.release();
-    const with_global = try protocol.invokeCallbackFunction(ctx, callback, .global_this, &args, .rethrow);
+    const with_global = try protocol.invokeCallbackFunction(ctx, &callbackFunction(callback, ctx), .global_this, &args, .rethrow);
     try std.testing.expectEqual(@as(i32, 103), int32Of(with_global.normal));
     with_global.normal.release();
 
@@ -659,13 +670,13 @@ test "protocol: invoke a callback function - the value, a rethrown or a reported
     var throwing = try bound(thrower.handle);
     defer throwing.deinit(allocator);
     // "rethrow": the thrown value handed back, not pending.
-    const rethrown = try protocol.invokeCallbackFunction(ctx, throwing, .undefined, &.{}, .rethrow);
+    const rethrown = try protocol.invokeCallbackFunction(ctx, &callbackFunction(throwing, ctx), .undefined, &.{}, .rethrow);
     try std.testing.expect(rethrown == .throw);
     try std.testing.expect(try holds("rethrown", rethrown.throw.value.handle.ptr, "rethrown === globalThis.invokedError ? 1 : 0"));
     rethrown.throw.release();
     // "report": reported for the callback's realm, then undefined.
     var reports: Reports = .{};
-    const reported = try protocol.invokeCallbackFunction(ctx, throwing, .undefined, &.{}, .{ .report = .{ .report = Reports.report, .host = &reports } });
+    const reported = try protocol.invokeCallbackFunction(ctx, &callbackFunction(throwing, ctx), .undefined, &.{}, .{ .report = .{ .report = Reports.report, .host = &reports } });
     try std.testing.expect(reported == .normal);
     try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, reported.normal.value));
     try std.testing.expectEqual(@as(usize, 1), reports.count);
@@ -673,7 +684,7 @@ test "protocol: invoke a callback function - the value, a rethrown or a reported
     try std.testing.expect(reports.had_message);
 
     // [LegacyTreatNonObjectAsNull]: not callable, not called.
-    const nothing = try protocol.invokeCallbackFunction(ctx, runtime.JSValue.fromNumber(5), .undefined, &.{}, .rethrow);
+    const nothing = try protocol.invokeCallbackFunction(ctx, &callbackFunction(runtime.JSValue.fromNumber(5), ctx), .undefined, &.{}, .rethrow);
     try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, nothing.normal.value));
 }
 
@@ -685,7 +696,7 @@ test "protocol: call a user object's operation - a function, a handleEvent, a th
     defer function.deinit();
     var as_function = try bound(function.handle);
     defer as_function.deinit(allocator);
-    const doubled = try protocol.callUserObjectOperation(ctx, as_function, "handleEvent", .undefined, &args, .rethrow);
+    const doubled = try protocol.callUserObjectOperation(ctx, &callbackInterface(as_function, ctx), "handleEvent", .undefined, &args, .rethrow);
     try std.testing.expectEqual(@as(i32, 10), int32Of(doubled.normal));
     doubled.normal.release();
 
@@ -694,7 +705,7 @@ test "protocol: call a user object's operation - a function, a handleEvent, a th
     var as_object = try bound(listener.handle);
     defer as_object.deinit(allocator);
     // thisArg is O, whatever was given.
-    const called = try protocol.callUserObjectOperation(ctx, as_object, "handleEvent", .undefined, &args, .rethrow);
+    const called = try protocol.callUserObjectOperation(ctx, &callbackInterface(as_object, ctx), "handleEvent", .undefined, &args, .rethrow);
     try std.testing.expectEqual(@as(i32, 6), int32Of(called.normal));
     called.normal.release();
 
@@ -702,7 +713,7 @@ test "protocol: call a user object's operation - a function, a handleEvent, a th
     defer getter.deinit();
     var throwing_getter = try bound(getter.handle);
     defer throwing_getter.deinit(allocator);
-    const from_get = try protocol.callUserObjectOperation(ctx, throwing_getter, "handleEvent", .undefined, &.{}, .rethrow);
+    const from_get = try protocol.callUserObjectOperation(ctx, &callbackInterface(throwing_getter, ctx), "handleEvent", .undefined, &.{}, .rethrow);
     try std.testing.expect(try holds("fromGet", from_get.throw.value.handle.ptr, "fromGet === globalThis.getterError ? 1 : 0"));
     from_get.throw.release();
 
@@ -710,7 +721,7 @@ test "protocol: call a user object's operation - a function, a handleEvent, a th
     defer not_callable.deinit();
     var five = try bound(not_callable.handle);
     defer five.deinit(allocator);
-    const type_error = try protocol.callUserObjectOperation(ctx, five, "handleEvent", .undefined, &.{}, .rethrow);
+    const type_error = try protocol.callUserObjectOperation(ctx, &callbackInterface(five, ctx), "handleEvent", .undefined, &.{}, .rethrow);
     try std.testing.expect(try holds("notCallable", type_error.throw.value.handle.ptr, "notCallable instanceof TypeError ? 1 : 0"));
     type_error.throw.release();
 }
@@ -822,8 +833,6 @@ test "protocol: iterator records - next, the result, return, and an async iterat
     const pending = try protocol.iteratorNext(ctx, async_record);
     defer pending.release();
     try std.testing.expect(ffi.v8_Value_IsPromise(@ptrCast(@alignCast(pending.value.handle.ptr))));
-    // Not built yet: an async iterator over a sync iterable.
-    try std.testing.expectError(error.NotSupported, protocol.getIterator(ctx, array.value(), .async));
     try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.fromNumber(1), .sync));
 }
 
@@ -852,8 +861,8 @@ test "protocol: the values, callbacks and iteration operations leave no Global b
             _ = protocol.typeOf(c, o);
             _ = protocol.sameValue(c, o, f);
             (try protocol.parseJsonToValue(c, "[1]")).release();
-            (try protocol.invokeCallbackFunction(c, f, .global_this, &.{runtime.JSValue.fromNumber(1)}, .rethrow)).normal.release();
-            (try protocol.callUserObjectOperation(c, o, "handleEvent", .undefined, &.{}, .rethrow)).normal.release();
+            (try protocol.invokeCallbackFunction(c, &callbackFunction(f, c), .global_this, &.{runtime.JSValue.fromNumber(1)}, .rethrow)).normal.release();
+            (try protocol.callUserObjectOperation(c, &callbackInterface(o, c), "handleEvent", .undefined, &.{}, .rethrow)).normal.release();
             const items = try protocol.convertToSequence(c, it, allocator);
             for (items) |item| item.release();
             allocator.free(items);
@@ -873,5 +882,280 @@ test "protocol: the values, callbacks and iteration operations leave no Global b
     // and the whole round taking one 32-byte node once, at a different round
     // each run, then flat for 96 - V8's own, as script the round calls tiers
     // up. Two such nodes are allowed; a per-call leak is not.
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+}
+
+// ----------------------------------------------------------------------------
+// Callback contexts: the incumbent (decisions 9-10)
+// ----------------------------------------------------------------------------
+
+var other_context: ?*ffi.Context = null;
+
+/// The realm the context manager hosts for this file's context.
+fn hostedRealm() !runtime.Context {
+    _ = try realm();
+    v8.context_manager.init(std.heap.page_allocator) catch {};
+    return v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+}
+
+/// A second realm of the same agent, hosted.
+fn otherRealm() !runtime.Context {
+    _ = try hostedRealm();
+    if (other_context == null) other_context = ffi.v8_Context_New(isolate_once.?) orelse return error.ContextCreationFailed;
+    return v8.context_manager.getOrCreate(other_context.?, std.heap.page_allocator);
+}
+
+var recorded_incumbent: ?runtime.Context = null;
+
+/// A built-in function: records HTML's incumbent realm when called.
+fn recordIncumbent(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const context = ffi.v8_Isolate_GetIncumbentContext(info.getIsolate()) orelse return;
+    defer ffi.v8_Context_Dispose(context);
+    recorded_incumbent = v8.context_manager.get(context);
+}
+
+test "protocol: prepare to run a callback makes the callback context the incumbent" {
+    const ctx = try realm();
+    const here = try hostedRealm();
+    const other = try otherRealm();
+    try installNative("recordIncumbent", recordIncumbent);
+    const native = try Made.of("recordIncumbent");
+    defer native.deinit();
+
+    // A built-in callback has no script frame: the incumbent is the callback
+    // context, whichever realm that is.
+    recorded_incumbent = null;
+    (try protocol.invokeCallbackFunction(ctx, &callbackFunction(native.value(), other), .undefined, &.{}, .rethrow)).normal.release();
+    try std.testing.expectEqual(@as(?runtime.Context, other), recorded_incumbent);
+    (try protocol.invokeCallbackFunction(ctx, &callbackFunction(native.value(), here), .undefined, &.{}, .rethrow)).normal.release();
+    try std.testing.expectEqual(@as(?runtime.Context, here), recorded_incumbent);
+
+    // A script function is its own incumbent: its frame is newer than the
+    // backup entry.
+    const script_function = try Made.of("(function () { recordIncumbent(); })");
+    defer script_function.deinit();
+    (try protocol.invokeCallbackFunction(ctx, &callbackFunction(script_function.value(), other), .undefined, &.{}, .rethrow)).normal.release();
+    try std.testing.expectEqual(@as(?runtime.Context, here), recorded_incumbent);
+
+    // Call a user object's operation: the same, around the Get and the call.
+    const listener = try Made.of("({ handleEvent: recordIncumbent })");
+    defer listener.deinit();
+    (try protocol.callUserObjectOperation(ctx, &callbackInterface(listener.value(), other), "handleEvent", .undefined, &.{}, .rethrow)).normal.release();
+    try std.testing.expectEqual(@as(?runtime.Context, other), recorded_incumbent);
+}
+
+var taken: ?protocol.CallbackFunction = null;
+
+/// A binding taking a callback-function argument: the conversion's Global,
+/// tagged as the binding tags it, handed to takeCallbackFunction.
+fn takeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const argument = info.get(0);
+    taken = protocol.takeCallbackFunction(v8.pointer_tag.tagPointer(@ptrCast(argument), .global_handle));
+}
+
+test "protocol: a taken callback function or interface records the incumbent realm as its context" {
+    const ctx = try realm();
+    const here = try hostedRealm();
+    try installNative("takeArgument", takeArgument);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("takeArgument(function (x) { return x + 1; }); 1"));
+    const function = taken orelse return error.NothingTaken;
+    defer function.release();
+    try std.testing.expectEqual(@as(?runtime.Context, here), function.context);
+    const called = try protocol.invokeCallbackFunction(ctx, &function, .undefined, &.{runtime.JSValue.fromNumber(2)}, .rethrow);
+    defer called.normal.release();
+    try std.testing.expectEqual(@as(i32, 3), int32Of(called.normal));
+
+    // A callback interface value as the binding converts it (a
+    // runtime.CallbackWrapper), taken; the wrapper stays its holder's.
+    const listener = try Made.of("({ handleEvent(x) { return x * 3; } })");
+    defer listener.deinit();
+    // The conversion takes the Global it is given (the binding's argument
+    // handle): hand it one of its own.
+    const argument = ffi.v8_Global_Clone(listener.handle) orelse return error.CloneFailed;
+    const wrapper = try v8.conversions.fromV8Value(*runtime.CallbackWrapper, allocator, isolate_once.?, context_once.?, argument);
+    defer {
+        wrapper.deinit();
+        wrapper.allocator.destroy(wrapper);
+    }
+    const interface = protocol.takeCallbackInterface(wrapper);
+    defer interface.release();
+    try std.testing.expectEqual(@as(?runtime.Context, here), interface.context);
+    const result = try protocol.callUserObjectOperation(ctx, &interface, "handleEvent", .undefined, &.{runtime.JSValue.fromNumber(2)}, .rethrow);
+    defer result.normal.release();
+    try std.testing.expectEqual(@as(i32, 6), int32Of(result.normal));
+}
+
+// ----------------------------------------------------------------------------
+// Asynchronous iterator objects, and async iteration over a sync iterable
+// ----------------------------------------------------------------------------
+
+/// Host steps for an asynchronous iterator: 1, 2, then end of iteration.
+const Counter = struct {
+    ctx: runtime.Context,
+    next_value: i32 = 1,
+    last: i32 = 2,
+    returned: usize = 0,
+    finalized: usize = 0,
+
+    fn next(data: ?*anyopaque) protocol.Error!protocol.Owned {
+        const self: *Counter = @ptrCast(@alignCast(data.?));
+        const done = self.next_value > self.last;
+        const members = [_]runtime.DictionaryMember{
+            .{ .name = "value", .value = if (done) runtime.JSValue.jsUndefined else runtime.JSValue.fromNumber(@floatFromInt(self.next_value)) },
+            .{ .name = "done", .value = runtime.JSValue.fromBoolean(done) },
+        };
+        if (!done) self.next_value += 1;
+        const result = try protocol.createDictionaryObject(self.ctx, &members);
+        defer result.release();
+        return protocol.createResolvedPromise(self.ctx, result.value);
+    }
+
+    fn returnSteps(data: ?*anyopaque, _: runtime.JSValue) protocol.Error!protocol.Owned {
+        const self: *Counter = @ptrCast(@alignCast(data.?));
+        self.returned += 1;
+        return protocol.createResolvedPromise(self.ctx, runtime.JSValue.jsUndefined);
+    }
+
+    fn finalize(data: ?*anyopaque) void {
+        const self: *Counter = @ptrCast(@alignCast(data.?));
+        self.finalized += 1;
+    }
+
+    const steps: protocol.AsyncIteratorSteps = .{ .next = next, .@"return" = returnSteps };
+    const steps_finalized: protocol.AsyncIteratorSteps = .{ .next = next, .@"return" = returnSteps, .finalize = finalize };
+};
+
+test "protocol: an asynchronous iterator object - its own @@asyncIterator, queued next calls, end of iteration, return, and this" {
+    const ctx = try realm();
+    var counter: Counter = .{ .ctx = ctx };
+    const iterator = try protocol.createAsyncIterator(ctx, &Counter.steps, &counter);
+    defer iterator.release();
+    try setGlobal("asyncIt", iterator.value.handle.ptr);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\globalThis.out = []; globalThis.checks = 0;
+        \\(async () => {
+        \\  checks += asyncIt[Symbol.asyncIterator]() === asyncIt ? 1 : 0;
+        \\  const first = asyncIt.next(), second = asyncIt.next();
+        \\  const [a, b] = await Promise.all([first, second]);
+        \\  out.push(a.value, b.value, a.done, b.done);
+        \\  const end = await asyncIt.next(); out.push(end.done, end.value);
+        \\  out.push((await asyncIt.next()).done);
+        \\  const r = await asyncIt.return(9); out.push(r.value, r.done);
+        \\  try { await Object.getPrototypeOf(asyncIt).next.call({}); } catch (e) { checks += e instanceof TypeError ? 1 : 0; }
+        \\})();
+        \\1
+    ));
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("out.join() === '1,2,false,false,true,,true,9,true' && checks === 2 ? 1 : 0"));
+    // Finished before return: the host's return is not run.
+    try std.testing.expectEqual(@as(usize, 0), counter.returned);
+
+    var early: Counter = .{ .ctx = ctx };
+    const second = try protocol.createAsyncIterator(ctx, &Counter.steps, &early);
+    defer second.release();
+    try setGlobal("earlyIt", second.value.handle.ptr);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\globalThis.seen = [];
+        \\(async () => { for await (const v of earlyIt) { seen.push(v); break; } seen.push((await earlyIt.next()).done); })();
+        \\1
+    ));
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    // for await's break calls return: the host's return runs, and then the
+    // iterator is finished.
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("seen.join() === '1,true' ? 1 : 0"));
+    try std.testing.expectEqual(@as(usize, 1), early.returned);
+}
+
+/// Static: the finalizer may run in any later collection, after this test.
+var finalized_counter: Counter = undefined;
+
+test "protocol: an asynchronous iterator's finalize runs when it is collected" {
+    const ctx = try realm();
+    finalized_counter = .{ .ctx = ctx };
+    (try protocol.createAsyncIterator(ctx, &Counter.steps_finalized, &finalized_counter)).release();
+    for (0..5) |_| {
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+        ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+        if (finalized_counter.finalized == 1) break;
+    }
+    try std.testing.expectEqual(@as(usize, 1), finalized_counter.finalized);
+}
+
+/// The settled value of an Owned promise, once the microtasks ran, as an
+/// iterator result. Releases the promise.
+fn settledResult(ctx: runtime.Context, promise: protocol.Owned) !protocol.IteratorResult {
+    defer promise.release();
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    const handle: *ffi.Promise = @ptrCast(@alignCast(promise.value.handle.ptr));
+    if (ffi.v8_Promise_State(handle) != 1) return error.NotFulfilled;
+    const value = ffi.v8_Promise_Result(handle) orelse return error.NoResult;
+    defer ffi.v8_Value_Dispose(value);
+    return protocol.iteratorResult(ctx, asValue(value));
+}
+
+test "protocol: an async iterator over a sync iterable awaits each value, returns, and closes the iterator on a rejection" {
+    const ctx = try realm();
+    const values = try Made.of("[1, Promise.resolve(2)]");
+    defer values.deinit();
+    const record = try protocol.getIterator(ctx, values.value(), .async);
+    defer protocol.releaseIteratorRecord(record);
+    const first = try settledResult(ctx, try protocol.iteratorNext(ctx, record));
+    defer first.value.release();
+    try std.testing.expect(!first.done);
+    try std.testing.expectEqual(@as(i32, 1), int32Of(first.value));
+    // A promise value is awaited: the result carries 2, not the promise.
+    const second = try settledResult(ctx, try protocol.iteratorNext(ctx, record));
+    defer second.value.release();
+    try std.testing.expectEqual(@as(i32, 2), int32Of(second.value));
+    const third = try settledResult(ctx, try protocol.iteratorNext(ctx, record));
+    defer third.value.release();
+    try std.testing.expect(third.done);
+    // An array iterator has no return: the async-from-sync one answers
+    // { value, done: true }.
+    const returned = try settledResult(ctx, (try protocol.iteratorReturn(ctx, record, runtime.JSValue.fromNumber(7))) orelse return error.NoReturn);
+    defer returned.value.release();
+    try std.testing.expect(returned.done);
+    try std.testing.expectEqual(@as(i32, 7), int32Of(returned.value));
+
+    // A rejected value rejects next, and closes the sync iterator.
+    const generator = try Made.of("globalThis.closed = 0; (function* () { try { yield Promise.reject(new Error('x')); } finally { closed = 1; } })()");
+    defer generator.deinit();
+    const rejecting = try protocol.getIterator(ctx, generator.value(), .async);
+    defer protocol.releaseIteratorRecord(rejecting);
+    const pending = try protocol.iteratorNext(ctx, rejecting);
+    defer pending.release();
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    try std.testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(pending.value.handle.ptr))));
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("closed"));
+}
+
+test "protocol: callback contexts, asynchronous iterators and async-from-sync leave no Global behind" {
+    const ctx = try realm();
+    const other = try otherRealm();
+    try installNative("recordIncumbent", recordIncumbent);
+    const native = try Made.of("recordIncumbent");
+    defer native.deinit();
+    const values = try Made.of("[1, Promise.resolve(2)]");
+    defer values.deinit();
+    const round = struct {
+        fn run(c: runtime.Context, o: runtime.Context, n: runtime.JSValue, v: runtime.JSValue) !void {
+            (try protocol.invokeCallbackFunction(c, &callbackFunction(n, o), .undefined, &.{}, .rethrow)).normal.release();
+            var counter: Counter = .{ .ctx = c };
+            const iterator = try protocol.createAsyncIterator(c, &Counter.steps, &counter);
+            const next = try protocol.getProperty(c, iterator.value, "next");
+            const called = try protocol.invokeCallbackFunction(c, &callbackFunction(next.value, c), .{ .value = iterator.value }, &.{}, .rethrow);
+            called.normal.release();
+            next.release();
+            iterator.release();
+            const record = try protocol.getIterator(c, v, .async);
+            (try protocol.iteratorNext(c, record)).release();
+            protocol.releaseIteratorRecord(record);
+            try protocol.performMicrotaskCheckpoint(c);
+        }
+    }.run;
+    try round(ctx, other, native.value(), values.value());
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, other, native.value(), values.value());
+    // As the area-2 leak check: two one-time nodes allowed, never one per call.
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
 }

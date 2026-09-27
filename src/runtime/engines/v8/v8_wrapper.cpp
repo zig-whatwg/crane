@@ -11610,3 +11610,89 @@ bool v8_ArrayBufferView_WriteBytes(Global<Value>* view, const uint8_t* bytes, si
 
 } // extern "C"
 // ---- end lane: runtime-impls ----
+// ---- lane: protocol ----
+// The engine protocol's additive FFI (engine-protocol-design.md, decision 11).
+extern "C" {
+
+/// HTML "prepare to run a callback" for V8: run `body(data)` with `incumbent`
+/// pushed onto the backup incumbent settings object stack
+/// (v8::Context::BackupIncumbentScope), so Isolate::GetIncumbentContext
+/// answers it for everything the body runs until a script frame is newer.
+/// The scope keys off its own stack address, so it has to live here, around
+/// the body - Blink's CallbackInvokeHelper holds it the same way. A null
+/// `incumbent` runs the body with nothing pushed.
+void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, void (*body)(void*), void* data) {
+    HandleScope handle_scope(isolate);
+    if (!incumbent || incumbent->IsEmpty()) {
+        body(data);
+        return;
+    }
+    Local<Context> context = incumbent->Get(isolate);
+    Context::BackupIncumbentScope scope(context);
+    body(data);
+}
+
+/// HTML's incumbent realm here: Isolate::GetIncumbentContext - the realm of
+/// the most recent script frame, or of the innermost backup incumbent scope
+/// newer than it, or the entered context. A new Global the caller owns
+/// (counted as GetCurrentContext's are); null when no context is entered.
+Global<Context>* v8_Isolate_GetIncumbentContext(Isolate* isolate) {
+    if (!isolate || !isolate->InContext()) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetIncumbentContext();
+    if (context.IsEmpty()) return nullptr;
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
+/// A function of `context` whose steps are `callback`, with `data` as its
+/// [[data]] (FunctionCallbackInfo::Data) and `length` as its "length" - made
+/// with Function::New, which unlike a FunctionTemplate is not cached per
+/// context, so a closure made per object or per step is collected with what
+/// references it. Not a constructor. A new Global the caller owns; null on
+/// failure.
+Global<Value>* v8_Function_NewWithData(Global<Context>* context, ZigCallback callback, Global<Value>* data, int length) {
+    if (!context || context->IsEmpty() || !callback) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> data_value = (data && !data->IsEmpty()) ? data->Get(isolate) : Local<Value>();
+    Local<Function> function;
+    if (!Function::New(ctx, reinterpret_cast<FunctionCallback>(callback), data_value, length, ConstructorBehavior::kThrow).ToLocal(&function)) {
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, function));
+}
+
+/// PerformPromiseThen(promise, onFulfilled, onRejected, capability), a null
+/// handler being the spec's undefined: V8's one-handler Then (or Catch) for
+/// it. v8_Promise_Then hands V8's two-handler Then an empty Local for a null
+/// handler, which V8 dereferences. The derived promise - the capability's -
+/// as a new Global the caller owns; null on failure.
+Global<Value>* v8_Promise_ThenWithOptionalHandlers(Global<Context>* context, Global<Value>* promise, Global<Value>* on_fulfilled, Global<Value>* on_rejected) {
+    if (!context || !promise || promise->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> value = promise->Get(isolate);
+    if (!value->IsPromise()) return nullptr;
+    Local<Promise> target = value.As<Promise>();
+    bool has_fulfilled = on_fulfilled && !on_fulfilled->IsEmpty() && on_fulfilled->Get(isolate)->IsFunction();
+    bool has_rejected = on_rejected && !on_rejected->IsEmpty() && on_rejected->Get(isolate)->IsFunction();
+    MaybeLocal<Promise> derived;
+    if (has_fulfilled && has_rejected) {
+        derived = target->Then(ctx, on_fulfilled->Get(isolate).As<Function>(), on_rejected->Get(isolate).As<Function>());
+    } else if (has_fulfilled) {
+        derived = target->Then(ctx, on_fulfilled->Get(isolate).As<Function>());
+    } else if (has_rejected) {
+        derived = target->Catch(ctx, on_rejected->Get(isolate).As<Function>());
+    } else {
+        return nullptr;
+    }
+    Local<Promise> result;
+    if (!derived.ToLocal(&result)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, result));
+}
+
+} // extern "C"
+// ---- end lane: protocol ----
