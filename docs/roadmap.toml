@@ -195,9 +195,9 @@ why = """V8 is statically linked on desktop and server; iOS will dynamically lin
 the system JavaScriptCore. A second adapter can only replace V8 at a seam the \
 rest of the engine respects, and every direct V8 call outside the adapter is \
 work it must undo first (AGENTS.md, "The engine boundary")."""
-done_when = """tools/engine_boundary_baseline.txt is empty, "v8" is gone from the \
-non-adapter modules' imports in build.zig, and a non-V8 build fails only on \
-explicit NotSupported entries."""
+done_when = """tools/engine_boundary_baseline.txt is empty, the runtime Engine table \
+is deleted, "v8" is gone from the non-adapter modules' imports in build.zig, and a \
+non-V8 build fails only on explicit NotSupported entries."""
 progress = [
   "1979a9892 - tools/lint_engine_boundary.zig in zig build test: a per-file, per-name ratchet that only goes down",
   "b041d9024 - first Engine realm operations: runClassicScript, performMicrotaskCheckpoint, runTaskInRealm, runInRealm, createDOMException, releaseValue",
@@ -210,6 +210,12 @@ progress = [
   "a20811318, 45fa1d65b - WebSocket and the worker host off V8; pending-activity holds",
   "838ecf09a - a context's registry key survives compacting GCs",
   "74cc04689 - migration set X (events, observers, rejected promises) onto the protocol; the migration recipes",
+  "985d9db85 - engine-boundary 4c-4d: Worker script URLs against the outside settings; a realm's own report-an-exception hook",
+  "7c7606ce4 - getIterator follows GetV: a primitive is ToObject'd",
+  "175b95ba4, f6007d292, 27b64ab5d - protocol area 1 (agents, Window realms, scripts, modules) for V8; Context.zig, the REPL, WebDriver, lib_exports and runtime off V8; the no-snapshot startup path under test",
+  "9905b31d3 - migration set Y (cookies, URL, forms) onto the protocol; every operation converts a platform object in its relevant realm; toBoolean",
+  "d1d200b40 - ES module scripts onto the protocol; import() and import.meta through the host's module hooks",
+  "f404a62d3 - migration set Z (streams glue, canvas, the WPT runner, snapshot tooling) onto the protocol; completionOf; worker realm records",
 ]
 
   [[infra.items]]
@@ -217,27 +223,39 @@ progress = [
   status = "doing"
 
   [[infra.items]]
-  name = "The WPT runner reads heap and context counts, and evaluates harness state, through the Engine table"
-  status = "todo"
+  name = "The engine is a statically dispatched protocol (src/runtime/engine_protocol.zig): every operation conformance-checked at comptime against every adapter, ownership in its types"
+  status = "done"
+
+  [[infra.items]]
+  name = "The WPT runner reads heap and context counts, and evaluates harness state, through the protocol's diagnostics tier"
+  status = "done"
 
   [[infra.items]]
   name = "The no-snapshot startup path is exercised by a test"
+  status = "done"
+
+  [[infra.items]]
+  name = "Engine-specific capabilities (snapshots, reusing a global proxy, module scripts, promise rejection tracking, microtask control) are declared as the protocol's tri-state comptime capabilities"
+  status = "done"
+
+  [[infra.items]]
+  name = "The paused lanes' held files move onto the protocol when their lanes resume; navigation's Browser creates its agent with createAgent, retiring the legacy host-hook shims"
   status = "todo"
 
   [[infra.items]]
-  name = "Engine-specific capabilities (snapshots, reusing a global proxy, synchronous module resolve, microtask control) are declared on the Engine table"
+  name = "The runtime Engine table (engine_interface.zig, ctx.getEngine()) is deleted, once its last callers have moved"
   status = "todo"
 
   [[infra.items]]
-  name = "Runtime types carry no V8 names: Realm.isolate -> agent, Realm.v8_context -> engine_realm, EngineHandle.handle_scope -> lifetime (.scoped/.persistent) - after the paused lanes merge, since held files read them"
+  name = "Typed ownership through runtime: JSValue's handle arm loses needs_disposal and the .local/.global tag for the protocol's types, and runtime types carry no V8 names (Realm.isolate -> agent, Realm.v8_context -> engine_realm) - after the paused lanes merge, since held files read them"
   status = "todo"
 
   [[infra.items]]
-  name = "Codegen types callback-function parameters as runtime.JSValue (owned), retiring the transitional takeCallbackFunction operation"
+  name = "Codegen types callback parameters as the protocol's CallbackFunction and CallbackInterface, retiring the transitional takeCallbackFunction and takeCallbackInterface operations"
   status = "todo"
 
   [[infra.items]]
-  name = "\"v8\" removed from the non-adapter modules' imports in build.zig"
+  name = "\"v8\" removed from the non-adapter modules' imports in build.zig, once the baseline reaches zero"
   status = "todo"
 
 [[infra]]

@@ -1,0 +1,24 @@
+# Architecture: Design the protocol before migrating
+
+**Date**: 2026-09-27
+**Lesson**: An engine seam grown one call site at a time takes the shape of the engine it is meant to hide; design the whole protocol from a survey of every need, then migrate by pattern.
+
+**Why**: An operation carved out of the code in front of you is named and typed after that code. When the code is a sequence of V8 calls, the operation is a V8 call with the V8 types rubbed off - an untyped handle, an `engine_ctx: *anyopaque`, a flag saying who frees it. Each one looks reasonable on its own; only the whole set shows that a second engine could not implement it, and the whole set is exactly what an op-by-op migration never looks at.
+
+**What Happened**: The first answer to "V8 only in the adapter" (2026-09-26) was to grow the runtime Engine table that already existed, `runtime.EngineInterface` in src/runtime/engine_interface.zig: a struct of function pointers, most of them optional, reached through `ctx.getEngine()`. Three parallel lanes grew it as they moved their files, each adding the operations its next call site needed to its own region of the table. It worked, in the sense that the lint baseline fell from 4,515 references in 90 files to 3,247 in 59. But by 89 operations the table had taken V8's shape:
+
+- operations that were V8 calls: `chainPromiseHandlers(engine_ctx, promise, cb, ctx, cb, ctx)` was `Promise::Then`; `compileScript` / `runScript` / `disposeScript` was `v8::Script`; `createString`, `isString`, `extractString` and `convertJSValueToEngine` existed only because a V8 string is a handle;
+- the same concept several times over, one per migrating file: `resolvePromise` and `resolvePromiseWithInstance`, `rejectPromise` (with a Zig `anyerror` as the reason) and `rejectPromiseWithValue`, `getPropertyBoolean` and `getPropertyTruthy`;
+- ownership as flags - `needs_disposal`, the `.local` / `.global` tag - where several lessons already traced use-after-frees and leaks;
+- every call an unwrap at run time (`ctx.getEngine() orelse ...`, then usually `.op orelse return error.NotSupported`, at some 70 sites in 35 files), so a missing operation failed only when it ran, and the JavaScriptCore and QuickJS tables were compiled by no build at all;
+- capabilities as "an optional function that might be null", which no caller could tell from a missing operation.
+
+The user redirected the work: "If protocol is the correct design decision then we should do that instead" - and then, on the plan, design the whole protocol first and replace V8 usage by pattern across the codebase, not op by op in lanes. The lanes froze. Two surveys grouped every remaining reference outside the adapter (2,552 in 57 files) by INTENT - "hold an `any` value past the call", "invoke a callback", "run steps in a realm" - not by V8 function. The protocol was designed against that survey, the 89 table operations, the spec concepts, and the JavaScriptCore C API as the test for a V8-shaped operation: `src/runtime/engine_protocol.zig`, statically dispatched, conformance-checked at compile time, ownership in the types (`Owned`, `Completion`, `CallbackFunction`, `PromiseCapability`), capabilities as tri-state comptime constants with JavaScriptCore's gaps filed and declared. A recipe per intent (docs/engine-protocol-recipes.md) mapped each V8 pattern to its protocol call.
+
+**Fix**: What the survey and recipes bought:
+
+1. **The design saw every need at once.** Seven promise operations (create, get its object, two resolves, two rejects, destroy the handle) became `createPromise`, a `PromiseCapability` and three calls on it; ownership became types because every site's ownership pattern was on the table together; capabilities were declared before anyone depended on them, not discovered as null function pointers.
+2. **Migration became mechanical.** With a recipe per intent, file sets moved in parallel without inventing operations: events, observers and rejected promises (2,422 -> 2,194), the page realm (-> 1,654), cookies, URL and forms (-> 1,431), ES module scripts (-> 1,298), streams glue, canvas, the WPT runner and snapshot tooling (-> 961 in 21 files, 852 of them in the 17 files paused lanes hold). Across the four migration sets the protocol gained two operations (`toBoolean`, and `completionOf` for ECMAScript's Completion) and two helpers; everything else they needed had been designed.
+3. **Gaps surfaced as design questions, not local workarounds.** A migrating file that met something the protocol lacked stopped and reported it (the relevant-realm rule, `getIterator` over a primitive, a dictionary `any` member that is JS null), and the fix landed once, in the protocol, for every caller.
+
+**Takeaway**: **Survey every need by intent, design the whole protocol against the second engine, then migrate by recipe - a seam grown one call site at a time is the first engine's API with the names changed.**

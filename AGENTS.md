@@ -460,18 +460,30 @@ and was 138/434 by the time anyone checked.
 
 ## The engine boundary
 
-**Crane's JavaScript engine is an adapter.** V8 is one implementation of it,
-statically linked on desktop and server; on iOS Crane links the system
-JavaScriptCore dynamically instead. Behaviour may differ between targets only
-where the difference is declared - never by accident.
+**Crane's JavaScript engine is an adapter, and the protocol is the only way to
+reach it.** V8 is one implementation, statically linked on desktop and server;
+on iOS Crane links the system JavaScriptCore dynamically instead. Behaviour may
+differ between targets only where the difference is declared - never by
+accident.
+
+The protocol is the `engine` module, `src/runtime/engine_protocol.zig`. Its
+signatures and doc comments are the contract; build.zig binds it, as
+`engine_impl`, to the adapter `-Dengine=v8|jsc|quickjs` selects, so dispatch is
+static. Whether an adapter links its engine statically (V8) or dynamically
+(JavaScriptCore on iOS) is the adapter's business; the protocol does not change.
+What it is: [docs/engine-protocol.md](docs/engine-protocol.md). How to move code
+onto it: [docs/engine-protocol-recipes.md](docs/engine-protocol-recipes.md), a
+recipe per intent.
 
 ```
-src/runtime/engines/v8/   the V8 adapter: v8_wrapper.cpp, ffi.zig, interface.zig,
-                          conversions.zig, wrapper_cache, context_manager,
-                          snapshot_loader, event_loop, legacy_factory_functions
-tests/v8/                 the adapter's tests
-everything else           runtime.Instance, runtime.JSValue, runtime.Context and
-                          the Engine table (src/runtime/engine_interface.zig)
+src/runtime/engine_protocol.zig      THE PROTOCOL: module "engine", one pub inline fn per operation
+src/runtime/engines/v8/              the V8 adapter: protocol.zig and protocol_*.zig (the operations),
+                                     v8_wrapper.cpp, ffi.zig, conversions, the wrapper cache, context_manager
+src/runtime/engines/{jsc,quickjs}/   the other adapters' protocol.zig
+tests/runtime/protocol_test_adapter.zig   the engine-less adapter the runtime-tier tests bind
+tests/v8/                            the V8 adapter's tests
+everything else                      `const engine = @import("engine");`, runtime.Instance,
+                                     runtime.JSValue, runtime.Context
 ```
 
 1. **V8 types and calls live only in the adapter.** Outside
@@ -480,31 +492,45 @@ everything else           runtime.Instance, runtime.JSValue, runtime.Context and
    is no `@import("v8")`, no `v8_*`, and no Isolate, Global, Local or
    HandleScope. The generated WebIDL interfaces are engine-neutral comptime
    tables the adapter consumes; codegen never emits an engine call.
-2. **An engine need is an Engine operation, named after the spec concept** -
-   create, resolve or reject a promise; invoke a callback; wrap an instance;
-   run a microtask checkpoint; create a realm, or one reusing a WindowProxy;
-   serialize a value; read a dictionary member (`getPropertyBoolean`,
-   `getPropertyInstance` are the model). Never a pass-through with a V8-shaped
-   signature: a seam that mirrors V8's API is not an adapter.
-3. **Every new Engine operation** gets its V8 implementation and an explicit
-   `error.NotSupported` (or TODO-marked) entry in the jsc/ and quickjs/
-   tables, so a non-V8 build fails loudly. The integrator owns
-   engine_interface.zig; lanes request additions the way they request grants.
-4. **Ownership never crosses the seam implicitly.** The adapter owns engine
-   handles. An operation whose result the caller must release says so in its
-   type and at its declaration (explicit retain/release on `runtime.JSValue`,
-   or borrowed for the call). "Every `v8_*` return is owned" is an
-   adapter-internal rule.
-5. **Engine-specific capabilities are declared, not assumed** - snapshots,
-   detaching and reusing a global proxy, synchronous module resolve, explicit
-   microtask control are capability flags or optional Engine functions, and
-   callers handle "unsupported". The no-snapshot startup path keeps working,
-   because JavaScriptCore runs on it.
-6. **Existing debt is paid file by file.** Editing a file that makes direct V8
-   calls means moving that file's calls behind the Engine table in the same
-   change. The engine is selected at build time (`-Dengine=v8|jsc|quickjs`);
-   the Engine table stays function pointers, so static and dynamic linking both
-   work.
+2. **Everything else reaches the engine through the protocol:** `engine.op(...)`,
+   no function pointers, no optional unwrapping. **Every `pub inline fn` in
+   engine_protocol.zig is an operation**, and a comptime check makes each
+   adapter declare each one with exactly its types - a missing or mis-typed
+   operation is a compile error. Helpers built over operations are plain
+   `pub fn`s.
+3. **Ownership is in the types.** A `JSValue` parameter is borrowed for the
+   call. What the caller must release has an owning type - `engine.Owned`
+   (`release()` or `take()`, exactly once), `Completion`, `CallbackFunction`,
+   `CallbackInterface`, `PromiseCapability` - and its declaration says so.
+   Nothing crosses the seam as an untyped engine pointer or with a flag saying
+   who frees it. "Every `v8_*` return is owned" is an adapter-internal rule.
+4. **A platform object converts in its relevant realm.** Every operation turns
+   an `.instance` into its wrapper in `instance.ctx`, whichever realm it
+   entered. Results are made in the current realm, `engine.currentRealm()` -
+   null outside script, never "whatever context is entered".
+5. **Capabilities are tri-state comptime constants.** `engine.capabilities.X`
+   is `.native`, `.emulated` or `.unsupported`. A gated operation compiles only
+   inside `if (engine.capabilities.X != .unsupported)`, and the host implements
+   the declared fallback for the rest; nothing assumes V8. The no-snapshot
+   startup path keeps working, because JavaScriptCore runs on it.
+6. **A new engine need is a new protocol operation, named after the spec
+   concept** - an ECMAScript abstract operation, a WebIDL or HTML algorithm -
+   or, where there is no spec, after the engine concern. Never a pass-through
+   with a V8-shaped signature: if the JavaScriptCore C API could not implement
+   it, it is shaped like V8. The integrator owns engine_protocol.zig; request
+   the operation the way you request a grant. It lands with its V8
+   implementation, entries in the JavaScriptCore, QuickJS and test adapters
+   (`error.NotSupported` where they cannot answer), a tests/v8 test with values
+   made the way the binding makes them, and its line in docs/engine-protocol.md.
+7. **The runtime Engine table is transitional.** `runtime.EngineInterface`
+   (src/runtime/engine_interface.zig, reached through `ctx.getEngine()`)
+   predates the protocol. Nothing new calls it and nothing is added to it; it
+   is deleted when its last callers - the paused lanes' held files among them -
+   have moved. The lint below does not count table calls:
+   `grep -rn 'getEngine()' src tools` does.
+8. **Existing debt is paid file by file.** Editing a file that makes direct V8
+   calls or table calls means moving that file onto the protocol in the same
+   change, by its recipes.
 
 **Checked, and `zig build test` runs the check:**
 
@@ -521,7 +547,9 @@ pair the baseline lacks - which catches a swap. The baseline only goes down;
 when it reaches zero, "v8" leaves the non-adapter modules' imports in build.zig
 and the module graph enforces the rule. Report the baseline's total in every
 summary, beside blocking files and passing subtests. Why this rule exists:
-[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md).
+[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md);
+why the seam is a protocol designed whole:
+[Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md).
 
 ---
 
@@ -782,6 +810,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
 - [Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md) - An engine reached from everywhere cannot be swapped anywhere; hold the seam with a ratchet before the coupling grows.
+- [Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md) - Survey every need by intent, design the whole protocol against the second engine, then migrate by recipe - a seam grown one call site at a time is the first engine's API with the names changed.
 - [A `.local`-tagged JSValue handle is a borrowed Global, not a V8 Local](docs/lessons/architecture-a-local-tagged-handle-is-a-borrowed-global.md) - Test an Engine operation with values made the way the binding makes them, not with hand-built ones.
 - [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
 - [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
