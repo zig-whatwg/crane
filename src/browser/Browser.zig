@@ -86,6 +86,19 @@ fn firstUsableSnapshot(
     return null;
 }
 
+/// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
+/// and "notify about rejected promises" (html/rejected_promises.zig), and
+/// HostLoadImportedModule and HostGetImportMetaProperties - import() in a
+/// Window realm loads through the document's module map
+/// (html/script_execution.zig).
+const window_agent_hooks: engine.HostHooks = blk: {
+    const html = @import("html");
+    var hooks = html.rejected_promises.hooks;
+    hooks.loadImportedModule = html.script_execution.module_hooks.loadImportedModule;
+    hooks.importMetaUrl = html.script_execution.module_hooks.importMetaUrl;
+    break :blk hooks;
+};
+
 /// The engine, started with the snapshot of the first candidate it takes
 /// (engine.initializeEngine refuses a blob this build cannot restore).
 const EngineStart = struct {
@@ -196,12 +209,11 @@ pub const Browser = struct {
         // HTML "obtain a similar-origin window agent": [[CanBlock]] false -
         // Atomics.wait() throws a TypeError rather than freezing the page's
         // one thread, as Blink's main thread does; a dedicated worker's agent
-        // keeps it - and the host's hooks: HostPromiseRejectionTracker and
-        // "notify about rejected promises" (html/rejected_promises.zig).
+        // keeps it - and the host's hooks (window_agent_hooks).
         const agent = engine.createAgent(.{
             .can_block = false,
             .from_snapshot = from_snapshot,
-            .hooks = &@import("html").rejected_promises.hooks,
+            .hooks = &window_agent_hooks,
         }) catch return error.V8InitFailed;
         const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(agent));
         v8.ffi.v8_Isolate_Enter(isolate);
@@ -242,9 +254,6 @@ pub const Browser = struct {
         v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
             log.warn("Failed to initialize ShadowRealm support: {}", .{err});
         };
-
-        // import() in a Window realm loads through the document's module map.
-        @import("html").script_execution.installDynamicImport(isolate);
 
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
@@ -330,7 +339,6 @@ pub const Browser = struct {
             // Release the rejection tracker's promise handles while the
             // isolate that owns them still exists.
             @import("html").rejected_promises.releaseTracked();
-            @import("html").script_execution.uninstallDynamicImport(isolate);
 
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.
