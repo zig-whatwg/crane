@@ -1,6 +1,7 @@
 //! The engine protocol's ECMAScript value operations (design section 4.5),
 //! as V8 implements them: Get, Set, DefinePropertyOrThrow, HasProperty,
-//! Type, SameValue, and Infra "parse JSON bytes to a JavaScript value".
+//! Type, SameValue, and Infra "parse JSON bytes to a JavaScript value" and
+//! "serialize a JavaScript value to JSON bytes".
 //!
 //! Each enters the realm it is given. What script throws (a getter, a
 //! setter, a proxy trap, JSON.parse) is left pending and comes back as
@@ -229,6 +230,32 @@ pub fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     const local = ffi.v8_JSON_Parse_FromBuffer(entered.context(), text.ptr, @intCast(text.len)) orelse
         return error.ExceptionPending;
     return support.owned(ffi.v8_Value_ToGlobal(entered.isolate, @ptrCast(local)) orelse return error.OperationFailed);
+}
+
+/// Infra "serialize a JavaScript value to JSON bytes". OWNED (`allocator`).
+pub fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]u8 {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const object = try support.ownGlobal(entered, value);
+    defer ffi.v8_Global_Dispose(object);
+    // 1. Let string be the result of serializing a JavaScript value to a
+    //    JSON string given value:
+    //    1. Let result be ? Call(%JSON.stringify%, undefined, « value »):
+    //       what it throws is left pending.
+    var no_representation = false;
+    const string = ffi.v8_JSON_StringifyValue(entered.context(), object, &no_representation) orelse
+        //  2. If result is undefined, then throw a TypeError.
+        return if (no_representation) error.TypeError else error.ExceptionPending;
+    defer ffi.v8_Global_Dispose(string);
+    // 2. Return the result of running UTF-8 encode on string. JSON.stringify
+    //    escapes a lone surrogate (ES2019's well-formed JSON.stringify), so
+    //    the string is scalar values and V8's UTF-8 is that encoding.
+    const length = ffi.v8_String_Utf8Length(@ptrCast(string));
+    if (length < 0) return error.OperationFailed;
+    const bytes = try allocator.alloc(u8, @intCast(length));
+    errdefer allocator.free(bytes);
+    if (bytes.len > 0 and ffi.v8_String_WriteUtf8(@ptrCast(string), bytes.ptr, length) != length) return error.OperationFailed;
+    return bytes;
 }
 
 /// WebIDL "create a simple exception" of type SyntaxError: Construct(`realm`'s

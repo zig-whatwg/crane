@@ -634,6 +634,115 @@ test "protocol: JSON bytes parse to a value, a BOM is dropped, and a SyntaxError
     try std.testing.expect(try holds("jsonError", thrown, "jsonError instanceof SyntaxError ? 1 : 0"));
 }
 
+/// serializeJsonToBytes of `value` in `ctx`, run under a TryCatch: the
+/// result, and what was thrown (OWNED, or null).
+const Serialized = struct {
+    ctx: runtime.Context,
+    value: runtime.JSValue,
+    result: protocol.Error![]u8 = undefined,
+    thrown: ?*ffi.Value = null,
+
+    fn of(ctx: runtime.Context, value: runtime.JSValue) Serialized {
+        var self: Serialized = .{ .ctx = ctx, .value = value };
+        self.thrown = thrownBy(&self);
+        return self;
+    }
+
+    fn run(self: *Serialized) void {
+        self.result = protocol.serializeJsonToBytes(self.ctx, self.value, std.testing.allocator);
+    }
+
+    fn deinit(self: Serialized) void {
+        if (self.result) |bytes| std.testing.allocator.free(bytes) else |_| {}
+        if (self.thrown) |t| ffi.v8_Global_Dispose(t);
+    }
+
+    fn expectBytes(self: Serialized, expected: []const u8) !void {
+        try std.testing.expect(self.thrown == null);
+        try std.testing.expectEqualStrings(expected, try self.result);
+    }
+};
+
+test "protocol: a value serializes to JSON bytes through %JSON.stringify%, as UTF-8" {
+    const ctx = try realm();
+    // The intrinsic, whatever script did to the global JSON.
+    _ = try evalInt("globalThis.JSON = { stringify() { return '\"replaced\"'; } }; 1");
+
+    const text = Serialized.of(ctx, runtime.JSValue.fromStringRef("hello world"));
+    defer text.deinit();
+    try text.expectBytes("\"hello world\"");
+
+    const object = try Made.of("({ foo: 'bar', n: [1, null], skip: undefined })");
+    defer object.deinit();
+    const serialized = Serialized.of(ctx, object.value());
+    defer serialized.deinit();
+    try serialized.expectBytes("{\"foo\":\"bar\",\"n\":[1,null]}");
+
+    // UTF-8 encode: a supplementary character is four bytes; a lone
+    // surrogate never reaches it - JSON.stringify escapes one.
+    const astral = try Made.of("'\\u{1D306}'");
+    defer astral.deinit();
+    const astral_bytes = Serialized.of(ctx, astral.value());
+    defer astral_bytes.deinit();
+    try astral_bytes.expectBytes("\"\xF0\x9D\x8C\x86\"");
+    const lone = try Made.of("'\\uDF06\\uD834'");
+    defer lone.deinit();
+    const lone_bytes = Serialized.of(ctx, lone.value());
+    defer lone_bytes.deinit();
+    try lone_bytes.expectBytes("\"\\udf06\\ud834\"");
+}
+
+test "protocol: no JSON representation is a TypeError, and what the serializer throws is pending" {
+    const ctx = try realm();
+    // 2. JSON.stringify returned undefined: the caller throws a TypeError,
+    //    nothing is thrown yet.
+    const nothing = Serialized.of(ctx, .undefined);
+    defer nothing.deinit();
+    try std.testing.expectError(error.TypeError, nothing.result);
+    try std.testing.expect(nothing.thrown == null);
+    const symbol = try Made.of("Symbol('foo')");
+    defer symbol.deinit();
+    const from_symbol = Serialized.of(ctx, symbol.value());
+    defer from_symbol.deinit();
+    try std.testing.expectError(error.TypeError, from_symbol.result);
+    try std.testing.expect(from_symbol.thrown == null);
+    const function = try Made.of("(function () {})");
+    defer function.deinit();
+    const from_function = Serialized.of(ctx, function.value());
+    defer from_function.deinit();
+    try std.testing.expectError(error.TypeError, from_function.result);
+
+    // 1. "? Call": a cycle's TypeError and a getter's own exception propagate.
+    const cycle = try Made.of("(() => { const a = { b: 1 }; a.a = a; return a; })()");
+    defer cycle.deinit();
+    const from_cycle = Serialized.of(ctx, cycle.value());
+    defer from_cycle.deinit();
+    try std.testing.expectError(error.ExceptionPending, from_cycle.result);
+    try std.testing.expect(try holds("cycleError", from_cycle.thrown orelse return error.NothingThrown, "cycleError instanceof TypeError ? 1 : 0"));
+    const getter = try Made.of("({ get foo() { throw globalThis.fromGetter = new RangeError('bar'); } })");
+    defer getter.deinit();
+    const from_getter = Serialized.of(ctx, getter.value());
+    defer from_getter.deinit();
+    try std.testing.expectError(error.ExceptionPending, from_getter.result);
+    try std.testing.expect(try holds("getterError", from_getter.thrown orelse return error.NothingThrown, "getterError === globalThis.fromGetter ? 1 : 0"));
+}
+
+test "protocol: serializing to JSON bytes leaves no Global behind" {
+    const ctx = try realm();
+    const object = try Made.of("({ a: [1, 2, { b: 'c' }] })");
+    defer object.deinit();
+    const round = struct {
+        fn run(c: runtime.Context, value: runtime.JSValue) !void {
+            std.testing.allocator.free(try protocol.serializeJsonToBytes(c, value, std.testing.allocator));
+            try std.testing.expectError(error.TypeError, protocol.serializeJsonToBytes(c, .undefined, std.testing.allocator));
+        }
+    }.run;
+    try round(ctx, object.value());
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, object.value());
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+}
+
 const Reports = struct {
     count: usize = 0,
     realm: ?protocol.Context = null,

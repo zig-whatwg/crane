@@ -146,7 +146,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 | Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint`, `queueMicrotask`, `extractErrorInformation` |
 | Modules [module_scripts] | `parseModule`, `parseJSONModule`, `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
 | Callbacks (WebIDL) | `invokeCallbackFunction`, `callUserObjectOperation`, `isCallable`, `takeCallbackFunction` / `takeCallbackInterface` (transitional) |
-| ECMAScript values | `getProperty`, `setProperty`, `defineOwnProperty`, `hasProperty`, `typeOf`, `sameValue`, `toBoolean`, `retainValue`, `releaseValue`, `throwValue`, `completionOf`, `parseJsonToValue` |
+| ECMAScript values | `getProperty`, `setProperty`, `defineOwnProperty`, `hasProperty`, `typeOf`, `sameValue`, `toBoolean`, `retainValue`, `releaseValue`, `throwValue`, `completionOf`, `parseJsonToValue`, `serializeJsonToBytes` |
 | WebIDL: ES to IDL | `convertToDOMString`, `convertToUSVString`, `convertToUnrestrictedDouble`, `convertToPlatformObject`, `convertToSequence*`, `convertToRecordOfStrings`, `getCopyOfBufferSourceBytes`, `iterate`, `getIterator`, `iteratorNext`, `iteratorReturn`, `iteratorResult`, `releaseIteratorRecord` |
 | WebIDL: IDL to ES | `createSequenceOfValues`, `createSequenceOfPlatformObjects`, `createDictionaryObject`, `createObservableArray`, `createFrozenArray`, `createAsyncIterator` |
 | Exceptions | `createSimpleException`, `createDOMException` |

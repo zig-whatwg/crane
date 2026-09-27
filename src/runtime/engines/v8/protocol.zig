@@ -333,6 +333,7 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
 pub const completionOf = @import("protocol_completion.zig").completionOf;
 
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
+pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL

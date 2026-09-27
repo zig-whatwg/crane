@@ -12455,3 +12455,31 @@ Global<Value>* v8_Object_GetCatchingWithSite(
 
 } // extern "C"
 // ---- end lane: protocol ----
+// ---- lane: networking ----
+extern "C" {
+
+/// Infra "serialize a JavaScript value to a JSON string", steps 1-2, as
+/// ffi.zig documents. JSON::Stringify runs the intrinsic %JSON.stringify% and
+/// turns its result into a String with ToString, so a result of undefined
+/// arrives as the string "undefined" - which no JSON text can be (a string
+/// is quoted), so that string is how undefined is recognised. What the
+/// serializer throws is left pending: there is no TryCatch here.
+Global<Value>* v8_JSON_StringifyValue(Global<Context>* context, Global<Value>* value, bool* no_representation) {
+    *no_representation = false;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate || !context || !value) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<String> json;
+    if (!JSON::Stringify(ctx, value->Get(isolate)).ToLocal(&json)) return nullptr;
+    static constexpr char kUndefined[] = "undefined";
+    if (json->Length() == sizeof(kUndefined) - 1 && json->StringEquals(String::NewFromUtf8Literal(isolate, kUndefined))) {
+        *no_representation = true;
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, json));
+}
+
+} // extern "C"
+// ---- end lane: networking ----

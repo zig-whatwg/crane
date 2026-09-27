@@ -3396,3 +3396,14 @@ pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Val
 /// v8_Object_GetCatching, and the throw site as v8_Function_CallCatchingWithSite.
 pub extern fn v8_Object_GetCatchingWithSite(context: *Context, object: *Value, key: [*]const u8, key_len: c_int, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 // ---- end lane: protocol ----
+// ---- lane: networking ----
+
+/// Infra "serialize a JavaScript value to a JSON string", steps 1-2: ?
+/// Call(%JSON.stringify%, undefined, « value ») in `context`'s realm, through
+/// JSON::Stringify - the intrinsic, whatever script did to the global JSON.
+/// A new Global<String> the caller owns. Null with `no_representation.*`
+/// true: JSON.stringify returned undefined, and nothing is thrown. Null with
+/// it false: what the serializer threw is pending (or the isolate is
+/// terminating).
+pub extern fn v8_JSON_StringifyValue(context: *Context, value: *Value, no_representation: *bool) ?*Value;
+// ---- end lane: networking ----
