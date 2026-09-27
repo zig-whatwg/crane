@@ -9,4 +9,6 @@
 
 **Fix**: `engine.completionOf(realm, steps, data) Error!?Owned` - ECMAScript Completion(...): run the steps; null on a normal completion, the thrown value (OWNED, nothing pending) on a throw completion. The size conversion runs under it, and the thrown value errors the stream (add343ddb). Test: crane/eb-writable-size-valueof.html.
 
+**Also**: `engine.parseJsonToValue` leaves its SyntaxError pending, as JSON.parse would. XHR's `response` getter ("if that threw an exception, then return null") and Fetch's consume body ("if that threw an exception, then run errorSteps") both read that as a completion, so both parse under `completionOf` - a getter that returned null with the exception still pending would have thrown it from `xhr.response` instead (2026-09-27, lane/networking).
+
 **Takeaway**: **Wherever the spec reads a completion instead of writing "?", run the step under `engine.completionOf` - a conversion's throw is part of the algorithm's result, not the caller's problem.**
