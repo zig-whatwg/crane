@@ -62,6 +62,16 @@ pub const engine = @import("engine.zig");
 /// and src/runtime/engine_protocol.zig forwards every operation to
 /// `protocol`.
 pub const protocol = @import("protocol.zig");
+/// The protocol's module side, for the legacy import() / import.meta bridge
+/// in html/script_execution.zig. TODO(protocol): removed when Browser creates
+/// its agent with engine.createAgent (navigation lane resume).
+pub const protocol_modules = @import("protocol_modules.zig");
+/// V8's import.meta callback for an agent without HostHooks, for the same
+/// bridge. TODO(protocol): removed when Browser creates its agent with
+/// engine.createAgent (navigation lane resume).
+pub fn installLegacyImportMetaUrl(isolate: *ffi.Isolate, callback: ffi.ImportMetaUrlCallback) void {
+    ffi.v8_Isolate_SetImportMetaUrlCallback(isolate, callback);
+}
 pub const v8_engine_interface = engine.v8_engine_interface;
 
 /// Type conversions between Zig and V8
