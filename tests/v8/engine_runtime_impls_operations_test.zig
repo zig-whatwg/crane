@@ -822,6 +822,36 @@ test "protocol: retainValue holds a primitive by value and anything else as a ha
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
 }
 
+test "protocol: a string's lone surrogates round-trip through retainValue unchanged" {
+    const ctx = try realm();
+    // A JSValue string is WTF-8: a lone surrogate is its three-byte form (ED
+    // A0..BF xx), as conversions.fromV8Value writes it, and a pair is the
+    // four-byte form of its code point.
+    const cases = [_]struct { wtf8: []const u8, script: []const u8 }{
+        .{ .wtf8 = "\xED\xBA\xAD", .script = "'\\uDEAD'" },
+        .{ .wtf8 = "\xED\xBC\x86\xED\xA0\xB4", .script = "'\\uDF06\\uD834'" },
+        .{ .wtf8 = "a\xED\xBA\xAD\xF0\x9D\x8C\x86b", .script = "'a\\uDEAD\\uD834\\uDF06b'" },
+        .{ .wtf8 = "\xF0\x9D\x8C\x86", .script = "'\\uD834\\uDF06'" },
+        .{ .wtf8 = "plain", .script = "'plain'" },
+    };
+    for (cases) |case| {
+        // Into the engine: the code units script would write.
+        const held = try protocol.retainValue(ctx, runtime.JSValue.fromStringRef(case.wtf8));
+        defer held.release();
+        try expose("roundTripped", held.value);
+        const check = try std.fmt.allocPrint(std.testing.allocator, "roundTripped === {s} ? 1 : 0", .{case.script});
+        defer std.testing.allocator.free(check);
+        if (try eval(check) != 1) {
+            std.debug.print("{any} did not arrive as {s}\n", .{ case.wtf8, case.script });
+            return error.CodeUnitsChanged;
+        }
+        // And back out: a DOMString keeps them, as the same WTF-8.
+        const back = try protocol.convertToDOMString(ctx, held.value, std.testing.allocator);
+        defer std.testing.allocator.free(back);
+        try std.testing.expectEqualSlices(u8, case.wtf8, back);
+    }
+}
+
 test "protocol: ToBoolean of engine values, and a boolean dictionary member read through it" {
     const ctx = try realm();
     const falsy = try evalOwned("[0n, '', NaN, -0, null, undefined, false]");

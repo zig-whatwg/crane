@@ -3252,6 +3252,11 @@ pub extern fn v8_Object_IsOwnEnumerableCatching(context: *Context, object: *Valu
 
 /// Get(O, key) for a String or Symbol `key` (the key itself, not its UTF-8).
 pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key: *Value, threw: *bool) ?*Value;
+
+/// A String of `length` UTF-16 code units, lone surrogates kept. A new
+/// Global the caller owns, as a Value (v8_Global_Dispose); null when V8
+/// refuses it (too long).
+pub extern fn v8_Value_StringFromTwoByte(isolate: *Isolate, data: [*]const u16, length: c_int) ?*Value;
 // ---- end lane: engine-boundary ----
 // ---- lane: page-realm ----
 
