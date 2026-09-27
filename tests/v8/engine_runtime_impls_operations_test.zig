@@ -718,8 +718,18 @@ test "protocol: the diagnostics tier reports the agent's heap and the adapter's 
     try std.testing.expect(statistics.realm_count >= 1);
     const counters = try protocol.diagnosticCounters(std.testing.allocator);
     defer std.testing.allocator.free(counters);
-    try std.testing.expectEqual(@as(usize, 4), counters.len);
     try std.testing.expectEqualStrings("live_context_globals", counters[1].name);
+    // The four live-handle counters, then - where the Phase 5 instrument is
+    // compiled in (safe builds) - the agent-ownership pair the WPT runner
+    // journals.
+    if (v8.isolate_ownership.mode == .off) {
+        try std.testing.expectEqual(@as(usize, 4), counters.len);
+    } else {
+        try std.testing.expectEqual(@as(usize, 6), counters.len);
+        try std.testing.expectEqualStrings("ownership_checks", counters[4].name);
+        try std.testing.expectEqualStrings("ownership_violations", counters[5].name);
+        try std.testing.expect(counters[4].value >= counters[5].value);
+    }
 }
 
 test "protocol: a platform object in a realm that has wrapped nothing has no wrapper" {
