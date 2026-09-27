@@ -27,6 +27,7 @@ const js = @import("streams_js.zig");
 const srd = @import("streams_readable.zig");
 const BodyPipe = fetch.internal.BodyPipe;
 const fetch_body = @import("fetch_body.zig");
+const engine = @import("engine");
 
 // Exposed for tests/v8's Deferred lifetime test.
 pub const streams_js = @import("streams_js.zig");
@@ -223,100 +224,92 @@ fn errorWithAbortReason(instance: *runtime.Instance, stream: *runtime.Instance) 
 /// Constructor - Creates a Response with optional body and init
 /// Spec: https://fetch.spec.whatwg.org/#dom-response
 pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
+    // 1-2. This's response is a new response, its headers a new Headers
+    //      with guard "response" (init, InternalState.headers_guard).
     const instance = try init(ctx.allocator, State, &Response.vtable, ctx);
     errdefer deinit(instance);
+    const internal = instance.getState(State).own._internal.?;
 
+    // 3-4. Let bodyWithType be null; if body is non-null, set it to the
+    //      result of extracting body.
+    var body_with_type: ?fetch_body.Extracted = null;
+    defer if (body_with_type) |*b| b.deinit();
+    if (body.wasPassed()) if (body.value) |body_init| {
+        body_with_type = fetch_body.extract(internal.allocator, body_init, false) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.TypeError => error.TypeError,
+        };
+    };
+
+    // 5. Perform initialize a response given this, init, and bodyWithType.
+    try initializeResponse(instance, if (init_data.wasPassed()) init_data.value else .{}, if (body_with_type) |*b| b else null);
+    return instance;
+}
+
+/// Fetch "initialize a response" given `instance`, `init`, and null or a
+/// body with type, whose body this takes.
+fn initializeResponse(instance: *runtime.Instance, init_dict: dictionaries.ResponseInit, body: ?*fetch_body.Extracted) !void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // "Initialize a response" - https://fetch.spec.whatwg.org/#initialize-a-response
-    if (init_data.wasPassed()) {
-        // Step 1: If init["status"] is not in the range 200 to 599, inclusive,
-        // then throw a RangeError.
-        if (init_data.value.status) |status| {
-            if (status < 200 or status > 599) {
-                return error.RangeError;
-            }
-        }
-
-        // Step 2: If init["statusText"] is not the empty string and does not
-        // match the reason-phrase token production, then throw a TypeError.
-        if (init_data.value.statusText) |status_text| {
-            if (!isReasonPhrase(status_text)) return error.TypeError;
-        }
-
-        // Step 3: Set response's response's status to init["status"].
-        if (init_data.value.status) |status| {
-            internal.response.status = status;
-        }
-
-        // Step 4: Set response's response's status message to
-        // init["statusText"]. The response keeps its OWN copy: this argument
-        // belongs to the WebIDL layer, which frees it when the constructor
-        // returns.
-        if (init_data.value.statusText) |status_text| {
-            try internal.response.setStatusMessage(status_text);
-        }
-
-        // Handle headers from init
-        if (init_data.value.headers) |headers_init| {
-            switch (headers_init) {
-                .sequence_byte_string_sequence => |outer_seq| {
-                    for (outer_seq) |inner_seq| {
-                        if (inner_seq.len >= 2) {
-                            try internal.response.header_list.append(inner_seq[0], inner_seq[1]);
-                        }
-                    }
-                },
-                .byte_string_byte_string_record => |entries| {
-                    for (entries) |entry| {
-                        try internal.response.header_list.append(entry.key, entry.value);
-                    }
-                },
-            }
-        }
+    // 1. If init["status"] is not in the range 200 to 599, inclusive, then
+    //    throw a RangeError.
+    if (init_dict.status) |status| {
+        if (status < 200 or status > 599) return error.RangeError;
     }
 
-    // No default status message: ResponseInit's `statusText` defaults to the
-    // empty string, and `new Response().statusText` is "" in every engine.
-    // Inventing "OK" from the status code was a deviation, and it pointed the
-    // field at a string literal that the binding layer then tried to free.
+    // 2. If init["statusText"] is not the empty string and does not match
+    //    the reason-phrase token production, then throw a TypeError.
+    if (init_dict.statusText) |status_text| {
+        if (!isReasonPhrase(status_text)) return error.TypeError;
+    }
 
-    // "Initialize a response" step 6, with the result of extracting body
-    // (the constructor's steps 2-3: "If body is non-null, then set bodyWithType
-    // to the result of extracting body").
-    if (body.wasPassed()) {
-        if (body.value) |body_init| {
-            // Step 6.1: If response's status is a null body status, throw a
-            // TypeError.
-            if (fetch.internal.isNullBodyStatus(internal.response.status)) return error.TypeError;
+    // 3. Set response's response's status to init["status"].
+    if (init_dict.status) |status| internal.response.status = status;
 
-            var extracted = fetch_body.extract(internal.allocator, body_init, false) catch |err| return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                error.TypeError => error.TypeError,
-            };
-            defer extracted.deinit();
+    // 4. Set response's response's status message to init["statusText"].
+    //    The response keeps its OWN copy: this argument belongs to the
+    //    WebIDL layer, which frees it when the call returns. (No default
+    //    message: statusText defaults to the empty string.)
+    if (init_dict.statusText) |status_text| try internal.response.setStatusMessage(status_text);
 
-            // Step 6.2: Set response's body to body's body.
-            internal.response.body = extracted.takeBody();
-            if (extracted.stream) |stream| {
-                // A ReadableStream is the body's stream itself.
-                state.own.body = stream;
-                internal.body_pin.hold(stream);
-            }
-
-            // Step 6.3: If body's type is non-null and response's header
-            // list does not contain `Content-Type`, then append
-            // (`Content-Type`, body's type).
-            if (extracted.content_type) |content_type| {
-                if (!internal.response.header_list.contains("Content-Type")) {
-                    try internal.response.header_list.append("Content-Type", content_type);
+    // 5. If init["headers"] exists, then fill response's headers with it.
+    if (init_dict.headers) |headers_init| {
+        switch (headers_init) {
+            .sequence_byte_string_sequence => |outer_seq| {
+                for (outer_seq) |inner_seq| {
+                    if (inner_seq.len >= 2) {
+                        try internal.response.header_list.append(inner_seq[0], inner_seq[1]);
+                    }
                 }
-            }
+            },
+            .byte_string_byte_string_record => |entries| {
+                for (entries) |entry| {
+                    try internal.response.header_list.append(entry.key, entry.value);
+                }
+            },
         }
     }
 
-    return instance;
+    // 6. If body is non-null, then:
+    const b = body orelse return;
+    // 6.1. If response's status is a null body status, then throw a
+    //      TypeError.
+    if (fetch.internal.isNullBodyStatus(internal.response.status)) return error.TypeError;
+    // 6.2. Set response's body to body's body.
+    internal.response.body = b.takeBody();
+    if (b.stream) |stream| {
+        // A ReadableStream is the body's stream itself.
+        state.own.body = stream;
+        internal.body_pin.hold(stream);
+    }
+    // 6.3. If body's type is non-null and response's header list does not
+    //      contain `Content-Type`, then append (`Content-Type`, body's type).
+    if (b.content_type) |content_type| {
+        if (!internal.response.header_list.contains("Content-Type")) {
+            try internal.response.header_list.append("Content-Type", content_type);
+        }
+    }
 }
 
 // === Static Methods ===
@@ -359,36 +352,38 @@ pub fn call_static_redirect(instance: *runtime.Instance, url: runtime.USVString,
     return redirect_instance;
 }
 
-/// Response.json(data, init) - static method
-/// Creates a Response from JSON-serialized data
-/// Named call_json_static to avoid collision with instance method call_json
+/// The static `json(data, init)` method.
 ///
-/// Note: Takes instance as first param to match V8 static method calling convention.
-/// The instance is a template instance that provides allocator/context.
+/// Spec: https://fetch.spec.whatwg.org/#dom-response-json
 pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
-    const ctx = instance.ctx;
+    // The current realm: the static method's own (`instance` stands in for
+    // it when no script is running).
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const allocator = realm.allocator;
 
-    // Step 1: Let bytes be the result of running serialize a JavaScript value to JSON bytes on data
-    // For now, convert JSValue to string representation
-    const body_bytes: []const u8 = switch (data) {
-        .string => |s| s.data,
-        .boolean => |b| if (b) "true" else "false",
-        .null => "null",
-        .undefined => "undefined",
-        .number => "0", // TODO: proper number serialization
-        else => "{}",
-    };
+    // 1. Let bytes be the result of running serialize a JavaScript value to
+    //    JSON bytes on data.
+    const bytes = try engine.serializeJsonToBytes(realm, data, allocator);
+    defer allocator.free(bytes);
 
-    // Create a body from the JSON bytes
-    const body = typedefs.BodyInit{ .xmlhttp_request_body_init = .{ .usvstring = body_bytes } };
-    const body_opt = webidl.Opt(?typedefs.BodyInit).passed(body);
-    const json_instance = try call_constructor(ctx, body_opt, init_data);
-    const json_state = json_instance.getState(State);
-    const internal = json_state.own._internal.?;
+    // 2. Let body be the result of extracting bytes: a body of them (a byte
+    //    sequence's type is null; step 4 gives this one its type).
+    var body: fetch_body.Extracted = .{ .allocator = allocator };
+    defer body.deinit();
+    body.body = try fetch.internal.Body.fromBytes(allocator, bytes);
+    body.content_type = try allocator.dupe(u8, "application/json");
 
-    try internal.response.header_list.set("Content-Type", "application/json;charset=utf-8");
+    // 3. Let responseObject be the result of creating a Response object,
+    //    given a new response, "response", and the current realm.
+    const response_object = try init(allocator, State, &Response.vtable, realm);
+    errdefer deinit(response_object);
 
-    return json_instance;
+    // 4. Perform initialize a response given responseObject, init, and
+    //    (body, "application/json").
+    try initializeResponse(response_object, if (init_data.wasPassed()) init_data.value else .{}, &body);
+
+    // 5. Return responseObject.
+    return response_object;
 }
 
 // === Property Getters ===

@@ -226,6 +226,9 @@ pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: 
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }
+pub fn serializeJsonToBytes(_: Context, _: JSValue, _: Allocator) Error![]u8 {
+    return error.NotSupported;
+}
 
 // 4.6 WebIDL: ECMAScript to IDL
 pub fn convertToDOMString(_: Context, _: JSValue, _: Allocator) Error![]u8 {

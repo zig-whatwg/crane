@@ -891,6 +891,16 @@ pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);
 }
 
+/// Infra "serialize a JavaScript value to JSON bytes": ? Call(%JSON.stringify%,
+/// undefined, « value ») - the intrinsic, whatever script did to the global
+/// JSON - UTF-8 encoded. TypeError when it returns undefined (`value` has no
+/// JSON representation: undefined, a function, a Symbol), with nothing
+/// thrown; what the serializer throws (a cycle, a BigInt, a getter or toJSON)
+/// is left pending: ExceptionPending. OWNED (`allocator`).
+pub inline fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]u8 {
+    return impl.serializeJsonToBytes(realm, value, allocator);
+}
+
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL
 // ============================================================================
