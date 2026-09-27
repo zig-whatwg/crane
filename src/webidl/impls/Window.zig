@@ -21,6 +21,7 @@ const std = @import("std");
 const log = std.log.scoped(.window);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -515,12 +516,10 @@ fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Deinitialize Window instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Mark as cleaned up in V8 wrapper cache to prevent double-free
-    // Window is in the wrapper cache, and context_manager.deinit cleans up Window
-    // before calling wrapper_cache.deinit. Without this marker, wrapper_cache
-    // would try to call deinit again.
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // The host is freeing the Window: its wrapper must not free it again.
+    // The realm's teardown frees the Window before the wrapper cache's, which
+    // would otherwise run this deinit a second time.
+    engine.platformObjectDestroyed(instance);
 
     // Clean up Window's own internal state
     const state = instance.getState(State);
@@ -637,9 +636,9 @@ pub fn setActiveWindowOnBrowsingContext(bc_ptr: *anyopaque, window_ptr: *anyopaq
 
 /// Set the V8 global object that this Window IS bound to (for cross-realm support)
 /// Called by context_manager.createWindowBoundToGlobal().
-pub fn setBoundV8Global(instance: *runtime.Instance, v8_global: *anyopaque) void {
+pub fn setBoundV8Global(instance: *runtime.Instance, global: *anyopaque) void {
     if (getInternal(instance)) |internal| {
-        internal.bound_v8_global = v8_global;
+        internal.bound_v8_global = global;
     }
 }
 
@@ -771,28 +770,13 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // This check is essential for sandbox security: sandboxed iframes without
     // allow-same-origin have opaque origins ("null") that never match the parent's
     // origin, so `parent.document` must throw SecurityError.
-    const v8 = @import("v8");
-    const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-
-    // Get the accessor Window for cross-origin security checks.
     //
-    // V8's context stack doesn't work correctly for cross-context property access:
-    // when accessing `parent.document` from an iframe, V8 enters the parent's context
-    // for the property access, making GetEnteredOrMicrotaskContext return the wrong context.
-    //
-    // We use a Zig-level accessor stack that is pushed/popped by script execution.
-    // This correctly tracks which Window is executing JavaScript code.
-    //
-    // If no accessor is on the stack, fall back to V8's current context.
-    // This handles:
-    // - Native/internal calls (no JavaScript on the stack)
-    // - Callbacks where we haven't pushed the accessor
-    const accessor_window: ?*runtime.Instance = v8.context_manager.getCurrentAccessorWindow() orelse blk: {
-        // No accessor on stack - fall back to V8's current context
-        const current_ctx = v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse break :blk null;
-        defer v8.ffi.v8_Context_Dispose(current_ctx);
-        break :blk v8.context_manager.getWindowForContext(current_ctx);
-    };
+    // The accessor is the window whose script reads `document`: the
+    // incumbent realm's (the realm of the script that made the call - the
+    // getter itself runs in this window's realm, so the current realm is not
+    // it), or with no script on the stack the current realm's. Neither - an
+    // internal call - is allowed below.
+    const accessor_window: ?*runtime.Instance = windowOfRealm(engine.incumbentRealm() orelse engine.currentRealm());
 
     // Safety check: if accessing own document (same Window), always allow.
     // This handles initialization cases where the entered context might not
@@ -1732,14 +1716,9 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
     // Step 2: the incumbent settings object. Its global - the posting window,
     // not the target - supplies the event's origin and source (steps 8.2 and
-    // 8.3). The entered context is the caller's: the iframe's, for
-    // `parent.postMessage(...)`.
-    const v8 = @import("v8");
-    const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const incumbent_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(v8_isolate) orelse
-        v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(incumbent_ctx);
-    const source_window = v8.context_manager.getWindowForContext(incumbent_ctx);
+    // 8.3): the iframe's, for `parent.postMessage(...)`.
+    const incumbent = engine.incumbentRealm() orelse engine.currentRealm() orelse return error.InvalidStateError;
+    const source_window = windowOfRealm(incumbent);
     const source_origin: []const u8 = if (source_window) |sw|
         if (getInternal(sw)) |sw_internal| effectiveOrigin(sw, sw_internal) else "null"
     else
@@ -1752,7 +1731,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Step 7: StructuredSerializeWithTransfer(message, transfer). Rethrow any
     // exceptions - which the serializer has already thrown, as the spec's
     // DataCloneError or as whatever script threw mid-walk.
-    var serialized = try SerializedMessage.serialize(allocator, message);
+    var serialized = try SerializedMessage.serialize(engine.currentRealm() orelse incumbent, allocator, message);
     errdefer serialized.deinit(allocator);
 
     const origin = try allocator.dupe(u8, source_origin);
@@ -1861,43 +1840,27 @@ const SerializedMessage = union(enum) {
     number: f64,
     /// Owned.
     string: []const u8,
-    /// V8's wire format, malloc'd by the serializer.
-    bytes: []u8,
+    /// The engine's serialization of an object, OWNED (the allocator).
+    serialized: engine.SerializedWithTransfer,
 
-    /// Step 7. Primitives and strings arrive already converted; an object goes
-    /// through V8's serializer, which throws the DataCloneError itself.
-    fn serialize(allocator: Allocator, value: runtime.JSValue) !SerializedMessage {
+    /// Step 7, in `realm`. Primitives and strings arrive already converted;
+    /// an object goes through the engine's serializer, which throws the
+    /// DataCloneError itself.
+    fn serialize(realm: runtime.Context, allocator: Allocator, value: runtime.JSValue) !SerializedMessage {
         return switch (value) {
             .undefined => .undefined,
             .null => .null,
             .boolean => |b| .{ .boolean = b },
             .number => |n| .{ .number = n },
             .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-            .handle => |h| blk: {
-                const v8 = @import("v8");
-                var no_transfer: [1]*v8.ffi.Value = undefined;
-                var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-                var size: usize = 0;
-                var code: c_int = 0;
-                const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
-                    @ptrCast(@alignCast(h.ptr)),
-                    &no_transfer,
-                    0,
-                    &size,
-                    &no_buffers,
-                    &code,
-                ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
-                break :blk .{ .bytes = bytes[0..size] };
-            },
-            // A platform object the binding handed over unwrapped. None is
-            // [Serializable] here yet.
-            .instance => error.DataCloneError,
+            // TODO: step 6 - the transfer list; none is passed yet.
+            .handle, .instance => .{ .serialized = try engine.structuredSerializeWithTransfer(realm, value, &.{}, noTransferables, null, allocator) },
         };
     }
 
-    /// Step 8.4, into the realm the caller has entered. The value is OWNED - a
-    /// string or a Global - and `createPostMessageEvent` takes it.
-    fn deserialize(self: *SerializedMessage) !runtime.JSValue {
+    /// Step 8.4, into `realm`. The value is OWNED - a string, or the
+    /// engine's - and `createPostMessageEvent` takes it.
+    fn deserialize(self: *SerializedMessage, realm: runtime.Context) !runtime.JSValue {
         switch (self.*) {
             .undefined => return runtime.JSValue.jsUndefined,
             .null => return runtime.JSValue.jsNull,
@@ -1907,13 +1870,9 @@ const SerializedMessage = union(enum) {
                 self.* = .undefined; // moved into the value
                 return .{ .string = .{ .data = s, .owned = true } };
             },
-            .bytes => |b| {
-                const v8 = @import("v8");
-                const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-                var code: c_int = 0;
-                const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
-                    return error.DataCloneError;
-                return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
+            .serialized => |serialized| {
+                const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers);
+                return value.take();
             },
         }
     }
@@ -1921,7 +1880,7 @@ const SerializedMessage = union(enum) {
     fn deinit(self: *SerializedMessage, allocator: Allocator) void {
         switch (self.*) {
             .string => |s| allocator.free(s),
-            .bytes => |b| @import("v8").ffi.v8_Free_SerializedBuffer(b.ptr),
+            .serialized => |*serialized| serialized.deinit(allocator),
             else => {},
         }
         self.* = .undefined;
@@ -1931,11 +1890,16 @@ const SerializedMessage = union(enum) {
     fn release(allocator: Allocator, value: runtime.JSValue) void {
         switch (value) {
             .string => |s| if (s.owned) allocator.free(s.data),
-            .handle => |h| @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
+            .handle => (engine.Owned{ .value = value }).release(),
             else => {},
         }
     }
 };
+
+/// No platform object is transferable yet (step 6 is a TODO).
+fn noTransferables(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
+    return .not_transferable;
+}
 
 /// A posted message waiting for its task: everything step 8 closes over.
 ///
@@ -1981,14 +1945,17 @@ fn runPostedMessage(context: ?*anyopaque) void {
     // Step 8.1.
     if (!posted.target_origin.admits(effectiveOrigin(target, internal))) return;
 
-    // A task runs from the event loop, not from V8: there is no HandleScope
-    // and no entered context unless it opens them, and wrapping the event for
-    // a listener without them is a V8 CHECK (SIGTRAP), not an error. Entering
-    // the TARGET's context also makes it the realm step 8.4 deserializes into.
-    // A null scope means that context is gone.
-    const v8 = @import("v8");
-    const scope = v8.JsScope.init(target.ctx) orelse return;
-    defer scope.deinit();
+    // The task runs in the TARGET's realm, the realm step 8.4 deserializes
+    // into. An error means that realm is gone.
+    engine.runTaskInRealm(target.ctx, deliverPostedMessage, posted) catch |err| {
+        log.debug("posted message not delivered: {}", .{err});
+    };
+}
+
+/// Steps 8.3-8.7, in the target's realm.
+fn deliverPostedMessage(data: ?*anyopaque) void {
+    const posted: *PostedMessage = @ptrCast(@alignCast(data.?));
+    const target = posted.target;
 
     // Step 8.3.
     const source: ?*runtime.Instance = if (posted.source) |sw|
@@ -1997,18 +1964,17 @@ fn runPostedMessage(context: ?*anyopaque) void {
         null;
 
     // Steps 8.4-8.5. A value that will not deserialize is a messageerror.
-    const data = posted.message.deserialize() catch {
+    const message = posted.message.deserialize(target.ctx) catch {
         fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, source);
         return;
     };
 
     // Step 8.7.
-    fireMessageEvent(target, "message", data, posted.origin, source);
+    fireMessageEvent(target, "message", message, posted.origin, source);
 }
 
 /// Fire `event_type` at `target` as a MessageEvent that takes `data`.
 fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, source: ?*runtime.Instance) void {
-    const v8 = @import("v8");
     const MessageEventImpl = @import("MessageEvent.zig");
     const event = MessageEventImpl.createPostMessageEvent(target.ctx.allocator, target.ctx, event_type, data, origin, source) catch {
         SerializedMessage.release(target.ctx.allocator, data);
@@ -2026,10 +1992,7 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
     // `await new Promise(r => addEventListener("message", r))` then read the
     // event after it was gone.
     if (runtime.SlabAllocator.generationOf(event) != generation) return;
-    if (event.ctx.getV8WrapperCacheStorage()) |cache_storage| {
-        const cache: *v8.WrapperCache = @ptrCast(@alignCast(cache_storage));
-        if (cache.get(event) != null) return;
-    }
+    if (engine.hasWrapper(event)) return;
     runtime.Instance.deinit(event);
 }
 
@@ -2222,8 +2185,8 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
             fn wrapper(ctx: ?*anyopaque, deadline: *event_loop.IdleDeadline) void {
                 _ = ctx;
                 _ = deadline;
-                // In full implementation: invoke the JS callback via V8
-                // v8.callFunction(callback, deadline_wrapper);
+                // In full implementation: invoke the JS callback with the
+                // deadline (engine.invokeCallbackFunction).
             }
         }.wrapper,
         @ptrCast(@constCast(&callback)), // Store callback reference
@@ -2446,16 +2409,18 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedP
     return null;
 }
 
-/// The entry global object, when it is a window: the window of the context
-/// V8 entered to run the current script.
+/// The entry global object, when it is a window: the global of the entry
+/// realm (engine.entryRealm).
 fn entryWindow() ?*runtime.Instance {
-    const v8 = @import("v8");
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    const context = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const window = v8.context_manager.getWindowForContext(context) orelse return null;
-    if (window.stateAs(State) == null) return null;
-    return window;
+    return windowOfRealm(engine.entryRealm());
+}
+
+/// `realm`'s global object, when it is a Window.
+fn windowOfRealm(realm: ?runtime.Context) ?*runtime.Instance {
+    const record = (realm orelse return null).getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(State) == null) return null;
+    return global;
 }
 
 /// `url` parsed against `document`'s base URL, serialized; owned. Failure is
