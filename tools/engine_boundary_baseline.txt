@@ -7,7 +7,7 @@ src/browser/Browser.zig @import("v8") 1
 src/browser/Browser.zig v8.V8EventLoop 3
 src/browser/Browser.zig v8.cleanupAll 1
 src/browser/Browser.zig v8.deinitializeShadowRealmSupport 1
-src/browser/Browser.zig v8.ffi 24
+src/browser/Browser.zig v8.ffi 22
 src/browser/Browser.zig v8.initializePlatformForRuntime 1
 src/browser/Browser.zig v8.initializeShadowRealmSupport 1
 src/browser/Browser.zig v8.isolate_allocator 1
@@ -20,7 +20,6 @@ src/browser/Browser.zig v8_Isolate_New 2
 src/browser/Browser.zig v8_Isolate_PerformMicrotaskCheckpoint 4
 src/browser/Browser.zig v8_Isolate_RequestGarbageCollection 5
 src/browser/Browser.zig v8_Isolate_SetAllowAtomicsWait 1
-src/browser/Browser.zig v8_context 1
 src/html/full.zig @import("worker_v8_context.zig") 1
 src/html/full.zig worker_v8_context.zig.WorkerV8Context 1
 src/html/module_script.zig @import("v8") 1
