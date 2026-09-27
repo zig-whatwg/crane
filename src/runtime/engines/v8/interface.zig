@@ -1505,12 +1505,16 @@ pub fn V8Interface(comptime Interface: type) type {
             // SetPrototypeProviderTemplate is NOT used because it uses the provider's
             // .prototype property, not an instance.
 
-            // Set class name
+            // Set class name. The template keeps the name itself
+            // (FunctionTemplate::SetClassName takes a Local), so this handle
+            // is released once it is set: it is made for every interface in
+            // every isolate, and a worker realm rebuilds every template.
             const name_str = v8.v8_String_NewFromUtf8(
                 isolate,
                 name.ptr,
                 @intCast(name.len),
             ).?;
+            defer v8.v8_String_Dispose(name_str);
             v8.v8_FunctionTemplate_SetClassName(template, name_str);
 
             // Set constructor length from the call_constructor function signature
@@ -1582,8 +1586,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetCallAsFunctionHandler(instance_tmpl, htmlAllCollectionCallHandler, null);
             }
 
-            // Get prototype template (only used for non-callback interfaces)
+            // Get prototype template (only used for non-callback interfaces).
+            // The function template owns it; this handle to it is ours, for
+            // the calls below.
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
+            defer v8.v8_ObjectTemplate_Dispose(proto_tmpl);
 
             // ========================================
             // INHERITANCE SETUP - MUST BE FIRST
@@ -1665,6 +1672,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     prop_name.ptr,
                     @intCast(prop_name.len),
                 ).?;
+                // SetAccessorProperty reads it as a Local; the template keeps its own.
+                defer v8.v8_String_Dispose(prop_name_str);
 
                 // Use callback from static store - SAME callback registered in registerExternalReferences()
                 // This ensures V8 snapshot restoration can reconnect the callback correctly
@@ -1713,6 +1722,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Create V8 number for constant value
                     const proto_v8_value = v8.v8_Number_New(isolate, @floatFromInt(proto_const_value));
+                    defer v8.v8_Value_Dispose(@ptrCast(proto_v8_value));
 
                     // Create string for constant name
                     const proto_name_str = v8.v8_String_NewFromUtf8(
@@ -1722,6 +1732,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     );
 
                     if (proto_name_str) |proto_const_name_v8| {
+                        // ObjectTemplate::Set keeps the key and value itself.
+                        defer v8.v8_String_Dispose(proto_const_name_v8);
                         // Set constant on prototype template with correct attributes
                         // V8 PropertyAttribute flags:
                         //   None = 0, ReadOnly = 1, DontEnum = 2, DontDelete = 4
@@ -3872,6 +3884,8 @@ pub fn V8Interface(comptime Interface: type) type {
             ) orelse {
                 std.debug.panic("Failed to create function template for method", .{});
             };
+            // ObjectTemplate::Set below keeps the method template itself.
+            defer v8.v8_FunctionTemplate_Dispose(method_tmpl);
 
             // Set method length (arity) - number of required parameters
             v8.v8_FunctionTemplate_SetLength(method_tmpl, arity);
@@ -3892,6 +3906,7 @@ pub fn V8Interface(comptime Interface: type) type {
             ) orelse {
                 std.debug.panic("Failed to create string for method name", .{});
             };
+            defer v8.v8_String_Dispose(name_str);
             // Per WebIDL spec §3.7.6, method properties should be:
             // { writable: true, enumerable: true, configurable: true }
             v8.v8_ObjectTemplate_SetWithAttributes(

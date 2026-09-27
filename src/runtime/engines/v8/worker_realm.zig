@@ -247,19 +247,26 @@ fn defineSelf(isolate: *ffi.Isolate, context: *ffi.Context) void {
 /// The interfaces a worker realm had before installForScope ran over it (the
 /// same set it always registered first). installForScope then installs every
 /// interface exposed to a dedicated worker.
+///
+/// Through registerGlobalFast, with the global taken once and released:
+/// registerGlobal takes the context's global for every call and never
+/// releases it, and a Global of the global proxy keeps the whole worker
+/// context alive after destroyWorkerRealm.
 fn registerWorkerInterfaces(isolate: *ffi.Isolate, context: *ffi.Context) void {
-    V8Interface(interfaces.URL).registerGlobal(isolate, context, "URL");
-    V8Interface(interfaces.URLSearchParams).registerGlobal(isolate, context, "URLSearchParams");
-    V8Interface(interfaces.Event).registerGlobal(isolate, context, "Event");
-    V8Interface(interfaces.EventTarget).registerGlobal(isolate, context, "EventTarget");
-    V8Interface(interfaces.DOMException).registerGlobal(isolate, context, "DOMException");
-    V8Interface(interfaces.WebSocket).registerGlobal(isolate, context, "WebSocket");
-    V8Interface(interfaces.CloseEvent).registerGlobal(isolate, context, "CloseEvent");
-    V8Interface(interfaces.MessageEvent).registerGlobal(isolate, context, "MessageEvent");
-    V8Interface(interfaces.MessagePort).registerGlobal(isolate, context, "MessagePort");
-    V8Interface(interfaces.MessageChannel).registerGlobal(isolate, context, "MessageChannel");
-    V8Interface(interfaces.Worker).registerGlobal(isolate, context, "Worker");
-    V8Interface(interfaces.Blob).registerGlobal(isolate, context, "Blob");
+    const global = ffi.v8_Context_Global(context) orelse return;
+    defer ffi.v8_Object_Dispose(global);
+    V8Interface(interfaces.URL).registerGlobalFast(isolate, context, global, "URL");
+    V8Interface(interfaces.URLSearchParams).registerGlobalFast(isolate, context, global, "URLSearchParams");
+    V8Interface(interfaces.Event).registerGlobalFast(isolate, context, global, "Event");
+    V8Interface(interfaces.EventTarget).registerGlobalFast(isolate, context, global, "EventTarget");
+    V8Interface(interfaces.DOMException).registerGlobalFast(isolate, context, global, "DOMException");
+    V8Interface(interfaces.WebSocket).registerGlobalFast(isolate, context, global, "WebSocket");
+    V8Interface(interfaces.CloseEvent).registerGlobalFast(isolate, context, global, "CloseEvent");
+    V8Interface(interfaces.MessageEvent).registerGlobalFast(isolate, context, global, "MessageEvent");
+    V8Interface(interfaces.MessagePort).registerGlobalFast(isolate, context, global, "MessagePort");
+    V8Interface(interfaces.MessageChannel).registerGlobalFast(isolate, context, global, "MessageChannel");
+    V8Interface(interfaces.Worker).registerGlobalFast(isolate, context, global, "Worker");
+    V8Interface(interfaces.Blob).registerGlobalFast(isolate, context, global, "Blob");
 }
 
 /// The other half of "run a worker" step 6: the platform object behind the
