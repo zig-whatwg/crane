@@ -836,6 +836,59 @@ test "protocol: iterator records - next, the result, return, and an async iterat
     try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.fromNumber(1), .sync));
 }
 
+/// The code points an iterator record yields, joined by "|".
+fn yieldedCodePoints(ctx: runtime.Context, record: *protocol.IteratorRecord, buffer: []u8) ![]const u8 {
+    var length: usize = 0;
+    while (true) {
+        const next = try protocol.iteratorNext(ctx, record);
+        defer next.release();
+        const result = try protocol.iteratorResult(ctx, next.value);
+        defer result.value.release();
+        if (result.done) return buffer[0..length];
+        const text = try protocol.convertToDOMString(ctx, result.value.value, allocator);
+        defer allocator.free(text);
+        if (length > 0) {
+            buffer[length] = '|';
+            length += 1;
+        }
+        @memcpy(buffer[length..][0..text.len], text);
+        length += text.len;
+    }
+}
+
+test "protocol: GetIterator of a primitive is its object's iterator - a string's code points; undefined and null are TypeErrors" {
+    const ctx = try realm();
+    var buffer: [64]u8 = undefined;
+    // GetMethod's GetV does ToObject: "a\u{1F600}b" iterates by code point
+    // (String.prototype[@@iterator]), as ReadableStream.from("...") does.
+    const record = try protocol.getIterator(ctx, runtime.JSValue.fromStringRef("a\u{1F600}b"), .sync);
+    defer protocol.releaseIteratorRecord(record);
+    try std.testing.expectEqualStrings("a|\u{1F600}|b", try yieldedCodePoints(ctx, record, &buffer));
+
+    // A string as an engine value, the same.
+    const handle = try Made.of("'xy'");
+    defer handle.deinit();
+    const handle_record = try protocol.getIterator(ctx, handle.value(), .sync);
+    defer protocol.releaseIteratorRecord(handle_record);
+    try std.testing.expectEqualStrings("x|y", try yieldedCodePoints(ctx, handle_record, &buffer));
+
+    // async: a string has no @@asyncIterator, so its sync iterator, awaited.
+    const async_record = try protocol.getIterator(ctx, runtime.JSValue.fromStringRef("z"), .async);
+    defer protocol.releaseIteratorRecord(async_record);
+    const first = try settledResult(ctx, try protocol.iteratorNext(ctx, async_record));
+    defer first.value.release();
+    try std.testing.expect(!first.done);
+    const z = try protocol.convertToDOMString(ctx, first.value.value, allocator);
+    defer allocator.free(z);
+    try std.testing.expectEqualStrings("z", z);
+
+    // ToObject of undefined or null throws a TypeError; a number is an
+    // object with no @@iterator - the TypeError of GetIterator's step 3.
+    try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.jsUndefined, .sync));
+    try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.jsNull, .async));
+    try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.fromNumber(1), .sync));
+}
+
 test "protocol: a frozen array" {
     const ctx = try realm();
     const values = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromStringRef("two") };

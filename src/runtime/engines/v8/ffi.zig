@@ -3285,4 +3285,9 @@ pub extern fn v8_Function_NewWithData(context: *Context, callback: FunctionCallb
 /// promise, a new Global<Value> the caller owns; null on failure or when both
 /// handlers are null. Unlike v8_Promise_Then, safe with a null handler.
 pub extern fn v8_Promise_ThenWithOptionalHandlers(context: *Context, promise: *Value, on_fulfilled: ?*Value, on_rejected: ?*Value) ?*Value;
+/// ECMAScript ToObject(value): the object itself, or a primitive's wrapper
+/// object of `context`'s realm. Null for undefined and null (ToObject's
+/// TypeError, for the caller to throw; nothing is thrown) or on failure. A new
+/// Global the caller owns.
+pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 // ---- end lane: protocol ----
