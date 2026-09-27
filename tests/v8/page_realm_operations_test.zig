@@ -1519,3 +1519,55 @@ test "legacy bridge: import.meta finds the host's module script through the reco
     try expectEval(base, "globalThis.metaUrl", "https://example.test/dir/meta.js");
     try expectEval(base, "delete globalThis.metaUrl", "true");
 }
+
+// ============================================================================
+// A DOMException's stack
+// ============================================================================
+
+test "constructing a DOMException leaves no handle behind, as constructing an Event does" {
+    _ = try realm();
+    ensurePools();
+    const isolate = isolate_once.?;
+    // DOMException's interface object, and Event's for the control.
+    v8.interface_bindings.registerAllInterfaces(isolate, context_once.?);
+
+    // What one handle costs in V8's count.
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+
+    // Construct `rounds` of one interface, collect them, and return the
+    // global-handle bytes left. The first construction may make what the rest
+    // reuse, so it runs first.
+    const rounds = 32;
+    const Measure = struct {
+        fn leftAfter(i: *ffi.Isolate, comptime construction: []const u8) !usize {
+            var reports = try run("void (" ++ construction ++ ");");
+            try std.testing.expectEqual(@as(usize, 0), reports.count);
+            ffi.v8_Isolate_RequestGarbageCollection(i);
+            const before = ffi.v8_Isolate_GetGlobalHandleBytes(i);
+            reports = try run("for (let i = 0; i < 32; i++) void (" ++ construction ++ ");");
+            try std.testing.expectEqual(@as(usize, 0), reports.count);
+            ffi.v8_Isolate_RequestGarbageCollection(i);
+            return ffi.v8_Isolate_GetGlobalHandleBytes(i) -| before;
+        }
+    };
+    // The control: the same constructor path, cache and all, without a stack.
+    const events = try Measure.leftAfter(isolate, "new Event('x')");
+    // A DOMException gets a `stack` (WebIDL: when the implementation gives
+    // errors one), captured by running a script in its realm: that script,
+    // the global object it went through, and its completion value were three
+    // Globals left per construction, and the global object is the whole page.
+    const exceptions = try Measure.leftAfter(isolate, "new DOMException('m', 'AbortError')");
+    if (exceptions -| events >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} DOMExceptions left {d} bytes of global handles; {d} Events left {d} ({d} bytes a handle)\n", .{ rounds, exceptions, rounds, events, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    // And it still has its stack.
+    const reports = try run("if (typeof new DOMException('m').stack !== 'string') throw new Error('no stack');");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
