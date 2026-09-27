@@ -254,6 +254,23 @@ fn defineOnChildWindow(isolate: *ffi.Isolate, context: *ffi.Context, global: *ff
     };
 }
 
+/// A frame's window made by engine.createWindowRealm with a parent: it gets
+/// the operations the top-level window has, as defineOnChildWindow gives a
+/// context manager child. `context` is entered.
+pub fn defineOnFrame(isolate: *ffi.Isolate, context: *ffi.Context) void {
+    const global = ffi.v8_Context_Global(context) orelse return;
+    // Owned, and a handle to the global keeps the frame alive.
+    defer ffi.v8_Object_Dispose(global);
+    defineOnChildWindow(isolate, context, global);
+}
+
+/// A frame's window realm ends (engine.destroyWindowRealm): its timers and
+/// animation frames go with it (WindowOperations.windowDestroyed).
+pub fn frameWindowDestroyed(realm: runtime.Context) void {
+    const operations = window_operations orelse return;
+    operations.windowDestroyed(realm);
+}
+
 /// context_manager's child-window cleanup hook, called while the frame's
 /// context is still registered.
 fn childWindowDestroyed(context: *ffi.Context) void {

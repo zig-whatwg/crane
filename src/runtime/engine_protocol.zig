@@ -445,6 +445,14 @@ pub const WindowRealmOptions = struct {
     /// The realm's origin, serialized; null for an opaque one.
     origin: ?[]const u8 = null,
     global_this: GlobalThis = .new_window_proxy,
+    /// The realm of the navigable's parent - an iframe's container document's
+    /// window, or a popup's opener - or null for a top-level one. A realm
+    /// with a parent shares its engine-level access with it (V8's security
+    /// token; the WindowProxy checks are the host's), ends when the parent
+    /// ends if it has not already, and - made while the parent's script runs -
+    /// is entered only for the calls that run in it. A realm without one
+    /// stays the agent's entered realm for its life.
+    parent: ?Context = null,
     /// HTML "create a new realm", the customization for the global object:
     /// the host makes the realm's Window. `global_this` is BORROWED until
     /// destroyWindowRealm: the host's Window may keep it as the global it is

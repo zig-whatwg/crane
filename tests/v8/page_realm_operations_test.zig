@@ -827,6 +827,117 @@ test "protocol: a Window realm made and ended leaves no global handle behind" {
     }
 }
 
+/// A frame's Window realm, made as a frame's is: from inside its parent's
+/// running script (engine.runInRealm), with the parent named.
+const FrameRealm = struct {
+    host: WindowHost = .{},
+    parent: runtime.Context,
+    global_this: protocol.GlobalThis = .new_window_proxy,
+    made: ?runtime.Context = null,
+    failed: ?anyerror = null,
+    /// The entry realm just after the frame's realm was made, still inside
+    /// the parent's steps.
+    entry_after: ?runtime.Context = null,
+
+    fn make(self: *FrameRealm) !runtime.Context {
+        try protocol.runInRealm(self.parent, steps, self);
+        if (self.failed) |err| return err;
+        return self.made.?;
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *FrameRealm = @ptrCast(@alignCast(data.?));
+        self.made = protocol.createWindowRealm(&.{
+            .agent = @ptrCast(isolate_once.?),
+            .allocator = std.heap.c_allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://example.test",
+            .global_this = self.global_this,
+            .parent = self.parent,
+            .create_global_object = WindowHost.createGlobalObject,
+            .host = &self.host,
+        }) catch |err| {
+            self.failed = err;
+            return;
+        };
+        self.entry_after = protocol.entryRealm();
+    }
+};
+
+test "protocol: a frame's realm is made inside its parent's script and not left entered" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    // The parent's steps went on in the parent's realm: the frame's context
+    // was entered only while it was made.
+    try std.testing.expectEqual(parent, frame_realm.entry_after.?);
+    try std.testing.expectEqual(parent, protocol.entryRealm().?);
+    try std.testing.expectEqual(@as(usize, 1), frame_realm.host.made);
+    try expectEval(frame, "globalThis instanceof Window && self === globalThis", "true");
+}
+
+test "protocol: a frame's realm shares its parent's security token" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    try expectEval(frame, "globalThis.fromFrame = 7; fromFrame", "7");
+    const frame_global = try evalOwned(frame, "globalThis");
+    defer frame_global.release();
+    try setGlobal(parent, "frameWindow", frame_global.value);
+    // V8 lets script through to another context's global proxy only when the
+    // two share a security token; the WindowProxy checks are the host's.
+    try expectEval(parent, "frameWindow.fromFrame", "7");
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+}
+
+test "protocol: ending a parent's realm ends its frames' realms first" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    var nested_realm: FrameRealm = .{ .parent = frame };
+    const nested = try nested_realm.make();
+
+    protocol.destroyWindowRealm(parent);
+    // Retired, every one: each may only be compared now.
+    try std.testing.expect(nested.engine_ctx == null);
+    try std.testing.expect(frame.engine_ctx == null);
+    try std.testing.expect(parent.engine_ctx == null);
+}
+
+test "protocol: a frame's realm whose WindowProxy went on is severed from its Window at its end" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    // A function of the old realm that reads its Window through its global.
+    const reader = try evalOwned(old, "(function () { return typeof name; })");
+    defer reader.release();
+
+    // The navigation's new Window, behind the same WindowProxy; the old realm
+    // ends, and its Window with it.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    defer protocol.destroyWindowRealm(new);
+    protocol.destroyWindowRealm(old);
+
+    // The old global no longer names the freed Window: reading a Window member
+    // through it is a TypeError, not a read of freed memory.
+    try setGlobal(parent, "reader", reader.value);
+    try expectEval(parent, "(() => { try { reader(); return 'read'; } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(parent, "delete globalThis.reader", "true");
+}
+
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
     // Two realms made here: the context manager names a realm by where its
     // context is, and a full collection (liveContexts, in earlier tests) can
