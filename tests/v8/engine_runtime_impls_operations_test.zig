@@ -730,3 +730,37 @@ test "protocol: a platform object in a realm that has wrapped nothing has no wra
     instance.ctx = &bare;
     try std.testing.expect(!protocol.hasWrapper(&instance));
 }
+
+test "protocol: retainValue holds a primitive by value and anything else as a handle of its own, and borrow lends it" {
+    const ctx = try realm();
+    // By value: no Global, nothing to release.
+    const number = try protocol.retainValue(ctx, runtime.JSValue.fromNumber(4));
+    try std.testing.expectEqual(@as(f64, 4), number.value.number);
+    number.release();
+
+    // A string and an object each become a Global of the event's own; the
+    // view a getter returns reads the same value and is never released.
+    const text = try protocol.retainValue(ctx, runtime.JSValue.fromStringRef("abc"));
+    defer text.release();
+    try std.testing.expect(text.value == .handle);
+    try std.testing.expect(!text.borrow().needsDisposal());
+
+    const object = try evalOwned("globalThis.retained = { x: 7 }");
+    defer object.release();
+    const held = try protocol.retainValue(ctx, object.value);
+    defer held.release();
+    try std.testing.expect(protocol.sameValue(ctx, held.borrow(), object.value));
+    try std.testing.expect(held.value.handle.ptr != object.value.handle.ptr);
+
+    const round = struct {
+        fn run(c: runtime.Context, o: runtime.JSValue) !void {
+            (try protocol.retainValue(c, o)).release();
+            (try protocol.retainValue(c, runtime.JSValue.fromStringRef("abc"))).release();
+            (try protocol.retainValue(c, runtime.JSValue.fromBoolean(true))).release();
+        }
+    }.run;
+    try round(ctx, object.value);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, object.value);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+}
