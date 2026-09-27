@@ -384,15 +384,6 @@ src/webidl/impls/Response.zig v8_Isolate_Enter 1
 src/webidl/impls/Response.zig v8_Isolate_Exit 1
 src/webidl/impls/Response.zig v8_Isolate_GetCurrent 1
 src/webidl/impls/Response.zig v8_PromiseResolver_Dispose 1
-src/webidl/impls/URL.zig @import("v8") 1
-src/webidl/impls/URL.zig v8.ffi.Object 1
-src/webidl/impls/URL.zig v8.ffi.Value 1
-src/webidl/impls/URL.zig v8_Object_GetAlignedPointerFromInternalField 1
-src/webidl/impls/URL.zig v8_Object_InternalFieldCount 1
-src/webidl/impls/URL.zig v8_Value_IsObject 1
-src/webidl/impls/URL.zig v8_engine 2
-src/webidl/impls/URL.zig v8_obj 3
-src/webidl/impls/URL.zig v8_value 2
 src/webidl/impls/Window.zig @import("v8") 7
 src/webidl/impls/Window.zig @import("v8").context_manager 1
 src/webidl/impls/Window.zig @import("v8").ffi 2
