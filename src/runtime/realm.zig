@@ -571,16 +571,6 @@ pub const Realm = struct {
         }
         self.settings_object = settings;
     }
-
-    /// Populate this realm's intrinsics from its engine context.
-    ///
-    /// Engine work, kept here only while src/browser/Context.zig still calls
-    /// it as a method (the adapter's own callers use realm_v8.zig's, which v8
-    /// re-exports as `populateRealmIntrinsics`).
-    pub fn populateIntrinsics(self: *Self) bool {
-        const v8 = @import("v8");
-        return v8.realm_v8.populateIntrinsics(self);
-    }
 };
 
 // ============================================================================

@@ -1646,9 +1646,6 @@ pub fn build(b: *std.Build) void {
     v8_mod.addImport("event_loop", streams_event_loop_mod);
     v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
 
-    // Add v8 to runtime so context can create V8EventLoop
-    runtime_mod.addImport("v8", v8_mod);
-
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
     streams_mod.addImport("event_loop", streams_event_loop_mod);
@@ -1949,6 +1946,7 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("clock", clock_mod);
     browser_mod.addImport("host", host_mod);
     browser_mod.addImport("v8", v8_mod);
+    browser_mod.addImport("engine", engine_mod);
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
@@ -1968,7 +1966,6 @@ pub fn build(b: *std.Build) void {
     });
     webdriver_mod.addImport("clock", clock_mod);
     webdriver_mod.addImport("host", host_mod);
-    webdriver_mod.addImport("v8", v8_mod);
     webdriver_mod.addImport("browser", browser_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
@@ -2552,10 +2549,11 @@ pub fn build(b: *std.Build) void {
         // production one: Zig checks that a file belongs to one module over
         // the whole import graph, analysed or not ("file exists in modules
         // 'engine' and 'engine0'"). runtime_mod reaches the V8 binding
-        // through its `v8` import (runtime -> v8 -> impls -> engine), so
-        // these tests use runtime without that import - the runtime tier as
-        // the engine boundary will leave it (its one V8 use is
-        // realm.zig's populateIntrinsics, which no runtime test reaches).
+        // through a `v8` import (runtime -> v8 -> impls -> engine), so these
+        // tests use runtime without one - the runtime tier as the engine
+        // boundary leaves it. (runtime itself imports no v8 any more: its last
+        // use, realm.zig's populateIntrinsics, moved into the adapter's
+        // createWindowRealm.)
         const runtime_tier_mod = b.createModule(.{
             .root_source_file = runtime_mod.root_source_file,
             .target = target,
@@ -2708,7 +2706,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "browser", .module = browser_mod },
-                .{ .name = "v8", .module = v8_mod },
             },
         }),
     });
@@ -2808,7 +2805,7 @@ pub fn build(b: *std.Build) void {
     lib_exports_mod.addImport("runtime", runtime_mod);
     lib_exports_mod.addImport("webidl", webidl_mod);
     lib_exports_mod.addImport("infra", infra_mod);
-    lib_exports_mod.addImport("v8", v8_mod);
+    lib_exports_mod.addImport("engine", engine_mod);
     lib_exports_mod.addImport("interfaces", interfaces_mod);
     lib_exports_mod.addImport("impls", impls_mod);
     lib_exports_mod.addImport("namespaces", namespaces_mod);
@@ -3331,7 +3328,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },
@@ -3410,6 +3407,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "memory", .module = memory_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },

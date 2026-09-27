@@ -28,11 +28,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const v8 = @import("v8");
+const engine = @import("engine");
 const memory = @import("memory");
 const Browser = @import("browser").Browser;
 const runtime = @import("runtime");
 const instance_bridge = @import("dom").instance_bridge;
-const context_manager = v8.context_manager;
 const WrapperCache = v8.wrapper_cache_mod.WrapperCache;
 
 const log = std.log.scoped(.gc_bench);
@@ -366,15 +366,13 @@ pub fn main(init: std.process.Init) !void {
     try browser.navigate("about:blank", .window);
 
     const isolate = browser.isolate orelse return error.NoIsolate;
-    const context = (browser.current_context orelse return error.NoContext).v8_context orelse
-        return error.NoV8Context;
+    const page = browser.current_context orelse return error.NoContext;
+    const realm = page.realm orelse return error.NoRealm;
 
     heap_isolate = isolate;
 
-    if (context_manager.get(context)) |runtime_ctx| {
-        if (runtime_ctx.getV8WrapperCacheStorage()) |storage| {
-            wrapper_cache_ref = @ptrCast(@alignCast(storage));
-        }
+    if (realm.getV8WrapperCacheStorage()) |storage| {
+        wrapper_cache_ref = @ptrCast(@alignCast(storage));
     }
 
     var samples: std.ArrayListUnmanaged(Sample) = .empty;
@@ -419,15 +417,18 @@ pub fn main(init: std.process.Init) !void {
         );
         defer allocator.free(source);
 
-        try runScript(isolate, context, source);
+        // Run as the page runs a script: its microtasks drained when it ends
+        // (clean up after running script), so that anything the cycle queued
+        // has finished before the next reading.
+        try page.runScript(source);
 
         if (force_gc) {
             // Twice: one pass can leave objects that only become unreachable once
             // the first pass has cleared what referenced them, and a single
             // collection would under-report what V8 can actually reclaim.
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            engine.requestGarbageCollection(page.agent);
+            engine.performMicrotaskCheckpoint(realm) catch {};
+            engine.requestGarbageCollection(page.agent);
         }
 
         done += batch;
@@ -501,24 +502,6 @@ pub fn main(init: std.process.Init) !void {
             .{},
         );
     }
-}
-
-fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const u8) !void {
-    const handle_scope = v8.ffi.v8_HandleScope_New(isolate) orelse return error.HandleScopeFailed;
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse
-        return error.StringCreationFailed;
-
-    const script = v8.ffi.v8_Script_Compile(context, source_str) orelse return error.CompileFailed;
-    _ = v8.ffi.v8_Script_Run(context, script) orelse return error.RunFailed;
-
-    // Drain microtasks so anything the cycle queued has finished before the next
-    // reading; otherwise the sample catches work in flight and the series is noise.
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
 fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void {
