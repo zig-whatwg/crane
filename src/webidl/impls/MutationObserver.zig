@@ -575,7 +575,8 @@ pub fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context
     const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
     ctx.* = .{ .allocator = allocator };
 
-    engine.queueMicrotask(realm, mutationMicrotask, ctx) catch |err| {
+    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, ctx) else error.NotSupported;
+    queued catch |err| {
         allocator.destroy(ctx);
         switch (err) {
             error.OutOfMemory => return error.OutOfMemory,

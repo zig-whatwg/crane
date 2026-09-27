@@ -507,7 +507,7 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
     defer runtime.timer.nesting_level = saved_nesting;
 
     // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
-    engine.queueMicrotask(data.realm, resetNestingMicrotask, null) catch {};
+    if (data.realm.agent) |agent| engine.queueMicrotask(agent, resetNestingMicrotask, null) catch {};
 
     // This handler owns the wrapper for the duration of the callback, so a
     // clearTimeout/clearInterval from inside it defers the free to us.

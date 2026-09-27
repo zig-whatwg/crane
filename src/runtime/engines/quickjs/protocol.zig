@@ -122,7 +122,7 @@ pub fn runTaskInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!vo
     return error.NotSupported;
 }
 pub fn performMicrotaskCheckpoint(_: *Agent) Error!void {}
-pub fn queueMicrotask(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
+pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {

@@ -956,8 +956,8 @@ test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whicheve
         }
     };
     var ran: Ran = .{};
-    try protocol.queueMicrotask(parent, Ran.steps, &ran);
-    try protocol.queueMicrotask(frame, Ran.steps, &ran);
+    try protocol.queueMicrotask(parent.agent.?, Ran.steps, &ran);
+    try protocol.queueMicrotask(frame.agent.?, Ran.steps, &ran);
     try std.testing.expectEqual(@as(usize, 0), ran.count);
     try protocol.performMicrotaskCheckpoint(parent.agent.?);
     try std.testing.expectEqual(@as(usize, 2), ran.count);

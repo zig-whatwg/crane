@@ -741,11 +741,13 @@ pub inline fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
     return impl.performMicrotaskCheckpoint(agent);
 }
 
-/// HTML "queue a microtask": `steps(data)` at `realm`'s agent's next
-/// checkpoint. `data` BORROWED until then; a microtask still queued when the
-/// agent is torn down is dropped.
-pub inline fn queueMicrotask(realm: Context, steps: RealmSteps, data: ?*anyopaque) Error!void {
-    return impl.queueMicrotask(realm, steps, data);
+/// HTML "queue a microtask": `steps(data)` at `agent`'s next checkpoint -
+/// the surrounding agent's event loop's microtask queue, whichever realm the
+/// caller is in. `data` BORROWED until then; a microtask still queued when
+/// the agent is torn down is dropped. The steps run with no realm entered:
+/// what needs one enters it (runInRealm).
+pub inline fn queueMicrotask(agent: *Agent, steps: RealmSteps, data: ?*anyopaque) Error!void {
+    return impl.queueMicrotask(agent, steps, data);
 }
 
 /// HTML "report an exception" step 2, "extract error information" from a

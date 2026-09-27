@@ -263,8 +263,8 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
     protocol_agents.performMicrotaskCheckpoint(agent);
 }
 
-pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    return value_construction.queueMicrotask(realm, steps, data) catch |err| protocolError(err);
+pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    return protocol_agents.queueMicrotask(agent, steps, data);
 }
 
 pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Allocator) Error!engine.ErrorInfo {

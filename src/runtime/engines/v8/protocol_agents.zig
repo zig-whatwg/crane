@@ -255,6 +255,33 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
 }
 
+/// A queued microtask's steps and their data, until the microtask runs.
+const QueuedMicrotask = struct {
+    steps: engine.RealmSteps,
+    data: ?*anyopaque,
+};
+
+/// V8 runs a callback microtask as `void (*)(void*)`.
+fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
+    const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
+    const steps = queued.steps;
+    const data = queued.data;
+    std.heap.c_allocator.destroy(queued);
+    steps(data);
+}
+
+/// HTML "queue a microtask" on the agent: V8's microtask queue is the
+/// isolate's. V8 drops a queued callback microtask when its isolate is
+/// disposed, so a record still queued then is never freed - the declaration
+/// says the steps may not run.
+pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    const queued = std.heap.c_allocator.create(QueuedMicrotask) catch return error.OutOfMemory;
+    queued.* = .{ .steps = steps, .data = data };
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
+}
+
 /// notifyMemoryPressure: `.critical` is LowMemoryNotification - a full,
 /// synchronous collection - three times with checkpoints between, so that
 /// what each pass's weak callbacks let go (and the reactions they queued) is
