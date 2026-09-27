@@ -272,9 +272,29 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
     };
 }
 
+/// The hooks a worker's realm carries for its host (runtime.ContextData):
+/// the end of a task, and "report an exception" for what nothing else
+/// reports. Installed as the realm is made, before any script runs in it.
+pub fn installRealmHooks(realm: *runtime.ContextData) void {
+    realm.end_of_task = endTaskOfRealm;
+    realm.report_exception = reportExceptionOfRealm;
+}
+
+/// The worker's "report an exception", as its realm's `report_exception`:
+/// what an event listener threw in the worker, say - an ErrorEvent at the
+/// global scope, then at the Worker with `error` null. A realm no worker
+/// runs any more reports nothing.
+pub fn reportExceptionOfRealm(realm: *runtime.ContextData, info: *const runtime.ErrorInfo) void {
+    const wctx = forScope(realm) orelse return;
+    const prev_context = current_worker_context;
+    current_worker_context = wctx;
+    defer current_worker_context = prev_context;
+    WorkerV8Context.reportException(wctx, info);
+}
+
 /// The worker's end of a task, as its realm's `end_of_task`: what
 /// `finishTaskIn` does, found by the realm instead of the agent.
-fn endTaskOfRealm(ctx: runtime.Context) void {
+pub fn endTaskOfRealm(ctx: runtime.Context) void {
     const wctx = forScope(ctx) orelse return;
     const prev_context = current_worker_context;
     current_worker_context = wctx;
@@ -772,6 +792,7 @@ pub const WorkerV8Context = struct {
         // The worker's script is on the stack - a nested loop inside one of
         // its tasks: after that task, then.
         const script_running = if (self.engine.hasRunningScript) |running| running(self.agent) else false;
+        log.debug("teardown step: entered={d} script_running={}", .{ self.entered, script_running });
         if (self.entered > 0 or script_running) {
             self.scheduleTeardown();
             return;
@@ -812,6 +833,7 @@ pub const WorkerV8Context = struct {
     fn releaseOwnerWhenIdle(self: *Self) void {
         const dedicated_worker = self.dedicated_worker orelse return;
         if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
+            log.debug("owner release deferred: {d} messages to deliver", .{dedicated_worker.port_pair.outside_port.message_queue.items.len});
             // Delivered by later turns: ask again after them.
             if (self.release_owner_timer != null) return;
             const timer = getTimerInterface() orelse return;
@@ -821,6 +843,7 @@ pub const WorkerV8Context = struct {
         }
         const owner: *runtime.Instance = @ptrCast(@alignCast(dedicated_worker.getUserData() orelse return));
         const engine = owner.ctx.getEngine() orelse return;
+        log.debug("owner released: {*}", .{owner});
         if (engine.releasePlatformObject) |release| release(owner);
     }
 
@@ -1087,6 +1110,7 @@ pub const WorkerV8Context = struct {
     fn recordRealm(data: ?*anyopaque, realm: runtime.Context) void {
         const self: *Self = @ptrCast(@alignCast(data orelse return));
         self.realm = realm;
+        installRealmHooks(realm);
     }
 
     /// Run one of the host's own setup scripts in the realm.

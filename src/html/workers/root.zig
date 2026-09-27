@@ -129,11 +129,6 @@ pub const WorkerScriptError = script_fetch.WorkerScriptError;
 pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
 
-// Document Origin (for resolving relative Worker script URLs)
-pub const setDocumentOrigin = script_fetch.setDocumentOrigin;
-pub const getDocumentOrigin = script_fetch.getDocumentOrigin;
-pub const clearDocumentOrigin = script_fetch.clearDocumentOrigin;
-
 // Blob URL Resolution (callback-based to avoid circular dependencies)
 pub const BlobResolveResult = script_fetch.BlobResolveResult;
 pub const BlobResolverFn = script_fetch.BlobResolverFn;

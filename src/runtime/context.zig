@@ -178,6 +178,14 @@ pub const ContextData = struct {
     /// for a window realm, whose host loop ends its own tasks.
     end_of_task: ?*const fn (realm: *ContextData) void = null,
 
+    /// HTML "report an exception" steps this realm's host owns, for an
+    /// exception nothing else reports - one an event listener threw, say. A
+    /// worker realm's fires an ErrorEvent at its WorkerGlobalScope and, when
+    /// that is not handled, at its Worker with `error` null. Set by the host
+    /// that runs the realm (the worker host installs it); null for a window
+    /// realm, whose global object reports its own.
+    report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_interface.zig").ErrorInfo) void = null,
+
     /// The agent this realm belongs to (V8: its isolate), set by the adapter
     /// that created the realm. Operations that enter a realm from outside it
     /// - a task fired from the page's loop into a worker's realm - enter its
