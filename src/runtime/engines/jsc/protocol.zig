@@ -48,6 +48,9 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
 };
 
+/// No engine is linked yet: every operation answers without one.
+pub const links_engine = false;
+
 /// Nothing runs script, so nothing is ever prepared to.
 pub const ScriptScope = struct {};
 
@@ -107,13 +110,13 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 }
 
 // 4.3 Running script
-pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!void {
+pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
-pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!Owned {
+pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!Owned {
     return error.NotSupported;
 }
-pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: Allocator, _: engine.Reporter) Error![]u8 {
+pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: Allocator, _: engine.Reporter) Error![]u8 {
     return error.NotSupported;
 }
 pub fn compileEventHandler(_: Context, _: *const engine.EventHandlerSource, _: engine.Reporter) Error!?Owned {
@@ -207,6 +210,17 @@ pub fn sameValue(_: Context, a: JSValue, b: JSValue) bool {
         .string => |x| b == .string and std.mem.eql(u8, x.data, b.string.data),
         .handle => |x| b == .handle and x.ptr == b.handle.ptr,
         .instance => |x| b == .instance and x == b.instance,
+    };
+}
+/// ECMAScript ToBoolean over the IDL arms. Only an engine makes a handle,
+/// and this adapter has none: a handle is an object.
+pub fn toBoolean(_: Context, value: JSValue) bool {
+    return switch (value) {
+        .undefined, .null => false,
+        .boolean => |b| b,
+        .number => |n| !(n == 0 or std.math.isNan(n)),
+        .string => |text| text.data.len != 0,
+        .handle, .instance => true,
     };
 }
 pub fn retainValue(_: Context, value: JSValue) Error!Owned {

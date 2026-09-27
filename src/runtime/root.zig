@@ -231,6 +231,9 @@ pub const timer = @import("timer.zig");
 pub const TimerId = timer.TimerId;
 pub const TimerCallback = timer.TimerCallback;
 pub const TimerInterface = timer.TimerInterface;
+/// The host's event loop, as a realm records it (ContextData.event_loop):
+/// what host algorithms queue their tasks on.
+pub const EventLoop = @import("event_loop").EventLoop;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
 

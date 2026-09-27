@@ -39,6 +39,11 @@ const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");
 const value_operations = @import("value_operations.zig");
 const structured_serialization = @import("structured_serialization.zig");
 const isolate_ownership = @import("isolate_ownership.zig");
+const protocol_agents = @import("protocol_agents.zig");
+const protocol_modules = @import("protocol_modules.zig");
+const protocol_realms = @import("protocol_realms.zig");
+const protocol_scripts = @import("protocol_scripts.zig");
+const support = @import("protocol_support.zig");
 
 /// For the worker and agent operations only (see above).
 const table = v8_engine.v8_engine_interface;
@@ -69,6 +74,9 @@ pub const capabilities: engine.Capabilities = .{
     .heap_snapshots = .native,
     .diagnostic_counters = .native,
 };
+
+/// Every operation is V8 code: a test binary that compiles them all links V8.
+pub const links_engine = true;
 
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = realm_entry.Entered;
@@ -130,30 +138,21 @@ fn notImplemented(comptime operation: []const u8, comptime section: []const u8) 
 // 4.1 Engine and agents
 // ============================================================================
 
-// TODO(protocol): implement - design 4.1 (snapshot_loader.initializePlatformForRuntime is the platform half; the snapshot blob is new)
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
-    _ = options;
-    return error.NotSupported;
+    return protocol_agents.initializeEngine(options);
 }
 
-// TODO(protocol): implement - design 4.1
 pub fn deinitializeEngine() void {
-    notImplemented("deinitializeEngine", "4.1");
+    protocol_agents.deinitializeEngine();
 }
 
-/// Partly wired: an isolate as worker_realm makes one, [[CanBlock]] set.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
-    // TODO(protocol): implement - design 4.1 (agents from the snapshot, and the host hooks installed per agent)
-    if (options.from_snapshot) return error.NotSupported;
-    const hooks = options.hooks;
-    if (hooks.loadImportedModule != null or hooks.importMetaUrl != null or
-        hooks.promiseRejectionTracker != null or hooks.afterMicrotaskCheckpoint != null) return error.NotSupported;
-    const agent = table.createAgent.?() catch |err| return protocolError(err);
-    if (!options.can_block) ffi.v8_Isolate_SetAllowAtomicsWait(isolateOf(agent), false);
-    return agent;
+    return protocol_agents.createAgent(options);
 }
 
+/// The agent's hooks are forgotten before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
+    protocol_agents.forgetAgent(agent);
     table.destroyAgent.?(agent);
 }
 
@@ -179,16 +178,12 @@ pub fn requestGarbageCollection(agent: *Agent) void {
 // 4.2 Realms
 // ============================================================================
 
-// TODO(protocol): implement - design 4.2 (page-realm drafts: createWindowRealm from Context.zig's createV8Context/createV8ContextFresh)
 pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Context {
-    _ = options;
-    return error.NotSupported;
+    return protocol_realms.createWindowRealm(options);
 }
 
-// TODO(protocol): implement - design 4.2 (Blink DisposeContext order)
 pub fn destroyWindowRealm(realm: Context) void {
-    _ = realm;
-    notImplemented("destroyWindowRealm", "4.2");
+    protocol_realms.destroyWindowRealm(realm);
 }
 
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
@@ -203,20 +198,16 @@ pub fn currentRealm() ?Context {
     return current_realm.currentRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (replaces GetEnteredOrMicrotaskContext)
 pub fn entryRealm() ?Context {
-    notImplemented("entryRealm", "4.2");
+    return protocol_realms.entryRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (replaces the accessor-window stack)
 pub fn incumbentRealm() ?Context {
-    notImplemented("incumbentRealm", "4.2");
+    return protocol_realms.incumbentRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (GetFunctionRealm follows bound functions and proxies; V8's creation context does not)
 pub fn functionRealm(value: JSValue) ?Context {
-    _ = value;
-    notImplemented("functionRealm", "4.2");
+    return protocol_realms.functionRealm(value);
 }
 
 pub fn installWindowOperations(realm: Context, operations: *const engine.WindowOperations) Error!void {
@@ -231,66 +222,28 @@ pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: 
 // 4.3 Running script
 // ============================================================================
 
-/// The table's reporter, reporting as the protocol's: the table's
-/// ErrorInfo, with the realm the script ran in.
-const ReportBridge = struct {
-    reporter: engine.Reporter,
-    realm: Context,
-
-    fn report(host: ?*anyopaque, info: *const runtime.ErrorInfo) void {
-        const self: *const ReportBridge = @ptrCast(@alignCast(host.?));
-        const protocol_info: engine.ErrorInfo = .{
-            .message = info.message,
-            .filename = info.filename,
-            .lineno = info.lineno,
-            .colno = info.colno,
-            .error_value = info.error_value orelse JSValue.jsUndefined,
-            .realm = self.realm,
-        };
-        self.reporter.report(self.reporter.host, &protocol_info);
-    }
-};
-
-/// Partly wired: UTF-8 source through the table's runClassicScript.
-pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, reporter: engine.Reporter) Error!void {
-    const text = switch (source) {
-        .utf8 => |text| text,
-        // TODO(protocol): implement - design 4.3 (a string source keeps every code unit: timer string handlers)
-        .string => return error.NotSupported,
-    };
-    const bridge: ReportBridge = .{ .reporter = reporter, .realm = realm };
-    v8_engine.v8RunClassicScript(realm, text, if (url.len == 0) null else url, ReportBridge.report, @constCast(&bridge)) catch |err|
-        return protocolError(err);
+pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (page-realm draft; replaces compileScript/runScript and Context.evaluateScript)
-pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, reporter: engine.Reporter) Error!Owned {
-    _ = .{ realm, source, url, reporter };
-    return error.NotSupported;
+pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!Owned {
+    return protocol_scripts.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (evaluateClassicScript, then ToString)
-pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
-    _ = .{ realm, source, url, allocator, reporter };
-    return error.NotSupported;
+pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
+    return protocol_scripts.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (the handler's scopes: document, form owner, element)
 pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSource, reporter: engine.Reporter) Error!?Owned {
-    _ = .{ realm, source, reporter };
-    return error.NotSupported;
+    return protocol_scripts.compileEventHandler(realm, source, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (HTML 8.1.4.3: the entry stack, and a checkpoint on clean up; realm_entry.enter is the entering half)
 pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
-    _ = realm;
-    return error.NotSupported;
+    return protocol_scripts.prepareToRunScript(realm);
 }
 
-// TODO(protocol): implement - design 4.3
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
-    _ = scope;
-    notImplemented("cleanUpAfterRunningScript", "4.3");
+    protocol_scripts.cleanUpAfterRunningScript(scope);
 }
 
 pub fn runInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
@@ -309,53 +262,17 @@ pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaqu
     return value_construction.queueMicrotask(realm, steps, data) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.3 (engine.zig's reportPending builds it for runClassicScript)
 pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Allocator) Error!engine.ErrorInfo {
-    _ = .{ realm, value, allocator };
-    return error.NotSupported;
+    return protocol_scripts.extractErrorInformation(realm, value, allocator);
 }
 
-// TODO(protocol): implement - design 4.3 (modules; replace compileModule/runModule/runModuleAsync/hasTopLevelAwait/disposeModule)
-pub fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
-    _ = .{ realm, source, url, host_defined };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn parseJSONModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
-    _ = .{ realm, source, url, host_defined };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn moduleRequests(record: *engine.ModuleRecord, allocator: Allocator) Error![]engine.ModuleRequest {
-    _ = .{ record, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn linkModule(realm: Context, record: *engine.ModuleRecord, resolve: engine.ResolveModule, data: ?*anyopaque) Error!?Owned {
-    _ = .{ realm, record, resolve, data };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn evaluateModule(realm: Context, record: *engine.ModuleRecord) Error!engine.ModuleEvaluation {
-    _ = .{ realm, record };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.DynamicImportOutcome) void {
-    _ = .{ request, outcome };
-    notImplemented("finishDynamicImport", "4.3");
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
-    _ = record;
-    notImplemented("releaseModuleRecord", "4.3");
-}
+pub const parseModule = protocol_modules.parseModule;
+pub const parseJSONModule = protocol_modules.parseJSONModule;
+pub const moduleRequests = protocol_modules.moduleRequests;
+pub const linkModule = protocol_modules.linkModule;
+pub const evaluateModule = protocol_modules.evaluateModule;
+pub const finishDynamicImport = protocol_modules.finishDynamicImport;
+pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 
 // ============================================================================
 // 4.4 Invoking callbacks
@@ -386,6 +303,7 @@ pub const defineOwnProperty = protocol_values.defineOwnProperty;
 pub const hasProperty = protocol_values.hasProperty;
 pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
+pub const toBoolean = protocol_values.toBoolean;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
     switch (value) {
@@ -394,7 +312,10 @@ pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
         .undefined, .null, .boolean, .number => return .{ .value = value },
         else => {},
     }
-    return owned(value_operations.retainValue(realm, value) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    // A platform object: its wrapper in its relevant realm.
+    return support.owned(try support.ownGlobal(entered, value));
 }
 
 pub fn releaseValue(value: Owned) void {
@@ -402,7 +323,11 @@ pub fn releaseValue(value: Owned) void {
 }
 
 pub fn throwValue(realm: Context, value: JSValue) Error!void {
-    return value_operations.throwValue(realm, value) catch |err| protocolError(err);
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, value);
+    defer relevant.release();
+    return value_operations.throwValue(realm, relevant.value) catch |err| protocolError(err);
 }
 
 pub const completionOf = @import("protocol_completion.zig").completionOf;
@@ -471,16 +396,35 @@ pub const releaseIteratorRecord = protocol_conversions.releaseIteratorRecord;
 // 4.7 WebIDL: IDL to ECMAScript
 // ============================================================================
 
+/// Each platform object becomes its wrapper in its relevant realm
+/// (support.RelevantList), not the realm the array is made in.
 pub fn createSequenceOfValues(realm: Context, values: []const JSValue) Error!Owned {
-    return owned(webidl_conversions.createSequenceOfValues(realm, values) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    return owned(webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return protocolError(err));
 }
 
 pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Instance) Error!Owned {
-    return owned(v8_engine.v8CreateSequenceOfPlatformObjects(realm, instances) catch |err| return protocolError(err));
+    const values = std.heap.c_allocator.alloc(JSValue, instances.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(values);
+    for (instances, values) |instance, *value| value.* = .{ .instance = instance };
+    return createSequenceOfValues(realm, values);
 }
 
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {
-    return owned(value_construction.createDictionaryObject(realm, members) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const values = std.heap.c_allocator.alloc(JSValue, members.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(values);
+    for (members, values) |member, *value| value.* = member.value;
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    const relevant_members = std.heap.c_allocator.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(relevant_members);
+    for (members, relevant.values, relevant_members) |member, value, *out| out.* = .{ .name = member.name, .value = value };
+    return owned(value_construction.createDictionaryObject(realm, relevant_members) catch |err| return protocolError(err));
 }
 
 pub fn createObservableArray(realm: Context) Error!JSValue {
@@ -533,7 +477,15 @@ pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
 
 pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) Error!void {
     const resolved = switch (value) {
-        .instance => |instance| v8_engine.v8ResolvePromiseWithInstance(capability.state, instance),
+        // Its wrapper in its relevant realm, not the promise's.
+        .instance => |instance| blk: {
+            const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+            const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return error.OperationFailed;
+            defer scope.deinit();
+            const wrapper = try support.relevantWrapper(handle.isolate, instance);
+            defer ffi.v8_Global_Dispose(wrapper);
+            break :blk v8_engine.v8ResolvePromise(capability.state, capability.state, wrapper);
+        },
         .handle => |h| v8_engine.v8ResolvePromise(capability.state, capability.state, h.ptr),
         .undefined => v8_engine.v8ResolvePromise(capability.state, capability.state, null),
         else => resolveWithConverted(capability.state, value),
@@ -553,7 +505,12 @@ fn resolveWithConverted(state: *anyopaque, value: JSValue) EngineError!void {
 }
 
 pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Error!void {
-    return v8_engine.v8RejectPromiseWithValue(capability.state, reason) catch |err| protocolError(err);
+    const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+    const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return error.OperationFailed;
+    defer scope.deinit();
+    const relevant = try support.Relevant.of(handle.isolate, reason);
+    defer relevant.release();
+    return v8_engine.v8RejectPromiseWithValue(capability.state, relevant.value) catch |err| protocolError(err);
 }
 
 pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
@@ -562,11 +519,19 @@ pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
 }
 
 pub fn createResolvedPromise(realm: Context, value: JSValue) Error!Owned {
-    return owned(value_construction.createResolvedPromise(realm, value) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, value);
+    defer relevant.release();
+    return owned(value_construction.createResolvedPromise(realm, relevant.value) catch |err| return protocolError(err));
 }
 
 pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
-    return owned(value_construction.createRejectedPromise(realm, reason) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, reason);
+    defer relevant.release();
+    return owned(value_construction.createRejectedPromise(realm, relevant.value) catch |err| return protocolError(err));
 }
 
 pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;

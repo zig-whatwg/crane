@@ -45,8 +45,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
-// V8 JavaScript engine bindings
-const v8 = @import("v8");
+// The JavaScript engine, through the engine protocol (the build selects the
+// adapter behind it).
+const engine = @import("engine");
 
 // WebIDL generated interfaces
 const interfaces = @import("interfaces");
@@ -94,11 +95,8 @@ fn forceModuleCompilation() void {
     _ = runtime.Instance;
     _ = runtime.Context;
 
-    // Reference V8 types
-    _ = v8.ffi;
-    _ = v8.context_manager;
-    _ = v8.template_registry;
-    _ = v8.interface_bindings;
+    // Reference the engine and its adapter
+    _ = engine;
 
     // Reference browser types
     _ = browser.Browser;
@@ -192,25 +190,14 @@ pub export fn whatwg_browser_evaluate(
 ) callconv(.c) i32 {
     if (b) |ptr| {
         const code_slice = std.mem.span(code);
-        // evaluateScript returns ?*v8.ffi.Value, not an allocated string
-        // For now, just check if evaluation succeeded
-        const result_opt = ptr.evaluateScript(code_slice) catch |err| {
-            return switch (err) {
-                error.NoContext => -1,
-                else => -99,
-            };
-        };
-
-        // If we got a result, write "ok" to buffer (simplified for now)
-        // Full implementation would serialize the V8 value to string
-        if (result_opt != null) {
-            const msg = "ok";
-            const copy_len = @min(msg.len, result_buf_len);
-            @memcpy(result_buf[0..copy_len], msg[0..copy_len]);
-            return @intCast(copy_len);
-        }
-
-        return 0; // null result (undefined)
+        const ctx = ptr.current_context orelse return -1;
+        // The completion value, ToString'd; what the script throws fails the
+        // call.
+        const result = ctx.evaluateScriptToString(code_slice, std.heap.c_allocator) catch return -99;
+        defer std.heap.c_allocator.free(result);
+        const copy_len = @min(result.len, result_buf_len);
+        @memcpy(result_buf[0..copy_len], result[0..copy_len]);
+        return @intCast(copy_len);
     }
     return -100;
 }
@@ -219,24 +206,21 @@ pub export fn whatwg_browser_evaluate(
 // C ABI Exports - Runtime Initialization
 // ============================================================================
 
-/// Initialize the V8 platform (call once at program start).
-///
-/// Sets V8's flags BEFORE platform initialization, which is required, then starts
-/// the platform. Must be called before creating any browser instances.
-///
-/// Uses the RUNTIME flag set. `--predictable` and `--hash-seed=0` belong to
-/// snapshot generation: applying them to an embedding application would disable
-/// V8's parallelism, make `Math.random()` deterministic and drop hash-flooding
-/// protection, none of which a host app is asking for by linking this library.
+/// Start the engine (call once at program start), before creating any
+/// browser instance: engine.initializeEngine, which on V8 sets the RUNTIME
+/// flag set before starting the platform. (`--predictable` and
+/// `--hash-seed=0` belong to snapshot generation: applied to an embedding
+/// application they would disable V8's parallelism, make `Math.random()`
+/// deterministic and drop hash-flooding protection.)
 pub export fn whatwg_runtime_init() callconv(.c) void {
-    v8.snapshot_loader.initializePlatformForRuntime();
+    engine.initializeEngine(.{}) catch {};
 }
 
-/// Shutdown the V8 platform (call once at program end).
-///
-/// Call this after destroying all browser instances.
+/// End the engine (call once at program end), after destroying all browser
+/// instances. An engine that cannot start again in the same process - V8 -
+/// keeps its platform until the process exits.
 pub export fn whatwg_runtime_shutdown() callconv(.c) void {
-    v8.ffi.v8_Platform_Dispose();
+    engine.deinitializeEngine();
 }
 
 /// Get the library version.

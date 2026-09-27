@@ -10,9 +10,8 @@ const interfaces = @import("interfaces");
 const URL = interfaces.URL;
 const URLSearchParams = interfaces.URLSearchParams;
 
-// Import V8 for internal field access
-const v8_engine = @import("v8");
-const v8 = v8_engine.ffi;
+// The engine protocol, for the platform object createObjectURL is handed.
+const engine = @import("engine");
 
 // Import file module for Blob URL store
 const file_mod = @import("file");
@@ -870,27 +869,20 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
         return call_static_createObjectURL(instance, obj);
     };
 
-    // Extract the Blob's internal data from the JSValue
-    // The JSValue contains a V8 object wrapping a runtime.Instance
-    const v8_value = obj.asEngineHandle();
-    const value: *v8.Value = @ptrCast(v8_value);
-
-    if (!v8.v8_Value_IsObject(value)) {
+    // `obj` is (Blob or MediaSource) - a union argument, which reaches the
+    // impl unconverted. WebIDL 3.2.24: a platform object implementing Blob
+    // (a File included) is the Blob; one implementing MediaSource is the
+    // MediaSource; anything else is a TypeError.
+    const object = engine.convertToPlatformObject(engine.currentRealm() orelse instance.ctx, obj) orelse
+        return error.TypeError;
+    if (object.stateAs(interfaces.Blob.State) == null) {
+        // TODO(media-source): a MediaSource's blob URL entry (Media Source
+        // Extensions createObjectURL) - Crane's blob URL store holds Blob
+        // data only.
+        if (object.stateAs(interfaces.MediaSource.State) != null) return error.NotSupportedError;
         return error.TypeError;
     }
-
-    const v8_obj: *v8.Object = @ptrCast(value);
-    const field_count = v8.v8_Object_InternalFieldCount(v8_obj);
-    if (field_count < 1) {
-        return error.TypeError;
-    }
-
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(v8_obj, 0) orelse {
-        return error.TypeError;
-    };
-
-    // The internal field should point to a runtime.Instance
-    const blob_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+    const blob_instance = object;
 
     // Get the Blob's internal state
     const blob_internal = BlobImpl.getInternal(blob_instance) orelse {

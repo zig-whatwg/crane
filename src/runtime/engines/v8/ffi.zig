@@ -3254,6 +3254,103 @@ pub extern fn v8_Object_IsOwnEnumerableCatching(context: *Context, object: *Valu
 pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key: *Value, threw: *bool) ?*Value;
 // ---- end lane: engine-boundary ----
 // ---- lane: page-realm ----
+
+/// ECMAScript GetFunctionRealm(value). OWNED: v8_Context_Dispose. Null for a
+/// non-object, and with `revoked_proxy` set at a revoked proxy.
+pub extern fn v8_Value_GetFunctionRealm(value: *Value, revoked_proxy: *bool) ?*Context;
+
+/// A context from `global_template` around the detached `global_proxy`.
+/// OWNED: v8_Context_Dispose.
+pub extern fn v8_Context_NewWithGlobalTemplateAndProxy(isolate: *Isolate, global_template: *ObjectTemplate, global_proxy: *Object) ?*Context;
+
+/// Whether JavaScript frames are on the isolate's stack.
+pub extern fn v8_Isolate_HasJavaScriptOnStack(isolate: *Isolate) bool;
+
+/// v8_CompileEventHandler with the parameter names given. The function is
+/// OWNED (a Global<Value>*); on a SyntaxError null, with `out_error` set
+/// (v8_FreeErrorInfo).
+pub extern fn v8_CompileEventHandlerWithParameters(
+    context: *Context,
+    name: [*]const u8,
+    name_len: c_int,
+    body: [*]const u8,
+    body_len: c_int,
+    parameter_names: [*]const [*:0]const u8,
+    parameter_count: c_int,
+    scopes: [*]const ?*Object,
+    scope_count: c_int,
+    out_error: *?*V8ErrorInfo,
+) ?*Value;
+
+/// Compile a classic script whose ScriptOrigin names `resource_name` (null:
+/// "") and carries `host_defined` (null: none). Free the result with
+/// v8_FreeScriptCompileResult; its script is OWNED.
+pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+
+/// Whether V8's platform is initialized in this process.
+pub extern fn v8_Platform_IsInitialized() bool;
+
+/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
+/// `dispatch(isolate, event, promise, reason)`: `event` a PromiseRejectEvent,
+/// the promise and the reason (null when V8 gives none) Globals the
+/// dispatcher OWNS.
+pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(
+    isolate: *Isolate,
+    dispatch: *const fn (isolate: *Isolate, event: c_int, promise: *Value, reason: ?*Value) callconv(.c) void,
+) void;
+
+/// Remove HostPromiseRejectionTracker from `isolate` alone.
+pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;
+
+/// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
+/// names `resource_name` (null: "") and carries `host_defined` (null: none)
+/// as a module's. Free with v8_FreeModuleCompileResult; its module is OWNED.
+pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ModuleCompileResult;
+
+/// The host's answer for one module request during a Link: the resolved
+/// module (the host keeps it), or null. `referrer` is BORROWED for the call.
+pub const ProtocolResolveModule = *const fn (
+    data: ?*anyopaque,
+    referrer: *Module,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    type_attribute: ?[*:0]const u8,
+) callconv(.c) ?*Module;
+
+/// ECMAScript Link() with each request resolved by `resolve`. False with
+/// `exception` the error (OWNED; null when nothing was thrown).
+pub extern fn v8_Module_LinkWithResolver(context: *Context, module: *Module, resolve: ProtocolResolveModule, data: ?*anyopaque, exception: *?*Value) bool;
+
+/// ECMAScript Evaluate(): 0 fulfilled, 1 rejected (`value` the reason), 2
+/// pending (`value` the promise), -1 nothing (terminating). `value` OWNED.
+pub extern fn v8_Module_EvaluateForProtocol(context: *Context, module: *Module, value: *?*Value) c_int;
+
+/// ContinueDynamicImport for an import() whose module the host loaded.
+/// Consumes `context` and `resolver`; `module` stays the caller's.
+pub extern fn v8_DynamicImport_ContinueWithModule(context: *anyopaque, resolver: *anyopaque, module: *Module) void;
+
+/// The protocol's import() dispatcher: `context` and `resolver` OWNED by it
+/// until the import is finished; `referrer_kind` 0 script, 1 module, -1
+/// none; the strings BORROWED for the call.
+pub const ProtocolDynamicImportDispatch = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    referrer_kind: c_int,
+    referrer: ?*anyopaque,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    type_attribute: ?[*:0]const u8,
+    resolver: *anyopaque,
+) callconv(.c) void;
+
+/// The protocol's import.meta.url dispatcher: the URL's bytes, BORROWED for
+/// the call, or null. `module` is BORROWED.
+pub const ProtocolImportMetaUrlDispatch = *const fn (isolate: *Isolate, module: *Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8;
+
+/// Install the protocol's import() and import.meta hooks on `isolate`, each
+/// only when given.
+pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch) void;
+
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
 /// Create ReferenceError in a specific context (for cross-realm errors).
@@ -3285,4 +3382,9 @@ pub extern fn v8_Function_NewWithData(context: *Context, callback: FunctionCallb
 /// promise, a new Global<Value> the caller owns; null on failure or when both
 /// handlers are null. Unlike v8_Promise_Then, safe with a null handler.
 pub extern fn v8_Promise_ThenWithOptionalHandlers(context: *Context, promise: *Value, on_fulfilled: ?*Value, on_rejected: ?*Value) ?*Value;
+/// ECMAScript ToObject(value): the object itself, or a primitive's wrapper
+/// object of `context`'s realm. Null for undefined and null (ToObject's
+/// TypeError, for the caller to throw; nothing is thrown) or on failure. A new
+/// Global the caller owns.
+pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 // ---- end lane: protocol ----

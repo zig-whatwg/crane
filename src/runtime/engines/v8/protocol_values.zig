@@ -13,6 +13,7 @@ const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
+const realm_entry = @import("realm_entry.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -149,6 +150,31 @@ pub fn typeOf(realm: Context, value: JSValue) engine.ValueType {
             const entered = support.enter(realm) catch break :blk .undefined;
             defer entered.leave();
             break :blk support.typeOfValue(@ptrCast(@alignCast(h.ptr)));
+        },
+    };
+}
+
+/// ECMAScript ToBoolean (7.1.2). A primitive by its IDL arm; an engine
+/// value by V8's own ToBoolean, which also answers [[IsHTMLDDA]]
+/// (`document.all`) false. Runs no script, so needs no context - only the
+/// realm's agent.
+pub fn toBoolean(realm: Context, value: JSValue) bool {
+    return switch (value) {
+        // 1. If argument is a Boolean, return argument.
+        .boolean => |b| b,
+        // 2. If argument is one of undefined, null, +0, -0, NaN, 0, or the
+        // empty String, return false.
+        .undefined, .null => false,
+        .number => |n| !(n == 0 or std.math.isNan(n)),
+        .string => |text| text.data.len != 0,
+        // 4. Return true (an Object that is not [[IsHTMLDDA]]).
+        .instance => true,
+        .handle => |h| blk: {
+            const isolate = realm_entry.agentOf(realm) orelse break :blk true;
+            const entered_isolate = ffi.v8_Isolate_GetCurrent() != isolate;
+            if (entered_isolate) ffi.v8_Isolate_Enter(isolate);
+            defer if (entered_isolate) ffi.v8_Isolate_Exit(isolate);
+            break :blk ffi.v8_Value_BooleanValue(@ptrCast(@alignCast(h.ptr)), isolate);
         },
     };
 }

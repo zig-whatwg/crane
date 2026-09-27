@@ -376,6 +376,65 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
     state.own.cancelable = cancelable;
 }
 
+/// DOM "inner event creation steps", for the constructor of Event or of an
+/// interface that inherits from it, followed by that constructor's step 2
+/// ("initialize event's type attribute to type"). `instance` is the new object
+/// (step 1: its interface's constructor made it); an inheriting interface runs
+/// its own event constructing steps - its own dictionary members - after
+/// this. `dictionary` is the constructor's dictionary's EventInit part
+/// (BORROWED); `type` is copied.
+///
+/// Spec: https://dom.spec.whatwg.org/#inner-event-creation-steps
+pub fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMString, dictionary: dictionaries.EventInit) !void {
+    // An inheriting interface's state contains Event's; find it by offset.
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
+
+    // The event's own copy of the type first: with the Event internal state
+    // below, the only fallible steps - nothing is left half-initialized.
+    var next_type = try @"type".clone(allocator);
+    errdefer next_type.deinit(allocator);
+    const internal = state.own._internal orelse blk: {
+        const ArenaAllocator = @import("runtime").ArenaAllocator;
+        const created = try ArenaAllocator.get().create(InternalState);
+        created.* = InternalState.init(allocator);
+        state.own._internal = created;
+        break :blk created;
+    };
+
+    // 2. Set event's initialized flag.
+    internal.initialized_flag = true;
+
+    // 3. Initialize event's timeStamp attribute to the relative high
+    //    resolution coarse time given time (now) and event's relevant global
+    //    object.
+    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+
+    // 4. For each member -> value of dictionary: if event has an attribute
+    //    whose identifier is member, initialize that attribute to value.
+    //    EventInit's members, each false by default.
+    state.own.bubbles = dictionary.bubbles orelse false;
+    state.own.cancelable = dictionary.cancelable orelse false;
+    state.own.composed = dictionary.composed orelse false;
+
+    // The attributes no member names keep their initial values.
+    state.own.target = null;
+    state.own.srcElement = null;
+    state.own.currentTarget = null;
+    state.own.eventPhase = Event.get_NONE();
+    state.own.cancelBubble = false;
+    state.own.returnValue = true;
+    state.own.defaultPrevented = false;
+    state.own.isTrusted = false;
+
+    // 5. Run the event constructing steps: Event has none; an inheriting
+    //    interface runs its own when this returns.
+
+    // The constructor's step 2: initialize event's type attribute to type.
+    state.own.type.deinit(allocator);
+    state.own.type = next_type;
+}
+
 /// Operation: initEvent (legacy)
 /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
 /// The initEvent(type, bubbles, cancelable) method steps are:

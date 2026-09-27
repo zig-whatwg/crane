@@ -14,8 +14,8 @@
 //! next and return run %AsyncFromSyncIteratorPrototype%'s steps directly -
 //! the async-from-sync object is never exposed to script, so it is not made.
 //!
-//! Deviation: GetIterator of a primitive (GetV's ToObject) is a TypeError -
-//! V8's embedder API reads properties of objects only.
+//! GetIterator of a primitive reads its method through ToObject (GetMethod's
+//! GetV), so a string iterates its code points.
 
 const std = @import("std");
 const engine = @import("engine");
@@ -150,18 +150,24 @@ pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Er
     defer entered.leave();
     const object = try support.ownGlobal(entered, value);
     defer ffi.v8_Global_Dispose(object);
-    // GetMethod's GetV: an object's property (the deviation above).
-    if (!ffi.v8_Value_IsObject(object)) return error.TypeError;
+    // GetMethod(obj, P)'s GetV(obj, P): 1. Let O be ? ToObject(V) - a
+    // primitive's methods are its wrapper object's (undefined and null are
+    // ToObject's TypeError); the method is then called with `obj` itself.
+    const methods_of: *ffi.Value = if (ffi.v8_Value_IsObject(object))
+        object
+    else
+        ffi.v8_Value_ToObject(entered.context(), object) orelse return error.TypeError;
+    defer if (methods_of != object) ffi.v8_Global_Dispose(methods_of);
 
     const method: ?*ffi.Value = switch (kind) {
         // 1. If kind is async, then
         .async => blk: {
             // a. Let method be ? GetMethod(obj, %Symbol.asyncIterator%).
-            if (try support.getSymbolMethod(entered, object, .async_iterator)) |async_method| break :blk async_method;
+            if (try support.getSymbolMethod(entered, methods_of, .async_iterator)) |async_method| break :blk async_method;
             // b. If method is undefined, then
             //    i. Let syncMethod be ? GetMethod(obj, %Symbol.iterator%).
             //    ii. If syncMethod is undefined, throw a TypeError exception.
-            const sync_method = (try support.getSymbolMethod(entered, object, .iterator)) orelse return error.TypeError;
+            const sync_method = (try support.getSymbolMethod(entered, methods_of, .iterator)) orelse return error.TypeError;
             defer ffi.v8_Global_Dispose(sync_method);
             //    iii. Let syncIteratorRecord be ? GetIteratorFromMethod(obj,
             //         syncMethod).
@@ -173,7 +179,7 @@ pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Er
             return @ptrCast(record);
         },
         // 2. Otherwise, let method be ? GetMethod(obj, %Symbol.iterator%).
-        .sync => try support.getSymbolMethod(entered, object, .iterator),
+        .sync => try support.getSymbolMethod(entered, methods_of, .iterator),
     };
     // 3. If method is undefined, throw a TypeError exception.
     const iterator_method = method orelse return error.TypeError;
@@ -613,14 +619,17 @@ fn freeStrings(strings: [][]u8, allocator: Allocator) void {
 
 /// WebIDL "create a frozen array" (3.2.27) from `values`. OWNED.
 pub fn createFrozenArray(realm: Context, values: []const JSValue) Error!Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
     // 1. Let array be the result of converting the sequence of values of
-    //    type T to a JavaScript value.
-    const array = webidl_conversions.createSequenceOfValues(realm, values) catch |err| return support.protocolError(err);
+    //    type T to a JavaScript value - a platform object to its wrapper in
+    //    its relevant realm.
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    const array = webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return support.protocolError(err);
     const handle = support.handleOf(array) orelse return error.OperationFailed;
     errdefer ffi.v8_Global_Dispose(handle);
     // 2. Perform ! SetIntegrityLevel(array, "frozen").
-    const entered = try support.enter(realm);
-    defer entered.leave();
     if (!ffi.v8_Object_Freeze(@ptrCast(handle), entered.context())) return error.OperationFailed;
     // 3. Return array.
     return support.owned(handle);

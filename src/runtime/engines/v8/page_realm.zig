@@ -178,6 +178,10 @@ fn reportThrown(context: *ffi.Context, exception: *ffi.Value, report: runtime.Re
 /// context_manager, reads it through the child-window hooks below.
 threadlocal var window_operations: ?*const runtime.WindowOperations = null;
 
+/// The realm whose installWindowOperations set `window_operations`: its end
+/// ends them (`endWindowOperations`).
+threadlocal var operations_realm: ?runtime.Context = null;
+
 const NativeOperation = struct {
     name: []const u8,
     callback: ffi.FunctionCallback,
@@ -204,12 +208,24 @@ pub fn installWindowOperations(realm: runtime.Context, operations: *const runtim
     defer ffi.v8_Object_Dispose(global);
 
     window_operations = operations;
+    operations_realm = realm;
     try defineNatives(scope.isolate, context, global, &window_operation_natives);
 
     // Every window created under this one - an iframe's, a popup's - gets the
     // same operations, and gives up its timers when its document goes.
     context_manager.setChildContextGlobalsCallback(defineOnChildWindow);
     context_manager.setChildWindowCleanupCallback(childWindowDestroyed);
+}
+
+/// The end of `realm` (destroyWindowRealm): when it installed the window
+/// operations, no frame made from now on gets them, and a frame's end no
+/// longer reaches its steps.
+pub fn endWindowOperations(realm: runtime.Context) void {
+    if (operations_realm != realm) return;
+    operations_realm = null;
+    window_operations = null;
+    context_manager.clearChildContextGlobalsCallback();
+    context_manager.clearChildWindowCleanupCallback();
 }
 
 /// Define each of `natives` on `global`, as functions of `context`'s realm.

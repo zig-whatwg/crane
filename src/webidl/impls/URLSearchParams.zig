@@ -6,6 +6,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const URLSearchParams = interfaces.URLSearchParams;
 
@@ -86,108 +87,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-/// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams (lines 2041-2056)
+/// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-urlsearchparams
 ///
-/// Takes union type: (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
-/// The init_data parameter is a type-erased pointer that we need to interpret
+/// `init` is `optional (sequence<sequence<USVString>> or record<USVString,
+/// USVString> or USVString) init = ""`, which reaches the impl unconverted:
+/// the union conversion (WebIDL 3.2.24) is done here, through the engine
+/// protocol.
 pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // If no init data provided or undefined/null, create empty params
-    if (!init_data.was_passed) {
-        return initWithString(ctx.allocator, ctx, "");
-    }
+    const realm = engine.currentRealm() orelse ctx;
+    // The optional argument's default, "", for undefined as for absent.
+    const value = if (init_data.was_passed) init_data.value else runtime.JSValue.jsUndefined;
+    if (value == .undefined) return initWithString(ctx.allocator, ctx, "");
 
-    const value = init_data.value;
-
-    // Check if it's undefined or null
-    if (value.isNullOrUndefined()) {
-        return initWithString(ctx.allocator, ctx, "");
-    }
-
-    // Check if it's a string - handled first per spec
-    if (value.asString()) |str| {
-        return initWithString(ctx.allocator, ctx, str);
-    }
-
-    // Get the V8 handle for sequence/record conversion
-    const engine_handle = value.getEngineHandle() orelse {
-        // No V8 handle, can't iterate - return empty
-        return initWithString(ctx.allocator, ctx, "");
-    };
-
-    // Get V8 isolate and context from runtime
-    const v8 = @import("v8");
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return initWithString(ctx.allocator, ctx, "");
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return initWithString(ctx.allocator, ctx, "");
-    defer v8.ffi.v8_Context_Dispose(v8_context);
-
-    // Get the V8 Value pointer - depends on handle scope
-    const v8_handle: *v8.Value = if (engine_handle.handle_scope == .local) blk: {
-        // Local handle - the pointer is already the Value*
-        break :blk @ptrCast(engine_handle.ptr);
-    } else blk: {
-        // Global handle - need to get the local Value* from Global<Value>*
-        break :blk @ptrCast(v8.ffi.v8_Global_Get(isolate, @ptrCast(engine_handle.ptr)) orelse return initWithString(ctx.allocator, ctx, ""));
-    };
-
-    // Import conversion helpers
-    const conv = v8.conversions;
-
-    // Per WebIDL spec, we must try sequence conversion first (using Symbol.iterator),
-    // but only access Symbol.iterator ONCE. If the object is iterable, use sequence conversion.
-    // If not iterable or iteration fails, fall back to record conversion.
-    //
-    // iterateAsSequencePairs returns null if the object isn't iterable, so we can use that
-    // as our check without double-accessing Symbol.iterator.
-    const maybe_pairs = conv.iterateAsSequencePairs(ctx.allocator, isolate, v8_context, v8_handle) catch |err| {
-        switch (err) {
-            error.TypeError => {
-                // Inner sequence doesn't have exactly 2 elements - throw TypeError
-                conv.throwTypeError(isolate, "Failed to construct 'URLSearchParams': Sequence element did not contain exactly two elements");
-                return error.TypeError;
-            },
-            else => return err,
+    // WebIDL union conversion, for an Object: an object with @@iterator is
+    // the sequence<sequence<USVString>>; any other object is the record.
+    if (engine.typeOf(realm, value) == .object) {
+        // "Initialize" step 1: for each innerSequence of init, if its size is
+        // not 2, throw a TypeError; append (innerSequence[0],
+        // innerSequence[1]).
+        if (try engine.convertToSequenceOfStringPairs(realm, value, .usv_string, ctx.allocator)) |pairs| {
+            defer runtime.StringRecordEntry.freeAll(pairs, ctx.allocator);
+            return initWithPairs(ctx.allocator, ctx, pairs);
         }
-    };
-
-    if (maybe_pairs) |pair_list| {
-        defer {
-            // Free the pair strings and slice
-            for (pair_list) |pair| {
-                if (pair.name.len > 0) ctx.allocator.free(pair.name);
-                if (pair.value.len > 0) ctx.allocator.free(pair.value);
-            }
-            ctx.allocator.free(pair_list);
-        }
-        return initWithSequencePairs(ctx.allocator, ctx, pair_list);
+        // "Initialize" step 2: for each name -> value of init, append
+        // (name, value).
+        const record = try engine.convertToRecordOfStrings(realm, value, .usv_string, .usv_string, ctx.allocator);
+        defer runtime.StringRecordEntry.freeAll(record, ctx.allocator);
+        return initWithPairs(ctx.allocator, ctx, record);
     }
 
-    // Not iterable - try as record<USVString, USVString>
-    // (plain object with own enumerable string keys)
-    if (conv.iterateAsRecordPairs(ctx.allocator, v8_context, v8_handle)) |maybe_record_pairs| {
-        if (maybe_record_pairs) |record_pairs| {
-            defer {
-                // Free the pair strings and slice
-                for (record_pairs) |pair| {
-                    if (pair.name.len > 0) ctx.allocator.free(pair.name);
-                    if (pair.value.len > 0) ctx.allocator.free(pair.value);
-                }
-                ctx.allocator.free(record_pairs);
-            }
-            return initWithSequencePairs(ctx.allocator, ctx, record_pairs);
-        }
-    } else |_| {
-        // Conversion error
-    }
-
-    // Fall back to empty if nothing worked
-    return initWithString(ctx.allocator, ctx, "");
+    // Anything else is the USVString (null is "null").
+    const text = try engine.convertToUSVString(realm, value, ctx.allocator);
+    defer ctx.allocator.free(text);
+    // Constructor step 1: a string starting with "?" loses it. Then
+    // "initialize" step 3: parse it.
+    const query = if (text.len > 0 and text[0] == '?') text[1..] else text;
+    return initWithString(ctx.allocator, ctx, query);
 }
 
-/// Initialize from SequencePair slice (from V8 conversion)
-fn initWithSequencePairs(
+/// "Initialize" with a list of name-value pairs (a sequence's or a
+/// record's), each appended in order. The strings are copied.
+fn initWithPairs(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
-    pairs: []const @import("v8").conversions.SequencePair,
+    pairs: []const runtime.StringRecordEntry,
 ) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
@@ -205,9 +148,8 @@ fn initWithSequencePairs(
         .allocator = allocator,
     };
 
-    // Add each pair to the list (strings are already owned by caller, so dupe them)
     for (pairs) |pair| {
-        const name = try allocator.dupe(u8, pair.name);
+        const name = try allocator.dupe(u8, pair.key);
         errdefer allocator.free(name);
 
         const pairvalue = try allocator.dupe(u8, pair.value);
@@ -473,65 +415,22 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     // The return type is `sequence<USVString>`, and an impl's return value IS
     // the JavaScript return value - nothing marshals it on the way out
     // (AGENTS.md, "An impl's return value is the JS return value, verbatim").
-    // So a real V8 array has to be built here, including for no matches: the
-    // spec's answer is an EMPTY LIST, and `undefined` is what this used to
-    // return for both cases.
-    //
-    // That is not a cosmetic difference. `websockets/constants.sub.js` opens
-    // with `params.getAll("wpt_flags").indexOf(flag)`, which threw a TypeError
-    // on the undefined, aborting the script before it could initialise
-    // `SCHEME_DOMAIN_PORT` - so every `websockets/*.any.js` that includes it
-    // failed in `CreateWebSocket` with a TDZ error, in both window and worker,
-    // before any WebSocket was constructed.
-    const v8 = @import("v8");
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-
-    // Own HandleScope. Not every path that reaches an impl has one: a worker's
-    // `importScripts()` evaluates the fetched script without opening one, and
-    // `HandleScope::CreateHandle` ABORTS rather than failing when there is no
-    // scope, taking the process and every remaining test file with it. This
-    // stub used to return `undefined` and create no handles at all, so the gap
-    // only became reachable once it started building a real array.
-    //
-    // Safe to close here: every `v8_*` constructor in this function returns a
-    // Global, which outlives the scope by construction.
-    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return error.NotImplemented;
-    defer v8.ffi.v8_HandleScope_Dispose(scope);
-
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-    defer v8.ffi.v8_Context_Dispose(context);
-
-    // Count first so the array is created at its final length.
-    var count: u32 = 0;
+    // So the Array is made here, including for no matches: the spec's answer
+    // is an EMPTY LIST. (`websockets/constants.sub.js` opens with
+    // `params.getAll("wpt_flags").indexOf(flag)`; an `undefined` here aborted
+    // every websockets/*.any.js before any WebSocket was constructed.)
+    const allocator = instance.ctx.allocator;
+    var values: std.ArrayListUnmanaged(runtime.JSValue) = .empty;
+    defer values.deinit(allocator);
     for (0..internal.list.len) |i| {
         const tuple = internal.list.get(i).?;
-        if (std.mem.eql(u8, tuple.name, name)) count += 1;
+        // BORROWED for the call: the list keeps the string.
+        if (std.mem.eql(u8, tuple.name, name)) try values.append(allocator, runtime.JSValue.fromStringRef(tuple.value));
     }
 
-    // `v8_Array_New` hands back a Global<Array>* the caller owns; returning it
-    // inside the JSValue transfers that ownership onward.
-    const array = v8.ffi.v8_Array_New(isolate, @intCast(count));
-
-    var index: u32 = 0;
-    for (0..internal.list.len) |i| {
-        const tuple = internal.list.get(i).?;
-        if (!std.mem.eql(u8, tuple.name, name)) continue;
-
-        // `v8_String_NewFromUtf8` allocates a Global the caller owns. The array
-        // takes its own reference in `Set`, so this one is released at the end
-        // of the iteration; leaving it would leak one handle per value.
-        const value = v8.ffi.v8_String_NewFromUtf8(
-            isolate,
-            tuple.value.ptr,
-            @intCast(tuple.value.len),
-        ) orelse continue;
-        defer v8.ffi.v8_Value_Dispose(@ptrCast(value));
-
-        _ = v8.ffi.v8_Array_Set(array, context, index, @ptrCast(value));
-        index += 1;
-    }
-
-    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    // In the current realm; OWNED, handed to the binding.
+    const array = try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, values.items);
+    return array.take();
 }
 
 /// has method

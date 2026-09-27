@@ -243,8 +243,8 @@ test "context creation benchmark: Rapid context switching" {
             return err;
         };
 
-        // Simulate minimal test execution
-        _ = browser.evaluateScript("1 + 1") catch {};
+        // Simulate minimal test execution (the completion value is OWNED).
+        if (browser.evaluateScript("1 + 1")) |value| value.release() else |_| {}
 
         const end = clock.monotonicNanos();
 
