@@ -25,6 +25,9 @@ const blob_bytes = @import("dom").blob_bytes;
 const srd = @import("streams_readable.zig");
 const js = @import("streams_js.zig");
 const engine = @import("engine");
+const encoding = @import("encoding");
+const xhr = @import("xhr");
+const form_parser = @import("form_parser");
 const same_object = @import("same_object.zig");
 const BodyPipe = fetch.internal.BodyPipe;
 
@@ -171,9 +174,12 @@ pub const Owner = struct {
     pub const Kind = struct {
         /// The Owner of `instance`, asked again when a read finishes.
         of: *const fn (instance: *runtime.Instance) ?Owner,
-        /// The method's own steps on a body that is its bytes (`body`'s
-        /// data): the promise the method returns.
-        steps: *const fn (instance: *runtime.Instance, method: Method) anyerror!runtime.JSValue,
+        /// blob()'s and formData()'s steps on the body's `bytes`, the ones
+        /// that need the object: the Blob of its MIME type, or the FormData
+        /// its Content-Type says how to parse - error.TypeError when that
+        /// fails, or no type says how. A new platform object of the object's
+        /// relevant realm.
+        package: *const fn (instance: *runtime.Instance, method: Method, bytes: []const u8) anyerror!*runtime.Instance,
         /// A reason consuming the body rejects with before anything else
         /// is looked at, owned - a Response's followed signal's abort
         /// reason.
@@ -478,27 +484,15 @@ fn finishReturn(deferred: js.Deferred) js.Error!runtime.JSValue {
     return js.toReturnOwned(try js.clone(deferred.promise));
 }
 
-/// The method's own steps - what it does to a body that is its bytes - on
-/// `bytes`, the whole of a body read through its stream, settling
-/// `deferred` with their outcome.
+/// Consume body step 5's successSteps on `bytes`, the whole of the body:
+/// resolve the promise with the method's convertBytesToJSValue of them -
+/// or, when that throws, errorSteps: reject it with the exception.
 fn settleWithBytes(instance: *runtime.Instance, kind: *const Owner.Kind, method: Method, bytes: []const u8, realm: js.Realm, deferred: js.Deferred) !void {
-    // A null body stays null (consume body step 5: the steps run on an empty
-    // byte sequence), so bodyUsed stays false - the bytes forms read a null
-    // body as empty and mark nothing.
-    if (kind.of(instance)) |o| if (o.body) |body| {
-        // As a body of these bytes that nobody has read yet: the stream was
-        // the one disturbed, and the bytes form does its own marking.
-        body.data.clearRetainingCapacity();
-        try body.data.appendSlice(body.allocator, bytes);
-        body.used = false;
-        body.disturbed = false;
-    };
-
     // The steps make their value - an ArrayBuffer, a Blob - in this's
     // relevant realm, which is not always the caller's (a method borrowed
     // from another window). A stream that has already ended reads to its
     // end inside the method call, before any microtask would enter it.
-    var run: MethodSteps = .{ .instance = instance, .kind = kind, .method = method, .realm = realm, .deferred = deferred };
+    var run: MethodSteps = .{ .instance = instance, .kind = kind, .method = method, .bytes = bytes, .realm = realm, .deferred = deferred };
     engine.runInRealm(instance.ctx, MethodSteps.steps, &run) catch {
         // The realm could not be entered (none behind it, or no handle
         // left): the steps still settle the promise, from the current realm -
@@ -508,35 +502,141 @@ fn settleWithBytes(instance: *runtime.Instance, kind: *const Owner.Kind, method:
     };
 }
 
-/// The method's own steps and the settling of its promise, run in the
+/// successSteps, or errorSteps, and the settling of the promise, run in the
 /// object's realm.
 const MethodSteps = struct {
     instance: *runtime.Instance,
     kind: *const Owner.Kind,
     method: Method,
+    bytes: []const u8,
     realm: js.Realm,
     deferred: js.Deferred,
 
     fn steps(data: ?*anyopaque) void {
         const self: *MethodSteps = @ptrCast(@alignCast(data.?));
         const realm = self.realm;
-        const result = self.kind.steps(self.instance, self.method) catch |err| {
+        var package: Package = .{ .instance = self.instance, .kind = self.kind, .method = self.method, .bytes = self.bytes };
+        const thrown = engine.completionOf(realm.ctx, Package.steps, &package) catch |err| {
+            // The engine failed, not the steps: the promise still settles.
+            if (package.value) |value| value.release();
             const e = realm.typeError(@errorName(err)) catch return;
             defer js.dispose(e);
             self.deferred.reject(realm, e);
             return;
         };
-        // The bytes form returns its promise; ours takes on its outcome.
-        switch (result) {
-            .handle => |h| {
-                const promise: js.Value = .{ .value = result, .realm = realm.ctx };
-                self.deferred.resolve(realm, promise);
-                if (h.needs_disposal) js.dispose(promise);
-            },
-            else => self.deferred.resolveUndefined(realm),
+        if (thrown) |exception| {
+            // errorSteps: reject promise with the exception.
+            defer exception.release();
+            self.deferred.reject(realm, .{ .value = exception.value, .realm = realm.ctx });
+            return;
         }
+        // successSteps: resolve promise with the value.
+        const value = package.value orelse return self.deferred.resolveUndefined(realm);
+        defer value.release();
+        self.deferred.resolve(realm, .{ .value = value.value, .realm = realm.ctx });
     }
 };
+
+/// Each method's convertBytesToJSValue, on the body's `bytes`, in the
+/// object's relevant realm: the value (OWNED), or a thrown exception.
+const Package = struct {
+    instance: *runtime.Instance,
+    kind: *const Owner.Kind,
+    method: Method,
+    bytes: []const u8,
+    /// The value, OWNED, once made.
+    value: ?engine.Owned = null,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *Package = @ptrCast(@alignCast(data.?));
+        const realm = self.instance.ctx;
+        self.value = switch (self.method) {
+            // arrayBuffer(): "creating an ArrayBuffer from bytes in this's
+            // relevant realm".
+            .array_buffer => try engine.createArrayBuffer(realm, self.bytes),
+            // bytes(): "creating a Uint8Array from bytes in this's relevant
+            // realm".
+            .bytes => blk: {
+                const buffer = try engine.createArrayBuffer(realm, self.bytes);
+                defer buffer.release();
+                break :blk try engine.createArrayBufferView(realm, .uint8_array, buffer.value, 0, self.bytes.len);
+            },
+            // json(): "parse JSON from bytes" - a SyntaxError is thrown.
+            .json => try engine.parseJsonToValue(realm, self.bytes),
+            // text(): "UTF-8 decode".
+            .text => blk: {
+                const text = try utf8Decode(realm.allocator, self.bytes);
+                defer realm.allocator.free(text);
+                break :blk try engine.retainValue(realm, runtime.JSValue.fromStringRef(text));
+            },
+            // blob() and formData(): the object's own.
+            .blob, .form_data => blk: {
+                const object = self.kind.package(self.instance, self.method, self.bytes) catch |err| return switch (err) {
+                    // formData()'s "throw a TypeError".
+                    error.TypeError => error.TypeError,
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.OperationFailed,
+                };
+                break :blk try engine.retainValue(realm, .{ .instance = object });
+            },
+        };
+    }
+};
+
+/// formData()'s parse of `bytes` by the object's Content-Type:
+/// multipart/form-data with its boundary, or
+/// application/x-www-form-urlencoded - also, as before, for no type at
+/// all, and an empty body is an empty FormData whatever the type.
+/// error.TypeError when the parse fails or another type says nothing about
+/// how. OWNED.
+///
+/// TODO: the spec parses by the MIME type's essence, and throws for no
+/// type and for an empty body the type cannot parse.
+pub fn parseFormData(allocator: std.mem.Allocator, content_type: ?[]const u8, bytes: []const u8) !*xhr.form_data.FormData {
+    const form_data = try xhr.form_data.FormData.init(allocator);
+    errdefer form_data.deinit();
+    if (bytes.len == 0) return form_data;
+    const ct = content_type orelse "";
+    if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
+        const boundary = xhr.multipart_parser.extractBoundary(allocator, ct) catch return error.TypeError;
+        defer allocator.free(boundary);
+        const entries = xhr.multipart_parser.parseMultipartFormData(allocator, bytes, boundary) catch return error.TypeError;
+        defer {
+            for (entries) |*entry| entry.deinit(allocator);
+            allocator.free(entries);
+        }
+        for (entries) |entry| switch (entry.value) {
+            .string => |text| try form_data.appendString(entry.name, text),
+            .file => |f| try form_data.appendFile(entry.name, f, entry.filename),
+            .blob_instance => |ptr| try form_data.appendBlobInstance(entry.name, ptr, entry.filename),
+        };
+        return form_data;
+    }
+    if (content_type != null and std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") == null) return error.TypeError;
+    const tuples = form_parser.parse(allocator, bytes) catch return error.TypeError;
+    defer {
+        for (tuples) |tuple| tuple.deinit(allocator);
+        allocator.free(tuples);
+    }
+    for (tuples) |tuple| try form_data.appendString(tuple.name, tuple.value);
+    return form_data;
+}
+
+/// Encoding "UTF-8 decode" of `bytes` - a leading BOM stripped, each invalid
+/// sequence U+FFFD - held as UTF-8, as the engine takes a string. OWNED.
+fn utf8Decode(allocator: std.mem.Allocator, bytes: []const u8) error{OutOfMemory}![]u8 {
+    const code_units = encoding.utf8Decode(allocator, bytes) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        // Only the fatal error mode reports one.
+        error.InvalidUtf8Sequence => unreachable,
+    };
+    defer allocator.free(code_units);
+    // A decoder's output is scalar values: no surrogate is unpaired.
+    return std.unicode.utf16LeToUtf8Alloc(allocator, code_units) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => unreachable,
+    };
+}
 
 /// Fetch "fully read body" through the body's stream: read every chunk,
 /// then run the method's steps. Streams "read-loop": each chunk step reads

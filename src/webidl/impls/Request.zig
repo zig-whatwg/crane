@@ -34,15 +34,6 @@ const fetch_body = @import("fetch_body.zig");
 
 pub const State = Request.State;
 
-// Helper to get promise object and destroy handle to prevent memory leaks
-fn getPromiseAndCleanup(engine: *const runtime.EngineInterface, promise_handle: *anyopaque, allocator: std.mem.Allocator) runtime.JSValue {
-    const promise_obj = engine.getPromiseObject(promise_handle);
-    if (engine.destroyPromiseHandle) |destroy| {
-        destroy(promise_handle, allocator);
-    }
-    return runtime.JSValue.fromHandle(promise_obj);
-}
-
 pub const ImplError = error{
     OutOfMemory,
     TypeError,
@@ -216,16 +207,13 @@ fn appendHeader(allocator: std.mem.Allocator, list: *fetch.internal.HeaderList, 
 /// (about:srcdoc) resolves nothing relative. A worker's is its script URL,
 /// which relevantBaseURL answers.
 fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
-    const v8_engine = @import("v8");
-    if (ctx.getEngineContextAs(v8_engine.ffi.Context)) |v8_context| {
-        if (v8_engine.context_manager.getWindowForContext(v8_context)) |window| {
-            const document = interfaces.Window.get_document(window) catch null;
-            if (document) |d| {
-                const base = interfaces.Node.get_baseURI(d) catch null;
-                if (base) |b| {
-                    if (b.len > 0) return @constCast(b);
-                    d.ctx.allocator.free(b);
-                }
+    if (relevantWindow(ctx)) |window| {
+        const document = interfaces.Window.get_document(window) catch null;
+        if (document) |d| {
+            const base = interfaces.Node.get_baseURI(d) catch null;
+            if (base) |b| {
+                if (b.len > 0) return @constCast(b);
+                d.ctx.allocator.free(b);
             }
         }
     }
@@ -238,16 +226,22 @@ fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
 /// The same lookup `XMLHttpRequest.open()` makes (see `relevantBaseURL` in
-/// XMLHttpRequest.zig): a Window's navigation records the document URL in the
-/// context entry, and a worker records its script URL there
-/// (html/worker_v8_context.zig), which is a worker's API base URL. Borrowed;
-/// not ours to free.
+/// XMLHttpRequest.zig): a Window's navigation records the document URL as
+/// its realm's document URL, and a worker records its script URL there,
+/// which is a worker's API base URL. Borrowed; not ours to free.
 fn relevantBaseURL(ctx: runtime.Context) ?[]const u8 {
-    const v8_engine = @import("v8");
-    const v8_context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
-    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    const url = ctx.documentUrl() orelse return null;
     if (url.len == 0) return null;
     return url;
+}
+
+/// The realm's global object, when it is a Window.
+fn relevantWindow(ctx: runtime.Context) ?*runtime.Instance {
+    const record = ctx.getRealm() orelse return null;
+    const raw = record.global_object orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    if (!std.mem.eql(u8, global.vtable.name, "Window")) return null;
+    return global;
 }
 
 /// Constructor - implements full Request(input, init) constructor algorithm
@@ -860,7 +854,7 @@ pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
 // The Body mixin, through fetch_body.zig
 // ============================================================================
 
-const body_kind = fetch_body.Owner.Kind{ .of = bodyOwner, .steps = bodySteps };
+const body_kind = fetch_body.Owner.Kind{ .of = bodyOwner, .package = packageSteps };
 
 /// This Request as the Body mixin's steps see it.
 pub fn bodyOwner(instance: *runtime.Instance) ?fetch_body.Owner {
@@ -890,16 +884,30 @@ fn bodyStreamToSend(request_object: *runtime.Instance) ?*runtime.Instance {
     return o.stream.*;
 }
 
-/// Each method's own steps on a body that is its bytes.
-fn bodySteps(instance: *runtime.Instance, method: fetch_body.Method) anyerror!runtime.JSValue {
-    return switch (method) {
-        .array_buffer => arrayBufferFromBytes(instance),
-        .blob => blobFromBytes(instance),
-        .bytes => bytesFromBytes(instance),
-        .form_data => formDataFromBytes(instance),
-        .json => jsonFromBytes(instance),
-        .text => textFromBytes(instance),
-    };
+/// blob()'s and formData()'s steps on this Request's body's `bytes`.
+fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: []const u8) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal.?;
+    const allocator = internal.allocator;
+    const content_type = internal.request.header_list.get(allocator, "content-type") catch null;
+    defer if (content_type) |ct| allocator.free(ct);
+    switch (method) {
+        // blob(): a Blob whose contents are bytes and whose type is this's
+        // MIME type (BlobData lowercases it, and drops one it cannot hold).
+        .blob => {
+            const blob_data = try BlobData.init(allocator, bytes, content_type orelse "");
+            errdefer blob_data.deinit();
+            return BlobImpl.createFromBlobData(allocator, instance.ctx, blob_data);
+        },
+        // formData(): the entries this's Content-Type says how to parse
+        // bytes into.
+        .form_data => {
+            const FormDataImpl = @import("FormData.zig");
+            const form_data = try fetch_body.parseFormData(allocator, content_type, bytes);
+            errdefer form_data.deinit();
+            return FormDataImpl.createFromInternal(allocator, instance.ctx, form_data);
+        },
+        .array_buffer, .bytes, .json, .text => unreachable,
+    }
 }
 
 fn consumeBody(instance: *runtime.Instance, method: fetch_body.Method) anyerror!runtime.JSValue {
@@ -948,598 +956,38 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
-///
-/// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .array_buffer);
 }
 
-/// `arrayBuffer()` over a body that is its bytes.
-fn arrayBufferFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    // Reject with TypeError per spec
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body bytes
-    const body_bytes: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch |err| {
-                    // Reject on read error
-                    engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else "";
-
-    // Create JS ArrayBuffer through engine abstraction
-    const createArrayBuffer = engine.createArrayBuffer orelse {
-        // No createArrayBuffer support - reject with error
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const js_array_buffer = createArrayBuffer(engine_ctx, body_bytes) catch {
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Resolve with the JS ArrayBuffer
-    engine.resolvePromise(engine_ctx, promise_handle, js_array_buffer) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-}
-
 /// blob() - Returns promise fulfilled with body as Blob
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-///
-/// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .blob);
 }
 
-/// `blob()` over a body that is its bytes.
-fn blobFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    // Get MIME type from Content-Type header
-    const mime_type = blk: {
-        const ct = internal.request.header_list.get(internal.allocator, "content-type") catch null;
-        break :blk ct orelse "";
-    };
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    // Reject with TypeError per spec
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body bytes
-    const body_bytes: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch |err| {
-                    // Reject on read error
-                    engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else "";
-
-    // Create Blob instance
-    const blob_data = BlobData.init(internal.allocator, body_bytes, mime_type) catch {
-        engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const blob_instance = BlobImpl.createFromBlobData(
-        internal.allocator,
-        instance.ctx,
-        blob_data,
-    ) catch {
-        blob_data.deinit();
-        engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Wrap the Blob instance as a V8 object
-    const wrapInstance = engine.wrapInstance orelse {
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const js_blob = wrapInstance(engine_ctx, blob_instance) catch {
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Resolve with the JS Blob
-    engine.resolvePromise(engine_ctx, promise_handle, js_blob) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-}
-
 /// bytes() - Returns promise fulfilled with body as Uint8Array
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
-///
-/// Uses the engine abstraction layer for Promise and Uint8Array creation.
 pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .bytes);
 }
 
-/// `bytes()` over a body that is its bytes.
-fn bytesFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    // Reject with TypeError per spec
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body bytes
-    const body_bytes: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch |err| {
-                    // Reject on read error
-                    engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else "";
-
-    // Create JS Uint8Array through engine abstraction
-    const createUint8Array = engine.createUint8Array orelse {
-        // No createUint8Array support - reject with error
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const js_uint8_array = createUint8Array(engine_ctx, body_bytes) catch {
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Resolve with the JS Uint8Array
-    engine.resolvePromise(engine_ctx, promise_handle, js_uint8_array) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-}
-
 /// formData() - Returns promise fulfilled with body as FormData
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-///
-/// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .form_data);
 }
 
-/// `formData()` over a body that is its bytes.
-fn formDataFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    const FormDataImpl = @import("FormData.zig");
-    const xhr = @import("xhr");
-    const multipart_parser = xhr.multipart_parser;
-    const url_parser = @import("form_parser");
-
-    // Helper to reject with error (uses module-level getPromiseAndCleanup)
-    const rejectAndReturn = struct {
-        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror, alloc: std.mem.Allocator) runtime.JSValue {
-            eng.rejectPromise(eng_ctx, handle, err) catch {};
-            return getPromiseAndCleanup(eng, handle, alloc);
-        }
-    }.call;
-
-    // Get Content-Type header
-    const content_type = internal.request.header_list.get(internal.allocator, "content-type") catch null;
-    defer if (content_type) |ct| internal.allocator.free(ct);
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body bytes
-    const body_bytes: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else "";
-
-    // Parse body into FormData based on Content-Type
-    const form_data: *xhr.form_data.FormData = if (body_bytes.len > 0) parse_blk: {
-        if (content_type) |ct| {
-            if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
-                // Extract boundary and parse multipart
-                const boundary = multipart_parser.extractBoundary(internal.allocator, ct) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-                };
-                defer internal.allocator.free(boundary);
-
-                const entries = multipart_parser.parseMultipartFormData(internal.allocator, body_bytes, boundary) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-                };
-                defer {
-                    for (entries) |*entry| entry.deinit(internal.allocator);
-                    internal.allocator.free(entries);
-                }
-
-                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                };
-                errdefer fd.deinit();
-
-                for (entries) |entry| {
-                    switch (entry.value) {
-                        .string => |s| fd.appendString(entry.name, s) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                        },
-                        .file => |f| fd.appendFile(entry.name, f, entry.filename) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                        },
-                        .blob_instance => |ptr| fd.appendBlobInstance(entry.name, ptr, entry.filename) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                        },
-                    }
-                }
-
-                break :parse_blk fd;
-            } else if (std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") != null) {
-                // Parse URL-encoded
-                const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-                };
-                defer {
-                    for (tuples) |tuple| tuple.deinit(internal.allocator);
-                    internal.allocator.free(tuples);
-                }
-
-                const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                };
-                errdefer fd.deinit();
-
-                for (tuples) |tuple| {
-                    fd.appendString(tuple.name, tuple.value) catch {
-                        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                    };
-                }
-
-                break :parse_blk fd;
-            } else {
-                // Invalid Content-Type
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-            }
-        } else {
-            // No Content-Type header - default to URL-encoded
-            const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
-            };
-            defer {
-                for (tuples) |tuple| tuple.deinit(internal.allocator);
-                internal.allocator.free(tuples);
-            }
-
-            const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-            };
-            errdefer fd.deinit();
-
-            for (tuples) |tuple| {
-                fd.appendString(tuple.name, tuple.value) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-                };
-            }
-
-            break :parse_blk fd;
-        }
-    } else empty_blk: {
-        // Empty body - create empty FormData
-        break :empty_blk xhr.form_data.FormData.init(internal.allocator) catch {
-            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-        };
-    };
-
-    // Create FormData WebIDL instance
-    const formdata_instance = FormDataImpl.createFromInternal(
-        internal.allocator,
-        instance.ctx,
-        form_data,
-    ) catch {
-        form_data.deinit();
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
-    };
-
-    // Wrap the FormData instance as a V8 object
-    const wrapInstance = engine.wrapInstance orelse {
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState, internal.allocator);
-    };
-
-    const js_formdata = wrapInstance(engine_ctx, formdata_instance) catch {
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState, internal.allocator);
-    };
-
-    // Resolve with the JS FormData
-    engine.resolvePromise(engine_ctx, promise_handle, js_formdata) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-}
-
 /// json() - Returns promise fulfilled with body parsed as JSON
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
-///
-/// Uses the engine abstraction layer for Promise and JSON parsing.
 pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .json);
 }
 
-/// `json()` over a body that is its bytes.
-fn jsonFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    // Reject with TypeError per spec
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body bytes
-    const body_bytes: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch |err| {
-                    // Reject on read error
-                    engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else {
-        // Null body - reject with SyntaxError (empty JSON is invalid)
-        engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Parse JSON through engine abstraction
-    const parseJson = engine.parseJson orelse {
-        // No parseJson support - reject with error
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const js_value = parseJson(engine_ctx, body_bytes) catch {
-        // JSON parse failed - reject with SyntaxError
-        engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Resolve with the parsed JS value
-    engine.resolvePromise(engine_ctx, promise_handle, js_value) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-}
-
 /// text() - Returns promise fulfilled with body as string
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-text
-///
-/// Uses the engine abstraction layer for Promise creation and string creation.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return consumeBody(instance, .text);
-}
-
-/// `text()` over a body that is its bytes.
-fn textFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create a Promise through the engine abstraction
-    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
-        return error.InvalidState;
-    };
-
-    // Check for disturbed body (already read)
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => {},
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    // Reject with TypeError per spec
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                }
-            },
-        }
-    }
-
-    // Get body text
-    const body_text: []const u8 = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes,
-            .body => |body_obj| {
-                const bytes = body_obj.readAllBytes() catch |err| {
-                    // Reject on read error
-                    engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-                };
-                break :blk bytes;
-            },
-        }
-    } else "";
-
-    // Create JS string through engine abstraction
-    const createString = engine.createString orelse {
-        // No createString support - resolve with null (undefined)
-        engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    const js_string = createString(engine_ctx, body_text) catch {
-        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
-    };
-
-    // Resolve with the JS string
-    engine.resolvePromise(engine_ctx, promise_handle, js_string) catch {
-        return error.InvalidState;
-    };
-
-    // Return the JS Promise object wrapped in Promise(T) type
-    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 // === Helper Functions ===
