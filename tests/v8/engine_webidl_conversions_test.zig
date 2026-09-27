@@ -688,6 +688,91 @@ test "protocol: invoke a callback function - the value, a rethrown or a reported
     try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, nothing.normal.value));
 }
 
+/// A value made by `code` compiled as the script at `url`, and the Global to
+/// dispose.
+fn evalAt(code: []const u8, url: []const u8) !*ffi.Value {
+    const context = context_once.?;
+    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(text);
+    const name = ffi.v8_String_NewFromUtf8(isolate_once.?, url.ptr, @intCast(url.len)) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(name);
+    const script = ffi.v8_Script_CompileWithOrigin(context, text, name) orelse return error.CompileFailed;
+    defer ffi.v8_Script_Dispose(script);
+    return ffi.v8_Script_Run(context, script) orelse error.RunFailed;
+}
+
+/// What a Reporter was handed: where the exception was thrown.
+const Located = struct {
+    count: usize = 0,
+    filename: [64]u8 = undefined,
+    filename_len: usize = 0,
+    lineno: u32 = 0,
+    colno: u32 = 0,
+
+    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const self: *Located = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.filename_len = @min(info.filename.len, self.filename.len);
+        @memcpy(self.filename[0..self.filename_len], info.filename[0..self.filename_len]);
+        self.lineno = info.lineno;
+        self.colno = info.colno;
+    }
+
+    fn file(self: *const Located) []const u8 {
+        return self.filename[0..self.filename_len];
+    }
+
+    fn behavior(self: *Located) protocol.ExceptionBehavior {
+        return .{ .report = .{ .report = report, .host = self } };
+    }
+};
+
+test "protocol: a reported exception is located where it was thrown, a thrown value that is not an Error too" {
+    const ctx = try realm();
+    const url = "https://crane.test/thrower.js";
+    // HTML "extract error information" is the throw site's: a thrown string
+    // carries no stack, so after the call has returned nothing else knows it.
+    const thrower = try evalAt("(function () {\n  throw 'not an Error';\n})", url);
+    defer ffi.v8_Value_Dispose(thrower);
+    var throwing = try bound(thrower);
+    defer throwing.deinit(allocator);
+    var from_call: Located = .{};
+    _ = try protocol.invokeCallbackFunction(ctx, &callbackFunction(throwing, ctx), .undefined, &.{}, from_call.behavior());
+    try std.testing.expectEqual(@as(usize, 1), from_call.count);
+    try std.testing.expectEqualStrings(url, from_call.file());
+    try std.testing.expectEqual(@as(u32, 2), from_call.lineno);
+    try std.testing.expect(from_call.colno > 0);
+
+    // A user object's operation, and a getter of one that throws.
+    const listener = try evalAt("({\n  acceptNode() {\n    throw 1;\n  },\n  get handleEvent() {\n    throw 2;\n  },\n})", url);
+    defer ffi.v8_Value_Dispose(listener);
+    var object = try bound(listener);
+    defer object.deinit(allocator);
+    var from_operation: Located = .{};
+    _ = try protocol.callUserObjectOperation(ctx, &callbackInterface(object, ctx), "acceptNode", .undefined, &.{}, from_operation.behavior());
+    try std.testing.expectEqualStrings(url, from_operation.file());
+    try std.testing.expectEqual(@as(u32, 3), from_operation.lineno);
+    var from_getter: Located = .{};
+    _ = try protocol.callUserObjectOperation(ctx, &callbackInterface(object, ctx), "handleEvent", .undefined, &.{}, from_getter.behavior());
+    try std.testing.expectEqualStrings(url, from_getter.file());
+    try std.testing.expectEqual(@as(u32, 6), from_getter.lineno);
+
+    // Reported or rethrown, what the call caught of the throw site is freed.
+    const round = struct {
+        fn run(c: runtime.Context, f: runtime.JSValue, o: runtime.JSValue) !void {
+            var located: Located = .{};
+            _ = try protocol.invokeCallbackFunction(c, &callbackFunction(f, c), .undefined, &.{}, located.behavior());
+            (try protocol.invokeCallbackFunction(c, &callbackFunction(f, c), .undefined, &.{}, .rethrow)).throw.release();
+            _ = try protocol.callUserObjectOperation(c, &callbackInterface(o, c), "handleEvent", .undefined, &.{}, located.behavior());
+            (try protocol.callUserObjectOperation(c, &callbackInterface(o, c), "acceptNode", .undefined, &.{}, .rethrow)).throw.release();
+        }
+    }.run;
+    try round(ctx, throwing, object);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, throwing, object);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+}
+
 test "protocol: call a user object's operation - a function, a handleEvent, a throwing getter, a non-callable" {
     const ctx = try realm();
     const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(5)};

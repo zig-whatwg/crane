@@ -134,24 +134,29 @@ const Receiver = struct {
 /// Steps 14.3-14.6 of "invoke" (15.3-15.4 of "call a user object's
 /// operation"): the completion as the caller's exception behavior has it.
 /// Takes `thrown`.
-fn abrupt(thrown: *ffi.Value, context: *ffi.Context, realm: ?Context, behavior: engine.ExceptionBehavior) Completion {
+fn abrupt(thrown: Thrown, context: *ffi.Context, realm: ?Context, behavior: engine.ExceptionBehavior) Completion {
     switch (behavior) {
         // 5. If exceptionBehavior is "rethrow", throw completion.[[Value]] -
         //    handed back, for the caller to throw on or handle.
-        .rethrow => return .{ .throw = support.owned(thrown) },
+        .rethrow => {
+            ffi.v8_FreeErrorInfo(thrown.site);
+            return .{ .throw = support.owned(thrown.value) };
+        },
         // 6. Otherwise, if exceptionBehavior is "report":
         .report => |reporter| {
-            defer ffi.v8_Global_Dispose(thrown);
+            defer ffi.v8_Global_Dispose(thrown.value);
             // 2. Report an exception completion.[[Value]] for realm's global
-            //    object: the error information V8 has about it.
-            const details = ffi.v8_Exception_GetErrorInfo(context, thrown);
+            //    object, with the error information of where it was thrown -
+            //    or, for an exception the call did not catch at its throw
+            //    site (a TypeError made here), what the value itself carries.
+            const details = thrown.site orelse ffi.v8_Exception_GetErrorInfo(context, thrown.value);
             defer ffi.v8_FreeErrorInfo(details);
             var info: engine.ErrorInfo = .{
                 .message = "Uncaught exception",
                 .filename = "",
                 .lineno = 0,
                 .colno = 0,
-                .error_value = support.borrowed(thrown),
+                .error_value = support.borrowed(thrown.value),
                 .realm = realm,
             };
             if (details) |d| {
@@ -172,7 +177,14 @@ fn abrupt(thrown: *ffi.Value, context: *ffi.Context, realm: ?Context, behavior: 
 /// value, or what was thrown. OWNED.
 const Raw = union(enum) {
     normal: *ffi.Value,
-    thrown: *ffi.Value,
+    thrown: Thrown,
+};
+
+/// A thrown value, and the error information of where it was thrown when the
+/// catch had it (null for an exception made here). Both OWNED.
+const Thrown = struct {
+    value: *ffi.Value,
+    site: ?*ffi.V8ErrorInfo = null,
 };
 
 /// The step labeled "return", after clean up: the completion as the caller's
@@ -184,13 +196,18 @@ fn finish(raw: Raw, context: *ffi.Context, realm: ?Context, behavior: engine.Exc
     };
 }
 
-/// Call(`function`, `receiver`, `args`) in `context`, its completion caught.
+/// Call(`function`, `receiver`, `args`) in `context`, its completion caught
+/// - with where it was thrown, for "report an exception".
 fn callRaw(context: *ffi.Context, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!Raw {
     var threw = false;
-    const result = ffi.v8_Function_CallCatching(context, function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
+    var site: ?*ffi.V8ErrorInfo = null;
+    const result = ffi.v8_Function_CallCatchingWithSite(context, function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw, &site);
     // A terminating isolate has no value to hand back.
-    const value = result orelse return error.OperationFailed;
-    return if (threw) .{ .thrown = value } else .{ .normal = value };
+    const value = result orelse {
+        ffi.v8_FreeErrorInfo(site);
+        return error.OperationFailed;
+    };
+    return if (threw) .{ .thrown = .{ .value = value, .site = site } } else .{ .normal = value };
 }
 
 /// HTML "prepare to run a callback" with `callback_context`, then `body.run()`,
@@ -329,17 +346,24 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
             if (!ffi.v8_Value_IsFunction(self.object)) {
                 // 1. Let getResult be Completion(Get(O, opName)).
                 var threw = false;
-                const get_result = ffi.v8_Object_GetCatching(self.context, self.object, self.operation.ptr, @intCast(self.operation.len), &threw);
+                var site: ?*ffi.V8ErrorInfo = null;
+                const get_result = ffi.v8_Object_GetCatchingWithSite(self.context, self.object, self.operation.ptr, @intCast(self.operation.len), &threw, &site);
                 // 2. If getResult is an abrupt completion, set completion to
                 //    getResult and jump to the step labeled return.
-                if (threw) return .{ .thrown = get_result orelse return error.OperationFailed };
+                if (threw) {
+                    const value = get_result orelse {
+                        ffi.v8_FreeErrorInfo(site);
+                        return error.OperationFailed;
+                    };
+                    return .{ .thrown = .{ .value = value, .site = site } };
+                }
                 // 3. Set X to getResult.[[Value]].
                 self.got = get_result orelse return error.OperationFailed;
                 function = self.got.?;
                 // 4. If IsCallable(X) is false, then set completion to a throw
                 //    completion of a new TypeError, and jump to return.
                 if (!ffi.v8_Value_IsFunction(function)) {
-                    return .{ .thrown = try support.newTypeError(self.isolate, self.context, "The callback's operation is not callable") };
+                    return .{ .thrown = .{ .value = try support.newTypeError(self.isolate, self.context, "The callback's operation is not callable") } };
                 }
                 // 5. Set thisArg to O (overriding the provided value).
                 this_value = self.object;

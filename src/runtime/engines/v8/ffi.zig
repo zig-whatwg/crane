@@ -3387,4 +3387,12 @@ pub extern fn v8_Promise_ThenWithOptionalHandlers(context: *Context, promise: *V
 /// TypeError, for the caller to throw; nothing is thrown) or on failure. A new
 /// Global the caller owns.
 pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
+/// v8_Function_CallCatching, and on a throw `site.*` is the error information
+/// of where it was thrown - the catching TryCatch's message: script, line,
+/// column - or null. Free it with v8_FreeErrorInfo; its `exception` is null.
+/// HTML "extract error information" for what a callback threw: a thrown
+/// value that is not an Error carries no position of its own.
+pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+/// v8_Object_GetCatching, and the throw site as v8_Function_CallCatchingWithSite.
+pub extern fn v8_Object_GetCatchingWithSite(context: *Context, object: *Value, key: [*]const u8, key_len: c_int, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 // ---- end lane: protocol ----
