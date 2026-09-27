@@ -530,12 +530,17 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const realm = info.realm orelse observer_realm;
     const record = realm.getRealm() orelse return;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
-    // TODO(protocol): report_exception.reportErrorInfo(global, info, .{}) once
-    // page-realm lands it; until then report_exception takes the engine's own
-    // value, handed through unexamined, and extracts the error information
-    // from it again.
-    const report = @import("html").report_exception;
-    _ = report.reportException(global, @ptrCast(@alignCast(info.error_value.asEngineHandle())), .{});
+    // Step 2's error information is the engine's, extracted where the
+    // exception was thrown: a thrown value that is not an Error carries no
+    // position of its own to extract it from again.
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 // ============================================================================
