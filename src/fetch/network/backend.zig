@@ -136,6 +136,9 @@ pub const NetworkResponse = struct {
 
     /// HTTP status code
     status: u16,
+    /// The status line's reason-phrase (Fetch's status message), owned; empty
+    /// for none - HTTP/2 and later have none.
+    status_message: []const u8 = "",
     /// HTTP version used
     http_version: HttpVersion,
     /// Response headers
@@ -189,6 +192,8 @@ pub const NetworkResponse = struct {
         if (self.body) |body| {
             self.allocator.free(body);
         }
+
+        if (self.status_message.len > 0) self.allocator.free(self.status_message);
 
         // Free final URL
         if (self.final_url) |url| {

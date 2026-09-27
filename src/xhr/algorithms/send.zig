@@ -128,6 +128,76 @@ pub fn sendPrologue(
     return request_body;
 }
 
+/// What send()'s body was, as step 4's Content-Type rules tell bodies
+/// apart. (A Document joins USVString in 4.5 and has 4.6's own types, once
+/// send() takes one.)
+pub const BodyKind = enum { usvstring, other };
+
+/// Steps 4.4-4.6 of send(): the Content-Type for a request body of `kind`,
+/// whose bodyWithType's type is `extracted_type`, in this's author request
+/// headers.
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-send()-method
+pub fn setRequestContentType(allocator: Allocator, state: *XMLHttpRequestState, kind: BodyKind, extracted_type: ?[]const u8) !void {
+    const headers = &state.author_request_headers;
+    // 4.4. Let originalAuthorContentType be the result of getting
+    //      `Content-Type` from this's author request headers.
+    const original = try headers.get(allocator, "Content-Type");
+    defer if (original) |o| allocator.free(o);
+    // 4.5. If originalAuthorContentType is non-null, then:
+    if (original) |author_type| {
+        // 4.5.1. If body is a Document or a USVString, then:
+        if (kind != .usvstring) return;
+        // 1. Let contentTypeRecord be the result of parsing
+        //    originalAuthorContentType.
+        const mimesniff = @import("mimesniff");
+        var record = (try mimesniff.parseMimeType(allocator, author_type)) orelse return;
+        defer record.deinit();
+        // 2. If contentTypeRecord is not failure, its parameters["charset"]
+        //    exists, and it is not an ASCII case-insensitive match for
+        //    "UTF-8", then:
+        const index = charsetParameter(record) orelse return;
+        const entry = record.parameters.entries.items()[index];
+        if (isUtf8Label(entry.value)) return;
+        // 1. Set contentTypeRecord's parameters["charset"] to "UTF-8" (the
+        //    record owns its parameter strings).
+        const utf8 = try record.allocator.dupe(u16, std.unicode.utf8ToUtf16LeStringLiteral("UTF-8"));
+        const old = record.parameters.entries.replace(index, .{ .key = entry.key, .value = utf8 }) catch unreachable;
+        record.allocator.free(old.value);
+        // 2. Let newContentTypeSerialized be the result of serializing
+        //    contentTypeRecord.
+        const serialized = try mimesniff.serializeMimeTypeToBytes(allocator, record);
+        defer allocator.free(serialized);
+        // 3. Set (`Content-Type`, newContentTypeSerialized) in this's author
+        //    request headers.
+        try headers.set("Content-Type", serialized);
+        return;
+    }
+    // 4.6.3. Otherwise, if extractedContentType is not null, set
+    //        (`Content-Type`, extractedContentType).
+    if (extracted_type) |content_type| try headers.set("Content-Type", content_type);
+}
+
+/// The index of `record`'s "charset" parameter, if it has one. (Its map
+/// compares slice keys by address, so this compares the text.)
+fn charsetParameter(record: anytype) ?usize {
+    const name = std.unicode.utf8ToUtf16LeStringLiteral("charset");
+    for (record.parameters.entries.items(), 0..) |entry, i| {
+        if (std.mem.eql(u16, entry.key, name)) return i;
+    }
+    return null;
+}
+
+/// An ASCII case-insensitive match for "UTF-8".
+fn isUtf8Label(text: []const u16) bool {
+    const utf8 = "UTF-8";
+    if (text.len != utf8.len) return false;
+    for (text, utf8) |c, a| {
+        if (c > 0x7F or std.ascii.toLower(@intCast(c)) != std.ascii.toLower(a)) return false;
+    }
+    return true;
+}
+
 /// Steps 11.1-11.6 of send(): fire loadstart.
 ///
 /// SYNCHRONOUS, and that is the point. `loadstart` is a step of `send()`, not
@@ -339,4 +409,39 @@ test "send() - GET discards the body, per step 3" {
     // The comparison is against the ALREADY-NORMALISED method, which open()
     // upper-cases, so a lowercase spelling never reaches here.
     try std.testing.expect(!methodIgnoresBody("get"));
+}
+
+fn contentTypeAfter(author: ?[]const u8, kind: BodyKind, extracted: ?[]const u8) !?[]const u8 {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    if (author) |a| try state.author_request_headers.append("Content-Type", a);
+    try setRequestContentType(allocator, &state, kind, extracted);
+    const value = try state.author_request_headers.get(allocator, "Content-Type") orelse return null;
+    return value;
+}
+
+fn expectContentType(expected: ?[]const u8, author: ?[]const u8, kind: BodyKind, extracted: ?[]const u8) !void {
+    const actual = try contentTypeAfter(author, kind, extracted);
+    defer if (actual) |a| std.testing.allocator.free(a);
+    if (expected) |e| try std.testing.expectEqualStrings(e, actual orelse return error.NoContentType) else try std.testing.expect(actual == null);
+}
+
+test "send() step 4.6: with no author Content-Type, the extracted type is set" {
+    try expectContentType("text/plain;charset=UTF-8", null, .usvstring, "text/plain;charset=UTF-8");
+    try expectContentType("application/x-www-form-urlencoded;charset=UTF-8", null, .other, "application/x-www-form-urlencoded;charset=UTF-8");
+    // A body with no type (a BufferSource) sets none.
+    try expectContentType(null, null, .other, null);
+}
+
+test "send() step 4.5: a USVString body's author charset becomes UTF-8, and nothing else changes" {
+    try expectContentType("text/plain;charset=UTF-8", "text/plain;charset=shift-jis", .usvstring, "text/plain;charset=UTF-8");
+    try expectContentType("text/x-thepiano;charset=UTF-8", "text/x-thepiano;charset= waddup", .usvstring, "text/plain;charset=UTF-8");
+    // A UTF-8 label in any case is left as the author wrote it.
+    try expectContentType("text/plain;charset=utf-8", "text/plain;charset=utf-8", .usvstring, "text/plain;charset=UTF-8");
+    // No charset, or no parse: left alone.
+    try expectContentType("text/plain", "text/plain", .usvstring, "text/plain;charset=UTF-8");
+    try expectContentType("charset=bogus", "charset=bogus", .usvstring, "text/plain;charset=UTF-8");
+    // Not a USVString: the author's type stands whatever its charset.
+    try expectContentType("text/plain;charset=shift-jis", "text/plain;charset=shift-jis", .other, "application/octet-stream");
 }

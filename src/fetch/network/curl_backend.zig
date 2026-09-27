@@ -421,12 +421,27 @@ pub const LibcurlBackend = struct {
 
         // Headers (slist is stored in ctx and freed via slist_free_all in deinit)
         // Note: curl_slist_append copies the strings, so we can free header_z after append
+        //
+        // The request's header list is the whole of what is sent: libcurl
+        // adds headers of its own to a request with a body - a Content-Type
+        // of application/x-www-form-urlencoded when none is given, and
+        // `Expect: 100-continue` for a large one - and a header named with
+        // nothing after its colon is how it is told not to. A header whose
+        // value is empty is sent as "Name;", curl's form for an empty value:
+        // "Name:" would remove it instead.
+        var has_content_type = false;
         for (request.headers) |header| {
-            const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
-            defer ctx.allocator.free(header_str);
-            const header_z = try ctx.allocator.dupeZ(u8, header_str);
+            if (std.ascii.eqlIgnoreCase(header.name, "content-type")) has_content_type = true;
+            const header_z = if (header.value.len == 0)
+                try std.fmt.allocPrintSentinel(ctx.allocator, "{s};", .{header.name}, 0)
+            else
+                try std.fmt.allocPrintSentinel(ctx.allocator, "{s}: {s}", .{ header.name, header.value }, 0);
             defer ctx.allocator.free(header_z);
             ctx.header_list = curl.slist_append(ctx.header_list, header_z.ptr);
+        }
+        if (request.body != null) {
+            if (!has_content_type) ctx.header_list = curl.slist_append(ctx.header_list, "Content-Type:");
+            ctx.header_list = curl.slist_append(ctx.header_list, "Expect:");
         }
         if (ctx.header_list != null) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, ctx.header_list);
@@ -515,9 +530,8 @@ pub const LibcurlBackend = struct {
     }
 
     fn parseHeaders(ctx: *CallbackContext) !void {
-        // Parse raw headers into name-value pairs
-        const raw = ctx.raw_headers.items;
-        var lines = std.mem.splitSequence(u8, raw, "\r\n");
+        // Parse the final response's header block into name-value pairs.
+        var lines = headerLines(finalBlock(ctx.raw_headers.items));
 
         while (lines.next()) |line| {
             // Skip empty lines and status line
@@ -739,7 +753,7 @@ pub const Transfer = struct {
             }
             headers.deinit(allocator);
         }
-        var lines = std.mem.splitSequence(u8, block, "\r\n");
+        var lines = headerLines(block);
         while (lines.next()) |line| {
             if (line.len == 0 or std.mem.startsWith(u8, line, "HTTP/")) continue;
             const colon = std.mem.indexOf(u8, line, ":") orelse continue;
@@ -773,10 +787,13 @@ pub const Transfer = struct {
         var primary_port: c_long = 0;
         _ = curl.easy_getinfo(self.handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
 
+        const status_message = try ownedReason(allocator, block);
+        errdefer if (status_message.len > 0) allocator.free(status_message);
         const owned_headers = headers.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory;
         return NetworkResponse{
             .allocator = allocator,
             .status = @intCast(status_code),
+            .status_message = status_message,
             .http_version = switch (http_version_raw) {
                 curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
                 curl.CURL_HTTP_VERSION_2_0 => .http_2,
@@ -951,6 +968,10 @@ pub const Transfer = struct {
             ctx.response_body.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory
         else
             null;
+        errdefer if (body) |b| allocator.free(b);
+
+        // The final response's status line.
+        const status_message = try ownedReason(allocator, finalBlock(ctx.raw_headers.items));
 
         // Copy strings that need to outlive curl handle
         const final_url = if (effective_url != null and
@@ -967,6 +988,7 @@ pub const Transfer = struct {
         return NetworkResponse{
             .allocator = allocator,
             .status = @intCast(status_code),
+            .status_message = status_message,
             .http_version = http_version,
             .headers = headers,
             .body = body,
@@ -1041,6 +1063,85 @@ fn noteHeaderLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
     ctx.head_end = ctx.raw_headers.items.len;
 }
 
+/// The final response's header block in `raw`, every block curl read: the
+/// last one that is not a 1xx interim response - curl hands over interim
+/// blocks, and the blocks of redirects it follows, before it.
+fn finalBlock(raw: []const u8) []const u8 {
+    var found: ?usize = null;
+    var i: usize = 0;
+    while (std.mem.indexOfPos(u8, raw, i, "HTTP/")) |at| : (i = at + 1) {
+        if (at != 0 and raw[at - 1] != '\n') continue;
+        const status = statusOfBlock(raw[at..]) orelse continue;
+        if (status < 100 or status >= 200) found = at;
+    }
+    return raw[found orelse 0 ..];
+}
+
+test "the final block is the last response that is not 1xx" {
+    const raw = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 302 Found\r\nLocation: /b\r\n\r\nHTTP/1.1 200 OK\r\nA: 1\r\n\r\n";
+    try std.testing.expectEqualStrings("HTTP/1.1 200 OK\r\nA: 1\r\n\r\n", finalBlock(raw));
+    try std.testing.expectEqualStrings("HTTP/1.0 200 MEH\nX: HTTP/9\n\n", finalBlock("HTTP/1.0 200 MEH\nX: HTTP/9\n\n"));
+    try std.testing.expectEqualStrings("", finalBlock(""));
+}
+
+/// A header block's lines, each without its line ending. RFC 9112 2.2: a
+/// recipient MAY take a bare LF as a line terminator (ignoring a preceding
+/// CR) - and browsers do - so a server that ends lines with LF alone (an
+/// HTTP/1.0 server, a raw .asis resource) has headers too.
+fn headerLines(block: []const u8) HeaderLines {
+    return .{ .inner = std.mem.splitScalar(u8, block, '\n') };
+}
+
+const HeaderLines = struct {
+    inner: std.mem.SplitIterator(u8, .scalar),
+
+    fn next(self: *HeaderLines) ?[]const u8 {
+        const line = self.inner.next() orelse return null;
+        return if (line.len > 0 and line[line.len - 1] == '\r') line[0 .. line.len - 1] else line;
+    }
+};
+
+test "a header block's lines end with CRLF or with LF alone" {
+    var crlf = headerLines("HTTP/1.1 200 OK\r\nA: 1\r\n\r\n");
+    try std.testing.expectEqualStrings("HTTP/1.1 200 OK", crlf.next().?);
+    try std.testing.expectEqualStrings("A: 1", crlf.next().?);
+    try std.testing.expectEqualStrings("", crlf.next().?);
+    var lf = headerLines("HTTP/1.0 200 MEH\nHEYA:\t\nHEYA: \x0b\x0c\n\n");
+    try std.testing.expectEqualStrings("HTTP/1.0 200 MEH", lf.next().?);
+    try std.testing.expectEqualStrings("HEYA:\t", lf.next().?);
+    try std.testing.expectEqualStrings("HEYA: \x0b\x0c", lf.next().?);
+    try std.testing.expectEqualStrings("", lf.next().?);
+}
+
+/// The reason-phrase on a header block's status line - everything after
+/// "HTTP-version SP status-code SP" (RFC 9112 4) up to the line's end - or
+/// empty when it has none.
+fn reasonOfBlock(block: []const u8) []const u8 {
+    if (!std.mem.startsWith(u8, block, "HTTP/")) return "";
+    const line_end = std.mem.indexOfScalar(u8, block, '\n') orelse block.len;
+    const line = std.mem.trimEnd(u8, block[0..line_end], "\r");
+    const after_version = (std.mem.indexOfScalar(u8, line, ' ') orelse return "") + 1;
+    const after_code = std.mem.indexOfScalarPos(u8, line, after_version, ' ') orelse return "";
+    return line[after_code + 1 ..];
+}
+
+/// The status line's reason-phrase, owned by `allocator` (empty: nothing to
+/// free).
+fn ownedReason(allocator: std.mem.Allocator, block: []const u8) NetworkError![]const u8 {
+    const reason = reasonOfBlock(block);
+    if (reason.len == 0) return "";
+    return allocator.dupe(u8, reason) catch NetworkError.OutOfMemory;
+}
+
+test "the reason-phrase is the status line after its code, whatever it holds" {
+    try std.testing.expectEqualStrings("OK", reasonOfBlock("HTTP/1.1 200 OK\r\nA: b\r\n\r\n"));
+    try std.testing.expectEqualStrings("HOUSTON WE HAVE A", reasonOfBlock("HTTP/1.1 503 HOUSTON WE HAVE A\r\n\r\n"));
+    try std.testing.expectEqualStrings("", reasonOfBlock("HTTP/1.1 204 \r\n\r\n"));
+    try std.testing.expectEqualStrings("", reasonOfBlock("HTTP/2 200\r\n\r\n"));
+    try std.testing.expectEqualStrings(" two  spaces", reasonOfBlock("HTTP/1.1 200  two  spaces\r\n"));
+    try std.testing.expectEqualStrings("", reasonOfBlock("garbage"));
+}
+
 /// The status code on a header block's status line, if it has one.
 fn statusOfBlock(block: []const u8) ?u16 {
     if (!std.mem.startsWith(u8, block, "HTTP/")) return null;
@@ -1089,7 +1190,7 @@ fn progressCallback(
 fn isCloseDelimitedEndOfBlock(code: curl.CURLcode, status_code: c_long, block: []const u8) bool {
     if (code != curl.CURLE_RECV_ERROR) return false;
     if (status_code == 0) return false;
-    var lines = std.mem.splitSequence(u8, block, "\r\n");
+    var lines = headerLines(block);
     while (lines.next()) |line| {
         const colon = std.mem.indexOf(u8, line, ":") orelse continue;
         const name = std.mem.trim(u8, line[0..colon], " \t");

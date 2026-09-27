@@ -500,8 +500,12 @@ pub fn httpNetworkFetchFinish(
         };
     }
 
-    // Set status code
+    // Set status code, and the status message: the status line's
+    // reason-phrase (HTTP/1.x; none after).
     response.status = network_response.status;
+    if (network_response.status_message.len > 0) response.setStatusMessage(network_response.status_message) catch {
+        return HttpFetchError.OutOfMemory;
+    };
 
     // Copy headers
     for (network_response.headers) |header| {
