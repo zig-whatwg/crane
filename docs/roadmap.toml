@@ -216,6 +216,7 @@ progress = [
   "9905b31d3 - migration set Y (cookies, URL, forms) onto the protocol; every operation converts a platform object in its relevant realm; toBoolean",
   "d1d200b40 - ES module scripts onto the protocol; import() and import.meta through the host's module hooks",
   "f404a62d3 - migration set Z (streams glue, canvas, the WPT runner, snapshot tooling) onto the protocol; completionOf; worker realm records",
+  "2c10d00d1, 828f5e5fe, 14c9b6709 - the last table-only impls onto the protocol (composedPath, PointerEvent, the form and image tasks, TextEncoder, NodeFilter); a reported callback exception located at its throw site; the observers report through reportErrorInfo",
 ]
 
   [[infra.items]]
