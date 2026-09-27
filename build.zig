@@ -3240,7 +3240,9 @@ pub fn build(b: *std.Build) void {
     const snapshot_gen_exe = b.addExecutable(.{
         .name = "snapshot_generator",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
+            // so the generator lives inside the V8 adapter.
+            .root_source_file = b.path("src/runtime/engines/v8/snapshot_generator.zig"),
             // Build-time tool: must run on the HOST. It is executed via
             // `b.addRunArtifact` below, so building it for `target` means
             // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
@@ -3440,53 +3442,6 @@ pub fn build(b: *std.Build) void {
 
     const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
     gc_bench_step.dependOn(&run_gc_bench.step);
-
-    // ========================================================================
-    // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
-    // ========================================================================
-
-    const minimal_snapshot_test_exe = b.addExecutable(.{
-        .name = "minimal_snapshot_test",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/minimal_snapshot_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "v8", .module = v8_mod },
-            },
-        }),
-    });
-
-    // Add V8 C++ wrapper
-    minimal_snapshot_test_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-
-    // Add V8 include paths
-    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    minimal_snapshot_test_exe.root_module.link_libcpp = true; //
-
-    // Install the binary
-    b.installArtifact(minimal_snapshot_test_exe);
-
-    // Add run step
-    const run_minimal_snapshot_test = b.addRunArtifact(minimal_snapshot_test_exe);
-    const minimal_snapshot_test_step = b.step("minimal-snapshot-test", "Run minimal V8 snapshot test to isolate failures");
-    minimal_snapshot_test_step.dependOn(&run_minimal_snapshot_test.step);
 
     // ========================================================================
     // WPT (Web Platform Tests) RUNNER
