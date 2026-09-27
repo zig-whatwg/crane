@@ -396,6 +396,8 @@ pub fn defineBuiltinFunction(realm: runtime.Context, name: []const u8, length: u
     const context = entered.scope.context;
 
     const external = ffi.v8_External_New(isolate, @ptrCast(@constCast(function))) orelse return EngineError.OperationFailed;
+    // The template keeps its own reference to its data; ours goes here.
+    defer ffi.v8_External_Dispose(external);
     const template = ffi.v8_FunctionTemplate_New(isolate, builtinCallback, @ptrCast(external)) orelse return EngineError.OperationFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
     ffi.v8_FunctionTemplate_SetLength(template, @intCast(length));

@@ -273,6 +273,18 @@ pub const WorkerPort = struct {
         // }
     }
 
+    /// Post a message the engine serialized to the entangled port. Takes
+    /// `message` when it succeeds; the caller keeps it when it fails.
+    pub fn postEngineMessage(self: *WorkerPort, message: EngineMessage) WorkerMessageError!void {
+        if (self.closed) return WorkerMessageError.PortClosed;
+        const target = self.entangled orelse return WorkerMessageError.NotEntangled;
+        const msg = QueuedMessage.initEngine(self.allocator, message) catch return WorkerMessageError.OutOfMemory;
+        target.message_queue.append(target.allocator, msg) catch {
+            self.allocator.destroy(msg);
+            return WorkerMessageError.OutOfMemory;
+        };
+    }
+
     /// Post a JavaScript value to the entangled port (high-level, handles serialization)
     ///
     /// This is the main entry point for Worker.postMessage() - it:
@@ -371,12 +383,42 @@ pub const WorkerPort = struct {
 // Queued Message
 // ============================================================================
 
+/// A message as the JavaScript engine serialized it: HTML's "serialize with
+/// transfer result" (StructuredSerializeWithTransfer), carried from the realm
+/// that posted it to the one that receives it. Plain data - the engine's
+/// bytes, the transferred ArrayBuffers' contents - plus the shipped ends of
+/// the MessagePorts it transferred, which the receiving realm makes new
+/// MessagePorts of (their transfer-receiving steps). Every slice is owned by
+/// `allocator`; the port ends are handed to whoever receives the message.
+pub const EngineMessage = struct {
+    allocator: Allocator,
+    /// The engine's serialization of the message - opaque here.
+    serialized: []u8,
+    /// Each transferred ArrayBuffer's contents, in transfer-list order.
+    array_buffers: [][]u8,
+    /// The transferred MessagePorts' ends (a streams_internal MessagePort
+    /// each), in transfer-list order.
+    port_ends: []*anyopaque,
+
+    pub fn deinit(self: *EngineMessage) void {
+        self.allocator.free(self.serialized);
+        for (self.array_buffers) |contents| self.allocator.free(contents);
+        self.allocator.free(self.array_buffers);
+        self.allocator.free(self.port_ends);
+        self.* = undefined;
+    }
+};
+
 /// A message queued for delivery
 pub const QueuedMessage = struct {
     allocator: Allocator,
 
-    /// Serialized message data
-    data: *SerializedValue,
+    /// Serialized message data (the Zig structured clone's form), or null
+    /// for a message the engine serialized (`engine_message`).
+    data: ?*SerializedValue,
+
+    /// A message the JavaScript engine serialized.
+    engine_message: ?EngineMessage = null,
 
     /// Transferred objects
     transferred: ?[]?*anyopaque,
@@ -395,10 +437,26 @@ pub const QueuedMessage = struct {
         return msg;
     }
 
+    /// A queued message carrying `message`, which it takes.
+    pub fn initEngine(allocator: Allocator, message: EngineMessage) !*QueuedMessage {
+        const msg = try allocator.create(QueuedMessage);
+        msg.* = .{
+            .allocator = allocator,
+            .data = null,
+            .engine_message = message,
+            .transferred = null,
+            .origin = null,
+        };
+        return msg;
+    }
+
     pub fn deinit(self: *QueuedMessage) void {
         // Free the serialized data
-        self.data.deinit();
-        self.allocator.destroy(self.data);
+        if (self.data) |data| {
+            data.deinit();
+            self.allocator.destroy(data);
+        }
+        if (self.engine_message) |*message| message.deinit();
 
         // Free this message
         self.allocator.destroy(self);

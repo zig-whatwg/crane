@@ -13,6 +13,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
 
 // Import workers infrastructure
@@ -205,25 +206,27 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     worker_host.closeScope(instance.ctx);
 }
 
-/// Operation: postMessage
+/// Operation: postMessage(message, transfer)
 ///
-/// Spec: HTML Standard § 10.2.3.2 postMessage(message, transfer)
-/// Posts a message from the worker to the outside (to the owner).
-///
-/// "The postMessage(message, transfer) and postMessage(message, options) methods
-/// on DedicatedWorkerGlobalScope objects act as if, when invoked, it immediately
-/// invoked the respective postMessage(message, transfer) and postMessage(message, options)
-/// methods on the port that the DedicatedWorkerGlobalScope object's implicit port is
-/// entangled with, with the same arguments."
+/// Spec: HTML Standard § 10.2.3.2: "act as if, when invoked, it immediately
+/// invoked the respective postMessage(message, transfer) ... on the port
+/// that the DedicatedWorkerGlobalScope object's implicit port is entangled
+/// with" - the worker host's side of that port.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.dedicated_worker) |worker| {
-            const msg_ptr = message.toAnyopaque() orelse return error.TypeError;
-            const transfer_ptr = transfer.toAnyopaque() orelse return error.TypeError;
-            try worker.postMessage(msg_ptr, transfer_ptr);
-        }
+    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
+    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
+    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    defer {
+        if (engine.releaseValue) |release| for (list) |item| release(item);
+        instance.ctx.allocator.free(list);
     }
+    try worker_host.postMessageFromScope(instance.ctx, message, list);
+}
+
+/// Operation: postMessage(message, options)
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
+    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
+    try worker_host.postMessageFromScope(instance.ctx, message, transfer);
 }
 
 // ============================================================================

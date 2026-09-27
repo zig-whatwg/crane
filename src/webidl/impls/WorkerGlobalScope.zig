@@ -502,16 +502,8 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         };
         defer fetched.deinit();
 
-        // Execute the script
-        // NOTE: Script execution requires access to the worker's V8 context.
-        // The WorkerAgent.executeScript() should be called here, but we don't
-        // have direct access to it from the WebIDL implementation layer.
-        // For now, we just verify the script was fetched successfully.
-        // Full integration would need:
-        // 1. Access to the WorkerAgent through a stored reference
-        // 2. Call agent.executeScript(fetched.source)
-        //
-        // The script source is available in fetched.source for execution.
-        _ = fetched.source;
+        // Run the fetched script in this worker, as its own scripts run -
+        // through the worker host, which owns the realm's agent.
+        try @import("html").worker_v8_context.runImportedScript(instance.ctx, fetched.source, fetched.final_url);
     }
 }
