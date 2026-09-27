@@ -396,6 +396,8 @@ pub fn defineBuiltinFunction(realm: runtime.Context, name: []const u8, length: u
     const context = entered.scope.context;
 
     const external = ffi.v8_External_New(isolate, @ptrCast(@constCast(function))) orelse return EngineError.OperationFailed;
+    // The template keeps its own reference to its data; ours goes here.
+    defer ffi.v8_External_Dispose(external);
     const template = ffi.v8_FunctionTemplate_New(isolate, builtinCallback, @ptrCast(external)) orelse return EngineError.OperationFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
     ffi.v8_FunctionTemplate_SetLength(template, @intCast(length));
@@ -483,7 +485,14 @@ pub fn isCallable(value: runtime.JSValue) bool {
 }
 
 /// Engine table `keepPlatformObjectAlive`: the wrapper cache holds
-/// `instance`'s wrapper strongly from now on, until the realm's cache goes.
+/// `instance`'s wrapper for its pending activity (Blink's
+/// ActiveScriptWrappable), until `releasePlatformObject` or the realm's end.
 pub fn keepPlatformObjectAlive(instance: *runtime.Instance) void {
-    wrapper_cache.holdStrong(instance);
+    wrapper_cache.holdForPendingActivity(instance);
+}
+
+/// Engine table `releasePlatformObject`: the pending activity has ended; the
+/// wrapper is weak again unless another reason holds it.
+pub fn releasePlatformObject(instance: *runtime.Instance) void {
+    wrapper_cache.releasePendingActivity(instance);
 }

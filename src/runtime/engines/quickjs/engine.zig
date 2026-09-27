@@ -97,6 +97,7 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .defineBuiltinFunction = notSupportedDefineBuiltinFunction,
     .isCallable = notSupportedIsCallable,
     .keepPlatformObjectAlive = notSupportedKeepPlatformObjectAlive,
+    .releasePlatformObject = notSupportedReleasePlatformObject,
     // ---- end lane: engine-boundary ----
     .name = "QuickJS",
     .version = "2024-01",
@@ -914,6 +915,7 @@ fn notSupportedIsCallable(_: runtime.JSValue) bool {
     return false;
 }
 fn notSupportedKeepPlatformObjectAlive(_: *runtime.Instance) void {}
+fn notSupportedReleasePlatformObject(_: *runtime.Instance) void {}
 // ---- end lane: engine-boundary ----
 
 test "quickjs_engine_interface - has all required functions" {

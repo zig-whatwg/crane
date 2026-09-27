@@ -133,7 +133,6 @@ src/html/script_runner.zig HTMLScriptElement.setReadyToBeParserExecuted 1
 src/html/scripted_parser.zig Document.setDefaultView 1
 src/html/upgrade.zig CustomElementRegistry.CustomElementDefinition 1
 src/html/upgrade.zig CustomElementRegistry.lookUpCustomElementDefinition 2
-src/html/worker_v8_context.zig MessagePort.initWithInternal 1
 src/platform/layout_backend.zig Node.getInternalState 1
 src/platform/layout_backend.zig Node.getTextContentInternal 1
 src/runtime/engines/v8/context_manager.zig Document.getInternal 1
@@ -352,6 +351,5 @@ src/webidl/impls/Window.zig Node.getNextSibling 3
 src/webidl/impls/Window.zig Node.getNodeType 3
 src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
-src/webidl/impls/Worker.zig MessagePort.InternalState 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerNavigator.InternalState 1
