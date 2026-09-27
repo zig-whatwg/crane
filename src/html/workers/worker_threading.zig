@@ -420,13 +420,15 @@ pub const WorkerThreadRunner = struct {
 
     /// The main function that runs on the worker thread
     fn workerThreadMain(self: *Self) void {
-        var v8_isolate: ?*anyopaque = null;
+        // The worker's agent, as the engine integration made it (for V8, an
+        // isolate): opaque here.
+        var agent: ?*anyopaque = null;
 
         defer {
-            // Clean up V8 isolate if created
-            if (v8_isolate) |isolate| {
+            // Clean up the agent if one was created
+            if (agent) |created| {
                 if (self.dispose_isolate_fn) |dispose| {
-                    dispose(isolate);
+                    dispose(created);
                 }
             }
 
@@ -434,9 +436,9 @@ pub const WorkerThreadRunner = struct {
             self.thread_state.state.store(WorkerThreadState.STATE_TERMINATED, .release);
         }
 
-        // Create V8 isolate for this worker thread
+        // Create the agent for this worker thread
         if (self.create_isolate_fn) |create| {
-            v8_isolate = create(self.thread_state, self.allocator) catch |err| {
+            agent = create(self.thread_state, self.allocator) catch |err| {
                 self.setError("Failed to create V8 isolate: {s}", .{@errorName(err)});
                 self.thread_state.state.store(WorkerThreadState.STATE_ERROR, .release);
                 return;
@@ -452,7 +454,7 @@ pub const WorkerThreadRunner = struct {
         }
 
         // Run the worker event loop
-        self.runWorkerLoop(v8_isolate);
+        self.runWorkerLoop(agent);
     }
 
     /// Worker event loop - processes messages and runs microtasks

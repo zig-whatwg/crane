@@ -460,18 +460,30 @@ and was 138/434 by the time anyone checked.
 
 ## The engine boundary
 
-**Crane's JavaScript engine is an adapter.** V8 is one implementation of it,
-statically linked on desktop and server; on iOS Crane links the system
-JavaScriptCore dynamically instead. Behaviour may differ between targets only
-where the difference is declared - never by accident.
+**Crane's JavaScript engine is an adapter, and the protocol is the only way to
+reach it.** V8 is one implementation, statically linked on desktop and server;
+on iOS Crane links the system JavaScriptCore dynamically instead. Behaviour may
+differ between targets only where the difference is declared - never by
+accident.
+
+The protocol is the `engine` module, `src/runtime/engine_protocol.zig`. Its
+signatures and doc comments are the contract; build.zig binds it, as
+`engine_impl`, to the adapter `-Dengine=v8|jsc|quickjs` selects, so dispatch is
+static. Whether an adapter links its engine statically (V8) or dynamically
+(JavaScriptCore on iOS) is the adapter's business; the protocol does not change.
+What it is: [docs/engine-protocol.md](docs/engine-protocol.md). How to move code
+onto it: [docs/engine-protocol-recipes.md](docs/engine-protocol-recipes.md), a
+recipe per intent.
 
 ```
-src/runtime/engines/v8/   the V8 adapter: v8_wrapper.cpp, ffi.zig, interface.zig,
-                          conversions.zig, wrapper_cache, context_manager,
-                          snapshot_loader, event_loop, legacy_factory_functions
-tests/v8/                 the adapter's tests
-everything else           runtime.Instance, runtime.JSValue, runtime.Context and
-                          the Engine table (src/runtime/engine_interface.zig)
+src/runtime/engine_protocol.zig      THE PROTOCOL: module "engine", one pub inline fn per operation
+src/runtime/engines/v8/              the V8 adapter: protocol.zig and protocol_*.zig (the operations),
+                                     v8_wrapper.cpp, ffi.zig, conversions, the wrapper cache, context_manager
+src/runtime/engines/{jsc,quickjs}/   the other adapters' protocol.zig
+tests/runtime/protocol_test_adapter.zig   the engine-less adapter the runtime-tier tests bind
+tests/v8/                            the V8 adapter's tests
+everything else                      `const engine = @import("engine");`, runtime.Instance,
+                                     runtime.JSValue, runtime.Context
 ```
 
 1. **V8 types and calls live only in the adapter.** Outside
@@ -480,31 +492,45 @@ everything else           runtime.Instance, runtime.JSValue, runtime.Context and
    is no `@import("v8")`, no `v8_*`, and no Isolate, Global, Local or
    HandleScope. The generated WebIDL interfaces are engine-neutral comptime
    tables the adapter consumes; codegen never emits an engine call.
-2. **An engine need is an Engine operation, named after the spec concept** -
-   create, resolve or reject a promise; invoke a callback; wrap an instance;
-   run a microtask checkpoint; create a realm, or one reusing a WindowProxy;
-   serialize a value; read a dictionary member (`getPropertyBoolean`,
-   `getPropertyInstance` are the model). Never a pass-through with a V8-shaped
-   signature: a seam that mirrors V8's API is not an adapter.
-3. **Every new Engine operation** gets its V8 implementation and an explicit
-   `error.NotSupported` (or TODO-marked) entry in the jsc/ and quickjs/
-   tables, so a non-V8 build fails loudly. The integrator owns
-   engine_interface.zig; lanes request additions the way they request grants.
-4. **Ownership never crosses the seam implicitly.** The adapter owns engine
-   handles. An operation whose result the caller must release says so in its
-   type and at its declaration (explicit retain/release on `runtime.JSValue`,
-   or borrowed for the call). "Every `v8_*` return is owned" is an
-   adapter-internal rule.
-5. **Engine-specific capabilities are declared, not assumed** - snapshots,
-   detaching and reusing a global proxy, synchronous module resolve, explicit
-   microtask control are capability flags or optional Engine functions, and
-   callers handle "unsupported". The no-snapshot startup path keeps working,
-   because JavaScriptCore runs on it.
-6. **Existing debt is paid file by file.** Editing a file that makes direct V8
-   calls means moving that file's calls behind the Engine table in the same
-   change. The engine is selected at build time (`-Dengine=v8|jsc|quickjs`);
-   the Engine table stays function pointers, so static and dynamic linking both
-   work.
+2. **Everything else reaches the engine through the protocol:** `engine.op(...)`,
+   no function pointers, no optional unwrapping. **Every `pub inline fn` in
+   engine_protocol.zig is an operation**, and a comptime check makes each
+   adapter declare each one with exactly its types - a missing or mis-typed
+   operation is a compile error. Helpers built over operations are plain
+   `pub fn`s.
+3. **Ownership is in the types.** A `JSValue` parameter is borrowed for the
+   call. What the caller must release has an owning type - `engine.Owned`
+   (`release()` or `take()`, exactly once), `Completion`, `CallbackFunction`,
+   `CallbackInterface`, `PromiseCapability` - and its declaration says so.
+   Nothing crosses the seam as an untyped engine pointer or with a flag saying
+   who frees it. "Every `v8_*` return is owned" is an adapter-internal rule.
+4. **A platform object converts in its relevant realm.** Every operation turns
+   an `.instance` into its wrapper in `instance.ctx`, whichever realm it
+   entered. Results are made in the current realm, `engine.currentRealm()` -
+   null outside script, never "whatever context is entered".
+5. **Capabilities are tri-state comptime constants.** `engine.capabilities.X`
+   is `.native`, `.emulated` or `.unsupported`. A gated operation compiles only
+   inside `if (engine.capabilities.X != .unsupported)`, and the host implements
+   the declared fallback for the rest; nothing assumes V8. The no-snapshot
+   startup path keeps working, because JavaScriptCore runs on it.
+6. **A new engine need is a new protocol operation, named after the spec
+   concept** - an ECMAScript abstract operation, a WebIDL or HTML algorithm -
+   or, where there is no spec, after the engine concern. Never a pass-through
+   with a V8-shaped signature: if the JavaScriptCore C API could not implement
+   it, it is shaped like V8. The integrator owns engine_protocol.zig; request
+   the operation the way you request a grant. It lands with its V8
+   implementation, entries in the JavaScriptCore, QuickJS and test adapters
+   (`error.NotSupported` where they cannot answer), a tests/v8 test with values
+   made the way the binding makes them, and its line in docs/engine-protocol.md.
+7. **The runtime Engine table is transitional.** `runtime.EngineInterface`
+   (src/runtime/engine_interface.zig, reached through `ctx.getEngine()`)
+   predates the protocol. Nothing new calls it and nothing is added to it; it
+   is deleted when its last callers - the paused lanes' held files among them -
+   have moved. The lint below does not count table calls:
+   `grep -rn 'getEngine()' src tools` does.
+8. **Existing debt is paid file by file.** Editing a file that makes direct V8
+   calls or table calls means moving that file onto the protocol in the same
+   change, by its recipes.
 
 **Checked, and `zig build test` runs the check:**
 
@@ -521,7 +547,9 @@ pair the baseline lacks - which catches a swap. The baseline only goes down;
 when it reaches zero, "v8" leaves the non-adapter modules' imports in build.zig
 and the module graph enforces the rule. Report the baseline's total in every
 summary, beside blocking files and passing subtests. Why this rule exists:
-[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md).
+[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md);
+why the seam is a protocol designed whole:
+[Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md).
 
 ---
 
@@ -782,6 +810,9 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Erroring or closing a stream frees its source mid-call](docs/lessons/architecture-erroring-or-closing-a-stream-frees-its-source.md) - Any controller call can free the source that made it. Copy what you pass in first.
 - [A [SameObject] cache is a native pointer V8 cannot see](docs/lessons/architecture-a-sameobject-cache-is-a-native-pointer-v8-cannot.md) - Any native pointer from one GC-managed object to another needs an edge V8 can see.
 - [Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md) - An engine reached from everywhere cannot be swapped anywhere; hold the seam with a ratchet before the coupling grows.
+- [Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md) - Survey every need by intent, design the whole protocol against the second engine, then migrate by recipe - a seam grown one call site at a time is the first engine's API with the names changed.
+- [Take error information while the TryCatch still holds it](docs/lessons/architecture-take-error-information-while-the-trycatch-holds-it.md) - Error information belongs to the throw, not to the value: take it from the TryCatch that caught the exception; re-deriving it works only for Error objects, so test with a thrown string.
+- [A `.local`-tagged JSValue handle is a borrowed Global, not a V8 Local](docs/lessons/architecture-a-local-tagged-handle-is-a-borrowed-global.md) - Test an Engine operation with values made the way the binding makes them, not with hand-built ones.
 - [A setter and an operation converted the same type through different code](docs/lessons/architecture-a-setter-and-an-operation-converted-through-different-code.md) - When one WebIDL type is converted in two places, test the same value through both.
 - [After DetachGlobal, the old context's Global() is the new Window's proxy](docs/lessons/architecture-after-detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md) - Take the handles you'll need for cleanup before you detach.
 - ["Is this still its Window's document?" stops working once navigations make new Windows](docs/lessons/architecture-ask-the-document-whether-it-is-fully-active-not-its-window.md) - Ask the document whether it is fully active, not its Window.
@@ -794,6 +825,21 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An errdefer that outlives the handoff frees what the new owner will free](docs/lessons/architecture-an-errdefer-that-outlives-the-handoff-frees-what-the-new-owner-will-free.md) - End the errdefer scope where ownership moves.
 - [An EventTarget subclass must init and deinit through EventTarget's impl](docs/lessons/architecture-an-eventtarget-subclass-must-init-and-deinit-through-eventtarget-s-impl.md) - An address-keyed side table needs its owner's deinit.
 - [Frames and the top-level page parse through different drivers](docs/lessons/architecture-frames-and-the-top-level-page-parse-through-different-drivers.md) - When a feature works in a frame but not at top level, compare the two parser drivers first.
+- [Engine code defines a realm's properties; it never assigns them](docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md) - A [[Set]] runs the script-facing setter, and a TypeError thrown into nobody's catch is still a Global into the realm that made it.
+- [A realm held across turns is its runtime.Context, not a handle](docs/lessons/architecture-a-realm-is-its-runtime-context-not-a-handle.md) - Hold a realm by its runtime.Context; the context manager keeps it valid and tells you when it has ended.
+- [A compile error's position lives in the engine's error information](docs/lessons/architecture-a-compile-errors-position-lives-in-the-engines-error-information.md) - When a report crosses the engine seam, carry the engine's error information, not just the value; the value alone loses a parse error's position.
+- [Before porting a file off the engine, find out whether anything runs it](docs/lessons/architecture-before-porting-a-file-off-the-engine-find-out-whether-anything-runs-it.md) - Port code that runs; delete code that doesn't - and never truncate the grep that decides which.
+- [A namespace operation's runtime.Context is a process-wide stand-in](docs/lessons/architecture-a-namespace-operation-s-context-is-a-process-wide-stand-in.md) - A namespace operation must take its realm from the running context, not from a shared stand-in - and an impl's error must throw.
+- [A module bound twice cannot share a compile](docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md) - Before giving a module a second binding, check that nothing in the target's import graph reaches the first.
+- [A forwarding facade checks only what gets called](docs/lessons/architecture-a-forwarding-facade-checks-only-what-gets-called.md) - A contract checked only by calls is checked only where called; check the whole interface at comptime, by exact type.
+- [A heap address moves when the GC compacts](docs/lessons/architecture-a-heap-address-moves-when-the-gc-compacts.md) - Never key anything on where a GC-managed object lives; give it an identity it carries with it.
+- [When V8 first collects in a realm, every object needs a stated reason to live](docs/lessons/architecture-when-v8-first-collects-in-a-realm-every-object-needs-a-reason-to-live.md) - When a change lets the GC run where it did not, the regressions are old bugs: give each object its reason to live (pending activity, a trace edge, a generation check) - never restore the leak.
+- [A Pin taken in a constructor pins a wrapper the binding throws away](docs/lessons/architecture-a-pin-taken-in-a-constructor-pins-a-wrapper-the-binding-throws-away.md) - Never pin the object under construction; take a pending-activity hold, which survives the binding's wrap.
+- [An immutable [[Prototype]] is immutable from creation](docs/lessons/architecture-an-immutable-prototype-is-immutable-from-creation.md) - If an object's [[Prototype]] must be immutable, give it the right one at creation; a later SetPrototype on it is a no-op you will not notice.
+- [Under kAuto, V8 checkpoints at the end of Script::Run](docs/lessons/architecture-kauto-checkpoints-at-the-end-of-script-run.md) - With kAuto the checkpoint belongs to V8's call depth; hold the depth up until your own "clean up after running script".
+- [Registering a realm put the legacy import() callback back](docs/lessons/architecture-a-realm-registration-put-the-old-import-callback-back.md) - A per-isolate callback set from per-realm code is overwritten per realm; guard it where it is set.
+- [Entering a realm must enter its agent](docs/lessons/architecture-entering-a-realm-must-enter-its-agent.md) - A realm's agent is recorded on it; "the current one" is only right for realms of the current agent.
+- [A per-isolate leak is a per-realm leak for workers](docs/lessons/architecture-a-per-isolate-leak-is-a-per-realm-leak-for-workers.md) - Test handle flatness per realm kind: a worker realm pays every per-isolate cost a Window agent pays once, so measure with global handle bytes and native contexts, not the live counters.
 
 ### Spec Compliance
 
@@ -813,6 +859,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
 - [A result the spec hands over from onComplete arrives in a task](docs/lessons/spec-compliance-a-result-handed-over-from-oncomplete-arrives-in-a-task.md) - A synchronous fetch does not make the spec's task synchronous; deliver the result where the spec does.
 - ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
+- [A pending exception is not an abrupt completion](docs/lessons/spec-compliance-a-pending-exception-is-not-an-abrupt-completion.md) - Wherever the spec reads a completion instead of writing "?", run the step under engine.completionOf.
+- [A repeating timer keeps the id script holds](docs/lessons/spec-compliance-a-repeating-timer-keeps-the-id-script-holds.md) - Whatever script holds must outlive the scheduler's handles; a reschedule updates the value, never the key.
 
 ### Codegen
 
@@ -854,6 +902,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
 - [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
 - [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
+- [Fewer crashes mean longer processes, and an old leak comes back as an OOM](docs/lessons/testing-fewer-crashes-mean-longer-processes-and-an-old-leak-comes-back-as-oom.md) - A drop in crashes can raise the peak heap. Compare retention per file, not crashes, before calling an OOM a regression.
+- [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
 
 ### Debugging
 
@@ -868,6 +918,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Find what keeps a page alive: count native contexts, snapshot, attribute handles by site](docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) - Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.
 - [A 101 response's headers are filed under `CURLH_1XX`](docs/lessons/debugging-a-101-response-s-headers-are-filed-under-curlh-1xx.md) - A header curl says is missing may be filed under another origin bit.
 - [When one subtest in a file hangs and its siblings pass, compare what triggers each one](docs/lessons/debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
+- [The path production rarely takes keeps its leaks](docs/lessons/debugging-the-path-production-rarely-takes-keeps-its-leaks.md) - A path production rarely takes keeps every leak it has; measure the no-snapshot path's handles as well as the snapshot's.
 
 ### Workflow
 

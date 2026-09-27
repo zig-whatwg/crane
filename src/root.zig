@@ -44,8 +44,9 @@ pub const intl = @import("intl");
 // Debug logging module (compile-time configurable)
 pub const debug = @import("debug.zig");
 
-// Export WebIDL infrastructure modules
-pub const v8 = @import("v8");
+// Export WebIDL infrastructure modules. The JavaScript engine is not one of
+// them: it is an adapter behind the engine protocol (AGENTS.md, "The engine
+// boundary"), and this module never had a "v8" import to re-export.
 pub const js_bindings = @import("js_bindings");
 pub const codegen = @import("codegen");
 
@@ -68,7 +69,6 @@ test {
     _ = permissions;
     _ = browser;
     _ = intl;
-    _ = v8;
     _ = js_bindings;
     _ = codegen;
 }

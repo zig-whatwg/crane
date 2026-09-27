@@ -9,17 +9,18 @@
 //! ## Message Passing Architecture
 //!
 //! When `worker.postMessage(data)` is called from JS:
-//! 1. call_postMessage serializes `data` using structured clone
+//! 1. call_postMessage serializes `data` with transfer through the Engine
+//!    table (StructuredSerializeWithTransfer)
 //! 2. Message is queued to DedicatedWorker's outside_port
 //! 3. outside_port delivers to entangled inside_port (worker side)
-//! 4. Worker's V8 context receives MessageEvent
+//! 4. The worker host fires a MessageEvent at the worker's global scope
 //!
 //! When worker calls `self.postMessage(data)`:
-//! 1. Worker serializes `data` using structured clone
+//! 1. The worker host serializes `data` in the worker's realm
 //! 2. Message is queued to inside_port
 //! 3. inside_port delivers to entangled outside_port (main thread)
-//! 4. handleMessageFromWorker creates MessageEvent
-//! 5. onmessage handler is invoked with MessageEvent
+//! 4. handleMessageFromWorker deserializes it into this realm
+//! 5. `message` is fired at the Worker object (onmessage and listeners)
 
 const std = @import("std");
 const log = std.log.scoped(.worker);
@@ -37,6 +38,12 @@ const EventTarget = interfaces.EventTarget;
 // Import parent class implementation for proper initialization chain
 const EventTargetImpl = @import("EventTarget.zig");
 
+// The constructor parses the script URL (the URL Standard's API parser), and
+// the blob-URL check needs the outside settings' origin.
+const api_parser = @import("api_parser");
+const url_serializer = @import("url_serializer");
+const url_origin = @import("origin");
+
 // Import workers infrastructure
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -47,32 +54,17 @@ const RequestCredentials = workers.RequestCredentials;
 const message_channel = workers.message_channel;
 const WorkerErrorEvent = workers.worker_error.WorkerErrorEvent;
 const QueuedMessage = message_channel.QueuedMessage;
-const SerializedValue = message_channel.SerializedValue;
+const EngineMessage = message_channel.EngineMessage;
 const WorkerContext = workers.WorkerContext;
 
-// Import html module for WorkerV8Context (has interface access, unlike html_core)
+// The worker host: the HTML half of "run a worker" (has interface access,
+// unlike html_core).
 const html_full = @import("html");
-const WorkerV8Context = html_full.WorkerV8Context;
-
-// Import structured clone for message passing
-const structured_clone = html_core.structured_clone;
-const V8SerializedData = structured_clone.types.V8SerializedData;
-const TransferredArrayBufferData = structured_clone.types.TransferredArrayBufferData;
-const TransferredPortData = structured_clone.types.TransferredPortData;
-
-// Import MessagePort impl for port transfer
-const MessagePortImpl = @import("MessagePort.zig");
-
-// Import MessagePort for communication
-const message_port_internal = @import("streams_internal");
-const InternalMessagePort = message_port_internal.MessagePort;
+const WorkerHost = html_full.WorkerHost;
+const worker_host = html_full.worker_host;
 
 // Import platform for TimerBackend (used to create DedicatedWorker)
 const platform = @import("platform");
-
-// Import V8 engine for callback invocation
-const v8_engine = @import("v8");
-const template_registry = v8_engine.template_registry;
 
 // Import event loop for task scheduling (message dispatch)
 const event_loop_mod = @import("streams_event_loop");
@@ -99,8 +91,8 @@ pub const InternalState = struct {
     /// The underlying dedicated worker implementation (optional - created when platform is set)
     dedicated_worker: ?*DedicatedWorker = null,
 
-    /// V8 context for worker execution (created when DedicatedWorker starts)
-    v8_context: ?*WorkerV8Context = null,
+    /// The worker host running the worker (created when DedicatedWorker starts)
+    host: ?*WorkerHost = null,
 
     /// Outside MessagePort (exposed to the caller)
     outside_port: ?*runtime.Instance = null,
@@ -128,15 +120,6 @@ pub const InternalState = struct {
     /// Runtime context for creating MessageEvent
     ctx: ?runtime.Context = null,
 
-    /// V8 isolate for callback invocation
-    isolate: ?*v8_engine.ffi.Isolate = null,
-
-    /// Event handler GlobalHandles (stored as V8 Global handles for proper lifecycle)
-    /// These are extracted from tagged pointers when set via the WebIDL setters.
-    onmessage_handle: v8_engine.OptionalGlobalHandle = null,
-    onerror_handle: v8_engine.OptionalGlobalHandle = null,
-    onmessageerror_handle: v8_engine.OptionalGlobalHandle = null,
-
     /// Pending script source to execute (deferred from constructor)
     /// This is set during constructor and executed via timer callback
     pending_script: ?[]const u8 = null,
@@ -148,22 +131,12 @@ pub const InternalState = struct {
     /// Pending messages to send to worker (before DedicatedWorker is created)
     /// Messages are queued here if postMessage is called before worker initialization completes.
     /// Once the DedicatedWorker is ready, these are flushed to the inside port.
-    pending_outgoing_messages: std.ArrayList(*workers.message_channel.SerializedValue),
+    pending_outgoing_messages: std.ArrayList(EngineMessage),
 
     pub fn deinit(self: *InternalState) void {
         // Clean up pending outgoing messages
-        for (self.pending_outgoing_messages.items) |msg| {
-            msg.deinit();
-            self.allocator.destroy(msg);
-        }
+        for (self.pending_outgoing_messages.items) |*msg| msg.deinit();
         self.pending_outgoing_messages.deinit(self.allocator);
-        // Dispose V8 Global handles to prevent memory leaks
-        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
-        self.onmessage_handle = null;
-        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
-        self.onerror_handle = null;
-        // Borrowed, not owned - see set_onerror. Clearing, not disposing.
-        self.onmessageerror_handle = null;
 
         // Clean up V8 context first (it uses the dedicated_worker's WorkerContext).
         //
@@ -172,16 +145,16 @@ pub const InternalState = struct {
         // disposeContextCallback -> deinit() a second time, which now early-returns
         // on a flag in LIVE memory. Only after that chain has finished is it safe to
         // release the storage, and this is the single place that does it.
-        const v8_ctx_owned = self.v8_context;
-        if (v8_ctx_owned) |v8_ctx| {
-            v8_ctx.deinit();
-            self.v8_context = null;
+        const host_owned = self.host;
+        if (host_owned) |host| {
+            host.deinit();
+            self.host = null;
         }
         if (self.dedicated_worker) |worker| {
             worker.deinit();
         }
-        if (v8_ctx_owned) |v8_ctx| {
-            v8_ctx.destroy();
+        if (host_owned) |host| {
+            host.destroy();
         }
         self.allocator.free(self.script_url);
         if (self.name.len > 0) {
@@ -216,6 +189,8 @@ pub fn init(
 /// IMPORTANT: Must chain to EventTarget.deinit() through interface (not impl directly)
 /// to clean up event listener state.
 pub fn deinit(instance: *runtime.Instance) void {
+    // Whatever pending-activity hold is left on it goes with it.
+    releasePendingActivity(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -223,6 +198,63 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
     // Chain to parent class through interface for proper deinit
     EventTarget.deinit(instance);
+}
+
+/// `script_url` encoding-parsed relative to `api_base_url` and serialized:
+/// the Worker constructor's steps 3-4, given the outside settings' API base
+/// URL. OWNED (`allocator`). SyntaxError when it does not parse - a relative
+/// URL with no base among them.
+pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (api_base_url) |base| base_record = api_parser.parseURL(allocator, base, null) catch null;
+    var record = api_parser.parseURL(allocator, script_url, if (base_record) |*b| b else null) catch
+        return error.SyntaxError;
+    defer record.deinit();
+    return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized: the origin of `api_base_url`,
+/// or "null" (an opaque origin) without one. OWNED (`allocator`).
+fn serializedOriginOf(allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    const base = api_base_url orelse return allocator.dupe(u8, "null");
+    var record = api_parser.parseURL(allocator, base, null) catch return allocator.dupe(u8, "null");
+    defer record.deinit();
+    const origin = try url_origin.getOrigin(allocator, &record);
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
+}
+
+/// The current settings object's API base URL, for the instance a constructor
+/// just made in it: a window's document's base URL, read through the
+/// Document's `baseURI`; a worker's is its script URL, which its realm
+/// records as its document URL. OWNED by `instance.ctx.allocator`. The same
+/// lookup WebSocket's and Request's constructors make.
+fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
+    const ctx = instance.ctx;
+    if (relevantWindow(instance)) |window| {
+        const document = interfaces.Window.get_document(window) catch null;
+        if (document) |d| {
+            const base = interfaces.Node.get_baseURI(d) catch null;
+            if (base) |b| {
+                if (b.len > 0) return @constCast(b);
+                d.ctx.allocator.free(b);
+            }
+        }
+    }
+    if (ctx.documentUrl()) |document_url| {
+        if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
+    }
+    return null;
+}
+
+/// `instance`'s relevant global object, when it is a Window.
+fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
+    const engine = instance.ctx.getEngine() orelse return null;
+    const relevant_global = engine.relevantGlobalObject orelse return null;
+    const global = relevant_global(instance) orelse return null;
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
 }
 
 /// Constructor implementation
@@ -242,6 +274,15 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
     errdefer deinit(instance);
+
+    // A Worker has pending activity from the moment it is made until its
+    // worker has ended (Blink's DedicatedWorker::HasPendingActivity): script
+    // may drop it at once - `new Worker(url).onmessage = f`, or a worker's own
+    // nested worker held in a local - and the worker still runs, and the
+    // tasks queued for it must not find it freed. The binding wraps it after
+    // this returns, and the wrapper takes the hold then; the worker host
+    // releases it once the worker has ended (`releaseOwnerWhenIdle`).
+    keepPendingActivity(instance);
 
     // Parse options - use defaults for type/credentials since dictionary has opaque enum pointers
     const worker_type = WorkerType.classic;
@@ -265,9 +306,19 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         }
     }
 
-    // Copy the script URL
-    const url_copy = try ctx.allocator.dupe(u8, scriptURL.asSlice());
+    // Steps 2-4: "Let outsideSettings be the current settings object. Let
+    // workerURL be the result of encoding-parsing a URL given scriptURL,
+    // relative to outsideSettings. If workerURL is failure, then throw a
+    // "SyntaxError" DOMException." Relative to its API base URL - a window's
+    // document's URL - which Crane used to replace with the document's
+    // origin, so `support/x.js` from /workers/y.html fetched /support/x.js.
+    const base_url = apiBaseURL(instance);
+    defer if (base_url) |b| ctx.allocator.free(b);
+    const url_copy = try resolveScriptURL(ctx.allocator, scriptURL.asSlice(), base_url);
     errdefer ctx.allocator.free(url_copy);
+    // Its origin, for the blob-URL store's same-origin check.
+    const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);
+    defer ctx.allocator.free(requesting_origin);
 
     // Copy the name if present
     const name_copy = if (name.len > 0)
@@ -280,9 +331,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     const internal_state = try ctx.allocator.create(InternalState);
     errdefer ctx.allocator.destroy(internal_state);
 
-    // Get the current isolate - don't cast ctx.engine_ctx as it stores the V8 Context, not Isolate
-    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-
     internal_state.* = .{
         .dedicated_worker = null,
         .script_url = url_copy,
@@ -292,7 +340,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         .allocator = ctx.allocator,
         .worker_instance = instance,
         .ctx = ctx,
-        .isolate = current_isolate,
         .pending_outgoing_messages = .empty,
     };
 
@@ -315,7 +362,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // is still valid) and store it. Only the script EXECUTION is deferred.
     const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
         .worker_type = worker_type,
-        .origin = null,
+        .requesting_origin = requesting_origin,
     }) catch |err| {
         std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
         // Continue with null pending_script - initializeWorkerSync will handle this
@@ -360,9 +407,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         WorkerTask.queue(event_loop, instance, &initializeWorker);
     } else {
         // Fallback: try timer if no event loop available
-        const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
+        const timer = ctx.timer orelse WorkerHost.getTimerInterface();
         if (timer) |t| {
-            _ = t.setTimeout(1, initializeWorkerCallback, instance);
+            WorkerTask.arm(t, 1, instance, &initializeWorker);
         } else {
             std.log.warn("Worker: no timer available, using synchronous initialization", .{});
             initializeWorkerSync(internal_state, ctx);
@@ -372,43 +419,23 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     return instance;
 }
 
+// Event handler IDL attributes (HTML § 8.1.8.1): their values live in
+// EventTarget's event handler map, where firing `message` or `error` at this
+// Worker finds them - in order with every listener.
+
 /// Getter for onerror
-///
-/// Spec: HTML Standard § 10.2.3
-/// Event handler for error events on the worker.
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onerror;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
 }
 
 /// Getter for onmessage
-///
-/// Spec: HTML Standard § 10.2.3
-/// Event handler for message events from the worker.
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessage;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
 }
 
 /// Getter for onmessageerror
-///
-/// Spec: HTML Standard § 10.2.3
-/// Event handler for messageerror events.
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onmessageerror;
-}
-
-/// Extract GlobalHandle from a tagged callback pointer (from V8 conversion).
-/// The V8 conversions layer creates Global handles and tags the pointers.
-fn extractEventHandler(handler: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
-    if (handler) |ptr| {
-        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        }
-    }
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
 }
 
 /// Get internal state from instance
@@ -418,34 +445,11 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Setter for onerror
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onerror = value;
-
-    // Also store as GlobalHandle in internal state for proper V8 invocation
-    if (getInternal(instance)) |internal| {
-        // NOT disposed. `onerror_handle` is only ever assigned from
-        // extractEventHandler, which REINTERPRETS an incoming tagged pointer as a
-        // GlobalHandle - it does not create one (GlobalHandle.create appears nowhere
-        // in this file). The handle is borrowed; whoever produced the tagged pointer
-        // owns it. Disposing here deleted a V8 Global this code never owned, and the
-        // next dispose of the same Global hit freed memory - surfacing as UBSan
-        // trapping inside v8_Global_Dispose (v8_wrapper.cpp:8434), which is a bare
-        // SIGTRAP in ReleaseSafe and silent corruption otherwise.
-        internal.onerror_handle = null;
-        // Properly unwrap the optional before casting to extract the tagged pointer
-        if (value) |v| {
-            const casted: *const anyopaque = @ptrCast(v);
-            internal.onerror_handle = extractEventHandler(casted);
-        } else {
-            internal.onerror_handle = null;
-        }
-    }
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
 }
 
 /// Setter for onmessage
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
 ///
 /// When onmessage is set, we also process any queued messages. This handles the
 /// common pattern where:
@@ -458,71 +462,41 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// when the handler is set achieves the correct observable behavior - messages
 /// are delivered after the handler is ready.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessage = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
 
-    // DEBUG - only log for Worker instances (not Window.onmessage)
-
-    // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
-        // Borrowed, not owned: assigned only from extractEventHandler, which
-        // reinterprets an incoming tagged pointer rather than creating a Global.
-        // Disposing here deletes a handle owned elsewhere. See set_onerror.
-        internal.onmessage_handle = null;
-        // Properly unwrap the optional before casting to extract the tagged pointer
-        internal.onmessage_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
-
-        log.debug("[Worker.set_onmessage] instance={*}, handler_set={}, dedicated_worker={?*}", .{ instance, internal.onmessage_handle != null, internal.dedicated_worker });
-
         // Process any messages that were queued before the handler was set
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
-            const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-            log.debug("[Worker.set_onmessage] worker={*}, queue_len={d}", .{ dedicated_worker, queue_len });
             keepAliveWhileRunning(internal);
             dedicated_worker.processQueuedMessages();
-        } else {
-            log.debug("[Worker.set_onmessage] WARN: dedicated_worker is NULL! Cannot process queued messages.", .{});
         }
     }
 }
 
 /// Setter for onmessageerror
-/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onmessageerror = value;
-
-    // Also store as GlobalHandle in internal state for proper V8 invocation
-    if (getInternal(instance)) |internal| {
-        // Borrowed, not owned: assigned only from extractEventHandler, which
-        // reinterprets an incoming tagged pointer rather than creating a Global.
-        // Disposing here deletes a handle owned elsewhere. See set_onerror.
-        internal.onmessageerror_handle = null;
-        // Properly unwrap the optional before casting to extract the tagged pointer
-        internal.onmessageerror_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
-    }
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
 }
 
-/// Timer callback for initializing the worker (deferred from constructor)
+/// The deferred half of the constructor, as a task (WorkerTask): ALL worker
+/// creation is deferred, for nested workers too - entering and exiting the
+/// worker's agent during a constructor disrupts the calling agent's scopes.
 ///
-/// CRITICAL: ALL worker creation is deferred to this callback for nested workers.
-/// Entering/exiting the worker isolate during a constructor disrupts the calling
-/// isolate's HandleScope state, causing V8 crashes.
-///
-/// This callback does all the heavy work:
+/// It does all the heavy work:
 /// 1. Creates DedicatedWorker with timer backend
 /// 2. Fetches and resolves the script URL
-/// 3. Creates WorkerV8Context (new isolate)
+/// 3. Creates WorkerHost (new isolate)
 /// 4. Sets up DedicatedWorkerGlobalScope
 /// 5. Schedules script execution
-fn initializeWorkerCallback(user_data: ?*anyopaque) void {
-    initializeWorker(@ptrCast(@alignCast(user_data orelse return)));
-}
-
 fn initializeWorker(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    // Terminated before it ran: "terminate a worker" sets the closing flag,
+    // and a worker whose flag is set runs nothing - not its script either
+    // (workers/Worker-terminate-forever.html: a `while (1);` script ran, and
+    // hung the page, once its URL resolved).
+    if (internal.terminated) return;
 
     // Get the stored context - we need it for timer operations
     const ctx = internal.ctx orelse {
@@ -598,16 +572,22 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // See DedicatedWorkerMessagingProxy::was_script_evaluated_ flag.
     // The flush happens in executeWorkerScriptCallback AFTER script execution.
 
-    // Create V8 context for worker execution using the pre-fetched script's final URL
-    const v8_context = WorkerV8Context.init(
+    // The worker's agent ("run a worker" step 4), through this realm's
+    // engine, for the pre-fetched script's final URL.
+    const engine = ctx.getEngine() orelse {
+        std.log.warn("Worker: no engine in this realm", .{});
+        return;
+    };
+    const host = WorkerHost.init(
         allocator,
+        engine,
         script_final_url,
         worker_type,
     ) catch |err| {
-        std.log.warn("Failed to create WorkerV8Context: {}", .{err});
+        std.log.warn("Failed to create the worker's agent: {}", .{err});
         return;
     };
-    internal.v8_context = v8_context;
+    internal.host = host;
 
     // Create the WorkerContext
     dedicated_worker.startWithContext() catch |err| {
@@ -617,7 +597,7 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
 
     // Wire up the V8 context to the WorkerAgent's WorkerContext
     if (dedicated_worker.agent.worker_context) |worker_ctx| {
-        worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
+        worker_ctx.setEngineContext(host.getEngineContext(), host.getCallbacks());
     } else {
         std.log.warn("WorkerContext not created after startWithContext", .{});
         return;
@@ -625,11 +605,11 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
 
     // Set up the timer interface for worker timers
     if (ctx.timer) |timer| {
-        WorkerV8Context.setTimerInterface(timer);
+        WorkerHost.setTimerInterface(timer);
     }
 
     // Set up DedicatedWorkerGlobalScope with proper globals
-    v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
+    host.setupWorkerGlobalScope(dedicated_worker) catch |err| {
         std.log.warn("Failed to set up worker global scope: {}", .{err});
         return;
     };
@@ -676,8 +656,11 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
             WorkerTask.queue(event_loop, worker_instance, &dispatchMessagesOf);
         }
     } else if (ctx.timer) |timer| {
-        // Fallback to timer if no event loop available
-        _ = timer.setTimeout(1, executeWorkerMessageDispatchCallback, internal.worker_instance);
+        // Fallback to timer if no event loop available (a worker's realm,
+        // making a nested worker).
+        if (internal.worker_instance) |worker_instance| {
+            WorkerTask.arm(timer, 1, worker_instance, &dispatchMessagesOf);
+        }
     } else {
         // No timer or event loop - dispatch messages synchronously (handlers may not be set up)
         dispatchWorkerMessages(internal);
@@ -721,24 +704,13 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     const pending_count = internal.pending_outgoing_messages.items.len;
     if (pending_count > 0) {
         std.log.debug("[Worker] Flushing {d} pending messages after script eval", .{pending_count});
-        for (internal.pending_outgoing_messages.items) |serialized| {
-            dedicated_worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-                std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
-                serialized.deinit();
-                internal.allocator.destroy(serialized);
-                continue;
-            };
-        }
-        internal.pending_outgoing_messages.clearRetainingCapacity();
-        std.log.debug("[Worker] inside_port queue has {d} messages", .{dedicated_worker.port_pair.inside_port.message_queue.items.len});
+        flushPendingOutgoing(internal, dedicated_worker);
     }
 
-    // Now process the messages in the worker's V8 context.
+    // Now process the messages in the worker's realm.
     // The messages are in inside_port.message_queue (via port entanglement).
-    if (internal.v8_context) |v8_ctx| {
-        std.log.debug("[Worker] Processing incoming messages in worker V8 context", .{});
-        html_full.worker_v8_context.processIncomingMessages(v8_ctx);
-        std.log.debug("[Worker] Done processing incoming messages", .{});
+    if (internal.host) |host| {
+        worker_host.processIncomingMessages(host);
     }
 
     // Check if worker sent any messages back and dispatch them to main thread
@@ -774,20 +746,8 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     }
 }
 
-/// Timer callback for dispatching worker messages after script execution.
-///
-/// This callback runs after the constructor returns, allowing JavaScript to
-/// set up worker.onmessage handlers before messages are dispatched.
-///
-/// Timeline:
-/// 1. new Worker(...) - script executes synchronously during construction
-/// 2. Constructor returns, JavaScript sets up worker.onmessage
-/// 3. setTimeout(1, executeWorkerMessageDispatchCallback) fires (we're here)
-/// 4. Messages dispatched to worker's onmessage handler
-fn executeWorkerMessageDispatchCallback(user_data: ?*anyopaque) void {
-    dispatchMessagesOf(@ptrCast(@alignCast(user_data orelse return)));
-}
-
+/// Dispatch the worker's messages, as a task (WorkerTask) armed after its
+/// script ran - so JavaScript has set up worker.onmessage first.
 fn dispatchMessagesOf(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     dispatchWorkerMessages(internal);
@@ -800,11 +760,34 @@ fn dispatchMessagesOf(instance: *runtime.Instance) void {
 /// collection then freed the Worker, and its DedicatedWorker, while
 /// processQueuedMessages was still walking its port: a segfault on every run
 /// of html/webappapis/atob/base64.any.js once a turn stopped draining the
-/// queue in one go. So the wrapper is held from the first dispatch on, and
-/// goes with the page.
+/// queue in one go. So the wrapper is held from the first dispatch on, until
+/// the worker has ended and everything it posted is delivered - the worker
+/// host releases it then (`releaseOwnerWhenIdle`), from a turn of its own.
 fn keepAliveWhileRunning(internal: *InternalState) void {
-    const instance = internal.worker_instance orelse return;
-    @import("v8").wrapper_cache_mod.holdStrong(instance);
+    keepPendingActivity(internal.worker_instance orelse return);
+}
+
+/// Take the Engine table's pending-activity hold on a Worker.
+fn keepPendingActivity(instance: *runtime.Instance) void {
+    const engine = instance.ctx.getEngine() orelse return;
+    if (engine.keepPlatformObjectAlive) |keep| keep(instance);
+}
+
+/// End it (idempotent).
+fn releasePendingActivity(instance: *runtime.Instance) void {
+    const engine = instance.ctx.getEngine() orelse return;
+    if (engine.releasePlatformObject) |release| release(instance);
+}
+
+/// Post the messages queued before the worker existed, in order.
+fn flushPendingOutgoing(internal: *InternalState, dedicated_worker: *DedicatedWorker) void {
+    for (internal.pending_outgoing_messages.items) |*message| {
+        dedicated_worker.port_pair.outside_port.postEngineMessage(message.*) catch |err| {
+            std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
+            message.deinit();
+        };
+    }
+    internal.pending_outgoing_messages.clearRetainingCapacity();
 }
 
 /// An event-loop task for a Worker, holding it as (address, slab generation).
@@ -831,6 +814,22 @@ const WorkerTask = struct {
         event_loop.queueTask(event_loop_mod.Task{ .callback = &run, .context = task, .drop = &drop });
     }
 
+    /// The same step, as a timer on `timer` after `delay_ms` - for a realm
+    /// with no event loop (a worker's, making a nested worker). It used to be
+    /// a timer carrying the bare Worker pointer, which a Worker collected in
+    /// the meantime left pointing at a freed slot.
+    fn arm(timer: runtime.TimerInterface, delay_ms: u64, instance: *runtime.Instance, step: *const fn (*runtime.Instance) void) void {
+        const allocator = instance.ctx.allocator;
+        const task = allocator.create(WorkerTask) catch return;
+        task.* = .{
+            .instance = instance,
+            .generation = runtime.SlabAllocator.generationOf(instance),
+            .allocator = allocator,
+            .step = step,
+        };
+        if (timer.setTimeout(delay_ms, &run, task) == 0) allocator.destroy(task);
+    }
+
     fn run(data: ?*anyopaque) void {
         const task: *WorkerTask = @ptrCast(@alignCast(data orelse return));
         defer task.allocator.destroy(task);
@@ -850,26 +849,11 @@ fn dispatchWorkerMessages(internal: *InternalState) void {
     const dedicated_worker = internal.dedicated_worker orelse return;
 
     // Flush pending messages to the inside port for worker to receive
-    const pending_count = internal.pending_outgoing_messages.items.len;
-    if (pending_count > 0) {
-        std.log.debug("[Worker] Flushing {d} pending messages after script eval", .{pending_count});
-        for (internal.pending_outgoing_messages.items) |serialized| {
-            dedicated_worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-                std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
-                serialized.deinit();
-                internal.allocator.destroy(serialized);
-                continue;
-            };
-        }
-        internal.pending_outgoing_messages.clearRetainingCapacity();
-        std.log.debug("[Worker] inside_port queue has {d} messages", .{dedicated_worker.port_pair.inside_port.message_queue.items.len});
-    }
+    flushPendingOutgoing(internal, dedicated_worker);
 
-    // Process messages in the worker's V8 context
-    if (internal.v8_context) |v8_ctx| {
-        std.log.debug("[Worker] Processing incoming messages in worker V8 context", .{});
-        html_full.worker_v8_context.processIncomingMessages(v8_ctx);
-        std.log.debug("[Worker] Done processing incoming messages", .{});
+    // Process messages in the worker's realm
+    if (internal.host) |host| {
+        worker_host.processIncomingMessages(host);
     }
 
     // CRITICAL: Flush messages from threadlocal pending_messages to port queues.
@@ -969,19 +953,16 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
     };
     std.log.debug("[executeWorkerScriptSync] Script len={d}, preview: {s}", .{ script.len, script[0..@min(script.len, 80)] });
 
-    // Execute the script in WorkerV8Context - this is the SAME context used for message dispatch.
-    // CRITICAL: We must use internal.v8_context, not dedicated_worker.executeScript(), because:
-    // - internal.v8_context is WorkerV8Context (has onmessage dispatch)
-    // - dedicated_worker.executeScript() uses WorkerContext (different V8 context!)
-    // - If we execute in the wrong context, onmessage won't be set where we dispatch.
-    if (internal.v8_context) |v8_ctx| {
-        log.debug("[executeWorkerScriptSync] Have v8_context, calling executeScript on ptr {*}", .{v8_ctx});
-        _ = v8_ctx.executeScript(script) catch |err| {
+    // Run the script through the worker host - the realm its messages are
+    // dispatched in. dedicated_worker.executeScript() runs through the older
+    // WorkerContext, whose realm is not the one onmessage is looked up in.
+    if (internal.host) |host| {
+        host.executeScript(script) catch |err| {
             std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
         };
         log.debug("[executeWorkerScriptSync] executeScript returned", .{});
     } else {
-        std.log.err("[executeWorkerScriptSync] No WorkerV8Context!", .{});
+        std.log.err("[executeWorkerScriptSync] No WorkerHost!", .{});
     }
 
     // Flush pending messages to port queues
@@ -1045,425 +1026,106 @@ fn handleErrorFromWorkerCallback(dedicated_worker: *DedicatedWorker, error_event
     dispatchWorkerErrorEvent(instance, error_event);
 }
 
-/// Dispatch an ErrorEvent to the Worker's error handlers
+/// Fire `error` at the Worker - HTML "report an exception" for the worker's
+/// global scope, when it went unhandled there: "fire an event named error at
+/// workerObject, using ErrorEvent, with the cancelable attribute initialized
+/// to true, and additional attributes initialized according to errorInfo" -
+/// with `error` null: the exception value does not reach the owner's realm.
 ///
-/// This creates an ErrorEvent with the error details and invokes:
-/// 1. All registered "error" event listeners (via addEventListener)
-/// 2. The onerror EventHandler if set
+/// Every "error" listener hears it, and `onerror`, in the order they were
+/// added (EventTarget's list holds both).
 ///
-/// Per HTML Standard, if the error is not cancelled (preventDefault not called),
-/// the error should propagate to the global error handler.
+/// TODO(workers): "If notHandled is true, then report exception for
+/// workerObject's relevant global object with omitError set to true" - the
+/// owner's own error event. Not yet: the owner's global does not hear it.
 fn dispatchWorkerErrorEvent(instance: *runtime.Instance, error_event: *WorkerErrorEvent) void {
     defer error_event.deinit();
-
-    // Get internal state with GlobalHandle and isolate
     const internal = getInternal(instance) orelse return;
-
-    // Get isolate and V8 context
-    const isolate = internal.isolate orelse return;
     const ctx = internal.ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
-
-    // Check current isolate state and enter if needed
-    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
-    if (need_enter_isolate) {
-        v8_engine.ffi.v8_Isolate_Enter(isolate);
-    }
-    defer if (need_enter_isolate) {
-        v8_engine.ffi.v8_Isolate_Exit(isolate);
-    };
-
-    // Verify we have a valid context, enter if needed
-    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
-    const need_enter_context = (current_context == null) or (current_context != v8_context);
-    if (need_enter_context) {
-        v8_engine.ffi.v8_Context_Enter(v8_context);
-    }
-    defer if (need_enter_context) {
-        v8_engine.ffi.v8_Context_Exit(v8_context);
-    };
-
-    // Create a HandleScope for V8 operations
-    // V8 requires a HandleScope when creating Local handles (from v8_Global_Get, etc.)
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Create V8 ErrorEvent object
-    // Per HTML Standard § 7.2.2 The ErrorEvent interface
-    const error_event_js = createV8ErrorEvent(isolate, v8_context, error_event) orelse return;
-
-    // Get onerror handler from internal state
-    if (internal.onerror_handle) |handler_global| {
-        // handler_global.ptr is already a Global<Value>* - pass it directly to v8_Value_IsFunction
-        // which expects Global<Value>* (the FFI type is *Value but maps to Global<Value>* in C++)
-        const handler: *v8_engine.ffi.Value = @ptrCast(handler_global.ptr);
-
-        // Check if it's a function
-        if (v8_engine.ffi.v8_Value_IsFunction(handler)) {
-            const handler_fn: *v8_engine.ffi.Function = @ptrCast(handler_global.ptr);
-            const global_obj = v8_engine.ffi.v8_Context_Global(v8_context) orelse return;
-
-            // Call onerror handler with the ErrorEvent as argument
-            // error_event_js is already a Global<Object>* from v8_Function_NewInstance
-            // No need to convert - just cast to *Value for v8_Function_Call
-            var args = [1]*v8_engine.ffi.Value{error_event_js};
-            _ = v8_engine.ffi.v8_Function_Call(
-                handler_fn,
-                v8_context,
-                @ptrCast(global_obj),
-                1,
-                &args,
-            );
-        }
-    }
-
-    // TODO: Also dispatch to event listeners via EventTarget.dispatchEvent
-    // This would handle addEventListener('error', ...) but requires creating a proper
-    // ErrorEvent instance. For now, the onerror property handler is handled above.
+    const engine = ctx.getEngine() orelse return;
+    const run = engine.runInRealm orelse return;
+    // A task of the owner's realm, entered from the event loop.
+    var fire = ErrorFire{ .worker = instance, .error_event = error_event };
+    run(ctx, ErrorFire.steps, &fire) catch {};
 }
 
-/// Create a V8 ErrorEvent object from WorkerErrorEvent data
-/// Creates a proper ErrorEvent instance by calling the ErrorEvent constructor
-fn createV8ErrorEvent(isolate: *v8_engine.ffi.Isolate, context: *v8_engine.ffi.Context, error_event: *WorkerErrorEvent) ?*v8_engine.ffi.Value {
-    // Get the global object to access ErrorEvent constructor
-    const global_obj = v8_engine.ffi.v8_Context_Global(context) orelse return null;
+const ErrorFire = struct {
+    worker: *runtime.Instance,
+    error_event: *WorkerErrorEvent,
 
-    // Get ErrorEvent constructor from global
-    const error_event_name = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "ErrorEvent", 10) orelse return null;
-    const error_event_ctor_value = v8_engine.ffi.v8_Object_Get(global_obj, context, @ptrCast(error_event_name)) orelse return null;
-
-    // Check if it's a function (constructor) - use Global version since v8_Object_Get returns Global*
-    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(error_event_ctor_value))) {
-        return null;
+    fn steps(data: ?*anyopaque) void {
+        const self: *ErrorFire = @ptrCast(@alignCast(data orelse return));
+        const worker = self.worker;
+        const init_dict = dictionaries.ErrorEventInit{
+            .base = .{ .cancelable = true },
+            .message = runtime.DOMString.initInterned(self.error_event.message),
+            .filename = self.error_event.filename,
+            .lineno = self.error_event.lineno,
+            .colno = self.error_event.colno,
+            .@"error" = runtime.JSValue.jsNull,
+        };
+        const event = interfaces.ErrorEvent.call_constructor(
+            worker.ctx,
+            runtime.DOMString.initInterned("error"),
+            webidl.Opt(dictionaries.ErrorEventInit).passed(init_dict),
+        ) catch return;
+        const generation = runtime.SlabAllocator.generationOf(event);
+        // Fired by the user agent: trusted (DOM 2.10). EventTarget is an
+        // ancestor, so its impl.
+        _ = EventTargetImpl.dispatchTrusted(worker, event) catch {};
+        event.releaseIfUnwrapped(generation);
     }
-    const error_event_ctor: *v8_engine.ffi.Function = @ptrCast(@alignCast(error_event_ctor_value));
+};
 
-    // Create the ErrorEventInit dictionary
-    const init_dict = v8_engine.ffi.v8_Object_New(isolate) orelse return null;
-
-    // Set message
-    const message_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "message", 7) orelse return null;
-    const message_val = v8_engine.ffi.v8_String_NewFromUtf8(isolate, error_event.message.ptr, @intCast(error_event.message.len)) orelse return null;
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(message_key), @ptrCast(message_val));
-
-    // Set filename
-    const filename_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "filename", 8) orelse return null;
-    const filename_val = v8_engine.ffi.v8_String_NewFromUtf8(isolate, error_event.filename.ptr, @intCast(error_event.filename.len)) orelse return null;
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(filename_key), @ptrCast(filename_val));
-
-    // Set lineno
-    const lineno_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "lineno", 6) orelse return null;
-    const lineno_val = v8_engine.ffi.v8_Integer_New(isolate, @intCast(error_event.lineno));
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(lineno_key), @ptrCast(lineno_val));
-
-    // Set colno
-    const colno_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "colno", 5) orelse return null;
-    const colno_val = v8_engine.ffi.v8_Integer_New(isolate, @intCast(error_event.colno));
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(colno_key), @ptrCast(colno_val));
-
-    // Set error to an Error object
-    const error_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "error", 5) orelse return null;
-    const error_obj = v8_engine.ffi.v8_Exception_ErrorInContext(context, message_val) orelse return null;
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(error_key), error_obj);
-
-    // Set cancelable = true (error events can be cancelled with preventDefault)
-    const cancelable_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "cancelable", 10) orelse return null;
-    const cancelable_val = v8_engine.ffi.v8_Boolean_New(isolate, true) orelse return null;
-    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(cancelable_key), cancelable_val);
-
-    // Create event type string "error"
-    const type_str = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "error", 5) orelse return null;
-
-    // Call ErrorEvent constructor: new ErrorEvent("error", initDict)
-    var args = [2]*v8_engine.ffi.Value{ @ptrCast(type_str), @ptrCast(init_dict) };
-    const event_obj = v8_engine.ffi.v8_Function_NewInstance(error_event_ctor, context, 2, &args) orelse {
-        std.log.warn("[createV8ErrorEvent] Failed to create ErrorEvent instance", .{});
-        return null;
-    };
-
-    return @ptrCast(event_obj);
-}
-
-/// Dispatch a MessageEvent to the Worker's message handlers
-///
-/// This creates a MessageEvent with the deserialized data and invokes:
-/// 1. All registered "message" event listeners (via addEventListener)
-/// 2. The onmessage EventHandler if set
-///
-/// ## V8 Callback Invocation
-///
-/// Event listeners are stored as CallbackWrapper instances that hold Global handles
-/// to JavaScript functions. We invoke them via CallbackWrapper.call1().
-///
-/// The EventHandler (onmessage) is a tagged pointer to a V8 GlobalHandle that we
-/// invoke directly via v8_Function_Call.
-///
-/// ## JSON Message Handling
-///
-/// Worker messages are now serialized as JSON strings for cross-isolate safety.
-/// This function:
-/// 1. Extracts the JSON string from the SerializedValue
-/// 2. Parses it using V8's JSON.parse in the main context
-/// 3. Creates MessageEvent with the parsed value as data
+/// Deliver a message the worker posted: the receiving half of the message
+/// port post message steps for the Worker's outside port - deserialized into
+/// this realm, its transferred ports received here, and `message` fired at
+/// the Worker (or `messageerror`, when it does not deserialize). Every
+/// "message" listener hears it, and `onmessage`.
 fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
-    // Get internal state with GlobalHandle and isolate
     const internal = getInternal(instance) orelse return;
-
-    log.debug("[dispatchMessageEvent] ENTRY instance={*}, dedicated_worker={?*}", .{ instance, internal.dedicated_worker });
-
-    // Get isolate and V8 context
-    const isolate = internal.isolate orelse return;
     const ctx = internal.ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
-
-    // Check current isolate state
-    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-
-    // We need to be in the main isolate to dispatch events.
-    // After worker script execution, we may be in a different isolate
-    // (e.g., a previous test's isolate). We must enter the correct isolate.
-    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
-    if (need_enter_isolate) {
-        v8_engine.ffi.v8_Isolate_Enter(isolate);
-    }
-    defer if (need_enter_isolate) {
-        v8_engine.ffi.v8_Isolate_Exit(isolate);
-    };
-
-    // Verify we have a valid context, enter if needed
-    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
-    const need_enter_context = (current_context == null) or (current_context != v8_context);
-    if (need_enter_context) {
-        v8_engine.ffi.v8_Context_Enter(v8_context);
-    }
-    defer if (need_enter_context) {
-        v8_engine.ffi.v8_Context_Exit(v8_context);
-    };
-
-    // CRITICAL: Create HandleScope for V8 operations.
-    // We need our own HandleScope because:
-    // 1. Timer callbacks may enter/exit different isolates (worker isolates)
-    // 2. The outer HandleScope from runOnce was removed to avoid HandleScope
-    //    corruption during cross-isolate transitions
-    // 3. Each V8 operation needs a valid HandleScope for the current isolate
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get the message data - check the serialization type
-    var v8_data: ?*v8_engine.ffi.Value = null;
-
-    // Check if this is V8-serialized data (from cross-isolate transfer with ArrayBuffers)
-    if (msg.data.type == .v8_serialized) {
-        const v8_serialized = msg.data.data.v8_serialized;
-
-        // Build ArrayBufferTransferData array from the transferred data
-        var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
-        const ab_count = @min(v8_serialized.transferred_arraybuffers.len, 64);
-
-        for (0..ab_count) |i| {
-            const transferred = v8_serialized.transferred_arraybuffers[i];
-            arraybuffer_data[i] = .{
-                .data = if (transferred.data.len > 0) transferred.data.ptr else null,
-                .size = transferred.byte_length,
-            };
-        }
-
-        // Deserialize using cross-isolate API
-        var error_code: i32 = 0;
-        v8_data = v8_engine.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(
-            v8_serialized.serialized_bytes.ptr,
-            v8_serialized.serialized_bytes.len,
-            &arraybuffer_data,
-            ab_count,
-            &error_code,
-        );
-
-        if (v8_data == null or error_code != 0) {
-            std.log.warn("Worker.dispatchMessageEvent: V8 deserialization failed with error code {}", .{error_code});
-        }
-    }
-
-    // Check for JSON-serialized primitives (from postMessage without transfer)
-    if (v8_data == null and msg.data.type == .primitive) {
-        switch (msg.data.data.primitive) {
-            .string => |json_str| {
-                // DEBUG
-                const preview_len = @min(json_str.len, 50);
-                log.debug("[dispatchMessageEvent] Parsing JSON: len={d}, content={s}", .{ json_str.len, json_str[0..preview_len] });
-
-                // JSON string from worker - parse it in main context
-                v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
-                    v8_context,
-                    json_str.ptr,
-                    @intCast(json_str.len),
-                );
-                if (v8_data == null) {
-                    std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed for: {s}", .{json_str});
-                } else {
-                    log.debug("[dispatchMessageEvent] JSON parse SUCCEEDED", .{});
-                }
-            },
-            else => {},
-        }
-    }
-
-    // If we couldn't get V8 data, try the old deserialization path
-    if (v8_data == null) {
-        // Fall back to structured clone deserialization
-        const deserialized = workers.message_channel.deserializeFromPostMessage(
-            ctx.allocator,
-            msg.data,
-        ) catch |err| {
-            std.log.warn("Failed to deserialize worker message: {}", .{err});
-            return;
-        };
-
-        // Create a MessageEvent with the deserialized data
-        const message_event = MessageEvent.call_constructor(
-            ctx,
-            runtime.DOMString.initInterned("message"),
-            webidl.Opt(dictionaries.MessageEventInit).notPassed(),
-        ) catch |err| {
-            std.log.warn("Failed to create MessageEvent: {}", .{err});
-            workers.message_channel.freeJSValue(ctx.allocator, @constCast(deserialized));
-            return;
-        };
-
-        var event_state = message_event.getState(MessageEvent.State);
-        // deserialized is a V8 handle from message channel deserialization
-        event_state.own.data = runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(deserialized)));
-
-        // Wrap and dispatch
-        const v8_event = template_registry.wrapInstanceAsV8Object(
-            message_event,
-            "MessageEvent",
-            isolate,
-            v8_context,
-        ) catch |err| {
-            std.log.warn("Failed to wrap MessageEvent as V8 object: {s}", .{@errorName(err)});
-            return;
-        };
-
-        // Dispatch to all listeners and onmessage handler
-        invokeMessageListeners(instance, isolate, v8_context, v8_event, internal);
-        return;
-    }
-
-    // We have V8 data from JSON.parse - create MessageEvent with it
-    const message_event = MessageEvent.call_constructor(
-        ctx,
-        runtime.DOMString.initInterned("message"),
-        webidl.Opt(dictionaries.MessageEventInit).notPassed(),
-    ) catch |err| {
-        std.log.warn("Failed to create MessageEvent: {}", .{err});
-        if (v8_data) |data| {
-            v8_engine.ffi.v8_Value_Dispose(data);
-        }
-        return;
-    };
-
-    // Set the data property on the MessageEvent
-    // v8_JSON_Parse_FromBuffer returns a Local handle that's only valid in the current HandleScope.
-    // When the callback executes (via v8_Function_Call), it may create its own HandleScope.
-    // The callback then accesses message.data, which triggers our getter.
-    // At that point, the original Local handle might not be valid.
-    //
-    // Solution: Convert the Local to a Global handle for safe storage.
-    // The Global handle persists across HandleScope boundaries.
-    const global_data = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(v8_data)) orelse {
-        std.log.warn("Failed to convert JSON data to Global handle", .{});
-        return;
-    };
-    // Note: This Global handle will NOT be automatically disposed.
-    // Since MessageEvent is short-lived (only used for this dispatch), this is acceptable.
-    // The Global handle will be collected when the isolate is disposed.
-    // TODO: Properly track and dispose this Global handle when MessageEvent is destroyed.
-
-    var event_state = message_event.getState(MessageEvent.State);
-    event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(global_data));
-
-    // Wrap the MessageEvent instance as a V8 Object
-    const v8_event = template_registry.wrapInstanceAsV8Object(
-        message_event,
-        "MessageEvent",
-        isolate,
-        v8_context,
-    ) catch |err| {
-        std.log.warn("Failed to wrap MessageEvent as V8 object: {s}", .{@errorName(err)});
-        return;
-    };
-
-    // Dispatch to all listeners and onmessage handler
-    invokeMessageListeners(instance, isolate, v8_context, v8_event, internal);
+    const message = if (msg.engine_message) |*m| m else return;
+    const engine = ctx.getEngine() orelse return;
+    const run = engine.runInRealm orelse return;
+    var delivery = Delivery{ .worker = instance, .engine = engine, .message = message };
+    run(ctx, Delivery.steps, &delivery) catch {};
 }
 
-/// Invoke all registered "message" event listeners and the onmessage handler
-///
-/// Per DOM spec, event listeners registered via addEventListener are invoked first,
-/// then the legacy event handler (onmessage) is invoked.
-fn invokeMessageListeners(
-    instance: *runtime.Instance,
-    isolate: *v8_engine.ffi.Isolate,
-    v8_context: *v8_engine.ffi.Context,
-    v8_event: *v8_engine.ffi.Object,
-    internal: *InternalState,
+const Delivery = struct {
+    worker: *runtime.Instance,
+    engine: *const runtime.EngineInterface,
+    message: *EngineMessage,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *Delivery = @ptrCast(@alignCast(data orelse return));
+        worker_host.deliverEngineMessage(self.engine, self.worker.ctx, self.worker, self.message, fireAtWorker);
+    }
+};
+
+/// Fire a MessageEvent at the Worker `target`, made in `realm`. `data` is
+/// borrowed: the event keeps its own.
+fn fireAtWorker(
+    realm: runtime.Context,
+    target: *runtime.Instance,
+    event_type: []const u8,
+    data: runtime.JSValue,
+    ports: []const *runtime.Instance,
 ) void {
-    log.debug("invokeMessageListeners: has_onmessage_handler={}", .{internal.onmessage_handle != null});
-
-    // Step 1: Invoke registered "message" event listeners (from addEventListener)
-    //
-    // `EventListenerRecord.callback` is written by
-    // `EventTarget.call_addEventListener`, whose WebIDL signature takes a
-    // `*runtime.CallbackWrapper` - the engine-agnostic wrapper, not the V8 one.
-    // The two structs have different layouts, so reading `callback_function_global`
-    // off a V8-shaped cast actually reads `runtime.CallbackWrapper.engine`, and
-    // handing that vtable pointer to V8 as a `Global<Function>*` faults on the
-    // first handle load. Go through the runtime wrapper instead, exactly as
-    // `EventTarget.call_dispatchEvent` does.
-    if (EventTargetImpl.getInternalState(instance)) |et_internal| {
-        const listeners = et_internal.getEventListenerList();
-        for (listeners) |listener| {
-            if (!std.mem.eql(u8, listener.type.asSlice(), "message") or listener.removed) continue;
-            const callback_instance = listener.callback orelse continue;
-            const callback_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-
-            // invoke1() takes a Local; v8_event is a Global<Object>*.
-            const event_local = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(v8_event)) orelse continue;
-
-            _ = callback_wrapper.invoke1(@ptrCast(event_local)) catch |err| {
-                log.warn("message listener failed: {s}", .{@errorName(err)});
-                continue;
-            };
-        }
-    }
-
-    // Step 2: Invoke the onmessage handler if set
-    if (internal.onmessage_handle) |onmessage_global| {
-        // Verify it's a function using the Global handle directly
-        // v8_Value_IsFunction expects a Global<Value>* which is what rawPtr() returns
-        if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.rawPtr())) {
-            log.warn("onmessage handler is not a function", .{});
-            return;
-        }
-
-        // Get the function as a Global<Function>* for the call
-        // We can safely cast since we verified it's a function above
-        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse {
-            log.warn("onmessage handler could not be cast to a function", .{});
-            return;
-        };
-
-        // Call the V8 function with the MessageEvent as argument
-        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
-        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-
-        const result = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
-        if (result == null) {
-            const exception = v8_engine.ffi.v8_TryCatch_Exception(v8_context);
-            log.warn("onmessage handler returned null (exception={})", .{exception != null});
-        }
-    }
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{},
+        .data = data,
+        .ports = ports,
+    };
+    const event = MessageEvent.call_constructor(
+        realm,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    // Fired by the user agent: trusted (DOM 2.10).
+    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// Operation: terminate
@@ -1485,275 +1147,62 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         }
         // The host's half: discard the worker's tasks, empty the port queue
         // its implicit port is entangled with, and let its realm and isolate
-        // go (HTML "terminate a worker").
-        if (internal.v8_context) |v8_ctx| v8_ctx.terminate();
+        // go (HTML "terminate a worker"). The host releases the Worker's
+        // pending-activity hold once the realm is gone; a worker that never
+        // started has no host, and nothing is left pending now.
+        if (internal.host) |host| host.terminate() else releasePendingActivity(instance);
     }
 }
 
-/// Operation: postMessage
+/// Operation: postMessage(message, transfer)
 ///
-/// Spec: HTML Standard § 10.2.3.1 postMessage(message, transfer)
-/// Posts a message to the worker. Uses structured clone algorithm.
-///
-/// The message is serialized using the structured clone algorithm and
-/// sent to the worker's message queue.
-///
-/// For cross-isolate transfer (Worker runs in separate V8 isolate):
-/// 1. Extract ArrayBuffers from transfer list
-/// 2. Serialize message to bytes (V8 ValueSerializer)
-/// 3. Copy ArrayBuffer data before detaching
-/// 4. Detach original ArrayBuffers
-/// 5. Pass serialized bytes + ArrayBuffer data to worker
-/// 6. Worker deserializes in its own isolate
+/// Spec: HTML Standard § 10.2.3.1: "act as if, when invoked, it immediately
+/// invoked the respective postMessage(message, transfer) ... on the port"
+/// its outside port is entangled with - the message port post message steps
+/// with options «[ "transfer" → transfer ]».
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
+    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
+    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    defer {
+        if (engine.releaseValue) |release| for (list) |item| release(item);
+        instance.ctx.allocator.free(list);
+    }
+    return postMessageSteps(instance, message, list);
+}
+
+/// Operation: postMessage(message, options)
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
+    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
+    return postMessageSteps(instance, message, transfer);
+}
+
+/// The message port post message steps for the outside port: serialize with
+/// transfer in this realm (a MessagePort in `transfer` is shipped), then queue
+/// the message for the worker - or hold it until the worker exists.
+fn postMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     if (internal.terminated) return; // Worker is terminated, ignore message
 
-    const allocator = internal.allocator;
+    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
+    var serialized = try worker_host.serializeMessage(engine, instance.ctx, message, transfer, internal.allocator);
 
-    // Get V8 context and isolate for serialization
-    const ctx = instance.ctx;
-    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
-    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoEngine;
-
-    // Convert JSValue to V8 Value* for serialization
-    const v8_value: *v8_engine.ffi.Value = switch (message) {
-        .handle => |h| blk: {
-            if (h.handle_scope == .global) {
-                const global_ptr: *v8_engine.ffi.Value = @ptrCast(@alignCast(h.ptr));
-                const local_result = v8_engine.ffi.v8_Global_Get(isolate, global_ptr) orelse return error.NoValue;
-                break :blk @ptrCast(@alignCast(local_result));
-            } else {
-                break :blk @ptrCast(@alignCast(h.ptr));
-            }
-        },
-        .undefined => v8_engine.ffi.v8_Undefined(isolate) orelse return error.NoValue,
-        .null => v8_engine.ffi.v8_Null(isolate) orelse return error.NoValue,
-        .boolean => |b| v8_engine.ffi.v8_Boolean_New(isolate, b) orelse return error.NoValue,
-        .number => |n| @ptrCast(v8_engine.ffi.v8_Number_New(isolate, n)),
-        .string => |s| @ptrCast(v8_engine.ffi.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return error.NoValue),
-        .instance => return error.UnsupportedValueType,
-    };
-
-    // Step 1: Extract ArrayBuffers and MessagePorts from transfer list
-    var array_buffer_transfers: [64]*v8_engine.ffi.Value = undefined;
-    var array_buffer_count: usize = 0;
-
-    // MessagePort transfers - store the internal port pointers
-    var port_transfers: [16]*MessagePortImpl.InternalState = undefined;
-    var port_count: usize = 0;
-
-    if (transfer == .handle) {
-        const transfer_handle = transfer.handle;
-        const transfer_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(transfer_handle.ptr));
-
-        if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
-            const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
-            const length = v8_engine.ffi.v8_Array_Length(transfer_array);
-
-            for (0..length) |i| {
-                if (v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i))) |item| {
-                    // Check for ArrayBuffer
-                    if (v8_engine.ffi.v8_Value_IsArrayBuffer(item)) {
-                        if (array_buffer_count < 64) {
-                            array_buffer_transfers[array_buffer_count] = item;
-                            array_buffer_count += 1;
-                        }
-                    }
-                    // Check for MessagePort - must be a WebIDL object with MessagePort vtable
-                    else if (v8_engine.ffi.v8_Value_IsObject(item)) {
-                        const obj: *v8_engine.ffi.Object = @ptrCast(item);
-                        // Get internal field 0 (runtime.Instance pointer)
-                        if (v8_engine.ffi.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |ptr| {
-                            const port_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                            // Check if vtable matches MessagePort
-                            if (port_instance.vtable == &interfaces.MessagePort.vtable) {
-                                if (port_count < 16) {
-                                    // Get the MessagePort state and internal port
-                                    const port_state = port_instance.getState(interfaces.MessagePort.State);
-                                    if (port_state.own._internal) |port_internal| {
-                                        // Store the internal state for transfer
-                                        port_transfers[port_count] = port_internal;
-                                        port_count += 1;
-
-                                        // Per HTML Standard § 9.4.4: transferred ports are disentangled
-                                        // from their WebIDL layer but KEEP internal entanglement for
-                                        // message routing. The internal entangled_port must remain
-                                        // intact so messages can flow between the ports.
-                                        //
-                                        // Clear WebIDL entanglement (source wrapper becomes neutered)
-                                        // but don't call internal_port.disentangle()
-                                        port_internal.entangled_webidl_port = null;
-
-                                        // Mark the internal port as transferred for cross-isolate messaging
-                                        port_internal.internal_port.transferred = true;
-
-                                        // Mark source as no longer owning the port
-                                        // Ownership transfers to the destination
-                                        port_internal.owns_port = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Step 2: Serialize with transfer using cross-isolate API
-    // Use V8 serialization if we have ArrayBuffers or MessagePorts to transfer
-    if (array_buffer_count > 0 or port_count > 0) {
-        // Use V8 cross-isolate serialization with ArrayBuffer transfer
-        var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
-        var serialized_size: usize = 0;
-        var error_code: i32 = 0;
-
-        const serialized_bytes = v8_engine.ffi.v8_Value_SerializeWithTransfer_CrossIsolate(
-            v8_value,
-            &array_buffer_transfers,
-            array_buffer_count,
-            &serialized_size,
-            &arraybuffer_data,
-            &error_code,
-        );
-
-        if (serialized_bytes == null or error_code != 0) {
-            return error.SerializationFailed;
-        }
-
-        // Copy the serialized bytes to Zig-managed memory
-        const bytes_copy = try allocator.alloc(u8, serialized_size);
-        errdefer allocator.free(bytes_copy);
-        @memcpy(bytes_copy, serialized_bytes.?[0..serialized_size]);
-
-        // Free the V8-allocated serialized buffer
-        v8_engine.ffi.v8_Free_SerializedBuffer(serialized_bytes.?);
-
-        // Copy the ArrayBuffer data to Zig-managed memory
-        const transferred_abs = try allocator.alloc(TransferredArrayBufferData, array_buffer_count);
-        errdefer {
-            for (transferred_abs) |ab| {
-                allocator.free(ab.data);
-            }
-            allocator.free(transferred_abs);
-        }
-
-        for (0..array_buffer_count) |i| {
-            const ab_data = arraybuffer_data[i];
-            if (ab_data.size > 0 and ab_data.data != null) {
-                const data_slice: [*]u8 = @ptrCast(ab_data.data.?);
-                transferred_abs[i] = .{
-                    .data = try allocator.dupe(u8, data_slice[0..ab_data.size]),
-                    .byte_length = ab_data.size,
-                };
-            } else {
-                transferred_abs[i] = .{
-                    .data = &[_]u8{},
-                    .byte_length = 0,
-                };
-            }
-        }
-
-        // Free the C-allocated ArrayBuffer data (we've copied it)
-        v8_engine.ffi.v8_Free_ArrayBufferTransferData(&arraybuffer_data, array_buffer_count);
-
-        // Step 3: Copy transferred MessagePort data
-        const transferred_ports: []TransferredPortData = if (port_count > 0) blk: {
-            const ports = try allocator.alloc(TransferredPortData, port_count);
-            errdefer allocator.free(ports);
-            for (0..port_count) |i| {
-                ports[i] = .{
-                    .internal_port = port_transfers[i].internal_port,
-                };
-            }
-            break :blk ports;
-        } else &[_]TransferredPortData{};
-
-        // Create SerializedValue with V8 serialized data
-        const serialized = try allocator.create(SerializedValue);
-        errdefer allocator.destroy(serialized);
-
-        serialized.* = .{
-            .type = .v8_serialized,
-            .allocator = allocator,
-            .data = .{
-                .v8_serialized = .{
-                    .serialized_bytes = bytes_copy,
-                    .transferred_arraybuffers = transferred_abs,
-                    .transferred_ports = transferred_ports,
-                },
-            },
-        };
-
-        // Post to the worker's inside port (or queue if worker not ready)
-        if (internal.dedicated_worker) |worker| {
-            worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-                serialized.deinit();
-                allocator.destroy(serialized);
-                return switch (err) {
-                    error.PortClosed => error.WorkerClosed,
-                    error.NotEntangled => error.WorkerClosed,
-                    else => error.PostMessageFailed,
-                };
+    if (internal.dedicated_worker) |worker| {
+        worker.port_pair.outside_port.postEngineMessage(serialized) catch |err| {
+            serialized.deinit();
+            return switch (err) {
+                error.PortClosed => error.WorkerClosed,
+                error.NotEntangled => error.WorkerClosed,
+                else => error.PostMessageFailed,
             };
-        } else {
-            // Queue for later - worker not ready yet
-            try internal.pending_outgoing_messages.append(allocator, serialized);
-        }
+        };
     } else {
-        // No transfer list - use JSON serialization (simpler, works for primitives)
-        var dummy_buf: [1]u8 = undefined;
-        const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
-            v8_context,
-            v8_value,
-            &dummy_buf,
-            0,
-        );
-        if (required_size <= 0) return error.SerializationFailed;
-
-        const json_buffer = try allocator.alloc(u8, @intCast(required_size + 1));
-        defer allocator.free(json_buffer);
-
-        const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
-            v8_context,
-            v8_value,
-            json_buffer.ptr,
-            @intCast(json_buffer.len),
-        );
-        if (written <= 0) return error.SerializationFailed;
-
-        const json_str = json_buffer[0..@intCast(written)];
-
-        const serialized = try allocator.create(SerializedValue);
-        errdefer allocator.destroy(serialized);
-
-        const json_copy = try allocator.dupe(u8, json_str);
-        errdefer allocator.free(json_copy);
-
-        serialized.* = .{
-            .type = .primitive,
-            .allocator = allocator,
-            .data = .{ .primitive = .{ .string = json_copy } },
+        // Queue for later - worker not ready yet
+        internal.pending_outgoing_messages.append(internal.allocator, serialized) catch |err| {
+            serialized.deinit();
+            return err;
         };
-
-        // Post to the worker's inside port (or queue if worker not ready)
-        if (internal.dedicated_worker) |worker| {
-            worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-                serialized.deinit();
-                allocator.destroy(serialized);
-                return switch (err) {
-                    error.PortClosed => error.WorkerClosed,
-                    error.NotEntangled => error.WorkerClosed,
-                    else => error.PostMessageFailed,
-                };
-            };
-        } else {
-            // Queue for later - worker not ready yet
-            try internal.pending_outgoing_messages.append(allocator, serialized);
-        }
     }
 
     // CRITICAL: Only process messages if the worker script has been evaluated.
@@ -1761,12 +1210,9 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // - If script hasn't run yet, messages are queued and will be processed later
     //   in executeWorkerScriptCallback after the script finishes
     // - If script HAS run, we can immediately dispatch to self.onmessage
-    //
-    // Without this check, messages posted before the script runs would try to
-    // dispatch to a non-existent onmessage handler.
     if (internal.script_evaluated) {
-        if (internal.v8_context) |v8_ctx| {
-            html_full.worker_v8_context.processIncomingMessages(v8_ctx);
+        if (internal.host) |host| {
+            worker_host.processIncomingMessages(host);
 
             // After processing, check if worker sent back any messages and dispatch them
             // This handles the echo pattern: main → worker → main

@@ -225,8 +225,12 @@ pub fn queueMutationRecord(
         }
     }
 
-    // Step 5: Queue a mutation observer microtask
-    try queueMutationObserverMicrotask(allocator);
+    // Step 5: Queue a mutation observer microtask. A legacy `*Node` carries
+    // no realm to name the surrounding agent by, so the notify steps run now.
+    // (Nothing reaches this function: its only caller,
+    // attribute_algorithms.handleAttributeChanges, is reached only from the
+    // unused dom_token_list.zig.)
+    try queueMutationObserverMicrotask(allocator, null);
 }
 
 /// DOM §7.3 - Queue a tree mutation record
@@ -517,8 +521,9 @@ fn queueMutationRecordInternal(
 
     std.log.debug("[MutationObserver] queueMutationRecordInternal complete, pending_observers: {}", .{(getAgent(allocator) catch unreachable).pending_observers.len});
 
-    // Step 5: Queue a mutation observer microtask
-    try queueMutationObserverMicrotask(allocator);
+    // Step 5: Queue a mutation observer microtask, in the agent of target's
+    // relevant realm - the surrounding agent.
+    try queueMutationObserverMicrotask(allocator, target.ctx);
 }
 
 /// DOM §7.1 - Queue a mutation observer microtask
@@ -526,7 +531,10 @@ fn queueMutationRecordInternal(
 /// Queue a microtask to notify mutation observers.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
-fn queueMutationObserverMicrotask(allocator: Allocator) !void {
+///
+/// `realm` names the surrounding agent: a realm of it. Null only where no
+/// realm is known, and then the notify steps run at once.
+fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context) !void {
     const MutationObserverImpl = @import("impls").MutationObserver;
 
     const agent = try getAgent(allocator);
@@ -537,9 +545,11 @@ fn queueMutationObserverMicrotask(allocator: Allocator) !void {
     // Step 2: Set the surrounding agent's mutation observer microtask queued to true
     agent.microtask_queued = true;
 
+    const surrounding = realm orelse return notifyMutationObservers(allocator);
+
     // Step 3: Queue a microtask to notify mutation observers
-    // Delegate to the impl which has access to V8 for proper microtask queueing
-    MutationObserverImpl.queueNotifyMicrotask(allocator) catch {
+    // Delegate to the impl, which queues it through the engine
+    MutationObserverImpl.queueNotifyMicrotask(allocator, surrounding) catch {
         // If queueing fails, fall back to synchronous execution
         std.log.err("MutationObserver: failed to queue microtask, falling back to synchronous", .{});
         try notifyMutationObservers(allocator);

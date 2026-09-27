@@ -229,6 +229,7 @@ pub const SharedWorker = struct {
         return script_fetch.fetchWorkerScript(self.allocator, self.script_url, .{
             .worker_type = self.agent.data.worker_type,
             .origin = self.constructor_origin,
+            .requesting_origin = self.constructor_origin,
             .credentials = switch (self.credentials) {
                 .omit => .omit,
                 .same_origin => .same_origin,

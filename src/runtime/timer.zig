@@ -156,3 +156,35 @@ test "TimerInterface - struct layout" {
     };
     _ = ti;
 }
+
+// ============================================================================
+// HTML timer nesting (the timer initialization steps, §8.6 step 5)
+// ============================================================================
+//
+// Spec state, not engine state: it lived in the V8 adapter's native timer
+// manager, where engine-neutral callers (the window's and the worker's timer
+// steps) could not reach it without a V8 reference.
+
+/// Minimum delay once nested deeper than `nesting_threshold`. HTML §8.6 step 5.
+pub const nested_min_delay_ms: i64 = 4;
+
+/// Nesting depth beyond which `nested_min_delay_ms` applies. HTML §8.6 step 5.
+pub const nesting_threshold: u32 = 5;
+
+/// The "current timer nesting level".
+///
+/// Zero on the event loop's own turn; while a timer callback runs it is that
+/// timer's recorded level, so a timer created inside the callback nests one deeper.
+/// Thread-local because a worker runs its callbacks on its own thread and must not
+/// see the window's depth.
+pub threadlocal var nesting_level: u32 = 0;
+
+/// Apply the clamping half of the timer initialisation steps.
+pub fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
+    var timeout = requested_ms;
+    if (timeout < 0) timeout = 0;
+    if (nesting > nesting_threshold and timeout < nested_min_delay_ms) {
+        timeout = nested_min_delay_ms;
+    }
+    return timeout;
+}

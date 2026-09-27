@@ -692,6 +692,10 @@ pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
 /// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
 /// nearly all of them. Read it as a rate: N per element on a create-and-discard
 /// loop is N leaked per element.
+///
+/// Always 0 unless the wrapper is built with -DCRANE_TRACK_GLOBALS=1, and only
+/// gc_bench is. A test asserting that nothing leaked wants
+/// `v8_Isolate_GetGlobalHandleBytes`, which every build has.
 pub extern fn v8_Debug_CreatedGlobals() i64;
 
 /// Read slot `index` of the Global-creation site histogram. Returns false past the
@@ -704,6 +708,10 @@ pub extern fn v8_Isolate_GetHeapUsage(
     total: ?*usize,
     external: ?*usize,
 ) void;
+/// Bytes of V8's global handle table in use - every live `Global<T>`, counted
+/// by V8 and updated as each is created or reset. In every build: the measure
+/// for a test asserting that an operation leaves no handle behind.
+pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
 /// Native contexts alive in the heap, and how many of those V8 counts as
 /// detached. A page whose contexts outlive it shows here exactly.
 pub extern fn v8_Isolate_GetContextCounts(
@@ -749,6 +757,9 @@ pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc
 pub extern fn v8_Context_GetRealGlobal(context: *Context) ?*Object;
 
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
+/// The context's registry key: a never-reused id kept in its embedder data,
+/// stable across compacting GCs (despite the name, not an address - see the
+/// C++ side). Opaque; compare for equality only.
 pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 pub extern fn v8_Context_SetSecurityToken(context: *Context, token: *Value) void;
 pub extern fn v8_Context_GetSecurityToken(context: *Context) ?*Value;
@@ -3222,3 +3233,166 @@ pub extern fn crane_release_function_global(global: ?*anyopaque) void;
 /// @param raw_func - Unregistered Global<Function>* to compare
 /// @return true if the functions are identical (same JS function object)
 pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *anyopaque) bool;
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+// The steps of WebIDL's record<K, V> conversion (3.2.23) that run script, each
+// under a TryCatch: on a throw the thrown value (caught, not pending) with
+// `threw.*` true - null only for a terminating isolate. Every non-null result
+// is a new Global the caller owns.
+
+/// O.[[OwnPropertyKeys]](): an Array of every own key - Symbols included,
+/// integer indices as Strings - in order (a Proxy's ownKeys trap, unfiltered).
+pub extern fn v8_Object_OwnPropertyKeysCatching(context: *Context, object: *Value, threw: *bool) ?*Value;
+
+/// O.[[GetOwnProperty]](key): `enumerable.*` is whether the property exists
+/// and is enumerable. Returns the thrown value when script threw, else null.
+pub extern fn v8_Object_IsOwnEnumerableCatching(context: *Context, object: *Value, key: *Value, enumerable: *bool, threw: *bool) ?*Value;
+
+/// Get(O, key) for a String or Symbol `key` (the key itself, not its UTF-8).
+pub extern fn v8_Object_GetByKeyCatching(context: *Context, object: *Value, key: *Value, threw: *bool) ?*Value;
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+
+/// ECMAScript GetFunctionRealm(value). OWNED: v8_Context_Dispose. Null for a
+/// non-object, and with `revoked_proxy` set at a revoked proxy.
+pub extern fn v8_Value_GetFunctionRealm(value: *Value, revoked_proxy: *bool) ?*Context;
+
+/// A context from `global_template` around the detached `global_proxy`.
+/// OWNED: v8_Context_Dispose.
+pub extern fn v8_Context_NewWithGlobalTemplateAndProxy(isolate: *Isolate, global_template: *ObjectTemplate, global_proxy: *Object) ?*Context;
+
+/// Whether JavaScript frames are on the isolate's stack.
+pub extern fn v8_Isolate_HasJavaScriptOnStack(isolate: *Isolate) bool;
+
+/// v8_CompileEventHandler with the parameter names given. The function is
+/// OWNED (a Global<Value>*); on a SyntaxError null, with `out_error` set
+/// (v8_FreeErrorInfo).
+pub extern fn v8_CompileEventHandlerWithParameters(
+    context: *Context,
+    name: [*]const u8,
+    name_len: c_int,
+    body: [*]const u8,
+    body_len: c_int,
+    parameter_names: [*]const [*:0]const u8,
+    parameter_count: c_int,
+    scopes: [*]const ?*Object,
+    scope_count: c_int,
+    out_error: *?*V8ErrorInfo,
+) ?*Value;
+
+/// Compile a classic script whose ScriptOrigin names `resource_name` (null:
+/// "") and carries `host_defined` (null: none). Free the result with
+/// v8_FreeScriptCompileResult; its script is OWNED.
+pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+
+/// Whether V8's platform is initialized in this process.
+pub extern fn v8_Platform_IsInitialized() bool;
+
+/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
+/// `dispatch(isolate, event, promise, reason)`: `event` a PromiseRejectEvent,
+/// the promise and the reason (null when V8 gives none) Globals the
+/// dispatcher OWNS.
+pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(
+    isolate: *Isolate,
+    dispatch: *const fn (isolate: *Isolate, event: c_int, promise: *Value, reason: ?*Value) callconv(.c) void,
+) void;
+
+/// Remove HostPromiseRejectionTracker from `isolate` alone.
+pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;
+
+/// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
+/// names `resource_name` (null: "") and carries `host_defined` (null: none)
+/// as a module's. Free with v8_FreeModuleCompileResult; its module is OWNED.
+pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ModuleCompileResult;
+
+/// The host's answer for one module request during a Link: the resolved
+/// module (the host keeps it), or null. `referrer` is BORROWED for the call.
+pub const ProtocolResolveModule = *const fn (
+    data: ?*anyopaque,
+    referrer: *Module,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    type_attribute: ?[*:0]const u8,
+) callconv(.c) ?*Module;
+
+/// ECMAScript Link() with each request resolved by `resolve`. False with
+/// `exception` the error (OWNED; null when nothing was thrown).
+pub extern fn v8_Module_LinkWithResolver(context: *Context, module: *Module, resolve: ProtocolResolveModule, data: ?*anyopaque, exception: *?*Value) bool;
+
+/// ECMAScript Evaluate(): 0 fulfilled, 1 rejected (`value` the reason), 2
+/// pending (`value` the promise), -1 nothing (terminating). `value` OWNED.
+pub extern fn v8_Module_EvaluateForProtocol(context: *Context, module: *Module, value: *?*Value) c_int;
+
+/// ContinueDynamicImport for an import() whose module the host loaded.
+/// Consumes `context` and `resolver`; `module` stays the caller's.
+pub extern fn v8_DynamicImport_ContinueWithModule(context: *anyopaque, resolver: *anyopaque, module: *Module) void;
+
+/// The protocol's import() dispatcher: `context` and `resolver` OWNED by it
+/// until the import is finished; `referrer_kind` 0 script, 1 module, -1
+/// none; the strings BORROWED for the call.
+pub const ProtocolDynamicImportDispatch = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    referrer_kind: c_int,
+    referrer: ?*anyopaque,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    type_attribute: ?[*:0]const u8,
+    resolver: *anyopaque,
+) callconv(.c) void;
+
+/// The protocol's import.meta.url dispatcher: the URL's bytes, BORROWED for
+/// the call, or null. `module` is BORROWED.
+pub const ProtocolImportMetaUrlDispatch = *const fn (isolate: *Isolate, module: *Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8;
+
+/// Install the protocol's import() and import.meta hooks on `isolate`, each
+/// only when given.
+pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch) void;
+
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+/// Create ReferenceError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ReferenceErrorInContext(context: *Context, message: *String) ?*Value;
+/// WebIDL "write" `length` bytes into an ArrayBufferView, `starting_offset`
+/// bytes into the view, an ArrayBuffer or SharedArrayBuffer alike. False when
+/// `view` is not an ArrayBufferView, is detached, or the bytes do not fit.
+pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, length: usize, starting_offset: usize) bool;
+// ---- end lane: runtime-impls ----
+// ---- lane: protocol ----
+// The engine protocol's additive FFI (engine-protocol-design.md, decision 11).
+
+/// HTML "prepare to run a callback": run `body(data)` with `incumbent` on the
+/// backup incumbent settings object stack (v8::Context::BackupIncumbentScope,
+/// held on the C++ stack around the body). Null `incumbent`: nothing pushed.
+pub extern fn v8_RunWithBackupIncumbent(isolate: *Isolate, incumbent: ?*Context, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void;
+
+/// HTML's incumbent realm here (Isolate::GetIncumbentContext). A new Global
+/// the caller disposes with v8_Context_Dispose; null when no context is
+/// entered.
+pub extern fn v8_Isolate_GetIncumbentContext(isolate: *Isolate) ?*Context;
+
+/// A function of `context` running `callback` with `data` as its [[data]]:
+/// Function::New - not cached per context, unlike a FunctionTemplate. Not a
+/// constructor. A new Global<Value> the caller owns; null on failure.
+pub extern fn v8_Function_NewWithData(context: *Context, callback: FunctionCallback, data: ?*Value, length: c_int) ?*Value;
+/// PerformPromiseThen(promise, onFulfilled, onRejected, capability), a null
+/// handler being undefined (V8's one-handler Then, or Catch): the derived
+/// promise, a new Global<Value> the caller owns; null on failure or when both
+/// handlers are null. Unlike v8_Promise_Then, safe with a null handler.
+pub extern fn v8_Promise_ThenWithOptionalHandlers(context: *Context, promise: *Value, on_fulfilled: ?*Value, on_rejected: ?*Value) ?*Value;
+/// ECMAScript ToObject(value): the object itself, or a primitive's wrapper
+/// object of `context`'s realm. Null for undefined and null (ToObject's
+/// TypeError, for the caller to throw; nothing is thrown) or on failure. A new
+/// Global the caller owns.
+pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
+/// v8_Function_CallCatching, and on a throw `site.*` is the error information
+/// of where it was thrown - the catching TryCatch's message: script, line,
+/// column - or null. Free it with v8_FreeErrorInfo; its `exception` is null.
+/// HTML "extract error information" for what a callback threw: a thrown
+/// value that is not an Error carries no position of its own.
+pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+/// v8_Object_GetCatching, and the throw site as v8_Function_CallCatchingWithSite.
+pub extern fn v8_Object_GetCatchingWithSite(context: *Context, object: *Value, key: [*]const u8, key_len: c_int, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+// ---- end lane: protocol ----

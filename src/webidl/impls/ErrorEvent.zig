@@ -15,7 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const clock = @import("clock");
-const v8 = @import("v8");
+const engine = @import("engine");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const ErrorEvent = interfaces.ErrorEvent;
 
@@ -47,16 +47,16 @@ pub const InternalState = struct {
     /// Spec: "represents the column number where the error occurred in the script"
     colno: u32,
 
-    /// The error value: a Global<Value>* this event OWNS, or null for
-    /// undefined (the attribute's initial value).
+    /// The error value, held by this event (OWNED), or null for undefined
+    /// (the attribute's initial value).
     /// Spec: "represents the error (e.g., the exception object in the case of an uncaught exception)"
     ///
     /// Owned rather than borrowed because nothing else keeps the value alive
-    /// for the event's lifetime: the Global a dictionary member arrives in is
+    /// for the event's lifetime: the value a dictionary member arrives in is
     /// the conversion's, and "report an exception" passes one its caller
-    /// disposes. Storing either pointer as it came left `event.error` reading
-    /// a handle someone else frees.
-    @"error": ?*v8.ffi.Value,
+    /// releases. Storing either as it came left `event.error` reading a
+    /// handle someone else frees.
+    @"error": ?engine.Owned,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -106,7 +106,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             internal.allocator.free(internal.filename);
         }
         if (internal.@"error") |value| {
-            v8.ffi.v8_Global_Dispose(value);
+            value.release();
             internal.@"error" = null;
         }
         internal.deinit();
@@ -193,7 +193,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
         // error defaults to undefined (null in our representation)
         if (init_dict.@"error") |err| {
-            internal.@"error" = retainValue(err);
+            internal.@"error" = try hold(ctx, err);
         }
     }
 
@@ -245,36 +245,20 @@ pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return undefined
         return runtime.JSValue.jsUndefined;
     };
-    // error is a stored V8 handle - use fromHandleNonOwning since lifecycle
-    // is managed by ErrorEvent's InternalState
-    if (internal.@"error") |err| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(err));
-    }
+    // BORROWED: the event keeps it.
+    if (internal.@"error") |err| return err.borrow();
     return runtime.JSValue.jsUndefined;
 }
 
-/// A Global<Value>* of `value` that the event owns, or null for undefined.
-///
-/// A handle is cloned whatever its `handle_scope` tag says: a runtime.JSValue
-/// handle is ALWAYS a Global<Value>* (AGENTS.md "One handle kind per layer").
-/// The conversion layer tags an object argument or dictionary member `.local`,
-/// but what it holds comes from `v8_FunctionCallbackInfo_GetArgument` or
-/// `v8_Object_Get`, both of which return a Global - reading one as a Local
-/// slot turned `new ErrorEvent("error", {error: obj}).error` into a garbage
-/// number. The clone is ours; the conversion's own Global stays its owner's.
-/// A primitive is materialised as a V8 value.
-fn retainValue(value: runtime.JSValue) ?*v8.ffi.Value {
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    return switch (value) {
-        .undefined => null,
-        .null => v8.ffi.v8_Null(isolate),
-        .boolean => |b| v8.ffi.v8_Boolean_New(isolate, b),
-        .number => |n| @ptrCast(v8.ffi.v8_Number_New(isolate, n)),
-        .string => |str| @ptrCast(v8.ffi.v8_String_NewFromUtf8(isolate, str.data.ptr, @intCast(str.data.len))),
-        .handle => |h| v8.ffi.v8_Global_Clone(@ptrCast(@alignCast(h.ptr))),
-        // A Zig instance is not a JavaScript value.
-        .instance => null,
-    };
+/// This event's own hold on `value` (borrowed), or null for undefined - the
+/// attribute's initial value. A handle is retained whatever its
+/// `handle_scope` tag says: a runtime.JSValue handle is always an engine
+/// value the conversion owns (AGENTS.md "One handle kind per layer"), so the
+/// event holds its own. A platform object is held as its wrapper in its
+/// relevant realm; `realm` is the event's.
+fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
+    if (value == .undefined) return null;
+    return try engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
 }
 
 // =============================================================================
@@ -290,7 +274,7 @@ pub fn createErrorEvent(
     filename: []const u8,
     lineno: u32,
     colno: u32,
-    err: ?*const anyopaque,
+    err: runtime.JSValue,
     cancelable: bool,
 ) !*runtime.Instance {
     // Create ErrorEventInit dictionary
@@ -306,9 +290,9 @@ pub fn createErrorEvent(
         .filename = filename, // USVString is []const u8
         .lineno = lineno,
         .colno = colno,
-        // error is a V8 handle passed in - the constructor clones it, so the
-        // caller keeps ownership of its own
-        .@"error" = if (err) |e| runtime.JSValue.fromHandleNonOwning(@constCast(e)) else null,
+        // BORROWED: the constructor holds a value of its own, so the caller
+        // keeps ownership of its own.
+        .@"error" = err,
     };
 
     // Construct the ErrorEvent

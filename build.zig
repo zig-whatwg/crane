@@ -428,6 +428,25 @@ fn addModuleTestWithV8(
     return builder.addTest(.{ .root_module = test_mod });
 }
 
+/// The engine protocol (src/runtime/engine_protocol.zig) bound to the
+/// adapter at `adapter_root`, over `runtime`: a facade and adapter pair of
+/// their own, for a test compile whose graph holds no other binding - one
+/// file belongs to one module per compile, so two bindings of the facade
+/// cannot meet in one.
+fn engineProtocolBinding(
+    builder: *std.Build,
+    target: std.Build.ResolvedTarget,
+    runtime: *std.Build.Module,
+    adapter_root: std.Build.LazyPath,
+) *std.Build.Module {
+    const facade = builder.createModule(.{ .root_source_file = builder.path("src/runtime/engine_protocol.zig"), .target = target });
+    facade.addImport("runtime", runtime);
+    const adapter = builder.createModule(.{ .root_source_file = adapter_root, .target = target });
+    adapter.addImport("engine", facade);
+    facade.addImport("engine_impl", adapter);
+    return facade;
+}
+
 /// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
@@ -1016,6 +1035,34 @@ pub fn build(b: *std.Build) void {
     impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
+    // ========================================================================
+    // ENGINE PROTOCOL (module `engine`)
+    // ========================================================================
+    //
+    // AGENTS.md "The engine boundary": consumers `@import("engine")` and call
+    // `engine.op(...)`. The facade forwards every operation, inline, to
+    // `engine_impl.protocol` - the adapter `-Dengine=` selects - so dispatch
+    // is static, and a missing or mis-typed adapter function is a compile
+    // error in the facade. In a V8 build `engine_impl` IS the v8 module (its
+    // root re-exports src/runtime/engines/v8/protocol.zig), because the
+    // protocol functions live beside the adapter files they call, and a file
+    // of another module cannot import those by relative path. One module
+    // each, shared by every artifact: binding it adds no root-module
+    // analysis, and runtime already imports v8, so it adds no module cycle.
+    const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
+    const engine_mod = b.addModule("engine", .{
+        .root_source_file = engine_protocol_root,
+        .target = target,
+    });
+    engine_mod.addImport("runtime", runtime_mod);
+    const engine_impl_mod = if (std.mem.eql(u8, engine_choice, "v8")) v8_mod else b.createModule(.{
+        .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
+        .target = target,
+    });
+    engine_impl_mod.addImport("engine", engine_mod);
+    engine_mod.addImport("engine_impl", engine_impl_mod);
+    impls_mod.addImport("engine", engine_mod);
+
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
@@ -1053,6 +1100,9 @@ pub fn build(b: *std.Build) void {
     typedefs_mod.addImport("v8", v8_mod);
     interfaces_mod.addImport("v8", v8_mod);
     namespaces_mod.addImport("v8", v8_mod);
+    // The adapter registers the namespaces a snapshot lacks when it creates a
+    // Window realm (an Engine function pointer cannot take a comptime module).
+    v8_mod.addImport("namespaces", namespaces_mod);
     // Note: impls also needs "v8" for JSValue types in generated signatures
 
     // DOM module
@@ -1548,102 +1598,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Algorithm infrastructure for ReadableStream.from() and async iterator support
-    const streams_algorithm_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/algorithm.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "callbacks", .module = callbacks_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
-    // V8 Promise chaining utility for bridging V8 Promises to AsyncPromise
-    // Note: This module needs readable_stream_async_iterator for iterator callbacks
-    // The import is added after streams_readable_stream_async_iterator_mod is created (below)
-    const streams_v8_promise_chaining_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/v8_promise_chaining.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-        },
-    });
-
-    const streams_v8_resources_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/v8_resources.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const streams_iterator_record_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/iterator_record.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "v8_resources", .module = streams_v8_resources_mod },
-        },
-    });
-
-    const streams_from_iterable_algorithm_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/from_iterable_algorithm.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "algorithm", .module = streams_algorithm_mod },
-            .{ .name = "iterator_record", .module = streams_iterator_record_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-        },
-    });
-
-    const streams_reader_ops_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/algorithms/reader_ops.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
-    const streams_readable_stream_async_iterator_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/readable_stream_async_iterator.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "typedefs", .module = typedefs_mod },
-            .{ .name = "dictionaries", .module = dictionaries_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "reader_ops", .module = streams_reader_ops_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
-    // Resolve circular dependency between v8_promise_chaining and readable_stream_async_iterator
-    // by using addImport after both modules are created
-    streams_v8_promise_chaining_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
-    streams_readable_stream_async_iterator_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
-
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),
         .target = target,
@@ -1677,12 +1631,7 @@ pub fn build(b: *std.Build) void {
     // Add event loop to runtime and v8 for async operations (streams, promises)
     runtime_mod.addImport("event_loop", streams_event_loop_mod);
     v8_mod.addImport("event_loop", streams_event_loop_mod);
-    // V8 async_iterator module needs streams modules for iterator wrapping
-    v8_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
-
-    // Add v8 to runtime so context can create V8EventLoop
-    runtime_mod.addImport("v8", v8_mod);
 
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
@@ -1699,12 +1648,6 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
-    streams_mod.addImport("algorithm", streams_algorithm_mod);
-    streams_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
-    streams_mod.addImport("v8_resources", streams_v8_resources_mod);
-    streams_mod.addImport("iterator_record", streams_iterator_record_mod);
-    streams_mod.addImport("from_iterable_algorithm", streams_from_iterable_algorithm_mod);
-    streams_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -1722,12 +1665,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
-    impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
-    impls_mod.addImport("streams_v8_promise_chaining", streams_v8_promise_chaining_mod);
-    impls_mod.addImport("streams_v8_resources", streams_v8_resources_mod);
-    impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
-    impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);
-    impls_mod.addImport("streams_readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
     // DOM module for XPath implementations
@@ -1956,6 +1893,9 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("fetch", fetch_mod);
     html_mod.addImport("csp", csp_mod);
     html_mod.addImport("v8", v8_mod);
+    // The engine protocol (AGENTS.md "The engine boundary"): html's
+    // engine-neutral code calls `engine.op`.
+    html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
@@ -1994,6 +1934,7 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("clock", clock_mod);
     browser_mod.addImport("host", host_mod);
     browser_mod.addImport("v8", v8_mod);
+    browser_mod.addImport("engine", engine_mod);
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
@@ -2013,7 +1954,6 @@ pub fn build(b: *std.Build) void {
     });
     webdriver_mod.addImport("clock", clock_mod);
     webdriver_mod.addImport("host", host_mod);
-    webdriver_mod.addImport("v8", v8_mod);
     webdriver_mod.addImport("browser", browser_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
@@ -2590,11 +2530,52 @@ pub fn build(b: *std.Build) void {
 
     // Runtime tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "runtime")) {
+        // The runtime tier's tests link no engine, and bind the engine
+        // protocol to an adapter with none behind it.
+        //
+        // A second binding of the facade cannot share a compile with the
+        // production one: Zig checks that a file belongs to one module over
+        // the whole import graph, analysed or not ("file exists in modules
+        // 'engine' and 'engine0'"). runtime_mod reaches the V8 binding
+        // through a `v8` import (runtime -> v8 -> impls -> engine), so these
+        // tests use runtime without one - the runtime tier as the engine
+        // boundary leaves it. (runtime itself imports no v8 any more: its last
+        // use, realm.zig's populateIntrinsics, moved into the adapter's
+        // createWindowRealm.)
+        const runtime_tier_mod = b.createModule(.{
+            .root_source_file = runtime_mod.root_source_file,
+            .target = target,
+        });
+        for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
+            if (!std.mem.eql(u8, import_name, "v8")) runtime_tier_mod.addImport(import_name, dep);
+        }
+        // Every tests/runtime file sees the protocol bound to the runtime
+        // tier's test adapter. And each other adapter with no engine behind
+        // it - the JavaScriptCore and QuickJS protocol roots, which nothing
+        // else compiles while -Dengine=jsc|quickjs is not buildable - gets the
+        // protocol's tests in a compile of its own: compiling the facade
+        // against an adapter is what checks it against the protocol.
+        const test_adapter_engine_mod = engineProtocolBinding(b, target, runtime_tier_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
+            const conformance = b.addTest(.{
+                .name = b.fmt("engine_protocol_{s}", .{adapter}),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tests/runtime/engine_protocol_test.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "runtime", .module = runtime_tier_mod },
+                        .{ .name = "engine", .module = engineProtocolBinding(b, target, runtime_tier_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter}))) },
+                    },
+                }),
+            });
+            test_step.dependOn(&b.addRunArtifact(conformance).step);
+        }
         const runtime_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "host", .module = host_mod },
-            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "runtime", .module = runtime_tier_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "engine", .module = test_adapter_engine_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add runtime test files: {}\n", .{err});
@@ -2614,6 +2595,10 @@ pub fn build(b: *std.Build) void {
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "engine", .module = engine_mod },
+            // The generated interfaces, for a test host that makes platform
+            // objects - a Window for a realm (page_realm_operations_test.zig).
+            .{ .name = "interfaces", .module = interfaces_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -2667,20 +2652,6 @@ pub fn build(b: *std.Build) void {
         };
     }
 
-    // V8 tests
-    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
-        const v8_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        };
-        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_imports, true) catch |err| {
-            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
-        };
-    }
-
     // Benchmark tests (requires V8 + browser)
     //
     // Wired to a dedicated `bench` step and deliberately kept OUT of
@@ -2723,7 +2694,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "browser", .module = browser_mod },
-                .{ .name = "v8", .module = v8_mod },
             },
         }),
     });
@@ -2823,7 +2793,7 @@ pub fn build(b: *std.Build) void {
     lib_exports_mod.addImport("runtime", runtime_mod);
     lib_exports_mod.addImport("webidl", webidl_mod);
     lib_exports_mod.addImport("infra", infra_mod);
-    lib_exports_mod.addImport("v8", v8_mod);
+    lib_exports_mod.addImport("engine", engine_mod);
     lib_exports_mod.addImport("interfaces", interfaces_mod);
     lib_exports_mod.addImport("impls", impls_mod);
     lib_exports_mod.addImport("namespaces", namespaces_mod);
@@ -3270,7 +3240,9 @@ pub fn build(b: *std.Build) void {
     const snapshot_gen_exe = b.addExecutable(.{
         .name = "snapshot_generator",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
+            // so the generator lives inside the V8 adapter.
+            .root_source_file = b.path("src/runtime/engines/v8/snapshot_generator.zig"),
             // Build-time tool: must run on the HOST. It is executed via
             // `b.addRunArtifact` below, so building it for `target` means
             // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
@@ -3346,7 +3318,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },
@@ -3425,6 +3397,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "memory", .module = memory_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
@@ -3470,53 +3443,6 @@ pub fn build(b: *std.Build) void {
 
     const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
     gc_bench_step.dependOn(&run_gc_bench.step);
-
-    // ========================================================================
-    // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
-    // ========================================================================
-
-    const minimal_snapshot_test_exe = b.addExecutable(.{
-        .name = "minimal_snapshot_test",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/minimal_snapshot_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "v8", .module = v8_mod },
-            },
-        }),
-    });
-
-    // Add V8 C++ wrapper
-    minimal_snapshot_test_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-
-    // Add V8 include paths
-    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    minimal_snapshot_test_exe.root_module.link_libcpp = true; //
-
-    // Install the binary
-    b.installArtifact(minimal_snapshot_test_exe);
-
-    // Add run step
-    const run_minimal_snapshot_test = b.addRunArtifact(minimal_snapshot_test_exe);
-    const minimal_snapshot_test_step = b.step("minimal-snapshot-test", "Run minimal V8 snapshot test to isolate failures");
-    minimal_snapshot_test_step.dependOn(&run_minimal_snapshot_test.step);
 
     // ========================================================================
     // WPT (Web Platform Tests) RUNNER
@@ -3579,6 +3505,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "host", .module = host_mod },
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },

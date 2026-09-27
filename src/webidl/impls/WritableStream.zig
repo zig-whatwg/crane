@@ -137,16 +137,15 @@ pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// The start algorithm already ran inside the constructor, where § 5.5.4
 /// SetUpWritableStreamDefaultController step 15 puts it - so a throwing
 /// start() is the constructor's exception - and there is nothing left to do.
+/// The engine's controller wrapper, agent and realm handles it passes are
+/// unused, and unnamed: they are the adapter's, not this impl's.
 pub fn invokePendingStartCallback(
     instance: *runtime.Instance,
-    controller_v8: *anyopaque,
-    v8_isolate: *anyopaque,
-    v8_context: *anyopaque,
+    _: *anyopaque,
+    _: *anyopaque,
+    _: *anyopaque,
 ) void {
     _ = instance;
-    _ = controller_v8;
-    _ = v8_isolate;
-    _ = v8_context;
 }
 
 /// WritableStreamCloseQueuedOrInFlight(stream), for code outside this family.

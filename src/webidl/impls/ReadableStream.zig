@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 const srd = @import("streams_readable.zig");
 const sw = @import("streams_writable.zig");
 
@@ -114,10 +115,7 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
 /// `ReadableStream.from(asyncIterable)` - § 4.2.4:
 /// Return ? ReadableStreamFromIterable(asyncIterable).
 pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
-    const realm = try js.Realm.of(instance);
-    const iterable = try realm.fromRuntime(asyncIterable);
-    defer js.dispose(iterable);
-    return @import("streams_from.zig").fromIterable(realm, instance.ctx, iterable);
+    return @import("streams_from.zig").fromIterable(try js.Realm.of(instance), instance.ctx, asyncIterable);
 }
 
 /// `locked` - § 4.2.4.
@@ -168,7 +166,7 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
     const opts = if (options.was_passed) options.value else dictionaries.StreamPipeOptions{};
     const promise = try srd.pipeTo(realm, instance, writable, opts.preventClose orelse false, opts.preventAbort orelse false, opts.preventCancel orelse false, opts.signal);
     // Step 5: Set promise.[[PromiseIsHandled]] to true.
-    @import("v8").ffi.v8_Promise_MarkAsHandled(promise);
+    engine.markPromiseAsHandled(instance.ctx, js.toReturn(promise));
     js.dispose(promise);
     // Step 6: Return transform["readable"].
     return readable;
@@ -216,19 +214,15 @@ pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(di
 
 /// Post-construction hooks the V8 binding calls. The start algorithm already
 /// ran inside the constructor, where SetUpReadableStreamDefaultController
-/// step 9 puts it, so there is nothing left to do.
-pub fn invokePendingStartCallback(instance: *runtime.Instance, controller_v8: *anyopaque, v8_isolate: *anyopaque, v8_context: *anyopaque) void {
+/// step 9 puts it, so there is nothing left to do. The engine's controller
+/// wrapper, agent and realm handles are unused, and unnamed: they are the
+/// adapter's, not this impl's.
+pub fn invokePendingStartCallback(instance: *runtime.Instance, _: *anyopaque, _: *anyopaque, _: *anyopaque) void {
     _ = instance;
-    _ = controller_v8;
-    _ = v8_isolate;
-    _ = v8_context;
 }
 
-pub fn invokePendingByteStartCallback(instance: *runtime.Instance, controller_v8: *anyopaque, v8_isolate: *anyopaque, v8_context: *anyopaque) void {
+pub fn invokePendingByteStartCallback(instance: *runtime.Instance, _: *anyopaque, _: *anyopaque, _: *anyopaque) void {
     _ = instance;
-    _ = controller_v8;
-    _ = v8_isolate;
-    _ = v8_context;
 }
 
 // ============================================================================

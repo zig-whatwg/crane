@@ -1,6 +1,7 @@
 # Architecture: Crane's JavaScript engine is an adapter
 
 **Date**: 2026-09-26
+**Status** (2026-09-27): the seam is now the engine protocol (`@import("engine")`, docs/engine-protocol.md), not the Engine table, and its operations were designed whole rather than grown from call sites - see [Design the protocol before migrating](architecture-design-the-protocol-before-migrating.md). The ratchet stands as written.
 **Lesson**: V8 is one implementation of Crane's engine seam, and its types and calls belong in `src/runtime/engines/v8/` only; everything else reaches the engine through runtime's engine-neutral surface and the Engine table.
 
 **Why**: Crane ships where V8 cannot follow cheaply. On desktop and server V8 is statically linked; on iOS Crane will dynamically link the system JavaScriptCore - which runs interpreted there either way, removes V8's binary from the app, and tracks the device's iOS version. That needs a second adapter, and an adapter can only be swapped at a seam the rest of the engine respects.

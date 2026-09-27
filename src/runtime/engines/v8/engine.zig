@@ -24,6 +24,10 @@ const EngineError = runtime.EngineError;
 // V8 FFI and helpers
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
+const value_operations = @import("value_operations.zig");
+const webidl_conversions = @import("webidl_conversions.zig");
+const structured_serialization = @import("structured_serialization.zig");
+const worker_realm = @import("worker_realm.zig");
 const v8_conversions = @import("conversions.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
@@ -94,6 +98,31 @@ pub const v8_engine_interface: EngineInterface = .{
     .runInRealm = v8RunInRealm,
     .createDOMException = v8CreateDOMException,
     .releaseValue = v8ReleaseValue,
+    .structuredSerializeForStorage = v8StructuredSerializeForStorage,
+    .structuredDeserialize = v8StructuredDeserialize,
+    .resolvePromiseWithInstance = v8ResolvePromiseWithInstance,
+    .rejectPromiseWithValue = v8RejectPromiseWithValue,
+    .markPromiseAsHandled = v8MarkPromiseAsHandled,
+    .createSequenceOfPlatformObjects = v8CreateSequenceOfPlatformObjects,
+    .relevantGlobalObject = v8RelevantGlobalObject,
+    // ---- lane: page-realm ----
+    .invokeCallbackFunction = @import("page_realm.zig").invokeCallbackFunction,
+    .installWindowOperations = @import("page_realm.zig").installWindowOperations,
+    // ---- end lane: page-realm ----
+    // ---- lane: runtime-impls ----
+    .createObservableArray = @import("observable_array.zig").createObservableArray,
+    .queueMicrotask = @import("value_construction.zig").queueMicrotask,
+    .createResolvedPromise = @import("value_construction.zig").createResolvedPromise,
+    .createRejectedPromise = @import("value_construction.zig").createRejectedPromise,
+    .createSimpleException = @import("value_construction.zig").createSimpleException,
+    .createDictionaryObject = @import("value_construction.zig").createDictionaryObject,
+    .currentRealm = @import("current_realm.zig").currentRealm,
+    .describeArrayBufferView = @import("array_buffer_views.zig").describeArrayBufferView,
+    .writeIntoArrayBufferView = @import("array_buffer_views.zig").writeIntoArrayBufferView,
+    .callUserObjectOperation = @import("callback_interfaces.zig").callUserObjectOperation,
+    .convertToUnrestrictedDouble = @import("webidl_conversions_numeric.zig").convertToUnrestrictedDouble,
+    .takeCallbackFunction = @import("callback_interfaces.zig").takeCallbackFunction,
+    // ---- end lane: runtime-impls ----
     .getPropertyBoolean = v8GetPropertyBoolean,
     .getPropertyInstance = v8GetPropertyInstance,
     .createArrayBuffer = v8CreateArrayBuffer,
@@ -130,12 +159,43 @@ pub const v8_engine_interface: EngineInterface = .{
     .invokeForEach = v8InvokeForEach,
     .getCollectionLength = v8GetCollectionLength,
     .getCollectionElement = v8GetCollectionElement,
+    // ---- lane: engine-boundary ----
+    // Values held across the seam (value_operations.zig).
+    .retainValue = value_operations.retainValue,
+    .throwValue = value_operations.throwValue,
+    .convertToSequenceOfPlatformObjects = webidl_conversions.convertToSequenceOfPlatformObjects,
+    .convertToSequenceOfObjects = webidl_conversions.convertToSequenceOfObjects,
+    .createFrozenArrayOfPlatformObjects = value_operations.createFrozenArrayOfPlatformObjects,
+    // Messages (structured_serialization.zig).
+    .structuredSerializeWithTransfer = structured_serialization.structuredSerializeWithTransfer,
+    .structuredDeserializeWithTransfer = structured_serialization.structuredDeserializeWithTransfer,
+    // WebIDL conversions (webidl_conversions.zig).
+    .convertToSequenceOfDOMStrings = webidl_conversions.convertToSequenceOfDOMStrings,
+    .convertToDOMString = webidl_conversions.convertToDOMString,
+    .convertToUSVString = webidl_conversions.convertToUSVString,
+    .convertToRecordOfStrings = webidl_conversions.convertToRecordOfStrings,
+    .convertToPlatformObject = webidl_conversions.convertToPlatformObject,
+    .getCopyOfBufferSourceBytes = webidl_conversions.getCopyOfBufferSourceBytes,
+    .createSequenceOfValues = webidl_conversions.createSequenceOfValues,
+    // Workers (worker_realm.zig).
+    .createAgent = worker_realm.createAgent,
+    .destroyAgent = worker_realm.destroyAgent,
+    .hasRunningScript = worker_realm.hasRunningScript,
+    .hasPendingEngineWork = worker_realm.hasPendingEngineWork,
+    .runEngineTasks = worker_realm.runEngineTasks,
+    .createWorkerRealm = worker_realm.createWorkerRealm,
+    .destroyWorkerRealm = worker_realm.destroyWorkerRealm,
+    .defineBuiltinFunction = worker_realm.defineBuiltinFunction,
+    .isCallable = worker_realm.isCallable,
+    .keepPlatformObjectAlive = worker_realm.keepPlatformObjectAlive,
+    .releasePlatformObject = worker_realm.releasePlatformObject,
+    // ---- end lane: engine-boundary ----
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
 
 /// Promise handle for tracking V8 promise state
-const V8PromiseHandle = struct {
+pub const V8PromiseHandle = struct {
     resolver: *ffi.PromiseResolver,
     promise: *ffi.Promise,
     isolate: *ffi.Isolate,
@@ -159,7 +219,7 @@ fn v8WrapAsyncIterator(
 }
 
 /// Create a V8 Promise that can be resolved/rejected from Zig
-fn v8CreatePromise(
+pub fn v8CreatePromise(
     engine_ctx: *anyopaque,
     allocator: std.mem.Allocator,
 ) EngineError!*anyopaque {
@@ -192,7 +252,7 @@ fn v8CreatePromise(
 }
 
 /// Resolve a V8 Promise with a value
-fn v8ResolvePromise(
+pub fn v8ResolvePromise(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
     value: ?*const anyopaque,
@@ -253,7 +313,7 @@ fn v8RejectPromise(
 }
 
 /// Get the V8 Promise object to return to JavaScript
-fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
+pub fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     return @ptrCast(handle.promise);
 }
@@ -261,7 +321,7 @@ fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
 /// Destroy a V8 Promise handle after use
 /// The Promise object itself remains valid (managed by V8 GC), but the
 /// handle struct is freed.
-fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
+pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     // The resolver is released here: nothing can settle the promise once its
     // handle is gone, and a Global to the resolver keeps the promise - and its
@@ -325,27 +385,29 @@ fn v8GetPropertyTruthy(
 
 /// A realm entered: its agent (isolate), when it was not the current one, and
 /// a scope on its context.
-const EnteredRealm = struct {
+pub const EnteredRealm = struct {
     isolate: *ffi.Isolate,
     entered_isolate: bool,
     scope: js_scope.JsScope,
 
-    fn leaveScope(self: EnteredRealm) void {
+    pub fn leaveScope(self: EnteredRealm) void {
         self.scope.deinit();
     }
 
-    fn leaveAgent(self: EnteredRealm) void {
+    pub fn leaveAgent(self: EnteredRealm) void {
         if (self.entered_isolate) ffi.v8_Isolate_Exit(self.isolate);
     }
 };
 
 /// Enter `realm`: its isolate - recorded on the realm, which a worker realm on
 /// this thread needs, else the current one - then a HandleScope and its context.
-fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
+pub fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
     const engine_ctx = realm.engine_ctx orelse return EngineError.OperationFailed;
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const current = ffi.v8_Isolate_GetCurrent();
-    const recorded: ?*ffi.Isolate = if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
+    // The realm's own agent - a worker realm's is never the page's - as the
+    // context manager recorded it; else its Realm's; else the current one.
+    const recorded: ?*ffi.Isolate = if (realm.agent) |agent| @ptrCast(@alignCast(agent)) else if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
     const isolate = recorded orelse current orelse return EngineError.OperationFailed;
     const entered = current != isolate;
     if (entered) ffi.v8_Isolate_Enter(isolate);
@@ -356,7 +418,7 @@ fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
     return .{ .isolate = isolate, .entered_isolate = entered, .scope = scope };
 }
 
-fn v8RunClassicScript(
+pub fn v8RunClassicScript(
     realm: runtime.Context,
     source: []const u8,
     source_url: ?[]const u8,
@@ -410,7 +472,7 @@ const PendingReport = struct {
 /// Hand a thrown value to the host's "report an exception", with V8's
 /// automatic microtask checkpoints held off until it returns: the spec
 /// reports before "clean up after running script" performs the checkpoint.
-fn reportException(isolate: *ffi.Isolate, info: *const ffi.V8ErrorInfo, report: runtime.ReportExceptionFn, host: ?*anyopaque) void {
+pub fn reportException(isolate: *ffi.Isolate, info: *const ffi.V8ErrorInfo, report: runtime.ReportExceptionFn, host: ?*anyopaque) void {
     var pending = PendingReport{ .info = info, .report = report, .host = host };
     ffi.v8_RunWithMicrotasksSuppressed(isolate, runPendingReport, &pending);
 }
@@ -430,14 +492,14 @@ fn runPendingReport(data: ?*anyopaque) callconv(.c) void {
     pending.report(pending.host, &error_info);
 }
 
-fn v8PerformMicrotaskCheckpoint(realm: runtime.Context) EngineError!void {
+pub fn v8PerformMicrotaskCheckpoint(realm: runtime.Context) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     entered.leaveScope();
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
 }
 
-fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+pub fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     {
@@ -450,14 +512,14 @@ fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*a
     if (realm.end_of_task) |end| end(realm);
 }
 
-fn v8RunInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+pub fn v8RunInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
     steps(data);
 }
 
-fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []const u8) EngineError!runtime.JSValue {
+pub fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []const u8) EngineError!runtime.JSValue {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
@@ -466,7 +528,99 @@ fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []con
     return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
 }
 
-fn v8ReleaseValue(value: runtime.JSValue) void {
+pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
+    const object: *ffi.Value = switch (value) {
+        .handle => |h| @ptrCast(@alignCast(h.ptr)),
+        // Primitives and strings are the caller's to keep; a platform object
+        // arrives wrapped, as a handle, when it is [Serializable].
+        else => return EngineError.DataCloneError,
+    };
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    var no_transfer: [1]*ffi.Value = undefined;
+    var no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
+    var size: usize = 0;
+    var code: c_int = 0;
+    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(object, &no_transfer, 0, &size, &no_buffers, &code) orelse
+        return if (code == 3) EngineError.ExceptionPending else EngineError.DataCloneError;
+    defer ffi.v8_Free_SerializedBuffer(bytes);
+    return allocator.dupe(u8, bytes[0..size]) catch EngineError.OutOfMemory;
+}
+
+pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineError!runtime.JSValue {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
+    var code: c_int = 0;
+    const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(bytes.ptr, bytes.len, &no_buffers, 0, &code) orelse
+        return EngineError.DataCloneError;
+    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+}
+
+pub fn v8ResolvePromiseWithInstance(promise_handle: *anyopaque, instance: *runtime.Instance) EngineError!void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    // The wrapper in the promise's realm: enter it for the lookup.
+    const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
+    defer scope.deinit();
+    // Borrowed: the wrapper cache (or, for a Window, the Window) owns it.
+    const wrapper = v8_conversions.instanceToV8(handle.isolate, instance);
+    if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, wrapper)) return EngineError.PromiseError;
+}
+
+pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
+    defer scope.deinit();
+    const reason = v8_conversions.toV8Value(runtime.JSValue, handle.isolate, handle.context, value) catch
+        return EngineError.OperationFailed;
+    // toV8Value hands back a handle or an instance's wrapper as it is, and
+    // makes a new value for anything else - which is released here.
+    const made = switch (value) {
+        .handle, .instance => false,
+        else => true,
+    };
+    defer if (made) ffi.v8_Value_Dispose(reason);
+    if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, reason)) return EngineError.PromiseError;
+}
+
+fn v8MarkPromiseAsHandled(promise_handle: *anyopaque) void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    ffi.v8_Promise_MarkAsHandled(@ptrCast(handle.promise));
+}
+
+pub fn v8CreateSequenceOfPlatformObjects(realm: runtime.Context, instances: []const *runtime.Instance) EngineError!runtime.JSValue {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const array = ffi.v8_Array_New(entered.isolate, @intCast(instances.len));
+    for (instances, 0..) |instance, i| {
+        // Borrowed wrappers; Set keeps its own reference.
+        const wrapper = v8_conversions.instanceToV8(entered.isolate, instance);
+        if (!ffi.v8_Array_Set(array, entered.scope.context, @intCast(i), wrapper)) {
+            ffi.v8_Global_Dispose(@ptrCast(array));
+            return EngineError.OperationFailed;
+        }
+    }
+    return .{ .handle = .{ .ptr = @ptrCast(array), .needs_disposal = true } };
+}
+
+fn v8RelevantGlobalObject(instance: *runtime.Instance) ?*runtime.Instance {
+    const engine_ctx = instance.ctx.engine_ctx orelse return null;
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    // A Window realm's Window, as the context manager records it (which also
+    // holds for a realm a navigation has since replaced) ...
+    if (context_manager.getWindowForContext(context)) |window| return window;
+    // ... else whatever global object the realm's global carries - a
+    // WorkerGlobalScope.
+    const global = ffi.v8_Context_Global(context) orelse return null;
+    defer ffi.v8_Object_Dispose(global);
+    const ptr = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
+    return @ptrCast(@alignCast(ptr));
+}
+
+pub fn v8ReleaseValue(value: runtime.JSValue) void {
     switch (value) {
         .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
             ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
@@ -515,7 +669,7 @@ fn v8GetPropertyInstance(engine_ctx: *anyopaque, object: *anyopaque, name: []con
 }
 
 /// Create a V8 ArrayBuffer from bytes
-fn v8CreateArrayBuffer(
+pub fn v8CreateArrayBuffer(
     engine_ctx: *anyopaque,
     bytes: []const u8,
 ) EngineError!*anyopaque {
@@ -547,9 +701,11 @@ fn v8CreateUint8Array(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    // Create a backing ArrayBuffer
+    // Create a backing ArrayBuffer. Its Global is ours: the view keeps the
+    // buffer alive in V8's heap, and v8_Uint8Array_New does not retain it.
     const array_buffer = ffi.v8_ArrayBuffer_New(isolate, bytes.len) orelse
         return EngineError.OperationFailed;
+    defer ffi.v8_ArrayBuffer_Dispose(array_buffer);
 
     // Copy the bytes into the ArrayBuffer's backing store
     if (bytes.len > 0) {
@@ -806,6 +962,8 @@ fn v8CreateStringArray(
     for (strings, 0..) |str, i| {
         const v8_str = ffi.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse
             continue; // Skip on error
+        // Set keeps its own reference; this one was made here.
+        defer ffi.v8_String_Dispose(v8_str);
         _ = ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(v8_str));
     }
 
@@ -1048,7 +1206,7 @@ fn v8InvokeStreamCallback(
 ///
 /// Returns:
 ///   - V8 Object* if found in cache, null otherwise
-fn v8GetWrapperForInstance(
+pub fn v8GetWrapperForInstance(
     _: *anyopaque,
     wrapper_cache: *anyopaque,
     instance: *anyopaque,
@@ -1598,6 +1756,11 @@ fn dynamicImportCallbackWrapper(
 /// ```
 pub fn setDynamicImportHandler(isolate: *ffi.Isolate, handler: DynamicImportHandler) void {
     g_dynamic_import_handler = handler;
+    // An agent the engine protocol made with a loadImportedModule hook keeps
+    // the protocol's import(): registering a realm in it must not put this
+    // one back (protocol_agents.zig).
+    // TODO(protocol): goes when every agent comes from createAgent.
+    if (@import("protocol_agents.zig").hasModuleHooks(isolate)) return;
     ffi.v8_Isolate_SetHostImportModuleDynamicallyCallback(
         isolate,
         handler.context,
