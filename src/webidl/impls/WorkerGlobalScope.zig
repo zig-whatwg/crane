@@ -144,7 +144,7 @@ pub fn init(
     installSettings();
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
-    if (@import("html").worker_v8_context.scopeSettings(ctx)) |settings| {
+    if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
     }
     return instance;
@@ -489,6 +489,7 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         var fetched = script_fetch.fetchWorkerScript(internal.allocator, url_str, .{
             .worker_type = .classic,
             .origin = base_url orelse internal.origin,
+            .requesting_origin = internal.origin,
             .credentials = .same_origin,
             .is_import_scripts = true,
         }) catch |err| {
@@ -502,16 +503,8 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         };
         defer fetched.deinit();
 
-        // Execute the script
-        // NOTE: Script execution requires access to the worker's V8 context.
-        // The WorkerAgent.executeScript() should be called here, but we don't
-        // have direct access to it from the WebIDL implementation layer.
-        // For now, we just verify the script was fetched successfully.
-        // Full integration would need:
-        // 1. Access to the WorkerAgent through a stored reference
-        // 2. Call agent.executeScript(fetched.source)
-        //
-        // The script source is available in fetched.source for execution.
-        _ = fetched.source;
+        // Run the fetched script in this worker, as its own scripts run -
+        // through the worker host, which owns the realm's agent.
+        try @import("html").worker_host.runImportedScript(instance.ctx, fetched.source, fetched.final_url);
     }
 }

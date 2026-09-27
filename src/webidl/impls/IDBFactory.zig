@@ -15,7 +15,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const v8 = @import("v8");
 const IDBFactoryInterface = interfaces.IDBFactory;
 
 // Backend imports
@@ -226,112 +225,27 @@ pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: run
     const state = instance.getState(State);
     _ = state.own._internal orelse return error.InvalidState;
 
-    // Compare V8 values directly using raw V8 APIs
-    // We compare in place to avoid lifetime issues with string buffers
-    const first_ptr = first.toAnyopaque() orelse return error.DataError;
-    const second_ptr = second.toAnyopaque() orelse return error.DataError;
-    return compareV8Keys(first_ptr, second_ptr) orelse return error.DataError;
+    // Steps 1-2: Let a be the result of converting first to a key; if it is
+    // invalid, throw a "DataError" DOMException.
+    const a = keyFromValue(first) orelse return error.DataError;
+    // Steps 3-4: the same for second.
+    const b = keyFromValue(second) orelse return error.DataError;
+    // Step 5: Return the result of comparing two keys with a and b.
+    return storage.indexeddb.compareKeys(a, b);
 }
 
-/// Compare two V8 values as IndexedDB keys
-/// Returns null if either value is not a valid key type
-fn compareV8Keys(first: *const anyopaque, second: *const anyopaque) ?i16 {
-    const first_type = getV8KeyType(first) orelse return null;
-    const second_type = getV8KeyType(second) orelse return null;
-
-    // Per spec: different types have ordering: array > binary > string > date > number
-    if (first_type != second_type) {
-        // array = 4, binary = 3, string = 2, date = 1, number = 0
-        if (first_type > second_type) return 1;
-        return -1;
-    }
-
-    // Same type - compare values
-    return switch (first_type) {
-        0 => compareV8Numbers(first, second), // number
-        1 => compareV8Dates(first, second), // date
-        2 => compareV8Strings(first, second), // string
-        3, 4 => null, // binary, array - TODO
-        else => null, // Invalid type
+/// IndexedDB "convert a value to a key", for the keys whose values arrive
+/// already classified by the binding: a number (NaN is invalid) and a string.
+/// Date, buffer-source and Array keys are objects, and reading them (a Date's
+/// time value, a buffer's bytes, an Array's elements) needs Engine operations
+/// that do not exist yet - until then they are invalid keys, as they were when
+/// this read V8 values directly. Null for an invalid key.
+///
+/// The key borrows a string's bytes: it lives only for the operation.
+fn keyFromValue(value: runtime.JSValue) ?BackendKey {
+    return switch (value) {
+        .number => |n| if (std.math.isNan(n)) null else BackendKey.number(n),
+        .string => |s| BackendKey.string(s.data),
+        else => null,
     };
-}
-
-/// Get the key type code for a V8 value
-/// Returns: 0=number, 1=date, 2=string, 3=binary, 4=array, null=invalid
-fn getV8KeyType(ptr: *const anyopaque) ?u8 {
-    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
-
-    if (v8.ffi.v8_Value_IsNumber(v8_value)) return 0;
-    // TODO: Check for Date object
-    if (v8.ffi.v8_Value_IsString(v8_value)) return 2;
-    // TODO: Check for ArrayBuffer/binary
-    // TODO: Check for Array
-    return null;
-}
-
-/// Compare two V8 number values
-fn compareV8Numbers(first: *const anyopaque, second: *const anyopaque) i16 {
-    const a = v8.ffi.v8_Value_NumberValue_Raw(first);
-    const b = v8.ffi.v8_Value_NumberValue_Raw(second);
-
-    if (std.math.isNan(a) or std.math.isNan(b)) {
-        // NaN comparison is weird, but per spec NaN < NaN and NaN > NaN are both false
-        return 0;
-    }
-
-    if (a < b) return -1;
-    if (a > b) return 1;
-    return 0;
-}
-
-/// Compare two V8 date values (TODO: implement date support)
-fn compareV8Dates(_: *const anyopaque, _: *const anyopaque) i16 {
-    // TODO: Extract date milliseconds and compare
-    return 0;
-}
-
-/// Compare two V8 string values
-fn compareV8Strings(first: *const anyopaque, second: *const anyopaque) i16 {
-    // Get string lengths
-    const first_len = v8.ffi.v8_Value_StringLength_Raw(first);
-    const second_len = v8.ffi.v8_Value_StringLength_Raw(second);
-
-    if (first_len < 0 or second_len < 0) return 0; // Not strings
-
-    // Use stack buffers for comparison
-    var first_buf: [256]u8 = undefined;
-    var second_buf: [256]u8 = undefined;
-
-    // Handle empty strings
-    if (first_len == 0 and second_len == 0) return 0;
-    if (first_len == 0) return -1;
-    if (second_len == 0) return 1;
-
-    // For small strings, compare directly
-    if (first_len <= 256 and second_len <= 256) {
-        const first_written = v8.ffi.v8_Value_StringWriteUtf8_Raw(first, &first_buf, @intCast(first_len));
-        const second_written = v8.ffi.v8_Value_StringWriteUtf8_Raw(second, &second_buf, @intCast(second_len));
-
-        if (first_written <= 0 or second_written <= 0) return 0;
-
-        const first_slice = first_buf[0..@intCast(first_written)];
-        const second_slice = second_buf[0..@intCast(second_written)];
-
-        // Lexicographic comparison per IndexedDB spec (code unit comparison)
-        const min_len = @min(first_slice.len, second_slice.len);
-        for (0..min_len) |i| {
-            if (first_slice[i] < second_slice[i]) return -1;
-            if (first_slice[i] > second_slice[i]) return 1;
-        }
-
-        // Prefixes are equal, shorter string is less
-        if (first_slice.len < second_slice.len) return -1;
-        if (first_slice.len > second_slice.len) return 1;
-        return 0;
-    }
-
-    // For large strings, compare by length only (TODO: proper large string comparison)
-    if (first_len < second_len) return -1;
-    if (first_len > second_len) return 1;
-    return 0;
 }

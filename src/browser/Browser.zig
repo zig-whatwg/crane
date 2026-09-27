@@ -49,6 +49,7 @@
 const std = @import("std");
 const log = std.log.scoped(.browser);
 const v8 = @import("v8");
+const engine = @import("engine");
 const runtime = @import("runtime");
 const impls = @import("impls");
 const namespaces = @import("namespaces");
@@ -503,10 +504,9 @@ pub const Browser = struct {
         try self.navigate(url, context_type);
     }
 
-    /// Evaluate JavaScript in the current context
-    ///
-    /// Returns the result as a V8 Value pointer (caller must handle lifetime).
-    pub fn evaluateScript(self: *Browser, script: []const u8) !?*v8.ffi.Value {
+    /// Evaluate JavaScript in the current context: its completion value,
+    /// OWNED - `release` it (Context.evaluateScript).
+    pub fn evaluateScript(self: *Browser, script: []const u8) !engine.Owned {
         const ctx = self.current_context orelse return error.NoContext;
         return ctx.evaluateScript(script);
     }
@@ -582,10 +582,10 @@ pub const Browser = struct {
         return self.isolate;
     }
 
-    /// Get the current V8 context (for advanced usage)
-    pub fn getV8Context(self: *Browser) ?*v8.ffi.Context {
+    /// The current page's realm (for advanced usage)
+    pub fn getRealm(self: *Browser) ?runtime.Context {
         const ctx = self.current_context orelse return null;
-        return ctx.v8_context;
+        return ctx.realm;
     }
 
     /// Get the storage subsystem

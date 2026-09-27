@@ -1,7 +1,6 @@
 const std = @import("std");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
-const v8 = @import("v8");
 
 // NOTE: This test is disabled until issue whatwg-bnd80 is fixed.
 // V8 crashes with alignment errors when creating a context from a snapshot
@@ -51,32 +50,13 @@ test "document.getElementsByTagName available after Browser.init" {
         \\})()
     ;
 
-    const result = ctx.evaluateScript(script) catch |err| {
+    const result = ctx.evaluateScriptToString(script, allocator) catch |err| {
         std.debug.print("Script execution error: {}\n", .{err});
         return error.ScriptError;
     };
+    defer allocator.free(result);
+    std.debug.print("{s}\n", .{result});
 
-    const result_value = result orelse {
-        std.debug.print("FAILURE: Script returned null (likely threw an error)\n", .{});
-        return error.ScriptReturnedNull;
-    };
-
-    // Check if the result is true (meaning getElementsByTagName is a function)
-    const isolate = browser.isolate orelse {
-        std.debug.print("FAILURE: No isolate available\n", .{});
-        return error.NoIsolate;
-    };
-    const is_function = v8.ffi.v8_Value_BooleanValue(result_value, isolate);
-    // For string results, we need to convert the V8 string to Zig
-    const v8_ctx = ctx.v8_context orelse return error.NoContext;
-    if (v8.ffi.v8_Value_ToString(result_value, v8_ctx)) |str_value| {
-        var buf: [256]u8 = undefined;
-        const len = v8.ffi.v8_String_WriteUtf8(str_value, &buf, @intCast(buf.len));
-        const actual_len: usize = @intCast(len);
-        std.debug.print("document.__proto__: {s}\n", .{buf[0..actual_len]});
-    } else {
-        std.debug.print("Failed to convert result to string\n", .{});
-    }
-
-    try std.testing.expect(is_function);
+    // The page has a Document interface and a document.
+    try std.testing.expect(std.mem.indexOf(u8, result, "typeof Document: function") != null);
 }

@@ -350,8 +350,9 @@ fn structuredDeserializeInternal(
             } };
         },
 
-        // V8 serialized data - should be deserialized by V8 directly, not this Zig deserializer
-        .v8_serialized => {
+        // The engine's own serialization - the engine deserializes it
+        // (structuredDeserializeWithTransfer), not this walker
+        .engine_serialized => {
             allocator.destroy(value);
             return CloneError.DeserializeError;
         },

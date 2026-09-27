@@ -24,8 +24,8 @@
 //! const raw_ptr = engine_ctx.rawPtr();
 //!
 //! // Type-safe access (when you know the engine type)
-//! if (engine_ctx.asV8Context()) |v8_ctx| {
-//!     // Use v8_ctx directly
+//! if (engine_ctx.asV8Context()) |context| {
+//!     // Use context directly
 //! }
 //! ```
 //!
@@ -375,8 +375,8 @@ test "EngineContext - asV8 returns value for v8 and unknown" {
     var dummy: u32 = 42;
 
     // V8 context should return value
-    const v8_ctx = EngineContext.v8(&dummy);
-    try std.testing.expect(v8_ctx.asV8(*u32) != null);
+    const tagged_v8 = EngineContext.v8(&dummy);
+    try std.testing.expect(tagged_v8.asV8(*u32) != null);
 
     // Unknown should also return value (for migration)
     const unknown_ctx = EngineContext.fromRaw(&dummy);

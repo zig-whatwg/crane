@@ -20,10 +20,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CookieStoreManager = interfaces.CookieStoreManager;
 
-// The Promise-returning operations build real V8 Promises, so this impl
-// reaches for the engine directly - the same seam Blob.text() uses.
-const v8_engine = @import("v8");
-const v8 = v8_engine.ffi;
+// The Promise-returning operations make their promises and values through
+// the engine protocol (cookie_values.zig).
+const engine = @import("engine");
+const cookie_values = @import("cookie_values.zig");
 
 pub const State = CookieStoreManager.State;
 
@@ -214,115 +214,43 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 // undefined - the binding hands the value straight to JavaScript, so script
 // gets the literal `undefined` and every `await` throws.
 //
-// Handle ownership follows the house rule (AGENTS.md): every `v8_*` call
-// returning a pointer allocates a `Global<T>` the caller owns, so everything
-// acquired here is disposed except the `Global<Promise>` handed back, which
-// the return path in interface.zig consumes.
-//
-// The duplication with CookieStore.zig's `Realm` is deliberate: impls are
-// private to each other (AGENTS.md, "The impls boundary"), and a shared helper
-// would have to live outside `impls/`.
+// Every value is made in the current realm - the realm of the operation
+// called - through the engine protocol, and handed to the binding OWNED.
 // ============================================================================
 
-/// The current isolate and context, for the duration of one operation.
-const Realm = struct {
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-
-    fn enter() error{NoRealm}!Realm {
-        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoRealm;
-        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoRealm;
-        return .{ .isolate = isolate, .context = context };
+/// One subscription as a `CookieStoreGetOptions`: `{ name?, url? }`. Both
+/// members are optional in the IDL, so an absent one is left off the object
+/// rather than written as null. OWNED.
+fn subscriptionObject(realm: runtime.Context, sub: CookieSubscription) engine.Error!engine.Owned {
+    var members: [2]engine.DictionaryMember = undefined;
+    var count: usize = 0;
+    if (sub.name) |name| {
+        members[count] = .{ .name = "name", .value = runtime.JSValue.fromStringRef(name) };
+        count += 1;
     }
-
-    /// `v8_Isolate_GetCurrentContext` allocated the Global we are holding.
-    fn exit(self: Realm) void {
-        v8.v8_Context_Dispose(self.context);
+    if (sub.url) |url| {
+        members[count] = .{ .name = "url", .value = runtime.JSValue.fromStringRef(url) };
+        count += 1;
     }
+    return engine.createDictionaryObject(realm, members[0..count]);
+}
 
-    /// A settled promise carrying `value`, which the caller still owns.
-    fn resolve(self: Realm, value: *v8.Value) error{OutOfMemory}!runtime.JSValue {
-        const resolver = v8.v8_PromiseResolver_New(self.context) orelse return error.OutOfMemory;
-        defer v8.v8_PromiseResolver_Dispose(resolver);
-
-        const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.v8_PromiseResolver_Resolve(resolver, self.context, value);
-        return runtime.JSValue.fromPromise(@ptrCast(promise));
+/// getSubscriptions()'s answer: `sequence<CookieStoreGetOptions>` as a new
+/// Array. OWNED.
+fn subscriptionList(realm: runtime.Context, subs: []const CookieSubscription, allocator: std.mem.Allocator) engine.Error!engine.Owned {
+    const objects = allocator.alloc(engine.Owned, subs.len) catch return error.OutOfMemory;
+    defer allocator.free(objects);
+    var made: usize = 0;
+    defer for (objects[0..made]) |object| object.release();
+    for (subs, objects) |sub, *object| {
+        object.* = try subscriptionObject(realm, sub);
+        made += 1;
     }
-
-    /// `Promise<undefined>` - what subscribe() and unsubscribe() resolve with.
-    fn resolveUndefined(self: Realm) error{OutOfMemory}!runtime.JSValue {
-        const value = v8.v8_Undefined(self.isolate) orelse return error.OutOfMemory;
-        defer v8.v8_Value_Dispose(value);
-        return self.resolve(value);
-    }
-
-    /// A rejected promise. Failures here are rejections, never synchronous
-    /// throws - cookieStore_subscribe_arguments.https.any.js asserts with
-    /// `promise_rejects_js`, which only ever sees a promise.
-    fn rejectTypeError(self: Realm, message: []const u8) error{OutOfMemory}!runtime.JSValue {
-        const text = v8.v8_String_NewFromUtf8(
-            self.isolate,
-            message.ptr,
-            @intCast(message.len),
-        ) orelse return error.OutOfMemory;
-        defer v8.v8_String_Dispose(text);
-
-        const exception = v8.v8_Exception_TypeErrorInContext(self.context, text) orelse
-            return error.OutOfMemory;
-        defer v8.v8_Value_Dispose(exception);
-
-        const resolver = v8.v8_PromiseResolver_New(self.context) orelse return error.OutOfMemory;
-        defer v8.v8_PromiseResolver_Dispose(resolver);
-
-        const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.v8_PromiseResolver_Reject(resolver, self.context, exception);
-        return runtime.JSValue.fromPromise(@ptrCast(promise));
-    }
-
-    fn setString(self: Realm, object: *v8.Object, key: []const u8, value: []const u8) error{OutOfMemory}!void {
-        const key_str = v8.v8_String_NewFromUtf8(self.isolate, key.ptr, @intCast(key.len)) orelse
-            return error.OutOfMemory;
-        defer v8.v8_String_Dispose(key_str);
-
-        // An empty Zig slice has no usable `.ptr`, so the empty string needs
-        // its own constructor.
-        const value_str = if (value.len > 0)
-            v8.v8_String_NewFromUtf8(self.isolate, value.ptr, @intCast(value.len)) orelse
-                return error.OutOfMemory
-        else
-            v8.v8_String_Empty(self.isolate) orelse return error.OutOfMemory;
-        defer v8.v8_String_Dispose(value_str);
-
-        _ = v8.v8_Object_Set(object, self.context, @ptrCast(key_str), @ptrCast(value_str));
-    }
-
-    /// One subscription as a `CookieStoreGetOptions`: `{ name?, url? }`.
-    /// Both members are optional in the IDL, so an absent one is left off the
-    /// object rather than written as null.
-    fn subscriptionObject(self: Realm, sub: CookieSubscription) error{OutOfMemory}!*v8.Object {
-        const object = v8.v8_Object_NewInContext(self.context) orelse return error.OutOfMemory;
-        errdefer v8.v8_Object_Dispose(object);
-
-        if (sub.name) |name| try self.setString(object, "name", name);
-        if (sub.url) |url| try self.setString(object, "url", url);
-        return object;
-    }
-
-    /// A JS Array of CookieStoreGetOptions - getSubscriptions()'s answer.
-    fn subscriptionList(self: Realm, subs: []const CookieSubscription) error{OutOfMemory}!*v8.Array {
-        const array = v8.v8_Array_NewInContext(self.context, @intCast(subs.len)) orelse
-            return error.OutOfMemory;
-        errdefer v8.v8_Array_Dispose(array);
-
-        for (subs, 0..) |sub, index| {
-            const object = try self.subscriptionObject(sub);
-            defer v8.v8_Object_Dispose(object);
-            _ = v8.v8_Array_Set(array, self.context, @intCast(index), @ptrCast(object));
-        }
-        return array;
-    }
-};
+    const values = allocator.alloc(runtime.JSValue, subs.len) catch return error.OutOfMemory;
+    defer allocator.free(values);
+    for (objects, values) |object, *value| value.* = object.value;
+    return engine.createSequenceOfValues(realm, values);
+}
 
 /// Operation: subscribe(subscriptions)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestoremanager-subscribe
@@ -330,27 +258,26 @@ const Realm = struct {
 /// Add cookie change subscriptions. Each subscription specifies a name and/or
 /// URL to watch for cookie changes.
 pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValue) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStoreManager has no subscription list");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStoreManager has no subscription list");
 
     if (!internal.is_secure_context) {
-        return realm.rejectTypeError("CookieStoreManager.subscribe requires a secure context");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStoreManager.subscribe requires a secure context");
     }
 
     // The subscriptions parameter is a sequence<CookieStoreGetOptions>.
     const subs_slice = webidl.extractDictionarySlice(
         dictionaries.CookieStoreGetOptions,
         subscriptions.toAnyopaque(),
-    ) catch return realm.rejectTypeError("subscribe expects a sequence of CookieStoreGetOptions");
+    ) catch return cookie_values.rejectedWithTypeError(realm, "subscribe expects a sequence of CookieStoreGetOptions");
 
     for (subs_slice) |sub| {
         // A subscription URL must be inside the registration's scope.
         if (sub.url) |url| {
             if (!internal.isWithinScope(url)) {
-                return realm.rejectTypeError("Subscription URL must be within the registration scope");
+                return cookie_values.rejectedWithTypeError(realm, "Subscription URL must be within the registration scope");
             }
         }
 
@@ -359,7 +286,7 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValu
         };
     }
 
-    return realm.resolveUndefined();
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
 }
 
 /// Operation: getSubscriptions()
@@ -368,15 +295,14 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValu
 /// Resolves with the current list of subscriptions, which is empty when
 /// nothing has subscribed.
 pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStoreManager has no subscription list");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStoreManager has no subscription list");
 
-    const array = try realm.subscriptionList(internal.subscriptions.items);
-    defer v8.v8_Array_Dispose(array);
-    return realm.resolve(@ptrCast(array));
+    const list = try subscriptionList(realm, internal.subscriptions.items, internal.allocator);
+    defer list.release();
+    return cookie_values.resolvedWith(realm, list.value);
 }
 
 /// Operation: unsubscribe(subscriptions)
@@ -384,32 +310,31 @@ pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!runtime.JSVal
 ///
 /// Remove cookie change subscriptions.
 pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: runtime.JSValue) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStoreManager has no subscription list");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStoreManager has no subscription list");
 
     if (!internal.is_secure_context) {
-        return realm.rejectTypeError("CookieStoreManager.unsubscribe requires a secure context");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStoreManager.unsubscribe requires a secure context");
     }
 
     const subs_slice = webidl.extractDictionarySlice(
         dictionaries.CookieStoreGetOptions,
         subscriptions.toAnyopaque(),
-    ) catch return realm.rejectTypeError("unsubscribe expects a sequence of CookieStoreGetOptions");
+    ) catch return cookie_values.rejectedWithTypeError(realm, "unsubscribe expects a sequence of CookieStoreGetOptions");
 
     for (subs_slice) |sub| {
         if (sub.url) |url| {
             if (!internal.isWithinScope(url)) {
-                return realm.rejectTypeError("Subscription URL must be within the registration scope");
+                return cookie_values.rejectedWithTypeError(realm, "Subscription URL must be within the registration scope");
             }
         }
 
         internal.removeSubscription(sub.name, sub.url);
     }
 
-    return realm.resolveUndefined();
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
 }
 
 // ============================================================================

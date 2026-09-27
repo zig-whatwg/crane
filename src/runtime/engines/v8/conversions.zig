@@ -104,6 +104,14 @@ fn enumNameMatches(comptime field_name: []const u8, runtime_name: []const u8) bo
 // JavaScript to Zig (V8 → Runtime)
 // ============================================================================
 
+/// WebIDL 3.2.11 USVString: convert to DOMString, then replace every lone
+/// surrogate with U+FFFD - Infra's "convert a string into a scalar value
+/// string" over the WTF-8 bytes V8 writes. ByteString shares the `[]const u8`
+/// type and so passes through here too; WebIDL gives it a TypeError for any
+/// code unit above 0xFF instead, which needs the two types told apart in
+/// codegen.
+pub const replaceLoneSurrogates = @import("infra").string.replaceLoneSurrogatesWtf8;
+
 /// Convert V8 String to Zig DOMString
 ///
 /// Allocates memory for the string contents using the provided allocator.
@@ -809,6 +817,9 @@ pub fn fromV8Value(
                 allocator.free(buffer);
                 return ConversionError.StringError;
             }
+            // USVString (and ByteString, which shares the Zig type): lone
+            // surrogates become U+FFFD.
+            replaceLoneSurrogates(buffer);
             return buffer;
         }
 
@@ -2393,6 +2404,16 @@ pub fn setReturnNull(info: *const v8.FunctionCallbackInfo) void {
 // ============================================================================
 // Exception Helpers
 // ============================================================================
+//
+// Every handle a helper makes is owned (a `v8_*` call that returns a pointer
+// allocates a Global), and each one is released here - the message string,
+// the keys, the constructor it looked up, and the exception itself, once it
+// is thrown: `v8_Isolate_ThrowException` hands V8 a Local of it, and V8 keeps
+// the value it is throwing. An exception handle left behind is a Global into
+// the realm that made it, and keeps that realm - every object in it - alive
+// for the life of the process; one per binding "Illegal invocation" kept
+// every frame realm a WPT sweep made
+// (docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md).
 
 /// Throw a TypeError in V8
 pub fn throwTypeError(
@@ -2412,7 +2433,9 @@ pub fn throwTypeError(
         message.ptr,
         @intCast(message.len),
     ) orelse return; // Failed to create string, can't throw
+    defer v8.v8_String_Dispose(msg_str);
     const exception = v8.v8_Exception_TypeErrorInContext(context, msg_str) orelse return; // Failed to create exception
+    defer v8.v8_Value_Dispose(exception);
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
@@ -2456,13 +2479,16 @@ pub fn throwTypeErrorFromContext(
         message.ptr,
         @intCast(message.len),
     ) orelse return; // Failed to create string, can't throw
+    defer v8.v8_String_Dispose(msg_str);
 
     const exception = v8.v8_Exception_TypeErrorInContext(context, msg_str) orelse {
         // Fallback to regular TypeError if context-specific creation fails
         const fallback = v8.v8_Exception_TypeError(msg_str) orelse return;
+        defer v8.v8_Value_Dispose(fallback);
         v8.v8_Isolate_ThrowException(isolate, fallback);
         return;
     };
+    defer v8.v8_Value_Dispose(exception);
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
@@ -2481,7 +2507,9 @@ pub fn throwRangeError(
         message.ptr,
         @intCast(message.len),
     ) orelse return; // Failed to create string, can't throw
+    defer v8.v8_String_Dispose(msg_str);
     const exception = v8.v8_Exception_RangeError(msg_str) orelse return;
+    defer v8.v8_Value_Dispose(exception);
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
@@ -2499,8 +2527,10 @@ pub fn throwError(
         isolate,
         message.ptr,
         @intCast(message.len),
-    );
-    const exception = v8.v8_Exception_Error(msg_str.?) orelse return;
+    ) orelse return; // Failed to create string, can't throw
+    defer v8.v8_String_Dispose(msg_str);
+    const exception = v8.v8_Exception_Error(msg_str) orelse return;
+    defer v8.v8_Value_Dispose(exception);
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
@@ -2529,22 +2559,26 @@ fn throwDOMExceptionFallback(
         throwError(isolate, message);
         return;
     };
+    defer v8.v8_String_Dispose(msg_str);
 
     // Create a generic Error
     const exception = v8.v8_Exception_Error(msg_str) orelse {
         throwError(isolate, message);
         return;
     };
+    defer v8.v8_Value_Dispose(exception);
 
     // Set the .name property to the DOMException name
     const name_key = v8.v8_String_NewFromUtf8(isolate, "name", 4) orelse {
         v8.v8_Isolate_ThrowException(isolate, exception);
         return;
     };
+    defer v8.v8_String_Dispose(name_key);
     const name_value = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
         v8.v8_Isolate_ThrowException(isolate, exception);
         return;
     };
+    defer v8.v8_String_Dispose(name_value);
     _ = v8.v8_Object_Set(@ptrCast(exception), context, @ptrCast(name_key), @ptrCast(name_value));
 
     // Set the .code property to the legacy error code
@@ -2552,8 +2586,10 @@ fn throwDOMExceptionFallback(
         v8.v8_Isolate_ThrowException(isolate, exception);
         return;
     };
+    defer v8.v8_String_Dispose(code_key);
     const code = getLegacyCodeForDOMExceptionName(name);
     const code_value = v8.v8_Number_New(isolate, @floatFromInt(code));
+    defer v8.v8_Value_Dispose(@ptrCast(code_value));
     _ = v8.v8_Object_Set(@ptrCast(exception), context, @ptrCast(code_key), @ptrCast(code_value));
 
     v8.v8_Isolate_ThrowException(isolate, exception);
@@ -2623,11 +2659,13 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(dom_exception_key);
     const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
         // DOMException not registered, fall back to Error with .name property
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(dom_exception_ctor);
 
     if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
         // DOMException is not a function, fall back to Error with .name property
@@ -2640,10 +2678,12 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(v8_message);
     const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(v8_name);
 
     // Use Reflect.construct to call the constructor
     // Reflect.construct(DOMException, [message, name])
@@ -2651,18 +2691,22 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(reflect_key);
     const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(reflect_obj);
     const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(construct_key);
     const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(construct_fn_value);
     if (!v8.v8_Value_IsFunction(construct_fn_value)) {
         throwDOMExceptionFallback(isolate, name, message);
         return;
@@ -2671,6 +2715,7 @@ pub fn throwDOMException(
 
     // Create argument array: [message, name]
     const args_array = v8.v8_Array_New(isolate, 2);
+    defer v8.v8_Array_Dispose(args_array);
     _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
     _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
 
@@ -2680,6 +2725,7 @@ pub fn throwDOMException(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(exception);
 
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
@@ -2713,10 +2759,12 @@ pub fn throwDOMExceptionFromContext(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(dom_exception_key);
     const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(dom_exception_ctor);
 
     if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
         throwDOMExceptionFallback(isolate, name, message);
@@ -2728,28 +2776,34 @@ pub fn throwDOMExceptionFromContext(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(v8_message);
     const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(v8_name);
 
     // Use Reflect.construct to call the constructor
     const reflect_key = v8.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(reflect_key);
     const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(reflect_obj);
     const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_String_Dispose(construct_key);
     const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(construct_fn_value);
     if (!v8.v8_Value_IsFunction(construct_fn_value)) {
         throwDOMExceptionFallback(isolate, name, message);
         return;
@@ -2758,6 +2812,7 @@ pub fn throwDOMExceptionFromContext(
 
     // Create argument array: [message, name]
     const args_array = v8.v8_Array_New(isolate, 2);
+    defer v8.v8_Array_Dispose(args_array);
     _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
     _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
 
@@ -2768,6 +2823,7 @@ pub fn throwDOMExceptionFromContext(
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
+    defer v8.v8_Value_Dispose(exception);
 
     log.debug("[throwDOMExceptionFromContext] throwing exception\n", .{});
     v8.v8_Isolate_ThrowException(isolate, exception);

@@ -29,46 +29,33 @@ const MessageEvent = interfaces.MessageEvent;
 
 pub const State = MessageEvent.State;
 
-/// Static sentinel value for "undefined" data - avoids using @ptrFromInt
-var undefined_sentinel: u8 = 0;
-
 pub const ImplError = error{
     NotImplemented,
 };
 
-/// Data type for MessageEvent.data
-/// Per spec, data can be any JavaScript value (any type).
-/// For WebSocket, it's either DOMString (text) or Blob/ArrayBuffer (binary).
-pub const MessageData = union(enum) {
-    /// Text message (UTF-8 string)
-    string: runtime.DOMString,
-    /// Binary message as raw bytes (to be converted to Blob or ArrayBuffer)
-    binary: []const u8,
-    /// Generic any value (for non-WebSocket use)
-    any: *const anyopaque,
-};
-
 /// Internal state for MessageEvent implementation
 pub const InternalState = struct {
-    /// The actual message data (typed)
-    message_data: ?MessageData = null,
-    /// Whether we own the binary data (should free on deinit)
-    owns_binary: bool = false,
     /// Whether we own the origin string (should free on deinit)
     owns_origin: bool = false,
-    /// Whether `data` is a Global handle this event disposes on deinit. Only
-    /// `createPostMessageEvent` hands one over; every other path stores a
-    /// handle that somebody else frees.
+    /// Whether `data` is a handle this event releases on deinit - one an
+    /// Engine operation handed over as OWNED. Only `createPostMessageEvent`
+    /// hands one over; every other path stores a handle that somebody else
+    /// frees.
     owns_data_handle: bool = false,
-    /// Whether `ports` is the empty frozen array `get_ports` made for this
-    /// event: a Global it disposes on deinit.
+    /// Whether `ports` is the frozen array `get_ports` made for this event:
+    /// OWNED, released on deinit.
     owns_ports_handle: bool = false,
-    /// Transferred MessagePort instances (stored as Zig instances, not V8 objects)
-    /// These get wrapped fresh when get_ports is called to ensure correct prototype chain
-    transferred_ports: [16]*runtime.Instance = undefined,
-    /// Number of transferred ports
-    transferred_port_count: usize = 0,
+    /// The event's ports, as the MessagePort instances they are: the frozen
+    /// array `ports` returns is made from them on first read. Owned slice
+    /// (ctx.allocator); the ports themselves are not.
+    ports: []*runtime.Instance = &.{},
 };
+
+/// Release a handle an Engine operation handed this event as OWNED.
+fn releaseHandle(ctx: runtime.Context, value: runtime.JSValue) void {
+    const engine = ctx.getEngine() orelse return;
+    if (engine.releaseValue) |release| release(value);
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -93,18 +80,21 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     var state = instance.getState(State);
 
-    // The Globals this event owns: a deserialized postMessage payload, and the
-    // empty ports array.
+    // The handles this event owns: a deserialized postMessage payload, and
+    // the frozen ports array.
     if (state.own._internal) |internal| {
         if (internal.owns_data_handle and state.own.data == .handle) {
-            @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(state.own.data.handle.ptr)));
+            releaseHandle(instance.ctx, state.own.data);
+            state.own.data = runtime.JSValue.jsUndefined;
         }
         internal.owns_data_handle = false;
         if (internal.owns_ports_handle and state.own.ports == .handle) {
-            @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(state.own.ports.handle.ptr)));
+            releaseHandle(instance.ctx, state.own.ports);
             state.own.ports = runtime.JSValue.jsUndefined;
         }
         internal.owns_ports_handle = false;
+        if (internal.ports.len > 0) instance.ctx.allocator.free(internal.ports);
+        internal.ports = &.{};
     }
 
     // Clean up the cloned JSValue data (if it's an owned string)
@@ -115,18 +105,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Free origin string if we own it (allocated in createPostMessageEvent)
         if (internal.owns_origin and state.own.origin.len > 0) {
             instance.ctx.allocator.free(state.own.origin);
-        }
-
-        if (internal.owns_binary) {
-            if (internal.message_data) |data| {
-                switch (data) {
-                    .binary => |b| {
-                        // Binary data owned by us should be freed
-                        _ = b;
-                    },
-                    else => {},
-                }
-            }
         }
     }
 
@@ -173,10 +151,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         // Use JSValue.jsUndefined for undefined data
         // IMPORTANT: Clone the JSValue to take ownership. The argument cleanup code
         // will free the original string buffer after the constructor returns.
-        state.own.data = if (init_dict.data) |data|
-            try data.clone(ctx.allocator)
-        else
-            runtime.JSValue.jsUndefined;
+        state.own.data = if (init_dict.data) |data| try keepData(ctx, instance, data) else runtime.JSValue.jsUndefined;
         // The dictionary's string is freed when the constructor returns.
         if (init_dict.origin) |origin| {
             if (origin.len > 0) {
@@ -189,8 +164,15 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             state.own.origin = "";
         }
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
-        // source and ports require more complex handling
+        // source requires more complex handling
         state.own.source = null;
+        // "ports": a frozen array of the init dictionary's ports, made from
+        // these on first read (`get_ports`).
+        if (init_dict.ports) |ports| {
+            if (ports.len > 0) {
+                if (state.own._internal) |internal| internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
+            }
+        }
     } else {
         // Defaults per spec
         state.base.own.bubbles = false;
@@ -214,6 +196,23 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     return instance;
 }
 
+/// The event's own hold on `data` (borrowed from the dictionary): a string
+/// is copied, and a script value is retained through the Engine table - OWNED
+/// by the event, released in deinit - so it lives as long as the event, not
+/// as long as whoever handed it over.
+fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSValue) !runtime.JSValue {
+    switch (data) {
+        .handle, .instance => {
+            const engine = ctx.getEngine() orelse return data.clone(ctx.allocator);
+            const retain = engine.retainValue orelse return data.clone(ctx.allocator);
+            const held = try retain(ctx, data);
+            if (instance.getState(State).own._internal) |internal| internal.owns_data_handle = true;
+            return held;
+        },
+        else => return data.clone(ctx.allocator),
+    }
+}
+
 /// Getter for data
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-data
 ///
@@ -223,16 +222,12 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-
-    // DEBUG - show what data type and value we're returning
-    const data_type = @tagName(state.own.data);
-    if (state.own.data.asString()) |str_val| {
-        log.debug("[MessageEvent.get_data] type={s} value=\"{s}\"\n", .{ data_type, str_val });
-    } else {
-        log.debug("[MessageEvent.get_data] type={s}\n", .{data_type});
-    }
-
-    return state.own.data;
+    // The event keeps what it holds: a handle goes out borrowed, and the
+    // binding reads it and leaves it.
+    return switch (state.own.data) {
+        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        else => state.own.data,
+    };
 }
 
 /// Getter for origin
@@ -275,60 +270,25 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// Getter for ports
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports
 ///
-/// Returns the array of transferred MessagePorts.
-/// For WebSocket, this is always an empty frozen array.
-/// For postMessage with port transfer, contains the transferred ports.
+/// "The ports attribute must return the value it was initialized to": a
+/// FROZEN array of the ports transferred with the message (or given to the
+/// constructor) - empty when there were none. It is one array for the life
+/// of the event, so `e.ports === e.ports`; the event owns it and releases it
+/// in deinit.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-
-    // Check if we have transferred ports stored in internal state
-    if (state.own._internal) |internal| {
-        if (internal.transferred_port_count > 0) {
-            const v8_engine = @import("v8");
-
-            const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
-            const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return runtime.JSValue.jsUndefined;
-            defer v8_engine.ffi.v8_Context_Dispose(v8_context);
-
-            // Create array with correct size
-            const ports_array = v8_engine.ffi.v8_Array_New(v8_isolate, @intCast(internal.transferred_port_count));
-
-            // Wrap each transferred port and add to array
-            for (0..internal.transferred_port_count) |i| {
-                const port_instance = internal.transferred_ports[i];
-
-                const v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
-                    port_instance,
-                    "MessagePort",
-                    v8_isolate,
-                    v8_context,
-                ) catch {
-                    continue;
-                };
-
-                _ = v8_engine.ffi.v8_Array_Set(ports_array, v8_context, @intCast(i), @ptrCast(v8_obj));
-            }
-
-            // Return the array containing the wrapped port(s)
-            return runtime.JSValue.fromHandle(@ptrCast(ports_array));
-        }
+    const internal = state.own._internal orelse return runtime.JSValue.jsUndefined;
+    if (!internal.owns_ports_handle) {
+        const engine = instance.ctx.getEngine() orelse return error.NoEngine;
+        const create = engine.createFrozenArrayOfPlatformObjects orelse return error.NotSupported;
+        state.own.ports = try create(instance.ctx, internal.ports);
+        internal.owns_ports_handle = true;
     }
-
-    // HTML step 8.6 of the window post message steps, and every other source
-    // of MessageEvents: `ports` is a FROZEN array of what was transferred -
-    // empty when nothing was. It is one array for the life of the event, so
-    // that `e.ports === e.ports`; the event owns it and disposes it in deinit.
-    if (state.own.ports == .handle) return state.own.ports;
-    const internal = state.own._internal orelse return state.own.ports;
-    const v8_engine = @import("v8");
-    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return state.own.ports;
-    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return state.own.ports;
-    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
-    const empty = v8_engine.ffi.v8_Array_New(v8_isolate, 0);
-    _ = v8_engine.ffi.v8_Object_Freeze(@ptrCast(empty), v8_context);
-    state.own.ports = .{ .handle = .{ .ptr = @ptrCast(empty), .needs_disposal = true, .handle_scope = .global } };
-    internal.owns_ports_handle = true;
-    return state.own.ports;
+    // Borrowed: the event keeps its array.
+    return switch (state.own.ports) {
+        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        else => state.own.ports,
+    };
 }
 
 /// Operation: initMessageEvent (legacy)
@@ -344,9 +304,22 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     state.base.own.bubbles = if (bubbles.was_passed) bubbles.value else false;
     state.base.own.cancelable = if (cancelable.was_passed) cancelable.value else false;
 
-    // MessageEvent fields in state.own
-    state.own.data = if (data.was_passed) data.value else runtime.JSValue.jsUndefined;
-    state.own.origin = if (origin.was_passed) origin.value else "";
+    // MessageEvent fields in state.own. What the event held before is let
+    // go, and it takes its own hold on the new values: the arguments are the
+    // binding's, freed when this returns.
+    if (state.own._internal) |internal| {
+        if (internal.owns_data_handle and state.own.data == .handle) releaseHandle(instance.ctx, state.own.data);
+        internal.owns_data_handle = false;
+        if (internal.owns_origin and state.own.origin.len > 0) instance.ctx.allocator.free(state.own.origin);
+        internal.owns_origin = false;
+    }
+    state.own.data.deinit(instance.ctx.allocator);
+    state.own.data = if (data.was_passed) try keepData(instance.ctx, instance, data.value) else runtime.JSValue.jsUndefined;
+    state.own.origin = "";
+    if (origin.was_passed and origin.value.len > 0) {
+        state.own.origin = try instance.ctx.allocator.dupe(u8, origin.value);
+        if (state.own._internal) |internal| internal.owns_origin = true;
+    }
     state.own.lastEventId = if (lastEventId.was_passed) lastEventId.value else runtime.DOMString.initEmpty();
     state.own.source = if (source.was_passed) source.value else null;
 
@@ -355,100 +328,8 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 // =============================================================================
-// Factory functions for creating MessageEvent from WebSocket code
+// Factory functions for events the engine fires
 // =============================================================================
-
-/// Create a MessageEvent for a text message (WebSocket)
-pub fn createTextMessageEvent(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    text_data: []const u8,
-    origin: []const u8,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Set event type to "message" (Event fields in state.base.own)
-    state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = true;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0;
-
-    state.base.own.bubbles = false;
-    state.base.own.cancelable = false;
-    state.base.own.composed = false;
-    state.base.own.cancelBubble = false;
-    state.base.own.returnValue = true;
-    state.base.own.defaultPrevented = false;
-
-    // Store the text data as a DOMString (copy for ownership)
-    const text_string = try allocator.dupe(u8, text_data);
-    state.own.data = @ptrCast(text_string.ptr);
-
-    // Set origin (copy for ownership)
-    state.own.origin = try allocator.dupe(u8, origin);
-    state.own.lastEventId = runtime.DOMString.initEmpty();
-    state.own.source = null;
-
-    // Store in internal state for proper type tracking
-    if (state.own._internal) |internal| {
-        internal.message_data = .{ .string = text_string };
-    }
-
-    return instance;
-}
-
-/// Create a MessageEvent for a binary message (WebSocket)
-pub fn createBinaryMessageEvent(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    binary_data: []const u8,
-    origin_str: []const u8,
-    owns_data: bool,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Set event type to "message" (Event fields in state.base.own)
-    state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = true;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0;
-
-    state.base.own.bubbles = false;
-    state.base.own.cancelable = false;
-    state.base.own.composed = false;
-    state.base.own.cancelBubble = false;
-    state.base.own.returnValue = true;
-    state.base.own.defaultPrevented = false;
-
-    // For binary data, the actual conversion to Blob/ArrayBuffer
-    // happens in the JS binding layer based on binaryType (MessageEvent fields in state.own)
-    state.own.data = @ptrCast(binary_data.ptr);
-
-    // Set origin (copy for ownership)
-    state.own.origin = try allocator.dupe(u8, origin_str);
-    state.own.lastEventId = runtime.DOMString.initEmpty();
-    state.own.source = null;
-
-    // Store in internal state
-    if (state.own._internal) |internal| {
-        internal.message_data = .{ .binary = binary_data };
-        internal.owns_data = owns_data;
-    }
-
-    return instance;
-}
 
 /// Create the MessageEvent that HTML's "window post message steps" fire:
 /// `message` at step 8.7, or `messageerror` when deserialization fails at

@@ -1,0 +1,241 @@
+//! The engine protocol's engine and agents on V8 (design 4.1): the platform
+//! and the snapshot agents are made from, and an agent - an isolate - with
+//! the host's hooks installed on it.
+//!
+//! protocol.zig forwards these operations here. V8 keeps its callbacks per
+//! isolate but hands most of them no data, and an isolate's four data slots
+//! are taken (the isolate allocator, its templates, the snapshot's data), so
+//! each agent's hooks are found by its isolate in a process-wide table.
+//! Agents live on different threads (a worker's is its own), hence the lock.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const engine = @import("engine");
+
+const ffi = @import("ffi.zig");
+const snapshot_loader = @import("snapshot_loader.zig");
+const external_references = @import("external_references.zig");
+const current_realm = @import("current_realm.zig");
+const support = @import("protocol_support.zig");
+const protocol_modules = @import("protocol_modules.zig");
+/// worker_realm.zig's agent operations, through the Engine table (see
+/// protocol.zig).
+const table = @import("engine.zig").v8_engine_interface;
+
+const Context = engine.Context;
+const Agent = engine.Agent;
+const Error = engine.Error;
+
+const log = std.log.scoped(.protocol_agents);
+
+// ============================================================================
+// initializeEngine / deinitializeEngine
+// ============================================================================
+
+/// V8's bytes of the snapshot initializeEngine was given (its stamp split
+/// off), BORROWED until deinitializeEngine. Read by createAgent on any
+/// thread, written only while no agent is being made.
+var engine_snapshot: ?[]const u8 = null;
+
+/// Prepare V8 for agents: its flags and platform - once per process: V8
+/// freezes its flags when the platform starts and cannot start again after
+/// it stops - and the snapshot agents may be made from.
+pub fn initializeEngine(options: engine.EngineOptions) Error!void {
+    if (ffi.v8_Platform_IsInitialized()) {
+        // A host already started it (the runtime flags then too): only the
+        // configured engine is recorded again.
+        snapshot_loader.registerConfiguredEngine();
+    } else {
+        snapshot_loader.initializePlatformForRuntime();
+    }
+    engine_snapshot = null;
+    if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
+}
+
+/// The V8 blob inside `stamped_data`, when this build can restore it: a blob
+/// this build's snapshot generator made (its stamp), that V8 accepts, made
+/// against the external references this build registers. A blob restored
+/// against another build's references wires every callback to whatever sits
+/// at its index now (docs/lessons/
+/// debugging-a-tracked-build-artifact-shadows-the-build.md).
+fn usableSnapshot(stamped_data: []const u8) Error![]const u8 {
+    const stamped = snapshot_loader.splitStamp(stamped_data) orelse {
+        log.warn("the snapshot carries no build stamp - not made by this build's snapshot generator", .{});
+        return error.OperationFailed;
+    };
+    if (stamped.blob.len < 8 or !ffi.v8_Snapshot_IsValid(stamped.blob.ptr, @intCast(stamped.blob.len))) {
+        log.warn("V8 does not accept the snapshot", .{});
+        return error.OperationFailed;
+    }
+    // Registered in the order the generator registered them: V8 resolves a
+    // callback by its index.
+    external_references.registerAllExternalReferences();
+    const count = external_references.getExternalReferenceStats().count;
+    if (!snapshot_loader.stampMatches(stamped, count)) {
+        log.warn("the snapshot was made against {d} external references and this build has {d}", .{ stamped.reference_count, count });
+        return error.OperationFailed;
+    }
+    return stamped.blob;
+}
+
+/// The end of the engine for the host: the snapshot is forgotten (the host
+/// may free it). V8's platform is kept - a V8 process cannot initialize it
+/// again - so a later initializeEngine starts from where this left off.
+pub fn deinitializeEngine() void {
+    engine_snapshot = null;
+}
+
+// ============================================================================
+// Agents
+// ============================================================================
+
+/// What the adapter keeps for an agent it made: the host's hooks.
+const AgentRecord = struct {
+    isolate: *ffi.Isolate,
+    hooks: *const engine.HostHooks,
+    host: ?*anyopaque,
+};
+
+var agents_lock: std.Io.Mutex = .init;
+/// Every agent made by createAgent and not yet destroyed, by isolate.
+var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
+
+/// The hooks of the agent whose isolate this is; null for an isolate
+/// createAgent did not make (the Browser's own, today).
+pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
+    std.Io.Threaded.mutexLock(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    return agents.get(isolate);
+}
+
+/// Whether `isolate` is an agent whose host supplied loadImportedModule: its
+/// import() is the protocol's, which the adapter's older per-realm
+/// registration must leave in place.
+pub fn hasModuleHooks(isolate: *ffi.Isolate) bool {
+    const record = recordOf(isolate) orelse return false;
+    return record.hooks.loadImportedModule != null;
+}
+
+/// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
+/// new isolate - restored from the engine's snapshot when asked for and one
+/// was given - with [[CanBlock]] as the options say and the host's hooks
+/// installed. The isolate is not entered.
+pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
+    const isolate: *ffi.Isolate = blk: {
+        if (options.from_snapshot) {
+            if (engine_snapshot) |blob| {
+                if (ffi.v8_Isolate_NewFromSnapshot(blob.ptr, @intCast(blob.len), external_references.getRuntimeExternalReferencesPtr())) |i| break :blk i;
+                log.warn("V8 could not make an isolate from the snapshot; making one without it", .{});
+            }
+        }
+        // The engine is started by initializeEngine; a host that has not
+        // called it gets the platform here, as worker_realm's agents do.
+        const agent = table.createAgent.?() catch |err| return support.protocolError(err);
+        break :blk @ptrCast(@alignCast(agent));
+    };
+    errdefer ffi.v8_Isolate_Dispose(isolate);
+
+    // [[CanBlock]]: false for a similar-origin window agent, whose one thread
+    // Atomics.wait() would freeze - it throws a TypeError instead.
+    ffi.v8_Isolate_SetAllowAtomicsWait(isolate, options.can_block);
+
+    const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
+    errdefer std.heap.c_allocator.destroy(record);
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host };
+    {
+        std.Io.Threaded.mutexLock(&agents_lock);
+        defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        agents.put(std.heap.c_allocator, isolate, record) catch return error.OutOfMemory;
+    }
+
+    // The hooks the host supplied, and only those: a hook left null is the
+    // host's choice to have no such behaviour.
+    if (options.hooks.promiseRejectionTracker != null) {
+        ffi.v8_Isolate_SetProtocolPromiseRejectCallback(isolate, onPromiseReject);
+    }
+    if (options.hooks.afterMicrotaskCheckpoint != null) {
+        ffi.v8_Isolate_AddMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);
+    }
+    // [module_scripts]: import() and import.meta.
+    const load = options.hooks.loadImportedModule != null;
+    const meta = options.hooks.importMetaUrl != null;
+    if (load or meta) {
+        ffi.v8_Isolate_SetProtocolModuleHooks(
+            isolate,
+            if (load) protocol_modules.onDynamicImport else null,
+            if (meta) protocol_modules.onImportMetaUrl else null,
+        );
+    }
+    return @ptrCast(isolate);
+}
+
+/// Forget `agent`'s hooks, before its isolate is disposed.
+pub fn forgetAgent(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    const record = blk: {
+        std.Io.Threaded.mutexLock(&agents_lock);
+        defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        const kv = agents.fetchRemove(isolate) orelse return;
+        break :blk kv.value;
+    };
+    // Not v8_Isolate_ClearPromiseRejectCallback: that one also drops the
+    // process-wide callback data every other isolate's tracker uses.
+    if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
+    if (record.hooks.afterMicrotaskCheckpoint != null) {
+        ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);
+    }
+    std.heap.c_allocator.destroy(record);
+}
+
+// ============================================================================
+// The hooks' dispatch
+// ============================================================================
+
+/// V8's PromiseRejectEvent values HostPromiseRejectionTracker has an
+/// operation for; the other two (a resolve or reject of a promise already
+/// resolved) are not the spec's.
+const kPromiseRejectWithNoHandler = 0;
+const kPromiseHandlerAddedAfterReject = 1;
+
+/// ECMAScript HostPromiseRejectionTracker(promise, operation), for the host
+/// of the agent whose isolate this is. HTML's steps 1-4 choose the settings
+/// object - the running script's, or the current one: V8 hands the callback
+/// neither script nor muted-errors flag, so the realm is the current realm
+/// (the promise's own when no context is current), and step 2's return for a
+/// muted-errors classic script is not taken.
+fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, reason: ?*ffi.Value) callconv(.c) void {
+    var handed_on = false;
+    defer if (!handed_on) {
+        ffi.v8_Global_Dispose(promise);
+        if (reason) |r| ffi.v8_Global_Dispose(r);
+    };
+
+    const record = recordOf(isolate) orelse return;
+    const tracker = record.hooks.promiseRejectionTracker orelse return;
+    const operation: engine.RejectionOperation = switch (event) {
+        kPromiseRejectWithNoHandler => .reject,
+        kPromiseHandlerAddedAfterReject => .handle,
+        else => return,
+    };
+    const realm: Context = current_realm.currentRealm() orelse support.associatedRealm(promise) orelse return;
+    handed_on = true;
+    // The rejection's value goes with "reject" (PromiseRejectionEvent's
+    // reason); "handle" has none.
+    const handed_reason: ?engine.Owned = switch (operation) {
+        .reject => if (reason) |r| support.owned(r) else null,
+        .handle => blk: {
+            if (reason) |r| ffi.v8_Global_Dispose(r);
+            break :blk null;
+        },
+    };
+    tracker(record.host, realm, support.owned(promise), operation, handed_reason);
+}
+
+/// HTML "perform a microtask checkpoint" step 5 - "notify about rejected
+/// promises" - after every checkpoint of the agent's queue: V8's automatic
+/// ones (kAuto) and explicit ones alike.
+fn onMicrotasksCompleted(isolate: *ffi.Isolate, data: ?*anyopaque) callconv(.c) void {
+    const record: *AgentRecord = @ptrCast(@alignCast(data orelse return));
+    const after = record.hooks.afterMicrotaskCheckpoint orelse return;
+    after(record.host, @ptrCast(isolate));
+}

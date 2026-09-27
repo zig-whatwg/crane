@@ -763,6 +763,27 @@ pub fn convertToScalarValueString(allocator: Allocator, string: String) !String 
     return result.toOwnedSlice();
 }
 
+/// "Convert a string into a scalar value string" (Infra §4.6) for a string
+/// held as UTF-8 bytes that V8 wrote without REPLACE_INVALID_UTF8, in place.
+///
+/// V8 writes a surrogate PAIR as one four-byte sequence and a lone surrogate
+/// as the three bytes ED A0..BF xx (WTF-8), so every such sequence is a lone
+/// surrogate, and EF BF BD (U+FFFD) replaces it at the same length. ED is
+/// never a continuation byte, so a byte-wise scan cannot start inside a
+/// sequence. This is what converting to USVString needs (WebIDL 3.2.11), for
+/// the binding and for any impl that converts a union's string arm itself.
+pub fn replaceLoneSurrogatesWtf8(bytes: []u8) void {
+    var i: usize = 0;
+    while (i + 2 < bytes.len) : (i += 1) {
+        if (bytes[i] == 0xED and bytes[i + 1] >= 0xA0 and bytes[i + 1] <= 0xBF) {
+            bytes[i] = 0xEF;
+            bytes[i + 1] = 0xBF;
+            bytes[i + 2] = 0xBD;
+            i += 2;
+        }
+    }
+}
+
 /// Strip and collapse ASCII whitespace in a string.
 /// WHATWG Infra Standard §4.6 line 721
 pub fn stripAndCollapseAsciiWhitespace(allocator: Allocator, string: String) !String {

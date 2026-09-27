@@ -2886,62 +2886,52 @@ fn dateToLocaleTimeStringCallback(info: *const v8.FunctionCallbackInfo) callconv
 
 /// Register toLocaleString methods on built-in prototypes
 pub fn registerToLocaleStringMethods(isolate: *v8.Isolate, context: *v8.Context) void {
-    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
-    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
-    // handle; the global object itself stays rooted by the context.
-    // Not applied in context_manager.zig, which hands its global to
-    // `WindowImpl.setBoundV8Global` and so keeps it.
+    // Every handle below is released: each points into `context` - the
+    // functions made here are the realm's - and one kept keeps the realm
+    // (docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md).
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
 
-    // ========================================================================
     // Number.prototype.toLocaleString
-    // ========================================================================
-    const number_key = v8.v8_String_NewFromUtf8(isolate, "Number", 6) orelse return;
-    defer v8.v8_String_Dispose(number_key);
-    const number_constructor = v8.v8_Object_Get(global, context, @ptrCast(number_key)) orelse return;
-    if (!v8.v8_Value_IsFunction(number_constructor)) return;
-
-    const number_proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return;
-    defer v8.v8_String_Dispose(number_proto_key);
-    const number_proto = v8.v8_Object_Get(@ptrCast(number_constructor), context, @ptrCast(number_proto_key)) orelse return;
-    if (!v8.v8_Value_IsObject(number_proto)) return;
-
-    const to_locale_string_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleString", 14) orelse return;
-    defer v8.v8_String_Dispose(to_locale_string_key);
-    const num_locale_fn = v8.v8_FunctionTemplate_New(isolate, numberToLocaleStringCallback, null) orelse return;
-    const num_locale_fn_obj = v8.v8_FunctionTemplate_GetFunction(num_locale_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(number_proto), context, @ptrCast(to_locale_string_key), @ptrCast(num_locale_fn_obj));
-
-    // ========================================================================
+    installOnPrototype(isolate, context, global, "Number", &.{
+        .{ .name = "toLocaleString", .callback = numberToLocaleStringCallback },
+    });
     // Date.prototype.toLocaleString, toLocaleDateString, toLocaleTimeString
-    // ========================================================================
-    const date_key = v8.v8_String_NewFromUtf8(isolate, "Date", 4) orelse return;
-    defer v8.v8_String_Dispose(date_key);
-    const date_constructor = v8.v8_Object_Get(global, context, @ptrCast(date_key)) orelse return;
-    if (!v8.v8_Value_IsFunction(date_constructor)) return;
+    installOnPrototype(isolate, context, global, "Date", &.{
+        .{ .name = "toLocaleString", .callback = dateToLocaleStringCallback },
+        .{ .name = "toLocaleDateString", .callback = dateToLocaleDateStringCallback },
+        .{ .name = "toLocaleTimeString", .callback = dateToLocaleTimeStringCallback },
+    });
+}
 
-    const date_proto = v8.v8_Object_Get(@ptrCast(date_constructor), context, @ptrCast(number_proto_key)) orelse return;
-    if (!v8.v8_Value_IsObject(date_proto)) return;
+const PrototypeMethod = struct {
+    name: []const u8,
+    callback: v8.FunctionCallback,
+};
 
-    // toLocaleString
-    const date_locale_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleStringCallback, null) orelse return;
-    const date_locale_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_string_key), @ptrCast(date_locale_fn_obj));
+/// `methods` on the prototype of the global constructor `constructor_name`.
+fn installOnPrototype(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object, constructor_name: []const u8, methods: []const PrototypeMethod) void {
+    const constructor_key = v8.v8_String_NewFromUtf8(isolate, constructor_name.ptr, @intCast(constructor_name.len)) orelse return;
+    defer v8.v8_String_Dispose(constructor_key);
+    const constructor = v8.v8_Object_Get(global, context, @ptrCast(constructor_key)) orelse return;
+    defer v8.v8_Value_Dispose(constructor);
+    if (!v8.v8_Value_IsFunction(constructor)) return;
 
-    // toLocaleDateString
-    const to_locale_date_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleDateString", 18) orelse return;
-    defer v8.v8_String_Dispose(to_locale_date_key);
-    const date_locale_date_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleDateStringCallback, null) orelse return;
-    const date_locale_date_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_date_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_date_key), @ptrCast(date_locale_date_fn_obj));
+    const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return;
+    defer v8.v8_String_Dispose(prototype_key);
+    const prototype = v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key)) orelse return;
+    defer v8.v8_Value_Dispose(prototype);
+    if (!v8.v8_Value_IsObject(prototype)) return;
 
-    // toLocaleTimeString
-    const to_locale_time_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleTimeString", 18) orelse return;
-    defer v8.v8_String_Dispose(to_locale_time_key);
-    const date_locale_time_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleTimeStringCallback, null) orelse return;
-    const date_locale_time_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_time_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_time_key), @ptrCast(date_locale_time_fn_obj));
+    for (methods) |method| {
+        const key = v8.v8_String_NewFromUtf8(isolate, method.name.ptr, @intCast(method.name.len)) orelse continue;
+        defer v8.v8_String_Dispose(key);
+        const template = v8.v8_FunctionTemplate_New(isolate, method.callback, null) orelse continue;
+        defer v8.v8_FunctionTemplate_Dispose(template);
+        const function = v8.v8_FunctionTemplate_GetFunction(template, context) orelse continue;
+        defer v8.v8_Function_Dispose(function);
+        _ = v8.v8_Object_Set(@ptrCast(prototype), context, @ptrCast(key), @ptrCast(function));
+    }
 }
 
 // ============================================================================
@@ -6069,167 +6059,41 @@ fn createStringArray(isolate: *v8.Isolate, context: *v8.Context, values: []const
 
 /// Register the Intl global object with V8
 pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
-    // Create Intl namespace object
+    // Every handle below is released (see registerToLocaleStringMethods):
+    // the Intl object and its constructors are the realm's, and the realm's
+    // global keeps them.
     const intl_obj = v8.v8_Object_New(isolate) orelse return;
-
-    // ========================================================================
-    // DateTimeFormat
-    // ========================================================================
-    const dtf_template = v8.v8_FunctionTemplate_New(isolate, dateTimeFormatConstructorCallback, null) orelse return;
-    const dtf_constructor = v8.v8_FunctionTemplate_GetFunction(dtf_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const dtf_supported_fn = v8.v8_FunctionTemplate_New(isolate, supportedLocalesOfCallback, null) orelse return;
-    const dtf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(dtf_supported_fn, context) orelse return;
+    defer v8.v8_Object_Dispose(intl_obj);
     const supported_key = v8.v8_String_NewFromUtf8(isolate, "supportedLocalesOf", 18) orelse return;
     defer v8.v8_String_Dispose(supported_key);
-    _ = v8.v8_Object_Set(@ptrCast(dtf_constructor), context, @ptrCast(supported_key), @ptrCast(dtf_supported_fn_obj));
 
-    // Add DateTimeFormat to Intl object
-    const dtf_key = v8.v8_String_NewFromUtf8(isolate, "DateTimeFormat", 14) orelse return;
-    defer v8.v8_String_Dispose(dtf_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(dtf_key), @ptrCast(dtf_constructor));
+    // The constructors, each with its supportedLocalesOf static method.
+    const constructors = [_]IntlConstructor{
+        .{ .name = "DateTimeFormat", .constructor = dateTimeFormatConstructorCallback, .supported_locales_of = supportedLocalesOfCallback },
+        .{ .name = "NumberFormat", .constructor = numberFormatConstructorCallback, .supported_locales_of = numberFormatSupportedLocalesOfCallback },
+        .{ .name = "Collator", .constructor = collatorConstructorCallback, .supported_locales_of = collatorSupportedLocalesOfCallback },
+        .{ .name = "PluralRules", .constructor = pluralRulesConstructorCallback, .supported_locales_of = pluralRulesSupportedLocalesOfCallback },
+        .{ .name = "RelativeTimeFormat", .constructor = relativeTimeFormatConstructorCallback, .supported_locales_of = relativeTimeFormatSupportedLocalesOfCallback },
+        .{ .name = "ListFormat", .constructor = listFormatConstructorCallback, .supported_locales_of = listFormatSupportedLocalesOfCallback },
+        .{ .name = "DisplayNames", .constructor = displayNamesConstructorCallback, .supported_locales_of = displayNamesSupportedLocalesOfCallback },
+        .{ .name = "Locale", .constructor = localeConstructorCallback, .supported_locales_of = null },
+        .{ .name = "Segmenter", .constructor = segmenterConstructorCallback, .supported_locales_of = segmenterSupportedLocalesOfCallback },
+    };
+    for (constructors) |c| defineIntlConstructor(isolate, context, intl_obj, supported_key, c);
 
-    // ========================================================================
-    // NumberFormat
-    // ========================================================================
-    const nf_template = v8.v8_FunctionTemplate_New(isolate, numberFormatConstructorCallback, null) orelse return;
-    const nf_constructor = v8.v8_FunctionTemplate_GetFunction(nf_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const nf_supported_fn = v8.v8_FunctionTemplate_New(isolate, numberFormatSupportedLocalesOfCallback, null) orelse return;
-    const nf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(nf_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(nf_constructor), context, @ptrCast(supported_key), @ptrCast(nf_supported_fn_obj));
-
-    // Add NumberFormat to Intl object
-    const nf_key = v8.v8_String_NewFromUtf8(isolate, "NumberFormat", 12) orelse return;
-    defer v8.v8_String_Dispose(nf_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(nf_key), @ptrCast(nf_constructor));
-
-    // ========================================================================
-    // Collator
-    // ========================================================================
-    const col_template = v8.v8_FunctionTemplate_New(isolate, collatorConstructorCallback, null) orelse return;
-    const col_constructor = v8.v8_FunctionTemplate_GetFunction(col_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const col_supported_fn = v8.v8_FunctionTemplate_New(isolate, collatorSupportedLocalesOfCallback, null) orelse return;
-    const col_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(col_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(col_constructor), context, @ptrCast(supported_key), @ptrCast(col_supported_fn_obj));
-
-    // Add Collator to Intl object
-    const col_key = v8.v8_String_NewFromUtf8(isolate, "Collator", 8) orelse return;
-    defer v8.v8_String_Dispose(col_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(col_key), @ptrCast(col_constructor));
-
-    // ========================================================================
-    // PluralRules
-    // ========================================================================
-    const pr_template = v8.v8_FunctionTemplate_New(isolate, pluralRulesConstructorCallback, null) orelse return;
-    const pr_constructor = v8.v8_FunctionTemplate_GetFunction(pr_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const pr_supported_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesSupportedLocalesOfCallback, null) orelse return;
-    const pr_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(pr_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(pr_constructor), context, @ptrCast(supported_key), @ptrCast(pr_supported_fn_obj));
-
-    // Add PluralRules to Intl object
-    const pr_key = v8.v8_String_NewFromUtf8(isolate, "PluralRules", 11) orelse return;
-    defer v8.v8_String_Dispose(pr_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(pr_key), @ptrCast(pr_constructor));
-
-    // ========================================================================
-    // RelativeTimeFormat
-    // ========================================================================
-    const rtf_template = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatConstructorCallback, null) orelse return;
-    const rtf_constructor = v8.v8_FunctionTemplate_GetFunction(rtf_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const rtf_supported_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatSupportedLocalesOfCallback, null) orelse return;
-    const rtf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(rtf_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(rtf_constructor), context, @ptrCast(supported_key), @ptrCast(rtf_supported_fn_obj));
-
-    // Add RelativeTimeFormat to Intl object
-    const rtf_key = v8.v8_String_NewFromUtf8(isolate, "RelativeTimeFormat", 18) orelse return;
-    defer v8.v8_String_Dispose(rtf_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(rtf_key), @ptrCast(rtf_constructor));
-
-    // ========================================================================
-    // ListFormat
-    // ========================================================================
-    const lf_template = v8.v8_FunctionTemplate_New(isolate, listFormatConstructorCallback, null) orelse return;
-    const lf_constructor = v8.v8_FunctionTemplate_GetFunction(lf_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const lf_supported_fn = v8.v8_FunctionTemplate_New(isolate, listFormatSupportedLocalesOfCallback, null) orelse return;
-    const lf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(lf_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(lf_constructor), context, @ptrCast(supported_key), @ptrCast(lf_supported_fn_obj));
-
-    // Add ListFormat to Intl object
-    const lf_key = v8.v8_String_NewFromUtf8(isolate, "ListFormat", 10) orelse return;
-    defer v8.v8_String_Dispose(lf_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(lf_key), @ptrCast(lf_constructor));
-
-    // ========================================================================
-    // DisplayNames
-    // ========================================================================
-    const dn_template = v8.v8_FunctionTemplate_New(isolate, displayNamesConstructorCallback, null) orelse return;
-    const dn_constructor = v8.v8_FunctionTemplate_GetFunction(dn_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const dn_supported_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesSupportedLocalesOfCallback, null) orelse return;
-    const dn_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(dn_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(dn_constructor), context, @ptrCast(supported_key), @ptrCast(dn_supported_fn_obj));
-
-    // Add DisplayNames to Intl object
-    const dn_key = v8.v8_String_NewFromUtf8(isolate, "DisplayNames", 12) orelse return;
-    defer v8.v8_String_Dispose(dn_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(dn_key), @ptrCast(dn_constructor));
-
-    // ========================================================================
-    // Locale
-    // ========================================================================
-    const locale_template = v8.v8_FunctionTemplate_New(isolate, localeConstructorCallback, null) orelse return;
-    const locale_constructor = v8.v8_FunctionTemplate_GetFunction(locale_template, context) orelse return;
-
-    // Add Locale to Intl object
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "Locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(locale_key), @ptrCast(locale_constructor));
-
-    // ========================================================================
-    // Segmenter
-    // ========================================================================
-    const seg_template = v8.v8_FunctionTemplate_New(isolate, segmenterConstructorCallback, null) orelse return;
-    const seg_constructor = v8.v8_FunctionTemplate_GetFunction(seg_template, context) orelse return;
-
-    // Add supportedLocalesOf static method
-    const seg_supported_fn = v8.v8_FunctionTemplate_New(isolate, segmenterSupportedLocalesOfCallback, null) orelse return;
-    const seg_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(seg_supported_fn, context) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(seg_constructor), context, @ptrCast(supported_key), @ptrCast(seg_supported_fn_obj));
-
-    // Add Segmenter to Intl object
-    const seg_key = v8.v8_String_NewFromUtf8(isolate, "Segmenter", 9) orelse return;
-    defer v8.v8_String_Dispose(seg_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(seg_key), @ptrCast(seg_constructor));
-
-    // ========================================================================
     // Intl.supportedValuesOf (static method on Intl object)
-    // ========================================================================
-    const svo_fn = v8.v8_FunctionTemplate_New(isolate, supportedValuesOfCallback, null) orelse return;
-    const svo_fn_obj = v8.v8_FunctionTemplate_GetFunction(svo_fn, context) orelse return;
-    const svo_key = v8.v8_String_NewFromUtf8(isolate, "supportedValuesOf", 17) orelse return;
-    defer v8.v8_String_Dispose(svo_key);
-    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(svo_key), @ptrCast(svo_fn_obj));
+    if (v8.v8_FunctionTemplate_New(isolate, supportedValuesOfCallback, null)) |svo_fn| {
+        defer v8.v8_FunctionTemplate_Dispose(svo_fn);
+        if (v8.v8_FunctionTemplate_GetFunction(svo_fn, context)) |svo_fn_obj| {
+            defer v8.v8_Function_Dispose(svo_fn_obj);
+            if (v8.v8_String_NewFromUtf8(isolate, "supportedValuesOf", 17)) |svo_key| {
+                defer v8.v8_String_Dispose(svo_key);
+                _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(svo_key), @ptrCast(svo_fn_obj));
+            }
+        }
+    }
 
-    // ========================================================================
-    // Add Intl to global object
-    // ========================================================================
-    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
-    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
-    // handle; the global object itself stays rooted by the context.
-    // Not applied in context_manager.zig, which hands its global to
-    // `WindowImpl.setBoundV8Global` and so keeps it.
+    // Add Intl to the global object: writable, configurable, not enumerable.
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
     const intl_key = v8.v8_String_NewFromUtf8(isolate, "Intl", 4) orelse return;
@@ -6244,6 +6108,34 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
         false,
         true,
     );
+}
+
+const IntlConstructor = struct {
+    name: []const u8,
+    constructor: v8.FunctionCallback,
+    supported_locales_of: ?v8.FunctionCallback,
+};
+
+/// `Intl[c.name]`: the constructor, with its supportedLocalesOf.
+fn defineIntlConstructor(isolate: *v8.Isolate, context: *v8.Context, intl_object: *v8.Object, supported_key: *v8.String, c: IntlConstructor) void {
+    const template = v8.v8_FunctionTemplate_New(isolate, c.constructor, null) orelse return;
+    defer v8.v8_FunctionTemplate_Dispose(template);
+    const constructor = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return;
+    defer v8.v8_Function_Dispose(constructor);
+
+    if (c.supported_locales_of) |callback| {
+        if (v8.v8_FunctionTemplate_New(isolate, callback, null)) |supported_template| {
+            defer v8.v8_FunctionTemplate_Dispose(supported_template);
+            if (v8.v8_FunctionTemplate_GetFunction(supported_template, context)) |supported| {
+                defer v8.v8_Function_Dispose(supported);
+                _ = v8.v8_Object_Set(@ptrCast(constructor), context, @ptrCast(supported_key), @ptrCast(supported));
+            }
+        }
+    }
+
+    const key = v8.v8_String_NewFromUtf8(isolate, c.name.ptr, @intCast(c.name.len)) orelse return;
+    defer v8.v8_String_Dispose(key);
+    _ = v8.v8_Object_Set(intl_object, context, @ptrCast(key), @ptrCast(constructor));
 }
 
 /// Register external references for V8 snapshots

@@ -129,11 +129,6 @@ pub const WorkerScriptError = script_fetch.WorkerScriptError;
 pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
 
-// Document Origin (for resolving relative Worker script URLs)
-pub const setDocumentOrigin = script_fetch.setDocumentOrigin;
-pub const getDocumentOrigin = script_fetch.getDocumentOrigin;
-pub const clearDocumentOrigin = script_fetch.clearDocumentOrigin;
-
 // Blob URL Resolution (callback-based to avoid circular dependencies)
 pub const BlobResolveResult = script_fetch.BlobResolveResult;
 pub const BlobResolverFn = script_fetch.BlobResolverFn;
@@ -183,12 +178,6 @@ pub const ThreadSafeMessageQueue = worker_threading.ThreadSafeMessageQueue;
 pub const WorkerThreadState = worker_threading.WorkerThreadState;
 pub const WorkerThreadRunner = worker_threading.WorkerThreadRunner;
 pub const ThreadedWorkerManager = worker_threading.ThreadedWorkerManager;
-
-// Worker V8 Integration (V8 isolate per worker thread)
-pub const worker_v8_integration = @import("worker_v8_integration.zig");
-pub const WorkerIsolateData = worker_v8_integration.WorkerIsolateData;
-pub const WorkerV8Integration = worker_v8_integration.WorkerV8Integration;
-pub const V8WorkerError = worker_v8_integration.V8WorkerError;
 
 test {
     std.testing.refAllDecls(@This());

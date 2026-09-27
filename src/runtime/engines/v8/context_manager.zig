@@ -125,12 +125,8 @@ pub const ContextEntry = struct {
     /// Set during createChildContext() for iframe contexts.
     window_instance: ?*runtime.Instance = null,
 
-    /// Document URL for this context (used for module resolution)
-    /// Set when navigating to a page via setDocumentUrl().
-    document_url: ?[]const u8 = null,
-
-    /// Whether we own the document_url memory
-    owns_document_url: bool = false,
+    // The realm's document URL lives on its runtime context
+    // (runtime_ctx.document_url): realm state, not engine state.
 
     /// Set as destroyChildContext starts on this entry. Its teardown runs
     /// arbitrary deinit code - a Window, a DOM tree, iframe elements - and any
@@ -362,7 +358,7 @@ pub fn deinit() void {
 
         // Clean up ObservableArray static registry
         // This is a safety net for states not cleaned up via V8 GC weak callbacks
-        runtime.ObservableArrayExotic.cleanupAll();
+        @import("observable_array.zig").cleanupAll();
 
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
@@ -538,12 +534,7 @@ pub fn deinit() void {
                 ctx_data.deinit();
             }
 
-            // Clean up document URL if we own it
-            if (entry.owns_document_url) {
-                if (entry.document_url) |url| {
-                    entry.allocator.free(url);
-                }
-            }
+            entry.runtime_ctx.clearDocumentUrl();
 
             // Free the heap-allocated entry itself
             state.allocator.destroy(entry);
@@ -641,6 +632,10 @@ pub fn getOrCreateWithExternalEventLoop(
 
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
     const entry = try state.allocator.create(ContextEntry);
@@ -721,7 +716,7 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
             .global_object = window_instance, // Set directly since we have the Window
         });
         // Populate intrinsics for cross-realm support
-        _ = realm.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
         // Store realm in entry and runtime context
         entry.realm = realm;
@@ -813,6 +808,10 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // Create realm for cross-realm support (only if we have an isolate)
     // Per WebIDL, every context has an associated realm with intrinsics
@@ -829,7 +828,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         errdefer if (realm) |r| r.deinit();
 
         // Populate realm intrinsics for cross-realm support
-        _ = realm.?.populateIntrinsics();
+        _ = @import("realm_v8.zig").populateIntrinsics(realm.?);
 
         // Set realm on runtime context so impl code can access via instance.ctx.realm
         ctx_data.setRealm(realm.?);
@@ -1221,12 +1220,7 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // no Instance can still be pointing at this ContextData.
         }
 
-        // Clean up document URL if we own it
-        if (entry.owns_document_url) {
-            if (entry.document_url) |url| {
-                entry.allocator.free(url);
-            }
-        }
+        entry.runtime_ctx.clearDocumentUrl();
     }
 }
 
@@ -1319,12 +1313,12 @@ fn handleDynamicImport(
         resolver.reject("No runtime context for this V8 context");
         return;
     };
-    std.log.debug("[DYN_IMPORT] Found context entry, document_url={s}", .{entry.document_url orelse "(null)"});
+    std.log.debug("[DYN_IMPORT] Found context entry, document_url={s}", .{entry.runtime_ctx.documentUrl() orelse "(null)"});
 
     const allocator = entry.runtime_ctx.allocator;
 
     // Resolve the specifier to a URL using document URL as fallback
-    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer, entry.document_url) catch {
+    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer, entry.runtime_ctx.documentUrl()) catch {
         resolver.reject("Failed to resolve module specifier");
         return;
     };
@@ -1729,9 +1723,15 @@ fn createWindowBoundToGlobal(
     defer v8.v8_String_Dispose(window_key);
     _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_key), @ptrCast(global));
 
+    // `self` is [Replaceable]: its setter's one step is this [[DefineOwnProperty]]
+    // (writable, enumerable, configurable), so define it directly. A [[Set]]
+    // went through the script-facing setter, whose argument handle - here a
+    // handle to the WindowProxy - is never released, and a leaked handle to a
+    // frame's WindowProxy kept its realm, and through the realm's security
+    // token its parent page, alive after the frame was gone.
     const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreationFailed;
     defer v8.v8_String_Dispose(self_key);
-    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_key), @ptrCast(global));
+    _ = v8.v8_Object_DefineProperty(global, v8_ctx, @ptrCast(self_key), @ptrCast(global), true, true, true);
 
     const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse return error.StringCreationFailed;
     defer v8.v8_String_Dispose(global_this_key);
@@ -1967,7 +1967,7 @@ fn createWindowForExistingBrowsingContext(
         .context_type = .window,
         .global_object = null, // Will be set to Window instance below
     }) catch return null;
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     const inherited = inheritedEventLoop(parent_entry);
@@ -1992,6 +1992,10 @@ fn createWindowForExistingBrowsingContext(
         return null;
     };
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // 8. Create Window instance bound to the V8 global
     const runtime_ctx: runtime.Context = &ctx_data;
@@ -2618,22 +2622,16 @@ pub fn createChildContext(
         global,
     );
 
-    // 4d2. Set self/window/frames as DATA properties pointing to global
-    // This is CRITICAL for testharness.js compatibility:
-    // (function(global_scope){...})(self) requires self === globalThis
-    // so that properties set on global_scope become true global bindings.
-    if (v8.v8_String_NewFromUtf8(options.isolate, "self", 4)) |self_str| {
-        defer v8.v8_String_Dispose(self_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(self_str), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(options.isolate, "window", 6)) |window_str| {
-        defer v8.v8_String_Dispose(window_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(window_str), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(options.isolate, "frames", 6)) |frames_str| {
-        defer v8.v8_String_Dispose(frames_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(frames_str), @ptrCast(global));
-    }
+    // 4d2. `self`, `window` and `frames` are NOT assigned here. The global has
+    // no Window yet, so a [[Set]] reaches Window.prototype's [Global] setters
+    // with a receiver they cannot resolve: `self` and `frames` threw "Illegal
+    // invocation", and the TypeError - made in this realm, held by a Global
+    // that conversions.throwTypeErrorFromContext never releases - kept the
+    // realm alive for the rest of the process. With a new realm per navigation
+    // that was a realm per form submission into a frame, until V8 ran out of
+    // heap (tests/wpt/crane/sweep-frame-realms-released.html). The assignments
+    // did nothing else: createWindowBoundToGlobal (step 8) defines `self` once
+    // the Window is bound, and `window` has no setter.
 
     // 4e. Register browser-level globals (setTimeout, setInterval, etc.)
     // These are not WebIDL interfaces but are essential for web platform functionality.
@@ -2664,7 +2662,7 @@ pub fn createChildContext(
     // 5b. Populate realm intrinsics for cross-realm support
     // This caches the realm's built-in constructors (TypeError, Object, Array, etc.)
     // which are needed for proper cross-realm object/error creation.
-    _ = realm.populateIntrinsics();
+    _ = @import("realm_v8.zig").populateIntrinsics(realm);
 
     // 6. Create runtime context data
     // Optionally inherit event loop from parent
@@ -2695,6 +2693,10 @@ pub fn createChildContext(
     errdefer cache_ptr.deinit();
 
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+    // The realm's agent: the isolate the context was just made in, which is
+    // the current one. Operations that enter the realm from outside it enter
+    // this (engine.enterRealm) - a worker's is never the page's.
+    ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // 7b. Set realm on runtime context for cross-realm support
     // This enables impl code to access the realm via instance.ctx.realm
@@ -2818,8 +2820,7 @@ fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
     entry.children = .empty;
     entry.parent_entry = null;
     entry.window_instance = null;
-    entry.document_url = null;
-    entry.owns_document_url = false;
+    entry.runtime_ctx.clearDocumentUrl();
 
     state.retired.append(state.allocator, entry) catch {
         // Only reachable if this allocator is out of memory, which it is about to
@@ -3036,12 +3037,8 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         // valid for as long as an Instance can still be holding a pointer to it.
     }
 
-    // 6. Clean up document URL if we own it
-    if (entry.owns_document_url) {
-        if (entry.document_url) |url| {
-            entry.allocator.free(url);
-        }
-    }
+    // 6. Forget the realm's document URL.
+    entry.runtime_ctx.clearDocumentUrl();
 
     // 7. Take the entry out of the map, but keep it alive: Instances created in
     // this context were not destroyed above and still point into it.
@@ -3220,15 +3217,9 @@ pub fn setDocumentUrl(v8_ctx: *v8.Context, url: []const u8) !void {
     const key = @intFromPtr(raw_addr);
 
     if (state.contexts.get(key)) |entry| {
-        // Free old URL if we own it
-        if (entry.owns_document_url) {
-            if (entry.document_url) |old_url| {
-                entry.allocator.free(old_url);
-            }
-        }
-        // Duplicate the URL so we own the memory
-        entry.document_url = try entry.allocator.dupe(u8, url);
-        entry.owns_document_url = true;
+        // The realm keeps it: runtime.ContextData.setDocumentUrl, which code
+        // outside the adapter calls directly.
+        try entry.runtime_ctx.setDocumentUrl(url);
     } else {
         return error.ContextNotFound;
     }
@@ -3242,7 +3233,7 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
     const key = @intFromPtr(raw_addr);
 
     if (state.contexts.get(key)) |entry| {
-        return entry.document_url;
+        return entry.runtime_ctx.documentUrl();
     }
     return null;
 }

@@ -264,6 +264,19 @@ pub const Intrinsics = struct {
     /// Function.prototype
     function_prototype: ?*anyopaque,
 
+    /// %Promise%: the realm's own Promise constructor, as it was when the
+    /// realm was made - V8's API has no accessor for the intrinsic, so the
+    /// adapter records it here (realm_v8.populateIntrinsics). The protocol's
+    /// promise operations can take it from `realm.getIntrinsics().promise`
+    /// instead of reaching it indirectly.
+    promise: ?*anyopaque,
+
+    /// %AsyncIteratorPrototype% (ECMA-262 27.1.3): the [[Prototype]] of
+    /// %AsyncGeneratorPrototype%, which no global names and V8's API cannot
+    /// reach - recorded here, as `promise` is, for the protocol's async
+    /// iterators (WebIDL's %AsyncIteratorPrototype% is this object).
+    async_iterator_prototype: ?*anyopaque,
+
     const Self = @This();
 
     /// Create uninitialized intrinsics (all null)
@@ -280,6 +293,8 @@ pub const Intrinsics = struct {
             .object_prototype = null,
             .array_prototype = null,
             .function_prototype = null,
+            .promise = null,
+            .async_iterator_prototype = null,
         };
     }
 
@@ -304,6 +319,8 @@ pub const Intrinsics = struct {
         self.object_prototype = null;
         self.array_prototype = null;
         self.function_prototype = null;
+        self.promise = null;
+        self.async_iterator_prototype = null;
     }
 };
 
@@ -315,27 +332,19 @@ pub const Intrinsics = struct {
 /// - Intrinsic objects (TypeError, Object, Array constructors)
 /// - An associated browsing context (for Window realms)
 ///
-/// This struct enables proper cross-realm behavior:
-/// - TypeError thrown from method's realm, not caller's
-/// - Objects created in method's realm for toJSON
-/// - instanceof checks work correctly across realms
+/// Values are made in a realm through the Engine table's operations, which
+/// take the realm as a runtime.Context (AGENTS.md, "The engine boundary").
 ///
 /// ## Usage
 ///
 /// ```zig
-/// // Create realm for a V8 context
+/// // Create the realm record for an engine context
 /// const realm = try Realm.init(allocator, .{
 ///     .v8_context = v8_ctx,
 ///     .isolate = isolate,
 ///     .context_type = .window,
 /// });
 /// defer realm.deinit();
-///
-/// // Create TypeError from this realm
-/// const error = realm.createTypeError("Illegal invocation");
-///
-/// // Create plain object in this realm
-/// const obj = realm.createObject();
 /// ```
 pub const Realm = struct {
     /// Memory allocator for realm-owned resources
@@ -391,8 +400,8 @@ pub const Realm = struct {
     /// Initialize a new Realm
     ///
     /// Creates a realm with the given V8 context and configuration.
-    /// Intrinsics are not populated until populateIntrinsics() is called
-    /// or they are lazily initialized on first use.
+    /// Intrinsics start unpopulated; the engine adapter fills them
+    /// (realm_v8.zig's populateIntrinsics).
     pub fn init(allocator: Allocator, options: InitOptions) !*Self {
         const realm = try allocator.create(Self);
         errdefer allocator.destroy(realm);
@@ -561,78 +570,6 @@ pub const Realm = struct {
             old.deinit();
         }
         self.settings_object = settings;
-    }
-
-    // ========================================================================
-    // V8-Specific Operations
-    // ========================================================================
-    // These methods provide the interface for realm-specific operations.
-    // The actual V8 implementation is in src/runtime/engines/v8/realm_v8.zig
-    //
-    // NOTE: V8 is a separate module, imported via @import("v8").
-    // We use comptime detection to conditionally use V8-specific functions.
-
-    /// Create a TypeError from this realm
-    ///
-    /// The returned value is from THIS realm's TypeError constructor,
-    /// ensuring correct cross-realm behavior per WebIDL spec.
-    ///
-    /// Per WebIDL, when a method throws TypeError for invalid `this`,
-    /// the error must come from the method's realm (callee's realm).
-    pub fn createTypeError(self: *const Self, message: []const u8) ?*anyopaque {
-        // Import V8 module at comptime - this is the SEPARATE v8 module
-        const v8 = @import("v8");
-        return @ptrCast(v8.realm_v8.createTypeErrorInRealm(self, message));
-    }
-
-    /// Throw a TypeError from this realm
-    ///
-    /// Creates a TypeError and throws it as a V8 exception.
-    /// The error comes from THIS realm, not the caller's.
-    pub fn throwTypeError(self: *const Self, message: []const u8) void {
-        const v8 = @import("v8");
-        v8.realm_v8.throwTypeErrorFromRealm(self, message);
-    }
-
-    /// Create a plain object {} in this realm
-    ///
-    /// The object's prototype is THIS realm's Object.prototype,
-    /// ensuring correct cross-realm behavior for toJSON, etc.
-    ///
-    /// Per WebIDL §4.3, toJSON must create result objects in the method's realm:
-    /// ```javascript
-    /// const other = iframe.contentWindow;
-    /// const rect = new DOMRectReadOnly(1, 2, 3, 4);
-    /// const json = other.DOMRectReadOnly.prototype.toJSON.call(rect);
-    /// // json's prototype must be other.Object.prototype
-    /// ```
-    pub fn createObject(self: *const Self) ?*anyopaque {
-        const v8 = @import("v8");
-        return @ptrCast(v8.realm_v8.createObjectInRealm(self));
-    }
-
-    /// Create an array [] in this realm
-    ///
-    /// The array's prototype is THIS realm's Array.prototype.
-    pub fn createArray(self: *const Self) ?*anyopaque {
-        return createArrayWithLength(self, 0);
-    }
-
-    /// Create an array with specified length in this realm
-    ///
-    /// The array's prototype is THIS realm's Array.prototype.
-    pub fn createArrayWithLength(self: *const Self, length: u32) ?*anyopaque {
-        const v8 = @import("v8");
-        return @ptrCast(v8.realm_v8.createArrayInRealm(self, length));
-    }
-
-    /// Populate this realm's intrinsics from its V8 context
-    ///
-    /// This caches built-in constructors (TypeError, Object, Array, etc.)
-    /// for efficient access. Call this after the V8 context is created.
-    pub fn populateIntrinsics(self: *Self) bool {
-        const v8 = @import("v8");
-        return v8.realm_v8.populateIntrinsics(self);
     }
 };
 

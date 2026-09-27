@@ -17,7 +17,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const v8_engine = @import("v8");
+const engine = @import("engine");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const MutationObserver = interfaces.MutationObserver;
 
@@ -41,12 +41,9 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// Callback invoked when mutations are observed
-    /// Uses V8 Global handle to persist across HandleScope boundaries
-    callback: v8_engine.OptionalGlobalHandle = null,
-
-    /// V8 isolate for Global handle operations
-    isolate: ?*v8_engine.ffi.Isolate = null,
+    /// The observer's callback, a MutationCallback value: OWNED, released in
+    /// deinit.
+    callback: ?engine.CallbackFunction = null,
 
     /// The nodes this observer is registered on - "a list of weak references
     /// to nodes". A node going away removes itself (through
@@ -77,7 +74,6 @@ pub const InternalState = struct {
         return .{
             .allocator = undefined,
             .callback = null,
-            .isolate = null,
             .node_list = .empty,
             .record_queue = .empty,
         };
@@ -87,7 +83,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .callback = null,
-            .isolate = null,
             .node_list = .empty,
             .record_queue = .empty,
         };
@@ -130,8 +125,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Dispose Global handle for callback
-        v8_engine.disposeOptionalGlobalHandle(&self.callback);
+        if (self.callback) |callback| callback.release();
+        self.callback = null;
 
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
@@ -214,25 +209,11 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store the callback as a Global handle
-    // The callback parameter comes from the V8 conversion system and represents
-    // a V8 Local<Function> that needs to be persisted via Global handle.
+    // "Set this's callback to callback": the binding hands the converted
+    // function over, and the observer keeps it (OWNED) with its callback
+    // context.
     const internal = getInternal(instance);
-
-    // Get the current isolate for Global handle creation
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-    internal.isolate = isolate;
-
-    // Extract Global handle from the callback.
-    // The callback comes from V8 conversion which creates a Global handle and tags
-    // the pointer. We just need to untag it and wrap in GlobalHandle struct.
-    const callback_ptr: ?*const anyopaque = @ptrCast(callback);
-    if (callback_ptr) |ptr| {
-        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        }
-    }
+    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
 
     std.log.debug("[MutationObserver] call_constructor returning instance={*}", .{instance});
     return instance;
@@ -461,33 +442,16 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 2: Empty this's record queue.
     // (Already emptied by toOwnedSlice)
 
-    // Step 3: Return records - as a sequence<MutationRecord>, a JS array.
-    // Wrapping hands each record to V8, exactly as `invokeCallback` does for
-    // the callback's first argument; the wrapper cache owns them from here.
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+    // Step 3: Return records - as a sequence<MutationRecord>, an Array of the
+    // current realm. Wrapping hands each record to the engine, exactly as
+    // `invokeCallback` does for the callback's first argument; the wrapper
+    // cache owns them from here.
+    const array = engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, records) catch |err| {
         for (records) |record| runtime.Instance.deinit(record);
-        return error.InvalidStateError;
+        return err;
     };
-    const scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
-        for (records) |record| runtime.Instance.deinit(record);
-        return error.OutOfMemory;
-    };
-    defer v8_engine.ffi.v8_HandleScope_Dispose(scope);
-    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        for (records) |record| runtime.Instance.deinit(record);
-        return error.InvalidStateError;
-    };
-    defer v8_engine.ffi.v8_Context_Dispose(context);
-
-    // A Global<Array> the caller owns; the JSValue carries that ownership
-    // back to the binding, as URLSearchParams.getAll does.
-    const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(records.len));
-    const conv = v8_engine.conversions;
-    for (records, 0..) |record, idx| {
-        // The wrapper cache's own Global - borrowed; Set takes its reference.
-        _ = v8_engine.ffi.v8_Array_Set(array, context, @intCast(idx), conv.instanceToV8(isolate, record));
-    }
-    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    // OWNED: the binding takes it.
+    return array.take();
 }
 
 // ============================================================================
@@ -501,22 +465,6 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn enqueueRecord(instance: *runtime.Instance, record: *runtime.Instance) ImplError!void {
     const internal = getInternal(instance);
     internal.record_queue.append(internal.allocator, record) catch return error.OutOfMemory;
-}
-
-/// Get the callback for this observer
-///
-/// Used by the notify mutation observers algorithm.
-/// Returns a Local handle from the stored Global handle.
-pub fn getCallback(instance: *runtime.Instance) ?*anyopaque {
-    const internal = getInternal(instance);
-
-    // Retrieve Local handle from Global handle
-    if (internal.callback) |global| {
-        if (internal.isolate) |isolate| {
-            return global.asAnyopaque(isolate);
-        }
-    }
-    return null;
 }
 
 /// Get the record queue for this observer
@@ -546,88 +494,53 @@ pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Ins
     std.log.debug("[MutationObserver.invokeCallback] Called with {} records", .{records.len});
 
     const internal = getInternal(instance);
+    const realm = instance.ctx;
 
-    // Get the callback from internal state
-    const callback_global = internal.callback orelse {
-        // No callback - clean up records
-        std.log.debug("[MutationObserver.invokeCallback] No callback stored, cleaning up records", .{});
-        for (records) |record| {
-            runtime.Instance.deinit(record);
-        }
+    // No callback - clean up records.
+    const callback = internal.callback orelse {
+        for (records) |record| runtime.Instance.deinit(record);
         return;
     };
 
-    const isolate = internal.isolate orelse {
-        // No isolate - clean up records
-        for (records) |record| {
-            runtime.Instance.deinit(record);
-        }
-        return;
+    // The records as a sequence<MutationRecord>. Wrapping hands each to the
+    // wrapper cache, which owns them from here.
+    const sequence = engine.createSequenceOfPlatformObjects(realm, records) catch |err| {
+        for (records) |record| runtime.Instance.deinit(record);
+        return err;
     };
-
-    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        // No context - clean up records
-        for (records) |record| {
-            runtime.Instance.deinit(record);
-        }
-        return;
-    };
-    defer v8_engine.ffi.v8_Context_Dispose(context);
-
-    // Create a HandleScope for V8 operations - all Local handles must be within a scope
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
-        for (records) |record| {
-            runtime.Instance.deinit(record);
-        }
-        return;
-    };
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Create a V8 array for the mutation records
-    const records_array = v8_engine.ffi.v8_Array_New(isolate, @intCast(records.len));
-
-    // Populate the array with wrapped MutationRecord objects
-    const conv = v8_engine.conversions;
-    for (records, 0..) |record, idx| {
-        const wrapped = conv.instanceToV8(isolate, record);
-        _ = v8_engine.ffi.v8_Array_Set(records_array, context, @intCast(idx), wrapped);
-    }
-
-    // Wrap the observer instance as V8 object for the second argument
-    const observer_v8 = conv.instanceToV8(isolate, instance);
+    defer sequence.release();
 
     // Step 6.4: "invoke mo's callback with « records, mo », "report", and
     // mo" - the observer is the callback this value as well as its second
-    // argument. Both handles are Globals: the array is ours, the observer's
-    // is the wrapper cache's, borrowed.
-    const global_args = [2]*v8_engine.ffi.Value{ @ptrCast(records_array), observer_v8 };
-    defer v8_engine.ffi.v8_Global_Dispose(@ptrCast(records_array));
-
-    var threw = false;
-    const result = v8_engine.ffi.v8_Function_CallCatching(
-        context,
-        @ptrCast(callback_global.ptr),
-        observer_v8,
-        2,
-        &global_args,
-        &threw,
-    );
-    const value = result orelse return;
-    defer v8_engine.ffi.v8_Global_Dispose(value);
-
-    // "report": an exception the callback throws is reported for the global
-    // of the realm it was created in, and does not stop the other observers.
-    if (threw) {
-        const report = @import("html").report_exception;
-        const creation = v8_engine.ffi.v8_Function_GetCreationContext(@ptrCast(callback_global.ptr));
-        defer if (creation) |c| v8_engine.ffi.v8_Context_Dispose(c);
-        const global = (if (creation) |c| report.globalForContext(c) else null) orelse
-            report.globalForContext(context) orelse return;
-        _ = report.reportException(global, value, .{});
+    // argument. What the callback throws is reported for the global of its
+    // associated realm, and does not stop the other observers.
+    const observer: runtime.JSValue = .{ .instance = instance };
+    const completion = try engine.invokeCallbackFunction(realm, &callback, .{ .value = observer }, &.{ sequence.value, observer }, .{
+        .report = .{ .report = reportException, .host = realm },
+    });
+    switch (completion) {
+        inline else => |value| value.release(),
     }
+}
 
-    // Note: Records are V8 garbage collected after wrapping, we don't need to free them
-    // The V8 wrapper cache maintains the instance lifetime
+/// HTML "report an exception" for the global of the realm the engine names -
+/// the callback's associated realm - or else the observer's (`host`).
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const observer_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse observer_realm;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    // Step 2's error information is the engine's, extracted where the
+    // exception was thrown: a thrown value that is not an Error carries no
+    // position of its own to extract it from again.
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 // ============================================================================
@@ -639,55 +552,39 @@ const MutationMicrotaskContext = struct {
     allocator: std.mem.Allocator,
 };
 
-/// Microtask trampoline callback that invokes notifyMutationObservers
-/// This is called by V8's microtask queue with C calling convention.
-fn mutationMicrotaskCallback(data: ?*anyopaque) callconv(.c) void {
-    std.log.debug("[MutationObserver] mutationMicrotaskCallback called", .{});
-
-    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse {
-        std.log.err("[MutationObserver] mutationMicrotaskCallback: null data!", .{});
-        return;
-    }));
+/// The microtask's steps: notify mutation observers.
+fn mutationMicrotask(data: ?*anyopaque) void {
+    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse return));
     const allocator = ctx.allocator;
 
     // Free the context first (we've captured what we need)
     allocator.destroy(ctx);
 
-    // Now invoke the notify algorithm from the dom module
-    std.log.debug("[MutationObserver] Calling notifyMutationObservers", .{});
     const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
     mutation_observer_algorithms.notifyMutationObservers(allocator) catch |err| {
         std.log.err("MutationObserver: notifyMutationObservers failed: {}", .{err});
     };
-    std.log.debug("[MutationObserver] notifyMutationObservers returned", .{});
 }
 
-/// Queue a microtask to notify mutation observers
-///
-/// This is called by mutation_observer_algorithms.queueMutationObserverMicrotask
-/// to properly queue the notification as a V8 microtask.
+/// DOM "queue a mutation observer microtask", step 3: queue a microtask to
+/// notify mutation observers, in the agent of `realm` - the surrounding
+/// agent, which the caller names by a realm of it.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
-pub fn queueNotifyMicrotask(allocator: std.mem.Allocator) !void {
-    std.log.debug("[MutationObserver] queueNotifyMicrotask called", .{});
-
-    // Get the current V8 isolate
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        std.log.debug("[MutationObserver] No V8 isolate, calling notifyMutationObservers directly", .{});
-        // No V8 isolate available - call notifyMutationObservers directly
-        // This handles edge cases like unit tests without V8
-        const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
-        try mutation_observer_algorithms.notifyMutationObservers(allocator);
-        return;
-    };
-
-    // Allocate context for the microtask
+pub fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !void {
     const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
     ctx.* = .{ .allocator = allocator };
 
-    // Queue the microtask with V8
-    std.log.debug("[MutationObserver] Queuing microtask with V8", .{});
-    const callback_fn: ?*const anyopaque = @ptrCast(&mutationMicrotaskCallback);
-    v8_engine.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
-    std.log.debug("[MutationObserver] Microtask queued successfully", .{});
+    engine.queueMicrotask(realm, mutationMicrotask, ctx) catch |err| {
+        allocator.destroy(ctx);
+        switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // No engine behind the realm (unit tests of the DOM alone), so
+            // no microtask queue: notify now.
+            else => {
+                const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
+                try mutation_observer_algorithms.notifyMutationObservers(allocator);
+            },
+        }
+    };
 }

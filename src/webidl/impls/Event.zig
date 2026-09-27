@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -12,7 +13,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const v8_engine = @import("v8");
 const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Event = interfaces.Event;
@@ -377,6 +377,65 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
     state.own.cancelable = cancelable;
 }
 
+/// DOM "inner event creation steps", for the constructor of Event or of an
+/// interface that inherits from it, followed by that constructor's step 2
+/// ("initialize event's type attribute to type"). `instance` is the new object
+/// (step 1: its interface's constructor made it); an inheriting interface runs
+/// its own event constructing steps - its own dictionary members - after
+/// this. `dictionary` is the constructor's dictionary's EventInit part
+/// (BORROWED); `type` is copied.
+///
+/// Spec: https://dom.spec.whatwg.org/#inner-event-creation-steps
+pub fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMString, dictionary: dictionaries.EventInit) !void {
+    // An inheriting interface's state contains Event's; find it by offset.
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
+
+    // The event's own copy of the type first: with the Event internal state
+    // below, the only fallible steps - nothing is left half-initialized.
+    var next_type = try @"type".clone(allocator);
+    errdefer next_type.deinit(allocator);
+    const internal = state.own._internal orelse blk: {
+        const ArenaAllocator = @import("runtime").ArenaAllocator;
+        const created = try ArenaAllocator.get().create(InternalState);
+        created.* = InternalState.init(allocator);
+        state.own._internal = created;
+        break :blk created;
+    };
+
+    // 2. Set event's initialized flag.
+    internal.initialized_flag = true;
+
+    // 3. Initialize event's timeStamp attribute to the relative high
+    //    resolution coarse time given time (now) and event's relevant global
+    //    object.
+    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+
+    // 4. For each member -> value of dictionary: if event has an attribute
+    //    whose identifier is member, initialize that attribute to value.
+    //    EventInit's members, each false by default.
+    state.own.bubbles = dictionary.bubbles orelse false;
+    state.own.cancelable = dictionary.cancelable orelse false;
+    state.own.composed = dictionary.composed orelse false;
+
+    // The attributes no member names keep their initial values.
+    state.own.target = null;
+    state.own.srcElement = null;
+    state.own.currentTarget = null;
+    state.own.eventPhase = Event.get_NONE();
+    state.own.cancelBubble = false;
+    state.own.returnValue = true;
+    state.own.defaultPrevented = false;
+    state.own.isTrusted = false;
+
+    // 5. Run the event constructing steps: Event has none; an inheriting
+    //    interface runs its own when this returns.
+
+    // The constructor's step 2: initialize event's type attribute to type.
+    state.own.type.deinit(allocator);
+    state.own.type = next_type;
+}
+
 /// Operation: initEvent (legacy)
 /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
 /// The initEvent(type, bubbles, cancelable) method steps are:
@@ -413,9 +472,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Step 3: If path is empty, then return composedPath (empty array)
     if (path.len == 0) {
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-        const v8_array = v8_engine.createEmptyArray(isolate);
-        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+        return sequenceOfEventTargets(instance, &.{});
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
@@ -424,16 +481,9 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
         // Path is not empty but currentTarget is null - shouldn't happen during dispatch
-        // Return the empty composedPath as a V8 array
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
-        const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
-        defer v8_engine.ffi.v8_Context_Dispose(v8_context);
-        const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
-            composed_path.deinit();
-            return error.NotImplemented;
-        };
-        composed_path.deinit();
-        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+        // Return the empty composedPath
+        defer composed_path.deinit();
+        return sequenceOfEventTargets(instance, composed_path.toSlice());
     }
 
     // Step 6: Append currentTarget to composedPath
@@ -544,25 +594,19 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         }
     }
 
-    // Step 17: Return composedPath as a V8 Array of EventTarget instances
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-    defer v8_engine.ffi.v8_Context_Dispose(v8_context);
+    // Step 17: Return composedPath, as a sequence<EventTarget>. The array
+    // holds its own references to the targets' wrappers; the list is ours.
+    defer composed_path.deinit();
+    return sequenceOfEventTargets(instance, composed_path.toSlice());
+}
 
-    const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
-        composed_path.deinit();
-        return error.NotImplemented;
-    };
-
-    // The V8 array now owns references to the instances; clean up our temporary list
-    composed_path.deinit();
-    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
+/// `targets` converted to a JS value as composedPath's sequence<EventTarget>:
+/// a new array of the current realm - the operation's, where WebIDL converts
+/// its result - holding each target's wrapper, which is made in the target's
+/// own relevant realm. OWNED: the binding takes it.
+fn sequenceOfEventTargets(instance: *runtime.Instance, targets: []const *runtime.Instance) !runtime.JSValue {
+    const sequence = try engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, targets);
+    return sequence.take();
 }
 
 // ============================================================================
