@@ -35,7 +35,9 @@ const clock = @import("clock");
 const fetch_mod = @import("fetch");
 
 const same_object = @import("same_object.zig");
+const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
+const infra = @import("infra");
 
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
@@ -839,23 +841,32 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     const xhr_state = getXHRState(instance);
     const internal = getInternal(instance);
 
-    // Step 5: If one or more event listeners are registered on this's upload
-    // object, then set this's upload listener flag.
-    xhr_state.upload_listener_flag = uploadHasListeners(instance);
-
-    // Own the body for the life of the request: the conversion layer frees
-    // its copy when this returns, and an asynchronous request's fetch - a
-    // redirect re-sends it - runs long after. The body is THIS send()'s: a
-    // handler that runs during it can send again, with a body of its own.
+    // The argument, converted to (Document or XMLHttpRequestBodyInit)? as
+    // the binding would before the method's steps run - its ToString can run
+    // script - and, but for a Document, extracted. Owned for the life of the
+    // request: an asynchronous request's fetch - a redirect re-sends it -
+    // runs long after, and a handler that runs during this send() can send
+    // again, with a body of its own.
     const allocator = internal.allocator;
-    const owned_body: ?[]u8 = try extractBodyBytes(instance, body, allocator);
-    var body_taken = false;
-    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
+    var send_body = try SendBody.convert(instance, body, allocator);
+    defer if (send_body) |*b| b.deinit();
 
     installEventSink(instance);
 
-    // Steps 1-10, inline and synchronously observable.
+    // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
+    // and HEAD) gives back null.
+    const owned_body: ?[]u8 = if (send_body) |*b| b.takeBytes() else null;
+    var body_taken = false;
+    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
     const effective_body = try send_algo.sendPrologue(xhr_state, owned_body);
+
+    // Step 4: the request body's Content-Type, in this's author request
+    // headers.
+    if (effective_body != null) if (send_body) |*b| try b.setContentType(xhr_state);
+
+    // Step 5: If one or more event listeners are registered on this's upload
+    // object, then set this's upload listener flag.
+    xhr_state.upload_listener_flag = uploadHasListeners(instance);
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
@@ -1247,40 +1258,109 @@ fn uploadHasListeners(instance: *runtime.Instance) bool {
     return false;
 }
 
-/// The bytes of the `body` argument, OWNED by `allocator`.
-///
-/// Spec step 4 covers Document, Blob, BufferSource, FormData, URLSearchParams
-/// and USVString. Only the string form is handled here; the rest need the body
-/// extraction algorithm, and returning null for them sends no body rather than
-/// sending the wrong one.
-fn extractBodyBytes(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue), allocator: std.mem.Allocator) error{OutOfMemory}!?[]u8 {
-    if (!body.wasPassed()) return null;
-    const value = body.value orelse return null;
+/// send()'s `body`: the argument converted to (Document or
+/// XMLHttpRequestBodyInit)? (WebIDL 3.2.24) and, but for a Document, safely
+/// extracted (Fetch): the request body's bytes and bodyWithType's type.
+const SendBody = struct {
+    allocator: std.mem.Allocator,
+    kind: Kind,
+    /// The request body, owned until taken.
+    bytes: ?[]u8,
+    /// extractedContentType, owned, or null.
+    content_type: ?[]u8 = null,
 
-    return switch (value) {
-        .undefined, .null => null,
-        .string => |sv| if (sv.data.len > 0) try allocator.dupe(u8, sv.data) else null,
-        .handle => blk: {
-            // A JS string arrives as a handle when it was not converted up
-            // front. Anything else is a body type we cannot extract yet.
-            if (engine.typeOf(instance.ctx, value) != .string) {
-                log.debug("send() body is a type whose extraction is not implemented", .{});
-                break :blk null;
-            }
-            // XMLHttpRequestBodyInit's string member is a USVString.
-            const text = engine.convertToUSVString(instance.ctx, value, allocator) catch |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => break :blk null,
-            };
-            if (text.len == 0) {
-                allocator.free(text);
-                break :blk null;
-            }
-            break :blk text;
-        },
-        else => null,
-    };
-}
+    const Kind = enum { usvstring, other };
+
+    fn deinit(self: *SendBody) void {
+        if (self.bytes) |b| self.allocator.free(b);
+        if (self.content_type) |t| self.allocator.free(t);
+    }
+
+    /// The request body, which is the caller's from here.
+    fn takeBytes(self: *SendBody) []u8 {
+        const b = self.bytes.?;
+        self.bytes = null;
+        return b;
+    }
+
+    /// Null for a null (or undefined) body, and - for now - a Document.
+    fn convert(instance: *runtime.Instance, argument: webidl.Opt(?runtime.JSValue), allocator: std.mem.Allocator) !?SendBody {
+        if (!argument.wasPassed()) return null;
+        const value = argument.value orelse return null;
+        const realm = instance.ctx;
+        switch (value) {
+            .undefined, .null => return null,
+            // A string primitive, as the binding converted it: WTF-8, a lone
+            // surrogate in its three-byte form. USVString makes each one
+            // U+FFFD.
+            .string => |text| {
+                const bytes = try allocator.dupe(u8, text.data);
+                infra.string.replaceLoneSurrogatesWtf8(bytes);
+                return try usvString(allocator, bytes);
+            },
+            .boolean, .number => return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator)),
+            .handle, .instance => {},
+        }
+        switch (engine.typeOf(realm, value)) {
+            .undefined, .null => return null,
+            else => {},
+        }
+        // A platform object of one of the union's interfaces is that member.
+        // Any other falls through to the string it converts to.
+        if (engine.convertToPlatformObject(realm, value)) |object| {
+            // TODO: a Document's request body is the document serialized,
+            // converted and UTF-8 encoded (step 4.2), and its Content-Type
+            // text/html or application/xml (4.6); until its serializer is
+            // reachable here, it sends no body, as before.
+            if (object.stateAs(interfaces.Document.State) != null) return null;
+            if (object.stateAs(interfaces.Blob.State) != null) return try extracted(allocator, .{ .blob = object });
+            if (object.stateAs(interfaces.FormData.State) != null) return try extracted(allocator, .{ .form_data = object });
+            if (object.stateAs(interfaces.URLSearchParams.State) != null) return try extracted(allocator, .{ .urlsearch_params = object });
+        }
+        // BufferSource: a copy of the bytes held by it; no type.
+        if (try engine.getCopyOfBufferSourceBytes(realm, value, allocator)) |bytes| {
+            return .{ .allocator = allocator, .kind = .other, .bytes = bytes };
+        }
+        // USVString: ToString, then each lone surrogate U+FFFD.
+        return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator));
+    }
+
+    /// A USVString body: its UTF-8 encoding, and text/plain;charset=UTF-8.
+    /// Takes `text`.
+    fn usvString(allocator: std.mem.Allocator, text: []u8) !SendBody {
+        errdefer allocator.free(text);
+        return .{
+            .allocator = allocator,
+            .kind = .usvstring,
+            .bytes = text,
+            .content_type = try allocator.dupe(u8, "text/plain;charset=UTF-8"),
+        };
+    }
+
+    /// Fetch "safely extract" a Blob, FormData or URLSearchParams body.
+    fn extracted(allocator: std.mem.Allocator, object: typedefs.XMLHttpRequestBodyInit) !SendBody {
+        var result = fetch_body.extract(allocator, .{ .xmlhttp_request_body_init = object }, false) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.TypeError => error.TypeError,
+        };
+        defer result.deinit();
+        const body = result.body orelse return error.TypeError;
+        var self: SendBody = .{ .allocator = allocator, .kind = .other, .bytes = try allocator.dupe(u8, body.getBytes()) };
+        self.content_type = result.content_type;
+        result.content_type = null;
+        return self;
+    }
+
+    /// send() steps 4.4-4.6: the Content-Type of this body, in `state`'s
+    /// author request headers.
+    fn setContentType(self: *const SendBody, state: *XMLHttpRequestState) !void {
+        const kind: send_algo.BodyKind = switch (self.kind) {
+            .usvstring => .usvstring,
+            .other => .other,
+        };
+        try send_algo.setRequestContentType(self.allocator, state, kind, self.content_type);
+    }
+};
 
 /// Operation: setRequestHeader
 ///

@@ -421,12 +421,27 @@ pub const LibcurlBackend = struct {
 
         // Headers (slist is stored in ctx and freed via slist_free_all in deinit)
         // Note: curl_slist_append copies the strings, so we can free header_z after append
+        //
+        // The request's header list is the whole of what is sent: libcurl
+        // adds headers of its own to a request with a body - a Content-Type
+        // of application/x-www-form-urlencoded when none is given, and
+        // `Expect: 100-continue` for a large one - and a header named with
+        // nothing after its colon is how it is told not to. A header whose
+        // value is empty is sent as "Name;", curl's form for an empty value:
+        // "Name:" would remove it instead.
+        var has_content_type = false;
         for (request.headers) |header| {
-            const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
-            defer ctx.allocator.free(header_str);
-            const header_z = try ctx.allocator.dupeZ(u8, header_str);
+            if (std.ascii.eqlIgnoreCase(header.name, "content-type")) has_content_type = true;
+            const header_z = if (header.value.len == 0)
+                try std.fmt.allocPrintSentinel(ctx.allocator, "{s};", .{header.name}, 0)
+            else
+                try std.fmt.allocPrintSentinel(ctx.allocator, "{s}: {s}", .{ header.name, header.value }, 0);
             defer ctx.allocator.free(header_z);
             ctx.header_list = curl.slist_append(ctx.header_list, header_z.ptr);
+        }
+        if (request.body != null) {
+            if (!has_content_type) ctx.header_list = curl.slist_append(ctx.header_list, "Content-Type:");
+            ctx.header_list = curl.slist_append(ctx.header_list, "Expect:");
         }
         if (ctx.header_list != null) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, ctx.header_list);
