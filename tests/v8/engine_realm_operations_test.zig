@@ -253,6 +253,24 @@ test "a Uint8Array leaves no handle behind but its own" {
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= before);
 }
 
+test "defining an interface object on the global leaves no handle behind" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    const context = context_once.?;
+    // The first definition makes the template and the interface object, which
+    // the isolate and the context keep; every later one redefines the same
+    // property to the same function.
+    v8.interface_bindings.Event.registerGlobal(isolate, context, "Event");
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..32) |_| v8.interface_bindings.Event.registerGlobal(isolate, context, "Event");
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after > before) {
+        std.debug.print("global handles {d} -> {d} bytes over 32 registerGlobal calls\n", .{ before, after });
+        return error.HandlesLeaked;
+    }
+    try std.testing.expectEqual(@as(i32, 1), try globalInt("typeof Event === 'function' ? 1 : 0"));
+}
+
 test "a context keeps its registry key across compacting garbage collections" {
     _ = try realm();
     const isolate = isolate_once.?;
