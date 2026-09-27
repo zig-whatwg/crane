@@ -933,6 +933,9 @@ pub const Context = struct {
         // methods, bound by the engine over this file's steps - on this window
         // and on every frame's.
         try engine.installWindowOperations(realm, &window_operations);
+        // A removed frame's document takes its window's timers and animation
+        // frames with it, while its realm lives on (HTMLIFrameElement asks).
+        @import("dom").window_documents.install(.{ .destroyed = clearWindowState });
 
         // NOTE: console object is registered via WebIDL namespace binding in snapshot
         // (see bindings.zig initializeNamespaces -> Console.registerGlobal)

@@ -37,10 +37,6 @@ const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
 
-// V8 imports for cross-realm support (Phase 3)
-const v8 = @import("v8");
-const context_manager = v8.context_manager;
-
 // DOM imports for post-connection steps callback
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
@@ -234,67 +230,44 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // Content Accessors (§4.8.5)
 // ============================================================================
 
-/// IFrameIntegration's `retired_realm_destroy`: a context retired when its
-/// iframe was inserted again is destroyed with the integration.
+/// IFrameIntegration's `retired_realm_destroy`: a realm retired when its
+/// iframe was inserted again, or when a navigation gave the navigable a new
+/// Window, ends with the integration. A retired realm whose WindowProxy went
+/// on is severed from its Window by the engine (destroyWindowRealm), so a
+/// function of it that script still holds finds no Window rather than a
+/// freed one; the host keeps no handle of its own (`global` is unused).
 fn destroyRetiredRealm(data: *anyopaque, global: ?*anyopaque, allocator: std.mem.Allocator) void {
-    const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
-    if (global) |handle| {
-        const value: *v8.ffi.Value = @ptrCast(@alignCast(handle));
-        // Weak (see replaceRealm): empty once V8 has collected the global,
-        // and then nothing can run in it and there is nothing to sever.
-        if (!v8.ffi.v8_Global_IsEmpty(value)) {
-            if (entry.window_instance) |window| {
-                if (v8.helpers.asObject(value)) |global_object| severWindow(global_object, window);
-            }
-        }
-        v8.ffi.v8_Global_Dispose(value);
-    }
-    context_manager.destroyChildContext(entry, allocator);
-}
-
-/// A retired realm's global object was collected: its weak handle is empty
-/// now, which is all destroyRetiredRealm needs to know.
-fn retiredGlobalCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
-
-/// Clear `window` from a retired realm's global object and the prototype
-/// objects behind it (the placeholder, WindowProperties) before the Window is
-/// freed. destroyChildContext does this through the context's global proxy,
-/// which a realm whose proxy went on to a new Window no longer reaches -
-/// and script elsewhere may still hold a function of the old realm, whose
-/// global lookups land on this object.
-fn severWindow(global_object: *v8.ffi.Object, window: *runtime.Instance) void {
-    clearWindowField(global_object, window);
-    var links: [3]?*v8.ffi.Value = .{ null, null, null };
-    defer for (links) |link| {
-        if (link) |value| v8.ffi.v8_Value_Dispose(value);
-    };
-    var current: *v8.ffi.Object = global_object;
-    for (&links) |*slot| {
-        const proto_val = v8.ffi.v8_Object_GetPrototypeV2(current) orelse return;
-        slot.* = proto_val;
-        const proto = v8.helpers.asObject(proto_val) orelse return;
-        clearWindowField(proto, window);
-        current = proto;
-    }
-}
-
-fn clearWindowField(object: *v8.ffi.Object, window: *runtime.Instance) void {
-    if (v8.ffi.v8_Object_InternalFieldCount(object) < 1) return;
-    const ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return;
-    if (@intFromPtr(ptr) != @intFromPtr(window)) return;
-    v8.ffi.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+    _ = global;
+    _ = allocator;
+    const realm: runtime.Context = @ptrCast(@alignCast(data));
+    engine.destroyWindowRealm(realm);
 }
 
 /// Cleanup callback for iframe context
-/// Called when the iframe is removed from the document to clean up V8 resources
+/// Called when the iframe is removed from the document: the navigable's realm
+/// ends (engine.destroyWindowRealm, which ends its frames' realms first).
 fn iframeContextCleanup(integration: *IFrameIntegration) void {
     if (integration.context_cleanup_data) |data| {
-        const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
-        // Clear the cleanup data BEFORE calling destroyChildContext to prevent
-        // any re-entrant calls from trying to use this stale pointer.
-        // destroyChildContext() has its own guards against double-cleanup.
+        // Cleared first: nothing re-entered below may reach a realm that is
+        // ending. Ending one twice finds nothing the second time.
         integration.context_cleanup_data = null;
-        context_manager.destroyChildContext(entry, integration.allocator);
+        engine.destroyWindowRealm(@ptrCast(@alignCast(data)));
+    }
+}
+
+/// HTML "destroy a child navigable", for the documents: the active
+/// documents of `bc`'s navigable and of every navigable inside it are
+/// destroyed, so their windows' timers and animation frames end
+/// (dom.window_documents) - though their realms live on for as long as
+/// script holds the windows.
+fn destroyWindowDocuments(bc: *html_core.BrowsingContext) void {
+    var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
+    defer tree.deinit(std.heap.page_allocator);
+    tree.append(std.heap.page_allocator, bc) catch return;
+    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    for (tree.items) |navigable| {
+        const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
+        dom_module.window_documents.destroyed(window.ctx);
     }
 }
 
@@ -1272,9 +1245,7 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
             if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
         }
     }
-    if (integration.engine_context) |engine_ctx| {
-        context_manager.cleanUpChildWindows(@ptrCast(@alignCast(engine_ctx)));
-    }
+    if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
 }
 
 const DocumentEntry = struct {
@@ -2051,28 +2022,16 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 /// DOMParser has no navigable to be the parent - or creation failed.
 fn createChildNavigable(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return false;
     const NodeImpl = @import("Node.zig");
     const DocumentImpl = @import("Document.zig");
 
     // The parent is the window of the element's node document - for a frame
-    // nested in another frame's document, that frame's window.
+    // nested in another frame's document, that frame's window - and the
+    // parent realm is that window's.
     const owner_doc = NodeImpl.getOwnerDocument(instance) orelse return false;
     const parent_window: *runtime.Instance = (DocumentImpl.get_defaultView(owner_doc) catch null) orelse return false;
     const WindowImpl = @import("Window.zig");
     const parent_window_internal = WindowImpl.getInternal(parent_window) orelse return false;
-    // The parent's context: createChildContext finds its entry by it and
-    // copies its security token. A window whose realm was never recorded
-    // falls back to the current context, which is what this always used.
-    var owned_ctx: ?*v8.ffi.Context = null;
-    defer if (owned_ctx) |c| v8.ffi.v8_Context_Dispose(c);
-    const parent_v8_ctx: *v8.ffi.Context = blk: {
-        if (parent_window.ctx.realm) |realm| {
-            if (realm.getV8Context()) |c| break :blk @ptrCast(@alignCast(c));
-        }
-        owned_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return false;
-        break :blk owned_ctx.?;
-    };
 
     // The container document's origin, for same-origin checks on
     // contentDocument. The Window stores its origin as a string (e.g.,
@@ -2106,8 +2065,7 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
     // whose creator is the element's node document.
     _ = attachNavigableContext(
         internal.integration,
-        parent_v8_ctx,
-        isolate,
+        parent_window.ctx,
         existing_bc,
         if (use_opaque_origin) null else parent_origin_str,
         NodeImpl.getOwnerDocument(instance),
@@ -2121,18 +2079,17 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
 
 /// A navigable's V8 context, Window and initial about:blank document, wired to
 /// `integration`: an iframe's content navigable, or window.open()'s auxiliary
-/// one. The Window's origin is `origin`; null leaves it opaque. The context is
-/// a child of `parent_v8_ctx`, whose teardown takes it down.
+/// one. The Window's origin is `origin`; null leaves it opaque. The realm's
+/// parent is `parent`, whose end ends it.
 fn attachNavigableContext(
     integration: *IFrameIntegration,
-    parent_v8_ctx: *v8.ffi.Context,
-    isolate: *v8.ffi.Isolate,
+    parent: runtime.Context,
     browsing_context: *html_core.BrowsingContext,
     origin: ?[]const u8,
     creator: ?*runtime.Instance,
     allocator: std.mem.Allocator,
-) ?*context_manager.ContextEntry {
-    const entry = attachRealm(integration, parent_v8_ctx, isolate, browsing_context, origin, null, allocator) orelse return null;
+) ?runtime.Context {
+    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, allocator) orelse return null;
 
     // "Create a new browsing context and document" step 4: "If creator is
     // non-null, then set creatorBaseURL to creator's document base URL" -
@@ -2151,58 +2108,59 @@ fn attachNavigableContext(
     // HTML "create a new browsing context and document" step 15: this
     // document "is initial about:blank"; step 21 completely finishes loading
     // it.
-    if (createDocumentForIframe(@ptrCast(&entry.runtime_ctx), browsing_context)) |document| {
+    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document| {
         dom_module.document_lifecycle.markInitialAboutBlank(@ptrCast(@alignCast(document)));
     }
-    return entry;
+    return realm;
 }
 
-/// A realm for `integration`'s navigable: a V8 context that is a child of
-/// `parent_v8_ctx`, with a Window bound to its global - built around
-/// `reuse_global_proxy`, the navigable's WindowProxy, when a navigation
-/// replaces the Window - wired to the integration and made the browsing
-/// context's active window. No document: the caller makes that.
+/// A realm for `integration`'s navigable (engine.createWindowRealm with
+/// `parent`), with a Window bound to its global - built around the
+/// navigable's WindowProxy when `global_this` names the realm a navigation
+/// replaces - wired to the integration and made the browsing context's
+/// active window. No document: the caller makes that.
 fn attachRealm(
     integration: *IFrameIntegration,
-    parent_v8_ctx: *v8.ffi.Context,
-    isolate: *v8.ffi.Isolate,
+    parent: runtime.Context,
     browsing_context: *html_core.BrowsingContext,
     origin: ?[]const u8,
-    reuse_global_proxy: ?*v8.ffi.Object,
+    global_this: engine.GlobalThis,
     allocator: std.mem.Allocator,
-) ?*context_manager.ContextEntry {
-    // Create child V8 context with all interface bindings AND Window instance
-    // The Window instance IS the V8 global, enabling cross-realm access
-    //
-    // Pass the iframe's browsing context so the Window uses it instead
-    // of creating a new one. This is crucial for frames[index] to work:
-    // - The browsing context was already added to the parent's children list
-    // - The Window needs to use that same browsing context, not create a duplicate
-    const entry = context_manager.createChildContext(.{
-        .parent_context = parent_v8_ctx,
-        .isolate = isolate,
-        .context_type = .window,
-        .inherit_event_loop = true,
-        .existing_browsing_context = @ptrCast(browsing_context),
-        .use_opaque_origin = origin == null,
-        .reuse_global_proxy = reuse_global_proxy,
-    }, allocator) catch return null;
+) ?runtime.Context {
+    // HTML "create a new realm", made while the parent's script may be
+    // running: its timers and event loop are the parent's.
+    var frame_window: FrameWindow = .{ .browsing_context = browsing_context, .allocator = allocator };
+    const agent = parent.agent orelse return null;
+    const realm = engine.createWindowRealm(&.{
+        .agent = agent,
+        .allocator = allocator,
+        .from_snapshot = true,
+        .timer = parent.timer,
+        .event_loop = parent.event_loop,
+        .origin = origin,
+        .global_this = global_this,
+        .parent = parent,
+        .create_global_object = FrameWindow.create,
+        .host = &frame_window,
+    }) catch |err| {
+        log.debug("a frame's realm was not made: {}", .{err});
+        return null;
+    };
+    const window_instance = frame_window.window.?;
 
     // The Window's origin defaults to "null" (opaque), and stays so when
     // `origin` is null. Kept on the integration for the Windows later
     // navigations make.
-    if (entry.window_instance) |window_inst| {
-        const WinImpl = @import("Window.zig");
-        if (origin) |o| WinImpl.setOrigin(window_inst, o) catch {};
-    }
+    const WinImpl = @import("Window.zig");
+    if (origin) |o| WinImpl.setOrigin(window_instance, o) catch {};
     integration.setWindowOrigin(origin) catch {};
 
-    // Store the realm context in the integration for cleanup on removal
+    // Store the realm in the integration for cleanup on removal
     integration.setRealmContext(
-        @ptrCast(entry.v8_ctx),
-        @ptrCast(entry.realm),
-        @ptrCast(entry),
-        @ptrCast(&entry.runtime_ctx),
+        realm.engine_ctx,
+        @ptrCast(realm),
+        @ptrCast(realm),
+        @ptrCast(realm),
         createDocumentForIframe,
         iframeContextCleanup,
         parseHtmlForIframe,
@@ -2212,43 +2170,53 @@ fn attachRealm(
     integration.execute_script_callback = &executeIframeScript;
     integration.update_location_callback = &updateIframeLocation;
     // Navigation: this engine's "navigate", the hook that ends a navigation
-    // in flight when the navigable goes, and how a retired context ends.
+    // in flight when the navigable goes, and how a retired realm ends.
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
     integration.retired_realm_destroy = &destroyRetiredRealm;
     integration.deinit_callback = &leaveLiveNavigables;
     joinLiveNavigables(integration);
 
-    // Set up Location's navigate callback for programmatic navigation
-    // (e.g., iframe.contentWindow.location = 'url' or location.assign())
-    if (entry.window_instance) |window_instance| {
-        const WinImpl = @import("Window.zig");
-        if (WinImpl.getInternal(window_instance)) |window_internal| {
-            if (window_internal.location) |location| {
-                const LocationImpl = @import("Location.zig");
-                // Set up bi-directional link: Location knows its Window
-                LocationImpl.setWindow(location, window_instance);
-                // Set up navigation callback with IFrameIntegration as context
-                LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
-            }
-        }
-    }
+    // The Window's Location (HTML 7.2.1 - made with the Window, in its
+    // realm), and its navigate callback for programmatic navigation
+    // (iframe.contentWindow.location = 'url', location.assign()).
+    if (interfaces.Window.get_location(window_instance)) |location| {
+        const LocationImpl = @import("Location.zig");
+        LocationImpl.setWindow(location, window_instance);
+        LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
+    } else |err| log.debug("a frame's Location was not made: {}", .{err});
 
-    // CRITICAL: Associate the iframe's browsing context with the Window.
-    // createChildContext ignores existing_browsing_context (disabled for crash investigation),
-    // so the Window was created with its own new browsing context. We need to:
-    // 1. Replace the Window's browsing context with the iframe's browsing context
-    // 2. Set this Window as the active window on the iframe's browsing context
-    // This is required for contentDocument to work - createDocumentForIframe calls
-    // browsing_ctx.getActiveWindow() which must return this Window.
-    if (entry.window_instance) |window_instance| {
-        // Use the already-imported WindowImpl from earlier in this function
-        const WinImpl = @import("Window.zig");
-        WinImpl.replaceBrowsingContext(window_instance, @ptrCast(browsing_context));
-    }
     integration.realm_for_document_callback = &realmForNewDocument;
-    return entry;
+    return realm;
 }
+
+/// HTML "create a new realm", the customization for the global object: a
+/// frame's Window, in its navigable's browsing context.
+const FrameWindow = struct {
+    browsing_context: *html_core.BrowsingContext,
+    allocator: std.mem.Allocator,
+    window: ?*runtime.Instance = null,
+
+    fn create(realm: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
+        const self: *FrameWindow = @ptrCast(@alignCast(host orelse return null));
+        const window = interfaces.Window.init(self.allocator, realm) catch |err| {
+            log.debug("a frame's Window was not made: {}", .{err});
+            return null;
+        };
+        // The navigable's browsing context, not the one Window.init made -
+        // frames[index] and contentDocument find the Window through it -
+        // and this Window its active window.
+        @import("Window.zig").replaceBrowsingContext(window, @ptrCast(self.browsing_context));
+        // The global the Window is bound to, for cross-realm access: a frame's
+        // Window reached from its parent is this global, not a new wrapper.
+        switch (global_this) {
+            .handle => |h| dom_module.window_globals.bind(window, h.ptr),
+            else => {},
+        }
+        self.window = window;
+        return window;
+    }
+};
 
 /// IFrameIntegration's `realm_for_document_callback`: HTML "create and
 /// initialize a Document object" steps 5-7, for a document of `new_origin`
@@ -2279,49 +2247,27 @@ fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Or
 /// cleared when its document unloaded. Code still running in it sees a
 /// detached global (V8 gives API callbacks a holder with no Window).
 fn replaceRealm(integration: *IFrameIntegration) bool {
-    const old_entry: *context_manager.ContextEntry = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
-    const parent_entry = old_entry.parent_entry orelse return false;
+    const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return false;
     const allocator = integration.allocator;
-
-    // The WindowProxy: the old context's global proxy.
-    const proxy = v8.ffi.v8_Context_Global(old_entry.v8_ctx) orelse return false;
-    defer v8.ffi.v8_Object_Dispose(proxy);
+    // The parent realm: the window of the navigable's parent, or - for a
+    // popup - the opener's realm the first realm was made under.
+    const parent: runtime.Context = blk: {
+        if (browsing_context.parent) |parent_bc| {
+            if (parent_bc.getActiveWindow()) |w| break :blk @as(*runtime.Instance, @ptrCast(@alignCast(w))).ctx;
+        }
+        break :blk @ptrCast(@alignCast(integration.parent_realm orelse return false));
+    };
 
     // The integration's origin string outlives this call's use of it below:
     // attachRealm records it again from a copy.
     const origin_copy: ?[]u8 = if (integration.window_origin) |o| allocator.dupe(u8, o) catch return false else null;
     defer if (origin_copy) |o| allocator.free(o);
 
-    // The old global object, behind the proxy until it is detached: the
-    // retired realm keeps it, to sever it from its Window when the Window
-    // goes (`destroyRetiredRealm`). V8's V1 GetPrototype on a global proxy
-    // answers the hidden global object.
-    //
-    // Held weakly: a strong handle would keep the old global - and its whole
-    // native context - alive after the context's entry has let it go, for as
-    // long as the integration lives, which on a page that leaks is forever.
-    const old_global: ?*v8.ffi.Value = blk: {
-        const value = v8.ffi.v8_Object_GetPrototype(proxy) orelse break :blk null;
-        if (v8.helpers.asObject(value) == null) {
-            v8.ffi.v8_Global_Dispose(value);
-            break :blk null;
-        }
-        v8.ffi.v8_Global_SetWeak(@ptrCast(value), null, &retiredGlobalCollected);
-        break :blk value;
-    };
-
-    // Detach, then retire the old context with its Window and documents.
-    v8.ffi.v8_Context_DetachGlobal(old_entry.v8_ctx);
-    integration.retireCurrentRealm(if (old_global) |g| @ptrCast(g) else null) catch {
-        if (old_global) |g| v8.ffi.v8_Global_Dispose(g);
-        return false;
-    };
-
-    const entry = attachRealm(integration, parent_entry.v8_ctx, isolate, browsing_context, origin_copy, proxy, allocator) orelse return false;
-    _ = entry;
-    return true;
+    // Retire the old realm with its Window and documents; the new one is
+    // built around its WindowProxy (engine: window_proxy_of detaches it).
+    integration.retireCurrentRealm(null) catch return false;
+    return attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) != null;
 }
 
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
@@ -2335,13 +2281,10 @@ fn createAuxiliaryNavigable(
     is_popup: bool,
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    // The opener is the entry global, whose script called open(): its
-    // context is the new context's parent, so the page that keeps the popup
+    // The opener is the entry global, whose script called open(): its realm
+    // is the new realm's parent, so the page that keeps the popup
     // (Window.auxiliary_navigables) is the page that takes it down.
-    const opener_v8_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
-    // Owned, and only read: createChildContext finds the parent entry by it.
-    defer v8.ffi.v8_Context_Dispose(opener_v8_ctx);
+    const opener_realm = engine.entryRealm() orelse return null;
 
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
@@ -2362,16 +2305,17 @@ fn createAuxiliaryNavigable(
     // "Create a new auxiliary browsing context and document": its creator is
     // the opener's active document.
     const creator: ?*runtime.Instance = if (opener_bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
-    const entry = attachNavigableContext(integration, opener_v8_ctx, isolate, browsing_context, opener_origin, creator, allocator) orelse {
+    integration.parent_realm = @ptrCast(opener_realm);
+    _ = attachNavigableContext(integration, opener_realm, browsing_context, opener_origin, creator, allocator) orelse {
         integration.deinit();
         allocator.destroy(integration);
         return null;
     };
-    const window = entry.window_instance orelse {
+    const window: *runtime.Instance = @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse {
         integration.deinit();
         allocator.destroy(integration);
         return null;
-    };
+    }));
     // "Create a new top-level traversable" steps 6-9: its first entry.
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
     return .{ .integration = @ptrCast(integration), .window = window };
@@ -3036,9 +2980,7 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
     // every frame in it: their windows' timers and animation frames end here,
     // though the contexts live on while script holds the windows.
     if (internal.integration.state != .discarded) {
-        if (internal.integration.engine_context) |engine_ctx| {
-            context_manager.cleanUpChildWindows(@ptrCast(@alignCast(engine_ctx)));
-        }
+        if (internal.integration.browsing_context) |bc| destroyWindowDocuments(bc);
     }
     // "Destroy a child navigable": its entries, and its descendants', leave
     // the traversable's history.
@@ -3195,7 +3137,21 @@ pub fn registerIframePostConnectionSteps() !void {
 /// Ensure the iframe post-connection steps are registered - once, when the
 /// first iframe element is made.
 pub fn ensurePostConnectionStepsRegistered() void {
+    // The WindowProxy's frames[index] finds a child browsing context before
+    // its container made the navigable's Window: the container makes it.
+    dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
     if (post_connection_steps_registered) return;
     registerIframePostConnectionSteps() catch return;
     post_connection_steps_registered = true;
+}
+
+/// dom.child_navigables: the Window of `bc_ptr`'s navigable (an html_core
+/// BrowsingContext), which its container - an iframe - makes now if it has
+/// not yet (get_contentWindow: "create a new child navigable").
+fn windowOfChildNavigable(bc_ptr: *anyopaque) ?*runtime.Instance {
+    const bc: *html_core.BrowsingContext = @ptrCast(@alignCast(bc_ptr));
+    const element: *runtime.Instance = @ptrCast(@alignCast(bc.container orelse return null));
+    if (element.stateAs(interfaces.HTMLIFrameElement.State) == null) return null;
+    const proxy = (get_contentWindow(element) catch return null) orelse return null;
+    return @ptrCast(proxy);
 }

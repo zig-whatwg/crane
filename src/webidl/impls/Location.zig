@@ -193,10 +193,14 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     std.log.debug("[Location.init] Created instance {*}", .{instance});
 
-    // Initialize internal state
+    // Initialize internal state. The Window is the relevant global object -
+    // the realm record's, when the realm is a Window's (a Location made after
+    // its Window, as Window.get_location makes one); setWindow says it
+    // otherwise.
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .allocator = allocator,
+        .window = relevantWindow(ctx),
     };
 
     // Initialize with default URL (about:blank)
@@ -212,6 +216,14 @@ pub fn init(
 
     std.log.debug("[Location.init] Instance {*} initialized with URL {*}", .{ instance, parsed_url });
     return instance;
+}
+
+/// `realm`'s global object, when it is a Window.
+fn relevantWindow(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
 }
 
 /// Update the Location's URL from a URL string

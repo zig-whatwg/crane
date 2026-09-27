@@ -391,6 +391,8 @@ pub fn init(
 ) !*runtime.Instance {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
+    // A frame's host binds the Window to the global its realm made here.
+    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
     // The WindowOrWorkerGlobalScope mixin reads a window's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
@@ -845,8 +847,13 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns the Location object for this window.
 pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Location instance lazily
-    return internal.location orelse error.NotImplemented;
+    if (internal.location) |location| return location;
+    // HTML 7.2.1: every Window has a Location object. One the host did not
+    // make with the Window is made now, in the Window's realm - its relevant
+    // global is this Window (Location.init reads it from the realm record).
+    const location = try interfaces.Location.init(internal.allocator, instance.ctx);
+    internal.location = location;
+    return location;
 }
 
 /// Getter for history

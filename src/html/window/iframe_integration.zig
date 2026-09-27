@@ -324,6 +324,12 @@ pub const IFrameIntegration = struct {
     /// `retireRealmContext`. Set with the context.
     retired_realm_destroy: ?*const fn (data: *anyopaque, global: ?*anyopaque, allocator: Allocator) void = null,
 
+    /// The realm an auxiliary navigable's first realm was made under - the
+    /// opener's (a runtime.Context, opaque here) - for the realms later
+    /// navigations make; an iframe's parent realm is its parent navigable's
+    /// window's. Not owned.
+    parent_realm: ?*anyopaque = null,
+
     /// Guard flag to prevent recursive cleanup during context teardown
     /// Set to true when cleanupRealmContext is entered
     cleanup_in_progress: bool,
