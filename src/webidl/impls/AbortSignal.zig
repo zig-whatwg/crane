@@ -13,6 +13,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const AbortSignal = interfaces.AbortSignal;
 const EventTargetImpl = @import("EventTarget.zig");
 
@@ -54,13 +55,8 @@ pub const InternalState = struct {
     /// only in a signal made before any reason existed.
     aborted: bool = false,
 
-    /// Abort reason: a value retained through the Engine table (OWNED,
-    /// released with `releaseValue`), or null for undefined.
-    reason: ?runtime.JSValue = null,
-
-    /// The Engine table of the signal's realm, which retained `reason` and
-    /// releases it.
-    engine: ?*const runtime.EngineInterface = null,
+    /// Abort reason: a value the signal holds (OWNED), or null for undefined.
+    reason: ?engine.Owned = null,
 
     /// DOM § 3.3 "abort algorithms": run, in order, when the signal is aborted.
     abort_algorithms: std.ArrayListUnmanaged(AbortAlgorithm) = .empty,
@@ -91,8 +87,7 @@ pub const InternalState = struct {
     fn releaseReason(self: *InternalState) void {
         const reason = self.reason orelse return;
         self.reason = null;
-        const engine = self.engine orelse return;
-        if (engine.releaseValue) |release_value| release_value(reason);
+        reason.release();
     }
 };
 
@@ -142,7 +137,7 @@ pub fn init(
     errdefer EventTargetImpl.deinit(instance);
 
     const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator, .engine = ctx.getEngine() };
+    internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
 
     // Nobody can hold a signal to add an algorithm to before one exists.
@@ -181,11 +176,8 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const reason = internal.reason orelse return runtime.JSValue.jsUndefined;
-    // The signal keeps its handle: the binding reads it and leaves it.
-    return switch (reason) {
-        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
-        else => reason,
-    };
+    // The signal keeps its hold: the binding reads it and leaves it.
+    return reason.borrow();
 }
 
 /// Getter for onabort
@@ -207,9 +199,7 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// WebIDL does (any iterable), and each item must be an AbortSignal.
 pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
     const allocator = instance.ctx.allocator;
-    const engine = try engineOf(instance.ctx);
-    const convert = engine.convertToSequenceOfPlatformObjects orelse return error.NotSupported;
-    const list = try convert(instance.ctx, signals, allocator);
+    const list = try engine.convertToSequenceOfPlatformObjects(instance.ctx, signals, allocator);
     defer allocator.free(list);
     for (list) |signal| {
         if (signal.stateAs(State) == null) return error.TypeError;
@@ -217,15 +207,9 @@ pub fn call_static_any(instance: *runtime.Instance, signals: runtime.JSValue) an
     return createDependentAbortSignal(instance.ctx, list);
 }
 
-/// The Engine table of `ctx`'s realm.
-fn engineOf(ctx: runtime.Context) error{NoEngine}!*const runtime.EngineInterface {
-    return ctx.getEngine() orelse error.NoEngine;
-}
-
 /// End the pending-activity hold `call_static_timeout` took on `signal`.
 fn releasePendingActivity(signal: *runtime.Instance) void {
-    const engine = signal.ctx.getEngine() orelse return;
-    if (engine.releasePlatformObject) |release_hold| release_hold(signal);
+    engine.releasePlatformObject(signal);
 }
 
 /// Static operation: abort(reason)
@@ -252,7 +236,7 @@ pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime
 /// The timer's steps hold the signal, so it lives until they run whatever
 /// script holds of it: a signal nobody references still aborts, and its
 /// `abort` listeners still hear it. Blink's AbortSignal says the same through
-/// HasPendingActivity(); here it is the Engine table's pending-activity hold,
+/// HasPendingActivity(); here it is the engine's pending-activity hold,
 /// taken with the timer and released when it fires or is cancelled. Without
 /// it a collection freed the signal, and the timer found it gone.
 pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
@@ -268,8 +252,7 @@ pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyer
     }
     internal.timeout = task;
     // Before the binding wraps it: the hold is taken by the wrapper.
-    const engine = try engineOf(signal.ctx);
-    if (engine.keepPlatformObjectAlive) |keep| keep(signal);
+    engine.keepPlatformObjectAlive(signal);
     return signal;
 }
 
@@ -292,18 +275,16 @@ const TimeoutTask = struct {
         // steps run as a task of the signal's realm, entered from the event
         // loop - a worker's realm with its own agent, and its task ended the
         // worker's way. A realm that has gone runs nothing.
-        const engine = engineOf(signal.ctx) catch return;
-        const run = engine.runTaskInRealm orelse return;
-        run(signal.ctx, abortTimedOut, signal) catch {};
+        engine.runTaskInRealm(signal.ctx, abortTimedOut, signal) catch {};
     }
 
     /// The task's steps: signal abort given signal and a new "TimeoutError"
     /// DOMException.
     fn abortTimedOut(data: ?*anyopaque) void {
         const signal: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
-        const reason = newDOMException(signal, "TimeoutError", "signal timed out") catch return;
-        defer release(signal.ctx, reason);
-        signalAbortWith(signal, reason);
+        const reason = engine.createDOMException(signal.ctx, "TimeoutError", "signal timed out") catch return;
+        defer reason.release();
+        signalAbortWith(signal, reason.value);
     }
 
     /// The signal is going: its timer must not fire into it, and nothing
@@ -321,9 +302,7 @@ const TimeoutTask = struct {
 pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     if (!internal.aborted) return;
-    const engine = try engineOf(instance.ctx);
-    const throw = engine.throwValue orelse return error.NotSupported;
-    try throw(instance.ctx, internal.reason orelse runtime.JSValue.jsUndefined);
+    try engine.throwValue(instance.ctx, if (internal.reason) |reason| reason.value else runtime.JSValue.jsUndefined);
     // In flight: the binding leaves it for the calling script.
     return error.ExceptionPending;
 }
@@ -332,31 +311,11 @@ pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
 // DOM § 3.3 algorithms other types reach (AbortController, Fetch, Streams)
 // ============================================================================
 
-/// A new "`name`" DOMException of `signal`'s realm. OWNED: `release` it.
-fn newDOMException(signal: *runtime.Instance, name: []const u8, message: []const u8) !runtime.JSValue {
-    const engine = try engineOf(signal.ctx);
-    const create = engine.createDOMException orelse return error.NotSupported;
-    return create(signal.ctx, name, message);
-}
-
-/// `value` held beyond this call, in `ctx`'s realm. OWNED: `release` it.
-fn retain(ctx: runtime.Context, value: runtime.JSValue) !runtime.JSValue {
-    const engine = try engineOf(ctx);
-    const keep = engine.retainValue orelse return error.NotSupported;
-    return keep(ctx, value);
-}
-
-/// Release a value `retain` or `newDOMException` made.
-fn release(ctx: runtime.Context, value: runtime.JSValue) void {
-    const engine = ctx.getEngine() orelse return;
-    if (engine.releaseValue) |release_value| release_value(value);
-}
-
-/// `reason` held by the signal, or a new `name` DOMException when it is
-/// undefined - an optional `any` argument not given. OWNED.
-fn reasonOrDefault(signal: *runtime.Instance, reason: runtime.JSValue, name: []const u8, message: []const u8) !runtime.JSValue {
-    if (!reason.isUndefined()) return retain(signal.ctx, reason);
-    return newDOMException(signal, name, message);
+/// `reason` held by the signal, or a new `name` DOMException of its realm
+/// when it is undefined - an optional `any` argument not given. OWNED.
+fn reasonOrDefault(signal: *runtime.Instance, reason: runtime.JSValue, name: []const u8, message: []const u8) !engine.Owned {
+    if (!reason.isUndefined()) return engine.retainValue(signal.ctx, reason);
+    return engine.createDOMException(signal.ctx, name, message);
 }
 
 /// DOM § 3.3 "signal abort", given an optional reason (undefined: not
@@ -369,8 +328,8 @@ pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplErr
     // Step 2: Set signal's abort reason to reason if it is given; otherwise
     // to a new "AbortError" DOMException.
     const owned = reasonOrDefault(instance, reason, "AbortError", "signal is aborted without reason") catch return error.OutOfMemory;
-    defer release(instance.ctx, owned);
-    signalAbortWith(instance, owned);
+    defer owned.release();
+    signalAbortWith(instance, owned.value);
 }
 
 /// "Signal abort" steps 2-6 with the reason decided. `reason` is borrowed;
@@ -409,7 +368,7 @@ fn signalAbortWith(signal: *runtime.Instance, reason: runtime.JSValue) void {
 fn setReason(signal: *runtime.Instance, internal: *InternalState, reason: runtime.JSValue) void {
     internal.aborted = true;
     internal.releaseReason();
-    internal.reason = retain(signal.ctx, reason) catch null;
+    internal.reason = engine.retainValue(signal.ctx, reason) catch null;
 }
 
 /// DOM § 3.3 "run the abort steps" for `signal`.
@@ -449,7 +408,7 @@ pub fn createDependentAbortSignal(ctx: runtime.Context, signals: []const *runtim
         const internal = getInternal(signal) orelse continue;
         if (!internal.aborted) continue;
         result_internal.aborted = true;
-        if (internal.reason) |r| result_internal.reason = retain(ctx, r) catch null;
+        if (internal.reason) |r| result_internal.reason = engine.retainValue(ctx, r.value) catch null;
         return result;
     }
 

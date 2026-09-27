@@ -25,6 +25,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const MessagePort = interfaces.MessagePort;
 
 // A MessagePort is an EventTarget, and reaches its state through its impl.
@@ -262,15 +263,13 @@ fn syncPendingActivity(instance: *runtime.Instance) void {
     const port = internal.internal_port;
     const active = internal.owns_port and !internal.detached and port.queue_enabled and port.entangled_port != null;
     if (active) {
-        const engine = instance.ctx.getEngine() orelse return;
-        if (engine.keepPlatformObjectAlive) |keep| keep(instance);
+        engine.keepPlatformObjectAlive(instance);
     } else releasePendingActivity(instance);
 }
 
 /// End the pending-activity hold on a port (idempotent).
 fn releasePendingActivity(instance: *runtime.Instance) void {
-    const engine = instance.ctx.getEngine() orelse return;
-    if (engine.releasePlatformObject) |release| release(instance);
+    engine.releasePlatformObject(instance);
 }
 
 /// Operation: close
@@ -297,13 +296,15 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// "2. Let options be «[ "transfer" → transfer ]». 3. Run the message port
 /// post message steps providing this, targetPort, message and options."
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
-    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
-    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
     defer {
-        if (engine.releaseValue) |release| for (list) |item| release(item);
-        instance.ctx.allocator.free(list);
+        for (objects) |object| object.release();
+        allocator.free(objects);
     }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
     return postMessageSteps(instance, message, list);
 }
 
@@ -356,8 +357,6 @@ fn receive(realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance {
 fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
     const internal = getInternal(source) orelse return;
     const allocator = source.ctx.allocator;
-    const engine = source.ctx.getEngine() orelse return error.NoEngine;
-    const serialize = engine.structuredSerializeWithTransfer orelse return error.NotSupported;
 
     // 1. targetPort: the end this one is entangled with, if any. A detached
     // port (closed, or shipped - its end is another port's) has none.
@@ -366,7 +365,7 @@ fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfe
     // Steps 2 and 5: StructuredSerializeWithTransfer(message, transfer) -
     // which throws a DataCloneError when transfer contains sourcePort
     // (`transferableFrom`), and ships every port in transfer.
-    var result = try serialize(source.ctx, message, transfer, transferableFrom, source, allocator);
+    var result = try engine.structuredSerializeWithTransfer(source.ctx, message, transfer, transferableFrom, source, allocator);
     defer result.deinit(allocator);
     var ends: std.ArrayListUnmanaged(*InternalMessagePort) = .empty;
     defer ends.deinit(allocator);
@@ -444,9 +443,9 @@ fn armTask(instance: *runtime.Instance, comptime run: fn (?*anyopaque) void) voi
 /// worker's realm has no document. Document's `location` getter answers the
 /// question exactly: null unless its document is fully active.
 fn documentIsFullyActive(instance: *runtime.Instance) bool {
-    const engine = instance.ctx.getEngine() orelse return true;
-    const relevant_global = engine.relevantGlobalObject orelse return true;
-    const global = relevant_global(instance) orelse return true;
+    // The relevant global object, from the relevant realm's record.
+    const record = instance.ctx.getRealm() orelse return true;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return true));
     if (global.stateAs(interfaces.Window.State) == null) return true;
     if (interfaces.Window.get_closed(global) catch true) return false;
     const document = interfaces.Window.get_document(global) catch return false;
@@ -464,10 +463,8 @@ fn deliverNext(data: ?*anyopaque) void {
     if (!internal.owns_port or !internal.internal_port.queue_enabled) return;
     if (!internal.internal_port.hasSerializedMessages()) return;
 
-    const engine = instance.ctx.getEngine() orelse return;
-    const run = engine.runTaskInRealm orelse return;
     var delivery = Delivery{ .port = instance };
-    run(instance.ctx, Delivery.steps, &delivery) catch {};
+    engine.runTaskInRealm(instance.ctx, Delivery.steps, &delivery) catch {};
 
     // One message per task: the next gets its own - once this one ran.
     if (delivery.ran and task.target() != null) scheduleDelivery(instance);
@@ -512,18 +509,16 @@ fn deliver(port: *runtime.Instance, record_bytes: []const u8) void {
         ports.append(allocator, received) catch continue;
     }
 
-    const engine = ctx.getEngine() orelse return;
-    const deserialize = engine.structuredDeserializeWithTransfer orelse return;
     // On an exception, fire `messageerror` at messageEventTarget.
-    const clone = deserialize(ctx, record.serialized, record.array_buffers) catch {
+    const clone = engine.structuredDeserializeWithTransfer(ctx, record.serialized, record.array_buffers) catch {
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
-    defer if (engine.releaseValue) |release| release(clone);
+    defer clone.release();
 
     // 7.5-7.7: fire `message` at messageEventTarget, with data messageClone
     // and ports a frozen array of the transferred ports.
-    fire(port, "message", clone, ports.items);
+    fire(port, "message", clone.value, ports.items);
 }
 
 /// Fire a MessageEvent named `event_type` at `port`. `data` is borrowed: the
@@ -556,9 +551,7 @@ fn fireClose(data: ?*anyopaque) void {
     const task: *PortTask = @ptrCast(@alignCast(data orelse return));
     defer task.allocator.destroy(task);
     const instance = task.target() orelse return;
-    const engine = instance.ctx.getEngine() orelse return;
-    const run = engine.runTaskInRealm orelse return;
-    run(instance.ctx, fireCloseSteps, instance) catch {};
+    engine.runTaskInRealm(instance.ctx, fireCloseSteps, instance) catch {};
 }
 
 fn fireCloseSteps(data: ?*anyopaque) void {
