@@ -17,6 +17,9 @@ pub const protocol = @This();
 
 pub const name = "test";
 
+/// engine.log_scope.
+pub const log_scope = .protocol_test;
+
 pub const capabilities: engine.Capabilities = .{
     .module_scripts = .unsupported,
     .promise_rejection_tracking = .unsupported,

@@ -20,6 +20,9 @@ pub const protocol = @This();
 
 pub const name = "JavaScriptCore";
 
+/// engine.log_scope.
+pub const log_scope = .jsc_engine;
+
 /// What the public JavaScriptCore C API offers. The first three were
 /// requested of Apple and WebKit on 2026-09-26: flip each to `.native` when an
 /// iOS release makes its API public - or to `.emulated`, with the deviations

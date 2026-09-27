@@ -38,6 +38,7 @@ const webidl_conversions = @import("webidl_conversions.zig");
 const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");
 const value_operations = @import("value_operations.zig");
 const structured_serialization = @import("structured_serialization.zig");
+const isolate_ownership = @import("isolate_ownership.zig");
 
 /// For the worker and agent operations only (see above).
 const table = v8_engine.v8_engine_interface;
@@ -52,6 +53,9 @@ const Allocator = std.mem.Allocator;
 const EngineError = runtime.EngineError;
 
 pub const name = "V8";
+
+/// engine.log_scope: engine.zig logs under it.
+pub const log_scope = .v8_engine;
 
 pub const capabilities: engine.Capabilities = .{
     .module_scripts = .native,
@@ -728,13 +732,24 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
     return ffi.v8_Debug_WriteHeapSnapshot(isolateOf(agent), path.ptr);
 }
 
-/// The adapter's live-handle counters: Globals created minus disposed.
+/// The adapter's live-handle counters: Globals created minus disposed. And,
+/// where the Phase 5 instrument is compiled in, how many agent-ownership
+/// checks ran and how many failed (isolate_ownership.zig) - hosts read "not
+/// measured" when neither is reported.
 pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
-    const counters = [_]engine.Counter{
+    const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
         .{ .name = "live_object_globals", .value = ffi.v8_Debug_LiveObjectGlobals() },
         .{ .name = "live_weak_callback_data", .value = ffi.v8_Debug_LiveWeakCallbackData() },
     };
-    return allocator.dupe(engine.Counter, &counters) catch error.OutOfMemory;
+    const ownership = [_]engine.Counter{
+        .{ .name = "ownership_checks", .value = @intCast(isolate_ownership.checks()) },
+        .{ .name = "ownership_violations", .value = @intCast(isolate_ownership.violations()) },
+    };
+    const measured = isolate_ownership.mode != .off;
+    const counters = allocator.alloc(engine.Counter, handles.len + if (measured) ownership.len else 0) catch return error.OutOfMemory;
+    @memcpy(counters[0..handles.len], &handles);
+    if (measured) @memcpy(counters[handles.len..], &ownership);
+    return counters;
 }

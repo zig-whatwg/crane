@@ -18,6 +18,9 @@ pub const protocol = @This();
 
 pub const name = "QuickJS";
 
+/// engine.log_scope.
+pub const log_scope = .quickjs_engine;
+
 pub const capabilities: engine.Capabilities = .{
     .module_scripts = .unsupported,
     .promise_rejection_tracking = .unsupported,

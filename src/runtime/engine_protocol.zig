@@ -504,6 +504,9 @@ pub const capabilities: Capabilities = impl.capabilities;
 /// The engine this build selected, for messages ("V8", "JavaScriptCore").
 pub const name: []const u8 = impl.name;
 
+/// The log scope the adapter logs under, for hosts that filter its output.
+pub const log_scope = impl.log_scope;
+
 const Capability = std.meta.FieldEnum(Capabilities);
 
 /// A gated operation reached where the engine lacks its capability: a compile

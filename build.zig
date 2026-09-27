@@ -3504,6 +3504,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "host", .module = host_mod },
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
+                .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },
