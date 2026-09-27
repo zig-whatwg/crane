@@ -287,7 +287,7 @@ pub fn setNavigateCallback(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Location cleanup can be called from multiple paths:
-    // 1. destroyChildContext → Window.deinit → Location.deinit (normal cleanup)
+    // 1. engine.destroyWindowRealm → Window.deinit → Location.deinit (normal cleanup)
     // 2. DOM tree traversal during nested iframe cleanup (may pre-mark)
     //
     // The lifecycle tracking prevents concurrent cleanup races, but we MUST

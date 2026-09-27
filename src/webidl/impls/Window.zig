@@ -233,9 +233,9 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         self.navigator_pin.release();
         self.navigation_pin.release();
-        // The popups first: each integration destroys its navigable's context
-        // (a child of this window's, and already gone if this window's page is
-        // being torn down - destroyChildContext runs once per context).
+        // The popups first: each integration ends its navigable's realm (a
+        // child of this window's, and already gone if this window's page is
+        // being torn down - destroyWindowRealm ends a realm once).
         for (self.auxiliary_navigables.items) |integration| {
             integration.deinit();
             self.allocator.destroy(integration);

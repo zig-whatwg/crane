@@ -546,7 +546,7 @@ pub const IFrameIntegration = struct {
         // 2. Wrapper cache cleanup triggers HTMLIFrameElement.deinit()
         // 3. HTMLIFrameElement.deinit() calls integration.deinit()
         // 4. integration.deinit() calls cleanupRealmContext()
-        // 5. cleanupRealmContext() tries to call destroyChildContext()
+        // 5. cleanupRealmContext() tries to end the realm
         //    which is already being torn down by context_manager.deinit()
         if (self.cleanup_in_progress) return;
         self.cleanup_in_progress = true;
@@ -763,7 +763,7 @@ pub const IFrameIntegration = struct {
     /// - BrowsingContext is a Zig-only struct with no V8 references - safe to deinit synchronously
     /// - V8 context cleanup (cleanupRealmContext) is NOT done here - the child V8 context must
     ///   remain alive so V8's weak callbacks can properly handle wrapper cleanup when GC runs
-    /// - The wrapper cache cleanup happens via destroyChildContext when V8 GC runs
+    /// - The wrapper cache cleanup happens when the realm ends (engine.destroyWindowRealm)
     ///
     /// This follows the Chromium pattern of deterministic cleanup during element removal,
     /// not GC-driven cleanup. The BC must be destroyed here to prevent memory leaks caused
