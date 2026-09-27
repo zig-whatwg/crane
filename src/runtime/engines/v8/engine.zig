@@ -194,7 +194,7 @@ pub const v8_engine_interface: EngineInterface = .{
 };
 
 /// Promise handle for tracking V8 promise state
-const V8PromiseHandle = struct {
+pub const V8PromiseHandle = struct {
     resolver: *ffi.PromiseResolver,
     promise: *ffi.Promise,
     isolate: *ffi.Isolate,
@@ -218,7 +218,7 @@ fn v8WrapAsyncIterator(
 }
 
 /// Create a V8 Promise that can be resolved/rejected from Zig
-fn v8CreatePromise(
+pub fn v8CreatePromise(
     engine_ctx: *anyopaque,
     allocator: std.mem.Allocator,
 ) EngineError!*anyopaque {
@@ -251,7 +251,7 @@ fn v8CreatePromise(
 }
 
 /// Resolve a V8 Promise with a value
-fn v8ResolvePromise(
+pub fn v8ResolvePromise(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
     value: ?*const anyopaque,
@@ -312,7 +312,7 @@ fn v8RejectPromise(
 }
 
 /// Get the V8 Promise object to return to JavaScript
-fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
+pub fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     return @ptrCast(handle.promise);
 }
@@ -320,7 +320,7 @@ fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
 /// Destroy a V8 Promise handle after use
 /// The Promise object itself remains valid (managed by V8 GC), but the
 /// handle struct is freed.
-fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
+pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     // The resolver is released here: nothing can settle the promise once its
     // handle is gone, and a Global to the resolver keeps the promise - and its
@@ -417,7 +417,7 @@ pub fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
     return .{ .isolate = isolate, .entered_isolate = entered, .scope = scope };
 }
 
-fn v8RunClassicScript(
+pub fn v8RunClassicScript(
     realm: runtime.Context,
     source: []const u8,
     source_url: ?[]const u8,
@@ -491,14 +491,14 @@ fn runPendingReport(data: ?*anyopaque) callconv(.c) void {
     pending.report(pending.host, &error_info);
 }
 
-fn v8PerformMicrotaskCheckpoint(realm: runtime.Context) EngineError!void {
+pub fn v8PerformMicrotaskCheckpoint(realm: runtime.Context) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     entered.leaveScope();
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
 }
 
-fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+pub fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     {
@@ -511,14 +511,14 @@ fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*a
     if (realm.end_of_task) |end| end(realm);
 }
 
-fn v8RunInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+pub fn v8RunInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
     steps(data);
 }
 
-fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []const u8) EngineError!runtime.JSValue {
+pub fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []const u8) EngineError!runtime.JSValue {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
@@ -527,7 +527,7 @@ fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: []con
     return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
 }
 
-fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
+pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
     const object: *ffi.Value = switch (value) {
         .handle => |h| @ptrCast(@alignCast(h.ptr)),
         // Primitives and strings are the caller's to keep; a platform object
@@ -547,7 +547,7 @@ fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValu
     return allocator.dupe(u8, bytes[0..size]) catch EngineError.OutOfMemory;
 }
 
-fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineError!runtime.JSValue {
+pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineError!runtime.JSValue {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
@@ -558,7 +558,7 @@ fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineErro
     return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
 }
 
-fn v8ResolvePromiseWithInstance(promise_handle: *anyopaque, instance: *runtime.Instance) EngineError!void {
+pub fn v8ResolvePromiseWithInstance(promise_handle: *anyopaque, instance: *runtime.Instance) EngineError!void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     // The wrapper in the promise's realm: enter it for the lookup.
     const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
@@ -568,7 +568,7 @@ fn v8ResolvePromiseWithInstance(promise_handle: *anyopaque, instance: *runtime.I
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, wrapper)) return EngineError.PromiseError;
 }
 
-fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
+pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
     defer scope.deinit();
@@ -589,7 +589,7 @@ fn v8MarkPromiseAsHandled(promise_handle: *anyopaque) void {
     ffi.v8_Promise_MarkAsHandled(@ptrCast(handle.promise));
 }
 
-fn v8CreateSequenceOfPlatformObjects(realm: runtime.Context, instances: []const *runtime.Instance) EngineError!runtime.JSValue {
+pub fn v8CreateSequenceOfPlatformObjects(realm: runtime.Context, instances: []const *runtime.Instance) EngineError!runtime.JSValue {
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
@@ -619,7 +619,7 @@ fn v8RelevantGlobalObject(instance: *runtime.Instance) ?*runtime.Instance {
     return @ptrCast(@alignCast(ptr));
 }
 
-fn v8ReleaseValue(value: runtime.JSValue) void {
+pub fn v8ReleaseValue(value: runtime.JSValue) void {
     switch (value) {
         .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
             ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
@@ -668,7 +668,7 @@ fn v8GetPropertyInstance(engine_ctx: *anyopaque, object: *anyopaque, name: []con
 }
 
 /// Create a V8 ArrayBuffer from bytes
-fn v8CreateArrayBuffer(
+pub fn v8CreateArrayBuffer(
     engine_ctx: *anyopaque,
     bytes: []const u8,
 ) EngineError!*anyopaque {
@@ -1205,7 +1205,7 @@ fn v8InvokeStreamCallback(
 ///
 /// Returns:
 ///   - V8 Object* if found in cache, null otherwise
-fn v8GetWrapperForInstance(
+pub fn v8GetWrapperForInstance(
     _: *anyopaque,
     wrapper_cache: *anyopaque,
     instance: *anyopaque,

@@ -795,6 +795,13 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An errdefer that outlives the handoff frees what the new owner will free](docs/lessons/architecture-an-errdefer-that-outlives-the-handoff-frees-what-the-new-owner-will-free.md) - End the errdefer scope where ownership moves.
 - [An EventTarget subclass must init and deinit through EventTarget's impl](docs/lessons/architecture-an-eventtarget-subclass-must-init-and-deinit-through-eventtarget-s-impl.md) - An address-keyed side table needs its owner's deinit.
 - [Frames and the top-level page parse through different drivers](docs/lessons/architecture-frames-and-the-top-level-page-parse-through-different-drivers.md) - When a feature works in a frame but not at top level, compare the two parser drivers first.
+- [Engine code defines a realm's properties; it never assigns them](docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md) - A [[Set]] runs the script-facing setter, and a TypeError thrown into nobody's catch is still a Global into the realm that made it.
+- [A realm held across turns is its runtime.Context, not a handle](docs/lessons/architecture-a-realm-is-its-runtime-context-not-a-handle.md) - Hold a realm by its runtime.Context; the context manager keeps it valid and tells you when it has ended.
+- [A compile error's position lives in the engine's error information](docs/lessons/architecture-a-compile-errors-position-lives-in-the-engines-error-information.md) - When a report crosses the engine seam, carry the engine's error information, not just the value; the value alone loses a parse error's position.
+- [Before porting a file off the engine, find out whether anything runs it](docs/lessons/architecture-before-porting-a-file-off-the-engine-find-out-whether-anything-runs-it.md) - Port code that runs; delete code that doesn't - and never truncate the grep that decides which.
+- [A namespace operation's runtime.Context is a process-wide stand-in](docs/lessons/architecture-a-namespace-operation-s-context-is-a-process-wide-stand-in.md) - A namespace operation must take its realm from the running context, not from a shared stand-in - and an impl's error must throw.
+- [A module bound twice cannot share a compile](docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md) - Before giving a module a second binding, check that nothing in the target's import graph reaches the first.
+- [A forwarding facade checks only what gets called](docs/lessons/architecture-a-forwarding-facade-checks-only-what-gets-called.md) - A contract checked only by calls is checked only where called; check the whole interface at comptime, by exact type.
 
 ### Spec Compliance
 

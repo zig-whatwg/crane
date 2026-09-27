@@ -7578,6 +7578,20 @@ pub fn V8Interface(comptime Interface: type) type {
                         nullToEmptyString(isolate_inner, raw_value_v8)
                     else
                         raw_value_v8;
+                    // The value's handle is owned (`info.get` allocates a Global,
+                    // as does `v8_Undefined`), and released here unless it was
+                    // handed to a conversion that may keep it - the rule
+                    // `convertArgReleasing` applies to an operation's arguments,
+                    // `argHandleIsCopied`. A setter released nothing, so every
+                    // assignment leaked one handle, and one that held an object
+                    // of another realm kept that realm alive.
+                    const value_is_copied = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                        if (fi.params.len < 2) break :blk true;
+                        break :blk argHandleIsCopied(fi.params[1].type orelse break :blk false);
+                    };
+                    var value_handed_over = false;
+                    defer if (value_is_copied or !value_handed_over) v8.v8_Value_Dispose(new_value_v8);
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
@@ -7783,6 +7797,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Per WebIDL spec, for enumeration types, if the value is not a valid
                     // enum value, the setter should be a no-op (silently return without error).
                     // https://webidl.spec.whatwg.org/#idl-enums
+                    value_handed_over = true;
                     const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {

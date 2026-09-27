@@ -1723,9 +1723,15 @@ fn createWindowBoundToGlobal(
     defer v8.v8_String_Dispose(window_key);
     _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_key), @ptrCast(global));
 
+    // `self` is [Replaceable]: its setter's one step is this [[DefineOwnProperty]]
+    // (writable, enumerable, configurable), so define it directly. A [[Set]]
+    // went through the script-facing setter, whose argument handle - here a
+    // handle to the WindowProxy - is never released, and a leaked handle to a
+    // frame's WindowProxy kept its realm, and through the realm's security
+    // token its parent page, alive after the frame was gone.
     const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreationFailed;
     defer v8.v8_String_Dispose(self_key);
-    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_key), @ptrCast(global));
+    _ = v8.v8_Object_DefineProperty(global, v8_ctx, @ptrCast(self_key), @ptrCast(global), true, true, true);
 
     const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse return error.StringCreationFailed;
     defer v8.v8_String_Dispose(global_this_key);
@@ -2616,22 +2622,16 @@ pub fn createChildContext(
         global,
     );
 
-    // 4d2. Set self/window/frames as DATA properties pointing to global
-    // This is CRITICAL for testharness.js compatibility:
-    // (function(global_scope){...})(self) requires self === globalThis
-    // so that properties set on global_scope become true global bindings.
-    if (v8.v8_String_NewFromUtf8(options.isolate, "self", 4)) |self_str| {
-        defer v8.v8_String_Dispose(self_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(self_str), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(options.isolate, "window", 6)) |window_str| {
-        defer v8.v8_String_Dispose(window_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(window_str), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(options.isolate, "frames", 6)) |frames_str| {
-        defer v8.v8_String_Dispose(frames_str);
-        _ = v8.v8_Object_Set(global, child_context, @ptrCast(frames_str), @ptrCast(global));
-    }
+    // 4d2. `self`, `window` and `frames` are NOT assigned here. The global has
+    // no Window yet, so a [[Set]] reaches Window.prototype's [Global] setters
+    // with a receiver they cannot resolve: `self` and `frames` threw "Illegal
+    // invocation", and the TypeError - made in this realm, held by a Global
+    // that conversions.throwTypeErrorFromContext never releases - kept the
+    // realm alive for the rest of the process. With a new realm per navigation
+    // that was a realm per form submission into a frame, until V8 ran out of
+    // heap (tests/wpt/crane/sweep-frame-realms-released.html). The assignments
+    // did nothing else: createWindowBoundToGlobal (step 8) defines `self` once
+    // the Window is bound, and `window` has no setter.
 
     // 4e. Register browser-level globals (setTimeout, setInterval, etc.)
     // These are not WebIDL interfaces but are essential for web platform functionality.

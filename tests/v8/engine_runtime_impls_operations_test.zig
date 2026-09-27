@@ -5,6 +5,9 @@
 //! Impls reach script values through these instead of V8 (AGENTS.md, "The
 //! engine boundary"): each takes the realm as a runtime.Context and hands back
 //! an OWNED handle, or an ENGINE-OWNED one where its declaration says so.
+//!
+//! At the end, the engine protocol's first operations bound to V8
+//! (`@import("engine")`): the same adapter functions, statically dispatched.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -403,4 +406,257 @@ test "a callback-function argument is handed over as an owned handle to the same
     // The impl's to release; after that the function is script's alone.
     engine.releaseValue.?(taken);
     try std.testing.expectEqual(@as(i32, 7), try eval("theCallback()"));
+}
+
+// ============================================================================
+// The same adapter functions, through the engine protocol
+// ============================================================================
+//
+// `@import("engine")` bound to V8 (src/runtime/engines/v8/protocol.zig): each
+// `protocol.op(...)` is a direct call into the adapter function the table
+// above also names - both paths reach the same code. Imported under another
+// name only because this file already calls the table `engine`: a file that
+// moves to the protocol changes every call and takes the name.
+//
+// Here rather than in a file of their own: every tests/v8 file is a root
+// compile of most of the tree (6-9 GB), and these need no setup the file
+// does not already have.
+
+const protocol = @import("engine");
+
+/// What script's `expression` evaluates to, as an Owned handle.
+fn evalOwned(expression: []const u8) !protocol.Owned {
+    return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression), .needs_disposal = true } } };
+}
+
+test "the protocol is bound to V8, which has every capability the protocol declares natively" {
+    try std.testing.expectEqualStrings("V8", protocol.name);
+    inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {
+        try std.testing.expectEqual(protocol.Support.native, @field(protocol.capabilities, field.name));
+    }
+}
+
+test "protocol: currentRealm is the context manager's realm for the entered context, and holds no context" {
+    _ = try realm();
+    // Already initialized, and already hosted, are as good.
+    v8.context_manager.init(std.heap.page_allocator) catch {};
+    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
+    try std.testing.expectEqual(hosted, protocol.currentRealm() orelse return error.NoCurrentRealm);
+    try std.testing.expectEqual(protocol.currentRealm(), engine.currentRealm.?());
+    // Each call disposes the Global<Context> GetCurrentContext made.
+    try std.testing.expectEqual(contexts_before, ffi.v8_Debug_LiveContextGlobals());
+}
+
+test "protocol: isCallable is ECMAScript IsCallable" {
+    _ = try realm();
+    const function = try evalOwned("(function () {})");
+    defer function.release();
+    const object = try evalOwned("({})");
+    defer object.release();
+    try std.testing.expect(protocol.isCallable(function.value));
+    try std.testing.expect(!protocol.isCallable(object.value));
+    try std.testing.expect(!protocol.isCallable(runtime.JSValue.fromNumber(1)));
+    try std.testing.expect(!protocol.isCallable(runtime.JSValue.jsUndefined));
+}
+
+test "protocol: createResolvedPromise is an Owned promise of the realm, fulfilled with the value" {
+    const ctx = try realm();
+    const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
+    defer resolved.release();
+    try std.testing.expect(resolved.value.handle.needs_disposal);
+    try expose("protocolResolved", resolved.value);
+    try std.testing.expectEqual(@as(i32, 1), try eval("protocolResolved instanceof Promise ? 1 : 0"));
+    const promise: *ffi.Promise = @ptrCast(@alignCast(resolved.value.handle.ptr));
+    try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
+    const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
+    defer ffi.v8_Value_Dispose(result);
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+}
+
+fn setFromProtocolTask(data: ?*anyopaque) void {
+    const ran: *bool = @ptrCast(@alignCast(data.?));
+    const set = eval("globalThis.fromProtocolTask = 5") catch return;
+    ran.* = set == 5;
+}
+
+test "protocol: runTaskInRealm runs the steps as a task inside the realm" {
+    const ctx = try realm();
+    var ran = false;
+    try protocol.runTaskInRealm(ctx, setFromProtocolTask, &ran);
+    try std.testing.expect(ran);
+    try std.testing.expectEqual(@as(i32, 5), try eval("globalThis.fromProtocolTask"));
+}
+
+/// A caller of a capability-gated operation, written as every caller must be:
+/// on an engine without the capability the call is compiled out.
+fn handledOrUnknown(promise: runtime.JSValue) ?bool {
+    if (protocol.capabilities.promise_rejection_tracking != .unsupported) return protocol.promiseIsHandled(promise);
+    return null;
+}
+
+test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[PromiseIsHandled]]" {
+    const ctx = try realm();
+    const promise = try protocol.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
+    defer promise.release();
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(promise.value));
+    try expose("watched", promise.value);
+    try std.testing.expectEqual(@as(i32, 1), try eval("watched.then(() => {}); 1"));
+    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(promise.value));
+    // Not a promise: false.
+    try std.testing.expectEqual(@as(?bool, false), handledOrUnknown(runtime.JSValue.fromNumber(1)));
+}
+
+test "protocol: requestGarbageCollection collects the agent's heap" {
+    _ = try realm();
+    // A realm's agent is its isolate, as the context manager records it.
+    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 0), try eval("globalThis.collectable = new WeakRef({ big: new Array(1000).fill(1) }); 0"));
+    var collected = false;
+    for (0..5) |_| {
+        // The target is kept alive until the job that made the WeakRef - or
+        // last dereferenced it - ends (ECMAScript ClearKeptObjects, at the
+        // microtask checkpoint).
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+        protocol.requestGarbageCollection(agent);
+        if (try eval("globalThis.collectable.deref() === undefined ? 1 : 0") == 1) {
+            collected = true;
+            break;
+        }
+    }
+    try std.testing.expect(collected);
+}
+
+test "protocol: a new promise is resolved with a primitive, a value or a platform object's wrapper, and released" {
+    const ctx = try realm();
+    var numeric = try protocol.createPromise(ctx);
+    defer protocol.releasePromiseCapability(&numeric);
+    try expose("numeric", numeric.promise);
+    protocol.resolvePromise(&numeric, runtime.JSValue.fromNumber(7));
+    try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(numeric.promise.handle.ptr))));
+
+    var texty = try protocol.createPromise(ctx);
+    defer protocol.releasePromiseCapability(&texty);
+    try expose("texty", texty.promise);
+    protocol.resolvePromise(&texty, runtime.JSValue.fromStringRef("seven"));
+
+    var rejected = try protocol.createPromise(ctx);
+    defer protocol.releasePromiseCapability(&rejected);
+    const reason = try protocol.createSimpleException(ctx, .RangeError, "no");
+    defer reason.release();
+    try expose("rejected", rejected.promise);
+    protocol.rejectPromise(&rejected, reason.value);
+    protocol.markPromiseAsHandled(rejected.promise);
+    try std.testing.expectEqual(@as(?bool, true), handledOrUnknown(rejected.promise));
+
+    try std.testing.expectEqual(@as(i32, 1), try eval(
+        \\globalThis.settled = 0;
+        \\numeric.then(v => { if (v === 7) settled |= 1; });
+        \\texty.then(v => { if (v === "seven") settled |= 2; });
+        \\rejected.catch(e => { if (e instanceof RangeError) settled |= 4; });
+        \\1
+    ));
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 7), try eval("globalThis.settled"));
+}
+
+test "protocol: SyntaxError is not yet a simple exception V8 makes" {
+    const ctx = try realm();
+    try std.testing.expectError(error.NotSupported, protocol.createSimpleException(ctx, .SyntaxError, "x"));
+}
+
+const Reported = struct {
+    count: usize = 0,
+    realm: ?protocol.Context = null,
+    lineno: u32 = 0,
+    was_type_error: bool = false,
+
+    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const self: *Reported = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.realm = info.realm;
+        self.lineno = info.lineno;
+        self.was_type_error = std.mem.indexOf(u8, info.message, "TypeError") != null;
+    }
+};
+
+test "protocol: runClassicScript reports what a UTF-8 script throws, with the realm it ran in" {
+    const ctx = try realm();
+    var reported: Reported = .{};
+    try protocol.runClassicScript(ctx, .{ .utf8 = "globalThis.ranClassic = 1;\nnull.x;" }, "https://example.test/a.js", .{ .report = Reported.report, .host = &reported });
+    try std.testing.expectEqual(@as(usize, 1), reported.count);
+    try std.testing.expectEqual(@as(?protocol.Context, ctx), reported.realm);
+    try std.testing.expectEqual(@as(u32, 2), reported.lineno);
+    try std.testing.expect(reported.was_type_error);
+    try std.testing.expectEqual(@as(i32, 1), try eval("globalThis.ranClassic"));
+    // A string source is not built yet.
+    try std.testing.expectError(error.NotSupported, protocol.runClassicScript(ctx, .{ .string = runtime.JSValue.jsUndefined }, "", .{ .report = Reported.report, .host = &reported }));
+}
+
+test "protocol: sequence<object> is a slice of Owned handles" {
+    const ctx = try realm();
+    const iterable = try evalOwned("[{ a: 1 }, { b: 2 }]");
+    defer iterable.release();
+    const items = try protocol.convertToSequenceOfObjects(ctx, iterable.value, std.testing.allocator);
+    defer std.testing.allocator.free(items);
+    defer for (items) |item| item.release();
+    try std.testing.expectEqual(@as(usize, 2), items.len);
+    try std.testing.expect(items[0].value == .handle);
+    const not_objects = try evalOwned("[1]");
+    defer not_objects.release();
+    try std.testing.expectError(error.TypeError, protocol.convertToSequenceOfObjects(ctx, not_objects.value, std.testing.allocator));
+}
+
+test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
+    const ctx = try realm();
+    const buffer = try protocol.allocateArrayBuffer(ctx, 8);
+    defer buffer.release();
+    const bytes = protocol.borrowArrayBufferBytes(buffer.value) orelse return error.NoBytes;
+    try std.testing.expectEqual(@as(usize, 8), bytes.len);
+    try std.testing.expect(std.mem.allEqual(u8, bytes, 0));
+    bytes[3] = 42;
+
+    const view = try protocol.createArrayBufferView(ctx, .uint8_array, buffer.value, 2, 4);
+    defer view.release();
+    const description = protocol.describeArrayBufferView(view.value) orelse return error.NotAView;
+    try std.testing.expectEqual(runtime.arraybuffer_view.ViewType.uint8_array, description.view_type);
+    try std.testing.expectEqual(@as(usize, 2), description.byte_offset);
+    try expose("protocolView", view.value);
+    try std.testing.expectEqual(@as(i32, 42), try eval("protocolView[1]"));
+
+    const viewed = try protocol.getViewedArrayBuffer(ctx, view.value);
+    defer viewed.release();
+    try std.testing.expect(protocol.canTransferArrayBuffer(viewed.value));
+    const moved = try protocol.transferArrayBuffer(ctx, viewed.value);
+    defer moved.release();
+    try std.testing.expect(protocol.isDetachedBuffer(buffer.value));
+    try std.testing.expect(!protocol.isDetachedBuffer(moved.value));
+    try std.testing.expectEqual(@as(?[]u8, null), protocol.borrowArrayBufferBytes(buffer.value));
+    try std.testing.expectEqual(@as(u8, 42), (protocol.borrowArrayBufferBytes(moved.value) orelse return error.NoBytes)[3]);
+
+    const copied = try protocol.createArrayBuffer(ctx, "abc");
+    defer copied.release();
+    try std.testing.expectEqualStrings("abc", protocol.borrowArrayBufferBytes(copied.value) orelse return error.NoBytes);
+}
+
+test "protocol: the diagnostics tier reports the agent's heap and the adapter's counters" {
+    _ = try realm();
+    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const statistics = protocol.heapStatistics(agent);
+    try std.testing.expect(statistics.used > 0);
+    try std.testing.expect(statistics.total >= statistics.used);
+    try std.testing.expect(statistics.realm_count >= 1);
+    const counters = try protocol.diagnosticCounters(std.testing.allocator);
+    defer std.testing.allocator.free(counters);
+    try std.testing.expectEqual(@as(usize, 4), counters.len);
+    try std.testing.expectEqualStrings("live_context_globals", counters[1].name);
+}
+
+test "protocol: a platform object in a realm that has wrapped nothing has no wrapper" {
+    var bare = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer bare.deinit();
+    // A realm with no wrapper cache has wrapped nothing.
+    var instance: runtime.Instance = undefined;
+    instance.ctx = &bare;
+    try std.testing.expect(!protocol.hasWrapper(&instance));
 }

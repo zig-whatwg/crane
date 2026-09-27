@@ -316,3 +316,220 @@ test "requestAnimationFrame takes a callable; cancelAnimationFrame a handle in r
     _ = try run("cancelAnimationFrame(9);");
     try std.testing.expectEqual(@as(?u32, 9), seen.cancelled);
 }
+
+// ============================================================================
+// What the binding leaves behind
+// ============================================================================
+//
+// Every handle the binding makes is released, or it keeps alive the realm the
+// value belongs to - and one handle anywhere into a realm pins its whole heap.
+// A thrown TypeError the binding never released kept every frame realm alive
+// (docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md);
+// with a realm per navigation, that ran a long WPT sweep out of V8 heap.
+// Measured two ways: V8's own count of live global-handle bytes, and the
+// native contexts left after a full collection.
+
+/// Native contexts alive after a full collection.
+fn liveContexts() usize {
+    const isolate = isolate_once.?;
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    var count: usize = 0;
+    ffi.v8_Isolate_GetContextCounts(isolate, &count, null);
+    return count;
+}
+
+/// Script's value of `expression` in `context`, as a handle the caller disposes.
+fn scriptValueIn(context: *ffi.Context, expression: []const u8) !*ffi.Value {
+    const i = isolate_once.?;
+    const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(code);
+    const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
+    defer ffi.v8_Script_Dispose(script);
+    return ffi.v8_Script_Run(context, script) orelse error.RunFailed;
+}
+
+/// `globalThis[name] = value` in the test realm.
+fn exposeValue(name: []const u8, value: *ffi.Value) !void {
+    const context = context_once.?;
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(key);
+    if (!ffi.v8_Object_Set(global, context, @ptrCast(key), value)) return error.SetFailed;
+}
+
+/// One call of a conversions throw helper, in `context`, caught.
+const Thrower = struct {
+    const Kind = enum {
+        type_error,
+        type_error_from_context,
+        range_error,
+        plain_error,
+        dom_exception,
+        dom_exception_from_context,
+        webidl_error,
+        webidl_error_from_context,
+    };
+
+    context: *ffi.Context,
+    kind: Kind,
+
+    fn body(data: ?*anyopaque) callconv(.c) void {
+        const self: *Thrower = @ptrCast(@alignCast(data.?));
+        const isolate = isolate_once.?;
+        const conv = v8.conversions;
+        // Entered, so the helpers that throw in the current realm throw in this one.
+        ffi.v8_Context_Enter(self.context);
+        defer ffi.v8_Context_Exit(self.context);
+        switch (self.kind) {
+            .type_error => conv.throwTypeError(isolate, "a TypeError"),
+            .type_error_from_context => conv.throwTypeErrorFromContext(isolate, self.context, "Illegal invocation"),
+            .range_error => conv.throwRangeError(isolate, "a RangeError"),
+            .plain_error => conv.throwError(isolate, "an Error"),
+            .dom_exception => conv.throwDOMException(isolate, "NotFoundError", "not found"),
+            .dom_exception_from_context => conv.throwDOMExceptionFromContext(isolate, self.context, "SecurityError", "blocked"),
+            .webidl_error => conv.throwWebIDLError(isolate, "TypeError"),
+            .webidl_error_from_context => conv.throwWebIDLErrorFromContext(isolate, self.context, "InvalidStateError"),
+        }
+    }
+
+    /// Throw once and catch it; what was thrown is released.
+    fn throwAndCatch(self: *Thrower) !void {
+        var thrown: ?*ffi.Value = null;
+        if (!ffi.v8_RunCatching(isolate_once.?, body, self, &thrown)) return error.DidNotThrow;
+        ffi.v8_Value_Dispose(thrown orelse return error.NothingThrown);
+    }
+};
+
+test "every conversions throw helper leaves no handle behind" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    // throwDOMException constructs through the realm's DOMException.
+    _ = try run("globalThis.DOMException = class { constructor(m, n) { this.message = m; this.name = n; } };");
+
+    // What one handle costs in V8's count.
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    try std.testing.expect(handle_bytes > 0);
+
+    // A leak is at least one handle per throw (each helper left two to ten).
+    // V8 may take a handle of its own once along the way - one appeared, once,
+    // over 32 throwDOMException calls - so a quarter of a handle a throw is the
+    // line.
+    const rounds = 32;
+    var leaked = false;
+    inline for (std.meta.fields(Thrower.Kind)) |field| {
+        var thrower: Thrower = .{ .context = context_once.?, .kind = @enumFromInt(field.value) };
+        // The first call may make what every later one reuses.
+        try thrower.throwAndCatch();
+        const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        for (0..rounds) |_| try thrower.throwAndCatch();
+        const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        if (after -| before >= handle_bytes * rounds / 4) {
+            std.debug.print("{s}: global handles {d} -> {d} bytes over {d} throws ({d} bytes a handle)\n", .{ field.name, before, after, rounds, handle_bytes });
+            leaked = true;
+        }
+    }
+    if (leaked) return error.HandlesLeaked;
+}
+
+test "an exception thrown in a realm does not keep that realm alive" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    const baseline = liveContexts();
+
+    // The control: a realm nothing refers to any more is collected.
+    ffi.v8_Context_Dispose(ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed);
+    try std.testing.expectEqual(baseline, liveContexts());
+
+    // Every helper throws in it - the DOMException ones through the fallback,
+    // for this realm has no DOMException - and everything thrown is released.
+    const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+    inline for (std.meta.fields(Thrower.Kind)) |field| {
+        var thrower: Thrower = .{ .context = other, .kind = @enumFromInt(field.value) };
+        for (0..4) |_| try thrower.throwAndCatch();
+    }
+    ffi.v8_Context_Dispose(other);
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before, {d} after the thrower realm was released\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}
+
+/// The process-wide pools Instances come from, made once for the file and,
+/// like V8 here, never torn down.
+var pools_ready = false;
+
+/// A platform object with attribute setters, for the setter tests: an Event,
+/// whose cancelBubble setter takes a boolean.
+fn eventInRealm() !void {
+    _ = try realm();
+    if (!pools_ready) {
+        runtime.SlabAllocator.init(std.heap.page_allocator);
+        runtime.ArenaAllocator.init(std.heap.page_allocator);
+        pools_ready = true;
+    }
+    const context = context_once.?;
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    v8.interface_bindings.Event.registerGlobalFast(isolate_once.?, context, global, "Event");
+    const reports = try run("globalThis.e = new Event('x'); e.cancelBubble = false;");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+test "an attribute setter releases the handle of the value it converted" {
+    try eventInRealm();
+    const isolate = isolate_once.?;
+
+    // The same loop assigning an expando - no setter - is the control: what
+    // running a script costs, if anything.
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    _ = try run("for (let i = 0; i < 64; i++) e.expando = i % 2 == 0;");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const reports = try run("for (let i = 0; i < 64; i++) e.cancelBubble = i % 2 == 0;");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    const setters = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (setters > control) {
+        std.debug.print("64 setter calls: {d} bytes of global handles left, against {d} for 64 expando stores\n", .{ setters, control });
+        return error.HandlesLeaked;
+    }
+}
+
+test "a value assigned through an attribute setter does not keep its realm alive" {
+    try eventInRealm();
+    const isolate = isolate_once.?;
+    const baseline = liveContexts();
+
+    // The control: an object of another realm, stored and forgotten, lets it go.
+    {
+        const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        const object = try scriptValueIn(other, "({})");
+        try exposeValue("fromOther", object);
+        ffi.v8_Value_Dispose(object);
+        _ = try run("e.expando = globalThis.fromOther; delete e.expando; delete globalThis.fromOther;");
+        ffi.v8_Context_Dispose(other);
+    }
+    try std.testing.expectEqual(baseline, liveContexts());
+
+    // The same object handed to a boolean setter: converted, then forgotten.
+    const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+    const object = try scriptValueIn(other, "({})");
+    try exposeValue("fromOther", object);
+    ffi.v8_Value_Dispose(object);
+    const reports = try run("for (let i = 0; i < 8; i++) e.cancelBubble = globalThis.fromOther; delete globalThis.fromOther;");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    ffi.v8_Context_Dispose(other);
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before, {d} after the setter's argument realm was released\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}

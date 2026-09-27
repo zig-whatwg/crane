@@ -57,6 +57,11 @@ pub const ffi = @import("ffi.zig");
 /// V8 Engine Interface (implements runtime.EngineInterface)
 /// Use this to create engine-agnostic contexts that work with V8
 pub const engine = @import("engine.zig");
+
+/// The engine protocol's V8 side: in a V8 build `engine_impl` is this module,
+/// and src/runtime/engine_protocol.zig forwards every operation to
+/// `protocol`.
+pub const protocol = @import("protocol.zig");
 pub const v8_engine_interface = engine.v8_engine_interface;
 
 /// Type conversions between Zig and V8

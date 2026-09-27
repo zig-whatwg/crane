@@ -10,3 +10,5 @@
 **Fix**: Pending - find the retainers of detached realms (docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md).
 
 **Takeaway**: **Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.**
+
+**Status (2026-09-26)**: found. Every frame realm was pinned by a TypeError that its own setup threw and leaked (`self`/`frames` assigned before the realm had a Window), and a frame's last realm by the [Replaceable] setter's unreleased argument handle - see docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md. With realms made per navigation it was 26 V8 out-of-memory crashes in the a680e6733 sweep.
