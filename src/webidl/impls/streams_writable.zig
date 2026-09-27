@@ -1192,7 +1192,7 @@ fn signalAbort(realm: Realm, controller: *Controller, reason: Value) void {
     const ac = controller.abort_controller orelse return;
     // Borrowed: the signal takes its own handle to the reason.
     _ = realm;
-    const arg = webidl.Opt(runtime.JSValue).passed(.{ .handle = .{ .ptr = @ptrCast(reason), .handle_scope = .global } });
+    const arg = webidl.Opt(runtime.JSValue).passed(js.toReturn(reason));
     interfaces.AbortController.call_abort(ac, arg) catch {};
 }
 

@@ -36,7 +36,7 @@ pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.ArrayBufferView 
     const request = srd.byobRequestOf(instance) orelse return error.TypeError;
     const view = request.view orelse return null;
     const info = js.describeView(view) orelse return null;
-    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, view);
+    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js.handleOf(view) orelse return null);
 }
 
 /// `respond(bytesWritten)` - § 4.8.3.
@@ -54,7 +54,7 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!voi
 
 /// `respondWithNewView(view)` - § 4.8.3.
 pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBufferView) anyerror!void {
-    const view_js: js.Value = @ptrCast(@alignCast(view.jsHandle() orelse return error.TypeError));
+    const view_js = js.adoptHandle(try js.Realm.of(instance), view.jsHandle() orelse return error.TypeError);
     defer js.dispose(view_js);
     const request = srd.byobRequestOf(instance) orelse return error.TypeError;
     // Step 1

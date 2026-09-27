@@ -30,6 +30,33 @@ const BodyPipe = fetch.internal.BodyPipe;
 
 pub const Error = error{ TypeError, OutOfMemory };
 
+/// An abort's reason, held for a body that fails with it - what
+/// body_pipe.Failure's opaque `reason` is when fetch() is aborted: the value
+/// and its realm, released with the body's source (`release`).
+pub const AbortReason = struct {
+    /// Owned.
+    value: js.Value,
+    allocator: std.mem.Allocator,
+
+    /// Hold `reason` (BORROWED) in `realm`; null when it cannot be held.
+    pub fn create(realm: runtime.Context, reason: runtime.JSValue) ?*AbortReason {
+        const held = engine.retainValue(realm, reason) catch return null;
+        const self = realm.allocator.create(AbortReason) catch {
+            held.release();
+            return null;
+        };
+        self.* = .{ .value = .{ .value = held.take(), .realm = realm }, .allocator = realm.allocator };
+        return self;
+    }
+
+    /// body_pipe.Failure's `release_reason`.
+    pub fn release(reason: *anyopaque) void {
+        const self: *AbortReason = @ptrCast(@alignCast(reason));
+        js.dispose(self.value);
+        self.allocator.destroy(self);
+    }
+};
+
 /// A body with type: the body, and the value for Content-Type, if any.
 pub const Extracted = struct {
     allocator: std.mem.Allocator,
@@ -502,7 +529,7 @@ const MethodSteps = struct {
         // The bytes form returns its promise; ours takes on its outcome.
         switch (result) {
             .handle => |h| {
-                const promise: js.Value = @ptrCast(@alignCast(h.ptr));
+                const promise: js.Value = .{ .value = result, .realm = realm.ctx };
                 self.deferred.resolve(realm, promise);
                 if (h.needs_disposal) js.dispose(promise);
             },
@@ -695,7 +722,7 @@ const PipeStream = struct {
 
     fn enqueue(self: *PipeStream, realm: js.Realm, controller: *runtime.Instance, bytes: []const u8) void {
         _ = self;
-        const buffer = js.allocateBuffer(bytes.len) orelse return;
+        const buffer = js.allocateBufferIn(realm, bytes.len) orelse return;
         defer js.dispose(buffer);
         if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..bytes.len], bytes);
         const view = js.newView(.uint8, buffer, 0, bytes.len) catch return;
@@ -713,7 +740,8 @@ const PipeStream = struct {
                 // stream's algorithms, which lets this source's pipe go -
                 // and with the last reader, the source and the reason it
                 // holds - before the error reaches the stream.
-                const e = js.clone(@ptrCast(@alignCast(reason))) catch return;
+                const held: *const AbortReason = @ptrCast(@alignCast(reason));
+                const e = js.clone(held.value) catch return;
                 defer js.dispose(e);
                 srd.byteControllerError(realm, controller, e);
                 return;

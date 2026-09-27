@@ -259,7 +259,7 @@ const ZigSource = struct {
 
     fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, reason: js.Value) js.Error!js.Value {
         const self: *ZigSource = @ptrCast(@alignCast(ctx.?));
-        if (self.source.cancel) |f| f(@ptrCast(reason), self.source.context) catch {};
+        if (self.source.cancel) |f| f(&reason, self.source.context) catch {};
         return realm.promiseResolvedWithUndefined();
     }
 
