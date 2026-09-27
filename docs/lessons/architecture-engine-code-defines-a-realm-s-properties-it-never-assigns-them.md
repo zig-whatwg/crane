@@ -14,4 +14,6 @@
 
 Still open, in held files: every exception the binding throws through `conversions.throw*` leaks its handles (the exception pins its realm), and every attribute setter leaks its argument's handle (`interface.zig` `makeSetterCallback`; operations release theirs through `convertArgReleasing`).
 
+**Status (2026-09-26, later)**: both closed. The `conversions.throw*` helpers release every handle they make - including the exception after `v8_Isolate_ThrowException`, which hands V8 a Local and takes nothing: 2 handles a throw for the plain errors and 10 for a DOMException before. `makeSetterCallback` releases the value handle unless it went to a conversion that may keep it (`argHandleIsCopied`): 1 handle a setter call before. Top-level pages define `self`/`frames` through the Engine table's `defineOwnPropertyOnObject` (src/browser/Context.zig). Pinned by tests/v8/page_realm_operations_test.zig (global-handle bytes and native contexts across throws and setter calls) and crane/sweep-binding-values-release-realms.html. **An exception you throw is still your handle: throwing does not take it.**
+
 **Takeaway**: **Engine code defines a realm's properties; it never assigns them.** A [[Set]] runs the script-facing setter, and a TypeError thrown into nobody's catch is still a Global into the realm that made it.
