@@ -11564,6 +11564,24 @@ Global<Value>* v8_Object_GetByKeyCatching(Global<Context>* context, Global<Value
     return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
 }
 
+/// A String of `length` UTF-16 code units, lone surrogates kept - what a
+/// JavaScript string may hold and UTF-8 cannot carry
+/// (String::NewFromTwoByte). A new Global the caller owns, as a Value:
+/// released with v8_Global_Dispose / v8_Value_Dispose, so it is not counted
+/// among the live String Globals. Null when V8 refuses it (longer than
+/// String::kMaxLength).
+Global<Value>* v8_Value_StringFromTwoByte(Isolate* isolate, const uint16_t* data, int length) {
+    if (!isolate || length < 0 || (length > 0 && !data)) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<String> str;
+    if (length == 0) {
+        str = String::Empty(isolate);
+    } else if (!String::NewFromTwoByte(isolate, data, NewStringType::kNormal, length).ToLocal(&str)) {
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, str));
+}
+
 } // extern "C"
 // ---- end lane: engine-boundary ----
 // ---- lane: page-realm ----
