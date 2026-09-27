@@ -185,11 +185,9 @@ pub fn fireErrorEvent(
     };
     defer if (ctx == null) ctx_data.deinit();
 
-    // Create ErrorEvent with the error information
-    // Convert JSValue to raw pointer for the error field
-    // The ErrorEvent impl expects ?*const anyopaque for backward compatibility
-    const error_ptr: ?*const anyopaque = error_info.@"error".toAnyopaque();
-
+    // Create ErrorEvent with the error information. The event holds its own
+    // copy of the error value, whatever kind it is - a thrown primitive and a
+    // platform object included.
     const event = try impls.ErrorEvent.createErrorEvent(
         allocator,
         actual_ctx,
@@ -197,7 +195,7 @@ pub fn fireErrorEvent(
         error_info.filename,
         error_info.lineno,
         error_info.colno,
-        error_ptr,
+        error_info.@"error",
         true, // cancelable = true per spec
     );
     // Ensure event is cleaned up after dispatch

@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -28,39 +28,21 @@ pub const ImplError = error{
 /// Internal state for CustomEvent implementation
 /// Contains the detail property which is any JavaScript value.
 pub const InternalState = struct {
-    /// The detail property - any JavaScript value passed to the constructor
-    /// Now stored as engine-agnostic JSValue
-    detail: runtime.JSValue = runtime.JSValue.jsUndefined,
+    /// The detail attribute's value, held by this event (OWNED). The value the
+    /// constructor receives belongs to the argument conversion - a string's
+    /// bytes are freed when the constructor returns, which is how `e.detail`
+    /// came back as U+FFFD garbage - so the event holds a value of its own
+    /// (the same fix as ErrorEvent.error).
+    detail: engine.Owned = .{ .value = runtime.JSValue.jsNull },
 
-    /// The Global<Value>* `detail` refers to, OWNED by this event, or null for
-    /// undefined. The value the constructor receives belongs to the argument
-    /// conversion - a string's bytes are freed when the constructor returns,
-    /// which is how `e.detail` came back as U+FFFD garbage - so the event keeps
-    /// a V8 value of its own (the same fix as ErrorEvent.error).
-    detail_global: ?*v8.ffi.Value = null,
-
-    fn setDetail(self: *InternalState, value: runtime.JSValue) void {
-        if (self.detail_global) |old| v8.ffi.v8_Global_Dispose(old);
-        self.detail_global = retainValue(value);
-        self.detail = if (self.detail_global) |g| runtime.JSValue.fromHandleNonOwning(g) else runtime.JSValue.jsUndefined;
+    /// Set the detail attribute to `value` (borrowed), in the event's
+    /// `realm`. A platform object is held as its wrapper in its relevant realm.
+    fn setDetail(self: *InternalState, realm: runtime.Context, value: runtime.JSValue) !void {
+        const held = try engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
+        self.detail.release();
+        self.detail = held;
     }
 };
-
-/// A Global<Value>* of `value` the event owns, or null for undefined. A
-/// runtime.JSValue handle is always a Global<Value>* (AGENTS.md "One handle
-/// kind per layer"), so it is cloned; a primitive is materialised in V8.
-fn retainValue(value: runtime.JSValue) ?*v8.ffi.Value {
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    return switch (value) {
-        .undefined => null,
-        .null => v8.ffi.v8_Null(isolate),
-        .boolean => |b| v8.ffi.v8_Boolean_New(isolate, b),
-        .number => |n| @ptrCast(v8.ffi.v8_Number_New(isolate, n)),
-        .string => |str| @ptrCast(v8.ffi.v8_String_NewFromUtf8(isolate, str.data.ptr, @intCast(str.data.len))),
-        .handle => |h| v8.ffi.v8_Global_Clone(@ptrCast(@alignCast(h.ptr))),
-        .instance => null,
-    };
-}
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -89,8 +71,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     // so delegating alone left this one held for the life of the process.
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.detail_global) |value| v8.ffi.v8_Global_Dispose(value);
-        internal.detail_global = null;
+        internal.detail.release();
+        internal.detail = .{ .value = runtime.JSValue.jsNull };
         const Arena = @import("runtime").ArenaAllocator;
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
@@ -117,16 +99,17 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Create internal state for CustomEvent
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState{};
+    state.own._internal = internal;
+    // CustomEventInit's `any detail = null`: the dictionary member's default.
     const detail_value = if (eventInitDict.was_passed and eventInitDict.value.detail != null)
         eventInitDict.value.detail.?
     else
-        runtime.JSValue.jsUndefined;
-    internal.* = InternalState{};
-    internal.setDetail(detail_value);
-    state.own._internal = internal;
+        runtime.JSValue.jsNull;
+    try internal.setDetail(ctx, detail_value);
 
-    // Store detail in state (for direct access)
-    state.own.detail = internal.detail;
+    // Store detail in state (for direct access): BORROWED, the event keeps it.
+    state.own.detail = internal.detail.borrow();
 
     state.base.own.type = try @"type".clone(ctx.allocator);
 
@@ -184,8 +167,8 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
     const state = instance.getState(State);
     if (detail.was_passed) {
         if (getInternal(instance)) |internal| {
-            internal.setDetail(detail.value);
-            state.own.detail = internal.detail;
+            try internal.setDetail(instance.ctx, detail.value);
+            state.own.detail = internal.detail.borrow();
         }
     }
 }
