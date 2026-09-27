@@ -33,7 +33,7 @@ src/browser/Context.zig v8.context_manager.removeContext 1
 src/browser/Context.zig v8.context_manager.setDocumentUrl 1
 src/browser/Context.zig v8.context_manager.setRealmForContext 1
 src/browser/Context.zig v8.dom_type_info 2
-src/browser/Context.zig v8.ffi 103
+src/browser/Context.zig v8.ffi 91
 src/browser/Context.zig v8.interface_bindings 10
 src/browser/Context.zig v8.template_registry 5
 src/browser/Context.zig v8.window_properties 2
@@ -53,7 +53,7 @@ src/browser/Context.zig v8_ObjectTemplate_SetImmutableProto 1
 src/browser/Context.zig v8_ObjectTemplate_SetInternalFieldCount 1
 src/browser/Context.zig v8_Object_Dispose 1
 src/browser/Context.zig v8_Object_Get 4
-src/browser/Context.zig v8_Object_Set 13
+src/browser/Context.zig v8_Object_Set 9
 src/browser/Context.zig v8_Object_SetAlignedPointerInInternalField 4
 src/browser/Context.zig v8_Object_SetPrototypeV2 1
 src/browser/Context.zig v8_PatchDocumentInstanceOf 1
@@ -63,15 +63,15 @@ src/browser/Context.zig v8_Script_Compile 2
 src/browser/Context.zig v8_Script_Dispose 1
 src/browser/Context.zig v8_Script_Run 1
 src/browser/Context.zig v8_Script_Run_Safe 1
-src/browser/Context.zig v8_String_Dispose 14
-src/browser/Context.zig v8_String_NewFromUtf8 19
+src/browser/Context.zig v8_String_Dispose 10
+src/browser/Context.zig v8_String_NewFromUtf8 15
 src/browser/Context.zig v8_String_Utf8Length 2
 src/browser/Context.zig v8_String_WriteUtf8 2
 src/browser/Context.zig v8_TryCatch_Exception 2
 src/browser/Context.zig v8_Value_Dispose 3
 src/browser/Context.zig v8_Value_ToString 2
 src/browser/Context.zig v8_context 13
-src/browser/Context.zig v8_ctx 77
+src/browser/Context.zig v8_ctx 73
 src/browser/Context.zig v8_document 2
 src/browser/Context.zig v8_location 2
 src/browser/Context.zig v8_navigator 4
