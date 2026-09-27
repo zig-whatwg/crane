@@ -3260,3 +3260,26 @@ pub extern fn v8_Exception_ReferenceErrorInContext(context: *Context, message: *
 /// `view` is not an ArrayBufferView, is detached, or the bytes do not fit.
 pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, length: usize, starting_offset: usize) bool;
 // ---- end lane: runtime-impls ----
+// ---- lane: protocol ----
+// The engine protocol's additive FFI (engine-protocol-design.md, decision 11).
+
+/// HTML "prepare to run a callback": run `body(data)` with `incumbent` on the
+/// backup incumbent settings object stack (v8::Context::BackupIncumbentScope,
+/// held on the C++ stack around the body). Null `incumbent`: nothing pushed.
+pub extern fn v8_RunWithBackupIncumbent(isolate: *Isolate, incumbent: ?*Context, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void;
+
+/// HTML's incumbent realm here (Isolate::GetIncumbentContext). A new Global
+/// the caller disposes with v8_Context_Dispose; null when no context is
+/// entered.
+pub extern fn v8_Isolate_GetIncumbentContext(isolate: *Isolate) ?*Context;
+
+/// A function of `context` running `callback` with `data` as its [[data]]:
+/// Function::New - not cached per context, unlike a FunctionTemplate. Not a
+/// constructor. A new Global<Value> the caller owns; null on failure.
+pub extern fn v8_Function_NewWithData(context: *Context, callback: FunctionCallback, data: ?*Value, length: c_int) ?*Value;
+/// PerformPromiseThen(promise, onFulfilled, onRejected, capability), a null
+/// handler being undefined (V8's one-handler Then, or Catch): the derived
+/// promise, a new Global<Value> the caller owns; null on failure or when both
+/// handlers are null. Unlike v8_Promise_Then, safe with a null handler.
+pub extern fn v8_Promise_ThenWithOptionalHandlers(context: *Context, promise: *Value, on_fulfilled: ?*Value, on_rejected: ?*Value) ?*Value;
+// ---- end lane: protocol ----
