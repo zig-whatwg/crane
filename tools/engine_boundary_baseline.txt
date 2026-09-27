@@ -76,8 +76,6 @@ src/browser/Context.zig v8_document 2
 src/browser/Context.zig v8_location 2
 src/browser/Context.zig v8_navigator 4
 src/browser/Context.zig v8_performance 2
-src/dom/event_target.zig @import("v8") 2
-src/dom/event_target.zig v8_engine 4
 src/html/full.zig @import("worker_v8_context.zig") 1
 src/html/full.zig worker_v8_context.zig.WorkerV8Context 1
 src/html/module_script.zig @import("v8") 1
