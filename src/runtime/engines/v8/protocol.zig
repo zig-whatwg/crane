@@ -488,9 +488,8 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
 // 4.8 Exceptions
 // ============================================================================
 
-/// Partly wired: every kind but SyntaxError. V8's embedder API reaches no
-/// EvalError or URIError intrinsic either; those stay NotSupported, as the
-/// table's answer them.
+/// V8's embedder API reaches no EvalError or URIError intrinsic; those are
+/// NotSupported, as the table's answer them.
 pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, message: []const u8) Error!Owned {
     const table_kind: runtime.SimpleExceptionKind = switch (kind) {
         .EvalError => .EvalError,
@@ -498,8 +497,7 @@ pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, m
         .ReferenceError => .ReferenceError,
         .TypeError => .TypeError,
         .URIError => .URIError,
-        // TODO(protocol): implement - design 4.8 (SyntaxError, for HTML module errors)
-        .SyntaxError => return error.NotSupported,
+        .SyntaxError => return @import("protocol_values.zig").createSyntaxError(realm, message),
     };
     return owned(value_construction.createSimpleException(realm, table_kind, message) catch |err| return protocolError(err));
 }
@@ -564,11 +562,7 @@ pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
     return owned(value_construction.createRejectedPromise(realm, reason) catch |err| return protocolError(err));
 }
 
-// TODO(protocol): implement - design 4.9 (was chainPromiseHandlers, whose callbacks get raw engine values)
-pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
-    _ = .{ realm, promise, steps, data };
-    return error.NotSupported;
-}
+pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;
 
 /// A `.handle` is a Global either way it is tagged; the FFI leaves anything
 /// but a promise alone.
