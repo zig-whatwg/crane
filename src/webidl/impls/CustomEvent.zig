@@ -18,6 +18,9 @@ const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
+/// CustomEvent is an Event: its ancestor's state is reached through Event's
+/// impl (AGENTS.md "The impls boundary", rule 1).
+const EventImpl = @import("Event.zig");
 
 pub const State = CustomEvent.State;
 
@@ -152,23 +155,16 @@ pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 2. Initialize this with type, bubbles, and cancelable.
 /// 3. Set this's detail attribute to detail.
 pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // Step 1: Check dispatch flag
-    // Note: Would check via Event's dispatch flag, but we don't have direct access
-    // For now, proceed with initialization
+    // Step 1: If this's dispatch flag is set, then return.
+    if (EventImpl.getDispatchFlag(instance)) return;
 
-    // Step 2: Initialize event (would call parent's initEvent logic)
-    // Since Event state is accessed via prototype chain in JS, we can't directly call it here
-    // The JS runtime handles inheritance
-    _ = @"type";
-    _ = bubbles;
-    _ = cancelable;
+    // Step 2: Initialize this with type, bubbles, and cancelable - Event's
+    // own initEvent steps (their step 1 is this one, and holds).
+    try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
 
-    // Step 3: Set detail
-    const state = instance.getState(State);
-    if (detail.was_passed) {
-        if (getInternal(instance)) |internal| {
-            try internal.setDetail(instance.ctx, detail.value);
-            state.own.detail = internal.detail.borrow();
-        }
-    }
+    // Step 3: Set this's detail attribute to detail (`optional any detail =
+    // null`).
+    const internal = getInternal(instance) orelse return;
+    try internal.setDetail(instance.ctx, if (detail.was_passed) detail.value else runtime.JSValue.jsNull);
+    instance.getState(State).own.detail = internal.detail.borrow();
 }
