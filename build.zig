@@ -1598,19 +1598,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Algorithm infrastructure for ReadableStream.from() and async iterator support
-    const streams_algorithm_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/algorithm.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "callbacks", .module = callbacks_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "v8", .module = v8_mod },
-        },
-    });
-
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),
         .target = target,
@@ -1664,7 +1651,6 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
-    streams_mod.addImport("algorithm", streams_algorithm_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -1682,7 +1668,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
-    impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
     // DOM module for XPath implementations

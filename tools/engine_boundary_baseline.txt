@@ -181,9 +181,6 @@ src/root.zig @import("v8") 1
 src/runtime/realm.zig @import("v8") 1
 src/runtime/realm.zig v8.realm_v8 1
 src/runtime/realm.zig v8_context 6
-src/streams/internal/algorithm.zig @import("v8") 1
-src/streams/internal/algorithm.zig v8_engine 9
-src/streams/internal/algorithm.zig v8_promise 2
 src/webdriver/session.zig @import("v8") 1
 src/webdriver/session.zig v8.ffi 9
 src/webdriver/session.zig v8_String_Utf8Length 3
