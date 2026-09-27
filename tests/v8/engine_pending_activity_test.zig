@@ -168,12 +168,39 @@ test "releasing pending activity leaves a wrapper held for another reason" {
     try std.testing.expect(isCached(both));
 }
 
-test "a hold on an instance with no wrapper yet is a no-op, and wrapping later starts weak" {
+test "a hold placed before the wrapper exists is taken by the wrapper when it is made" {
     try setup();
-    const instance = try unwrapped();
-    engine.keepPlatformObjectAlive.?(instance.instance);
-    try wrap(instance);
-    try std.testing.expect(!isStrong(instance));
+    // A timeout signal's timer is armed before the binding wraps the signal.
+    const early = try unwrapped();
+    engine.keepPlatformObjectAlive.?(early.instance);
+    try wrap(early);
+    try std.testing.expect(isStrong(early));
     collect();
-    try std.testing.expect(wasFreed(instance));
+    try std.testing.expect(!wasFreed(early));
+    engine.releasePlatformObject.?(early.instance);
+    collect();
+    try std.testing.expect(wasFreed(early));
+
+    // Released before it was wrapped: nothing is left to take.
+    const brief = try unwrapped();
+    engine.keepPlatformObjectAlive.?(brief.instance);
+    engine.releasePlatformObject.?(brief.instance);
+    try wrap(brief);
+    try std.testing.expect(!isStrong(brief));
+    collect();
+    try std.testing.expect(wasFreed(brief));
+}
+
+test "a hold recorded for a freed instance is not inherited by its slot's next occupant" {
+    try setup();
+    const first = try unwrapped();
+    engine.keepPlatformObjectAlive.?(first.instance);
+    // The instance goes without ever being wrapped, and its slot is reissued.
+    runtime.SlabAllocator.get().free(first.instance);
+    const second = try unwrapped();
+    try std.testing.expectEqual(first.instance, second.instance);
+    try wrap(second);
+    try std.testing.expect(!isStrong(second));
+    collect();
+    try std.testing.expect(wasFreed(second));
 }

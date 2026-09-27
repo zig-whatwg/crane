@@ -222,6 +222,12 @@ fn engineOf(ctx: runtime.Context) error{NoEngine}!*const runtime.EngineInterface
     return ctx.getEngine() orelse error.NoEngine;
 }
 
+/// End the pending-activity hold `call_static_timeout` took on `signal`.
+fn releasePendingActivity(signal: *runtime.Instance) void {
+    const engine = signal.ctx.getEngine() orelse return;
+    if (engine.releasePlatformObject) |release_hold| release_hold(signal);
+}
+
 /// Static operation: abort(reason)
 ///
 /// Spec: "1. Let signal be a new AbortSignal object. 2. Set signal's abort
@@ -243,8 +249,12 @@ pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime
 /// a global task on the timer task source given global to signal abort given
 /// signal and a new "TimeoutError" DOMException. 4. Return signal."
 ///
-/// Deviation: nothing keeps an unreferenced signal alive while its timer is
-/// pending; the timer then finds it gone and does nothing.
+/// The timer's steps hold the signal, so it lives until they run whatever
+/// script holds of it: a signal nobody references still aborts, and its
+/// `abort` listeners still hear it. Blink's AbortSignal says the same through
+/// HasPendingActivity(); here it is the Engine table's pending-activity hold,
+/// taken with the timer and released when it fires or is cancelled. Without
+/// it a collection freed the signal, and the timer found it gone.
 pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
     const signal = try newSignal(instance.ctx);
     const timer = signal.ctx.timer orelse return signal;
@@ -257,6 +267,9 @@ pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyer
         return signal;
     }
     internal.timeout = task;
+    // Before the binding wraps it: the hold is taken by the wrapper.
+    const engine = try engineOf(signal.ctx);
+    if (engine.keepPlatformObjectAlive) |keep| keep(signal);
     return signal;
 }
 
@@ -272,6 +285,9 @@ const TimeoutTask = struct {
         const signal = task.signal.get() orelse return;
         const internal = getInternal(signal) orelse return;
         internal.timeout = null;
+        // The timer's steps are the signal's last pending activity; they hold
+        // it until they have run.
+        defer releasePendingActivity(signal);
         // "Queue a global task on the timer task source given global": the
         // steps run as a task of the signal's realm, entered from the event
         // loop - a worker's realm with its own agent, and its task ended the
@@ -290,9 +306,11 @@ const TimeoutTask = struct {
         signalAbortWith(signal, reason);
     }
 
-    /// The signal is going: its timer must not fire into it.
+    /// The signal is going: its timer must not fire into it, and nothing
+    /// holds it for the timer any more.
     fn cancel(self: *TimeoutTask) void {
         _ = self.timer.clearTimeout(self.id);
+        if (self.signal.get()) |signal| releasePendingActivity(signal);
         self.allocator.destroy(self);
     }
 };

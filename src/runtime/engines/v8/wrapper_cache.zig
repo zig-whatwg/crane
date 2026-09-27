@@ -326,30 +326,46 @@ pub fn holdStrong(instance: *runtime.Instance) void {
 }
 
 /// Blink's ActiveScriptWrappable: hold `instance`'s wrapper while it has
-/// pending activity - a running Worker - whatever script holds of it. Ended
-/// by `releasePendingActivity`. A no-op for an instance with no wrapper yet.
+/// pending activity - a running Worker, a timeout signal whose timer is
+/// pending - whatever script holds of it. Ended by `releasePendingActivity`.
+/// The activity can begin before script has seen the instance (a signal is
+/// made, and its timer armed, before the binding wraps it): the hold is then
+/// recorded against the instance and taken by its wrapper when it is made.
 pub fn holdForPendingActivity(instance: *runtime.Instance) void {
-    const entry = entryOf(instance) orelse return;
-    entry.holds.pending_activity = true;
-    syncEntry(entry);
+    const cache = cacheOf(instance) orelse return;
+    if (cache.cache.get(instance)) |entry| {
+        entry.holds.pending_activity = true;
+        syncEntry(entry);
+        return;
+    }
+    cache.pending_before_wrap.put(cache.allocator, instance, runtime.SlabAllocator.generationOf(instance)) catch {};
 }
 
 /// `instance` has no pending activity any more (HasPendingActivity() turned
 /// false): its wrapper is collectable again, unless another reason holds it.
 /// Idempotent; a no-op for an instance never held this way.
 pub fn releasePendingActivity(instance: *runtime.Instance) void {
-    const entry = entryOf(instance) orelse return;
+    const cache = cacheOf(instance) orelse return;
+    _ = cache.pending_before_wrap.remove(instance);
+    const entry = cache.cache.get(instance) orelse return;
     if (!entry.holds.pending_activity) return;
     entry.holds.pending_activity = false;
     syncEntry(entry);
 }
 
-/// `instance`'s entry in its realm's cache, or null when it has no wrapper
-/// there or the cache is being torn down.
-fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
+/// `instance`'s realm's cache, or null when it has none or it is being torn
+/// down.
+fn cacheOf(instance: *runtime.Instance) ?*WrapperCache {
     const cache_storage = instance.ctx.getV8WrapperCacheStorage() orelse return null;
     const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
     if (cache.is_tearing_down) return null;
+    return cache;
+}
+
+/// `instance`'s entry in its realm's cache, or null when it has no wrapper
+/// there or the cache is being torn down.
+fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
+    const cache = cacheOf(instance) orelse return null;
     return cache.cache.get(instance);
 }
 
@@ -563,6 +579,11 @@ pub const WrapperCache = struct {
     /// Whether this cache is in `live_caches`.
     registered: bool = false,
 
+    /// Pending-activity holds placed before the instance was wrapped
+    /// (`holdForPendingActivity`), by slab generation so a reissued address
+    /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
+    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+
     const Self = @This();
 
     /// Initialize a new wrapper cache
@@ -712,6 +733,7 @@ pub const WrapperCache = struct {
         log.debug("[wrapper_cache.deinit] Summary: processed={}, iframes={}, skipped_cleaned={}, skipped_started={}", .{ processed, iframe_count, skipped_cleaned, skipped_started });
         self.unregister();
         self.cache.deinit();
+        self.pending_before_wrap.deinit(self.allocator);
     }
 
     /// Clean up cache without calling onObjectFreed callbacks.
@@ -772,6 +794,7 @@ pub const WrapperCache = struct {
 
         self.unregister();
         self.cache.deinit();
+        self.pending_before_wrap.deinit(self.allocator);
     }
 
     /// Join `live_caches` - on first use, when this cache's address is
@@ -866,6 +889,10 @@ pub const WrapperCache = struct {
         // the way they do in WebKit and Blink. It goes weak when the node
         // becomes a root (installTreeHooks), and the teardown sweep frees it
         // otherwise.
+        // A pending-activity hold placed before the wrapper existed.
+        if (self.pending_before_wrap.fetchRemove(instance)) |held| {
+            if (held.value == entry.original_generation) entry.holds.pending_activity = true;
+        }
         if (shouldBeStrong(entry)) {
             entry.strong = true;
         } else {
