@@ -44,6 +44,40 @@ test "an Owned value is released through the adapter, or taken by whoever takes 
     engine.releaseValue(owned);
 }
 
+test "undefined, null, a boolean or a number is retained by value, with no engine behind the realm" {
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    const realm: engine.Context = &data;
+    // They hold no engine resource: nothing is entered, so a realm with no
+    // engine retains them too, and releasing one does nothing.
+    for ([_]runtime.JSValue{ runtime.JSValue.jsUndefined, runtime.JSValue.jsNull, runtime.JSValue.fromBoolean(true), runtime.JSValue.fromNumber(-0.0) }) |value| {
+        const held = try engine.retainValue(realm, value);
+        defer held.release();
+        try std.testing.expectEqual(std.meta.activeTag(value), std.meta.activeTag(held.value));
+    }
+    const number = try engine.retainValue(realm, runtime.JSValue.fromNumber(2.5));
+    try std.testing.expectEqual(@as(f64, 2.5), number.value.number);
+    // A string is an engine value to hold: that needs the engine.
+    try std.testing.expectError(error.NotSupported, engine.retainValue(realm, runtime.JSValue.fromStringRef("s")));
+}
+
+test "borrow is a view of an Owned value that its holder keeps, and the binding leaves" {
+    var slot: u8 = 0;
+    const handle: engine.Owned = .{ .value = runtime.JSValue.fromHandle(@ptrCast(&slot)) };
+    const view = handle.borrow();
+    // The same engine value, never to be released by whoever receives it.
+    try std.testing.expectEqual(@as(*anyopaque, @ptrCast(&slot)), view.handle.ptr);
+    try std.testing.expect(!view.needsDisposal());
+    try std.testing.expect(handle.value.needsDisposal());
+
+    const text: engine.Owned = .{ .value = runtime.JSValue.fromStringOwned("kept") };
+    try std.testing.expect(!text.borrow().needsDisposal());
+    try std.testing.expectEqualStrings("kept", text.borrow().string.data);
+
+    const number: engine.Owned = .{ .value = runtime.JSValue.fromNumber(3) };
+    try std.testing.expectEqual(@as(f64, 3), number.borrow().number);
+}
+
 /// A caller of a capability-gated operation: the branch that calls it is
 /// compiled only when the engine has the capability. Without the capability
 /// the call would be a compile error ("engine.promiseIsHandled needs

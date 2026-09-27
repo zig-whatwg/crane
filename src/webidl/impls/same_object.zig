@@ -12,10 +12,10 @@
 //!
 //! Blink keeps such a child alive by TRACING it from its owner
 //! (`XMLHttpRequest::Trace` visits `upload_`); WebKit does it in
-//! `visitChildren`. Crane has no tracing, so the owner holds a strong Global to
-//! the child's wrapper instead: taken when the child is first handed out,
-//! released in the owner's deinit. The owner's own wrapper stays weak, so a
-//! dead owner still lets its child go.
+//! `visitChildren`. Crane has no tracing, so the owner holds the child's
+//! wrapper strongly instead (`engine.retainValue`): taken when the child is
+//! first handed out, released in the owner's deinit. The owner's own wrapper
+//! stays weak, so a dead owner still lets its child go.
 //!
 //! Use this only for a child that does not point back into its owner. A
 //! `Headers` object's list lives INSIDE its Request or Response, so there the
@@ -23,49 +23,33 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
+const engine = @import("engine");
 
 /// A strong reference to one Instance's JavaScript wrapper.
 pub const Pin = struct {
-    handle: ?v8.GlobalHandle = null,
+    held: ?engine.Owned = null,
 
-    /// Hold `instance`'s wrapper strongly, creating the wrapper if JavaScript
-    /// has not seen `instance` yet.
+    /// Hold `instance`'s wrapper strongly, creating the wrapper - in the
+    /// instance's relevant realm - if JavaScript has not seen `instance` yet.
+    /// A later wrap of the same Instance (the binding layer, converting this
+    /// getter's return value) is a cache hit and returns this same object.
     ///
-    /// Idempotent. Silently holds nothing when there is no isolate or context
-    /// to wrap in - which is also a world with no garbage collector to guard
+    /// Idempotent. Silently holds nothing when the realm has no engine to
+    /// wrap in - which is also a world with no garbage collector to guard
     /// against.
     pub fn hold(self: *Pin, instance: *runtime.Instance) void {
-        if (self.handle != null) return;
-
-        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
-        const engine_ctx = instance.ctx.engine_ctx orelse return;
-        const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-        const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
-        defer v8.ffi.v8_HandleScope_Dispose(scope);
-
-        // The wrapper cache's own Global - borrowed, never ours to dispose. A
-        // later wrap of the same Instance (the binding layer, converting this
-        // getter's return value) is a cache hit and returns this same object.
-        const name = v8.template_registry.getInstanceInterfaceName(instance);
-        const wrapper = v8.template_registry.wrapInstanceAsV8Object(instance, name, isolate, context) catch return;
-
-        // Our own strong Global to the same object: `v8_Global_Get` lends a
-        // Local in the scope above, `GlobalHandle.create` allocates the Global
-        // that `release` disposes.
-        const local = v8.ffi.v8_Global_Get(isolate, @ptrCast(wrapper)) orelse return;
-        self.handle = v8.GlobalHandle.create(isolate, local);
+        if (self.held != null) return;
+        self.held = engine.retainValue(instance.ctx, .{ .instance = instance }) catch return;
     }
 
     pub fn isHeld(self: *const Pin) bool {
-        return self.handle != null;
+        return self.held != null;
     }
 
     /// Let the wrapper go. Its lifetime is the wrapper cache's again.
     pub fn release(self: *Pin) void {
-        if (self.handle) |handle| handle.dispose();
-        self.handle = null;
+        if (self.held) |held| held.release();
+        self.held = null;
     }
 };
 

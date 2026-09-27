@@ -1911,6 +1911,9 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("fetch", fetch_mod);
     html_mod.addImport("csp", csp_mod);
     html_mod.addImport("v8", v8_mod);
+    // The engine protocol (AGENTS.md "The engine boundary"): html's
+    // engine-neutral code calls `engine.op`.
+    html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
