@@ -34,7 +34,6 @@
 //! behavior to the production Browser implementation.
 
 const std = @import("std");
-const v8_ffi = @import("v8").ffi;
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
@@ -472,8 +471,6 @@ pub const WptBrowser = struct {
     /// that reads `<meta name="timeout">` out of the document, and this runs
     /// before the document exists. See `config.Timeout.explicitTimeout`.
     fn loadTestHarness(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
-        _ = ctx.v8_context; // Suppress unused warning
-
         // CRITICAL CHECK: Verify no state leaked from previous context
         // If any of these exist, we have a state leak!
         const leak_check =
@@ -490,20 +487,14 @@ pub const WptBrowser = struct {
             \\  return 'CLEAN';
             \\})();
         ;
-        const leak_result = ctx.evaluateScript(leak_check) catch |err| {
+        const leak_str = ctx.evaluateScriptToString(leak_check, self.allocator) catch |err| {
             log.warn("loadTestHarness: leak check error: {}", .{err});
             return err;
         };
-        if (leak_result) |val| {
-            defer v8_ffi.v8_Value_Dispose(val);
-            const leak_str = self.v8StringToZig(val) catch null;
-            if (leak_str) |s| {
-                defer self.allocator.free(s);
-                // Only print if there's a leak
-                if (!std.mem.eql(u8, s, "CLEAN")) {
-                    log.warn("loadTestHarness: state leak detected: {s}", .{s});
-                }
-            }
+        defer self.allocator.free(leak_str);
+        // Only print if there's a leak
+        if (!std.mem.eql(u8, leak_str, "CLEAN")) {
+            log.warn("loadTestHarness: state leak detected: {s}", .{leak_str});
         }
 
         // Load testharness.js
@@ -677,15 +668,7 @@ pub const WptBrowser = struct {
             _ = self.browser.runEventLoopBlocking(wait_time) catch {};
 
             // Check if test is complete
-            const complete_result = ctx.evaluateScript("window.__wpt_complete") catch continue;
-            if (complete_result) |val| {
-                defer v8_ffi.v8_Value_Dispose(val);
-                // Check if it's true
-                if (self.isV8True(val)) {
-                    // Collect results
-                    return try self.collectResults(ctx, start_time, test_path);
-                }
-            }
+            if (self.isComplete(ctx)) return try self.collectResults(ctx, start_time, test_path);
         }
 
         // The ceiling. A file under an explicit timeout has no harness timer
@@ -696,11 +679,7 @@ pub const WptBrowser = struct {
         ctx.runScript("if (typeof timeout === 'function') timeout();") catch {};
         const grace_deadline = clock.monotonicMillis() + timeout_grace_ms;
         while (true) {
-            const complete_result = ctx.evaluateScript("window.__wpt_complete") catch null;
-            if (complete_result) |val| {
-                defer v8_ffi.v8_Value_Dispose(val);
-                if (self.isV8True(val)) return try self.collectResults(ctx, start_time, test_path);
-            }
+            if (self.isComplete(ctx)) return try self.collectResults(ctx, start_time, test_path);
             const now = clock.monotonicMillis();
             if (now >= grace_deadline) break;
             _ = self.browser.runEventLoopBlocking(@min(@as(u64, @intCast(grace_deadline - now)), check_interval_ms)) catch {};
@@ -715,28 +694,24 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// Check if a V8 value is true
-    fn isV8True(self: *WptBrowser, val: *anyopaque) bool {
-        // Use V8 FFI to check if value is truthy
-        const v8 = @import("v8");
-        const value: *v8.ffi.Value = @ptrCast(val);
-        // Check if it's a boolean and get its value
-        if (v8.ffi.v8_Value_IsBoolean(value)) {
-            const isolate = self.browser.isolate orelse return false;
-            return v8.ffi.v8_Value_BooleanValue(value, isolate);
-        }
-        return false;
+    /// Whether the harness has completed: `window.__wpt_complete` is true
+    /// (the boolean, nothing merely truthy).
+    fn isComplete(self: *WptBrowser, ctx: *Context) bool {
+        const answer = ctx.evaluateScriptToString("window.__wpt_complete === true", self.allocator) catch return false;
+        defer self.allocator.free(answer);
+        return std.mem.eql(u8, answer, "true");
     }
 
     /// Collect test results from window.__wpt_results
     fn collectResults(self: *WptBrowser, ctx: *Context, start_time: i64, test_path: []const u8) !test_harness.TestResult {
         const duration = @as(u64, @intCast(clock.monotonicMillis() - start_time));
 
-        // Get results JSON
+        // Get results JSON - "=" and the JSON text, or "" when there is
+        // none to stringify (JSON.stringify(undefined) is undefined).
         const json_script =
-            \\JSON.stringify(window.__wpt_results)
+            \\(function () { var s = JSON.stringify(window.__wpt_results); return typeof s === 'string' ? '=' + s : ''; })()
         ;
-        const json_result = ctx.evaluateScript(json_script) catch {
+        const json_result = ctx.evaluateScriptToString(json_script, self.allocator) catch {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
             result.status = .@"error";
             result.message = try self.allocator.dupe(u8, "Failed to collect test results");
@@ -744,55 +719,14 @@ pub const WptBrowser = struct {
             return result;
         };
 
-        if (json_result) |val| {
-            defer v8_ffi.v8_Value_Dispose(val);
-            // Convert V8 string to Zig string
-            const json_str = self.v8StringToZig(val) catch {
-                var result = try test_harness.TestResult.init(self.allocator, test_path);
-                result.status = .@"error";
-                result.message = try self.allocator.dupe(u8, "Failed to convert results to string");
-                result.duration_ms = duration;
-                return result;
-            };
-            defer if (json_str) |s| self.allocator.free(s);
-
-            if (json_str) |str| {
-                return try self.parseTestResults(str, duration, test_path);
-            }
-        }
+        defer self.allocator.free(json_result);
+        if (json_result.len > 0) return try self.parseTestResults(json_result[1..], duration, test_path);
 
         var result = try test_harness.TestResult.init(self.allocator, test_path);
         result.status = .@"error";
         result.message = try self.allocator.dupe(u8, "No test results available");
         result.duration_ms = duration;
         return result;
-    }
-
-    /// Convert V8 string value to Zig string
-    fn v8StringToZig(self: *WptBrowser, val: *anyopaque) !?[]const u8 {
-        const v8 = @import("v8");
-        const value: *v8.ffi.Value = @ptrCast(val);
-
-        if (!v8.ffi.v8_Value_IsString(value)) {
-            return null;
-        }
-
-        const str: *v8.ffi.String = @ptrCast(value);
-        const len = v8.ffi.v8_String_Utf8Length(str);
-        if (len <= 0) {
-            return null;
-        }
-
-        const buffer = try self.allocator.alloc(u8, @intCast(len));
-        errdefer self.allocator.free(buffer);
-
-        const written = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-        if (written <= 0) {
-            self.allocator.free(buffer);
-            return null;
-        }
-
-        return buffer[0..@intCast(written)];
     }
 
     /// Parse JSON test results into TestResult struct

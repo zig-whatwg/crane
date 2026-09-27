@@ -289,8 +289,10 @@ pub fn registerAllInterfaces(
     @setEvalBranchQuota(200_000);
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
 
-    // OPTIMIZATION: Cache global object - don't fetch it 1231 times
+    // OPTIMIZATION: Cache global object - don't fetch it 1231 times. OWNED:
+    // a handle to the global kept pins the realm (its proxy until detached).
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     inline for (iface_decls) |decl| {
         // Skip problematic interfaces using centralized skip list
@@ -489,6 +491,7 @@ pub fn installForScope(
     @setEvalBranchQuota(200_000);
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     inline for (iface_decls) |decl| {
         if (comptime shouldSkipInterface(decl.name)) continue;
@@ -723,11 +726,12 @@ pub fn initializeCoreBindingsForScope(
     context: *v8.Context,
     comptime scope: helpers.GlobalScope,
 ) void {
-    // Get the global object from context
+    // Get the global object from context (OWNED)
     const global = v8.v8_Context_Global(context) orelse {
         log.debug("[CORE-BINDINGS] Failed to get global object from context\n", .{});
         return;
     };
+    defer v8.v8_Object_Dispose(global);
 
     if (scope == .ShadowRealm) {
         // ShadowRealm gets computational interfaces only (no DOM)
@@ -849,46 +853,19 @@ pub fn registerLegacyInterfaceAliases(
     context: *v8.Context,
 ) void {
     @setEvalBranchQuota(200_000);
+    // Every handle below is released: each points into `context`, and one
+    // kept keeps the whole realm (docs/lessons/
+    // debugging-find-what-keeps-a-page-alive-count-native.md).
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
-    // HTMLDocument is a legacy alias for Document
-    // Per HTML spec: "The HTMLDocument interface is an historical alias for Document."
-    const doc_key = v8.v8_String_NewFromUtf8(isolate, "Document", 8);
-    if (doc_key) |key| {
-        const doc_ctor = v8.v8_Object_Get(global, context, @ptrCast(key));
-        if (doc_ctor) |ctor| {
-            const html_doc_key = v8.v8_String_NewFromUtf8(isolate, "HTMLDocument", 12);
-            if (html_doc_key) |hkey| {
-                _ = v8.v8_Object_Set(global, context, @ptrCast(hkey), ctor);
-            }
-        }
-    }
+    // HTMLDocument: "for historical reasons, Window objects must also have a
+    // writable, configurable, non-enumerable property named HTMLDocument whose
+    // value is the Document interface object" - defined, never assigned.
+    defineAlias(isolate, context, global, "Document", "HTMLDocument");
 
-    // webkitURL is a legacy alias for URL
-    // Per WebIDL spec: [LegacyWindowAlias=webkitURL]
-    // Set webkitURL = URL with non-enumerable attribute (per WebIDL spec for legacy aliases)
-    const url_key = v8.v8_String_NewFromUtf8(isolate, "URL", 3);
-    if (url_key) |key| {
-        const url_ctor = v8.v8_Object_Get(global, context, @ptrCast(key));
-        if (url_ctor) |ctor| {
-            const webkit_url_key = v8.v8_String_NewFromUtf8(isolate, "webkitURL", 9);
-            if (webkit_url_key) |wkey| {
-                // Per WebIDL spec, LegacyWindowAlias should be:
-                // - writable: true
-                // - enumerable: false (not enumerable per legacy alias rules)
-                // - configurable: true
-                _ = v8.v8_Object_DefineProperty(
-                    global,
-                    context,
-                    @ptrCast(wkey),
-                    ctor,
-                    true, // writable
-                    false, // enumerable
-                    true, // configurable
-                );
-            }
-        }
-    }
+    // webkitURL is a legacy alias for URL ([LegacyWindowAlias=webkitURL]).
+    defineAlias(isolate, context, global, "URL", "webkitURL");
 
     // Register [LegacyWindowAlias] aliases from extended_attributes
     // Per WebIDL spec, [LegacyWindowAlias=Name] creates an alias on Window
@@ -914,38 +891,24 @@ pub fn registerLegacyInterfaceAliases(
                             break :blk "";
                         };
 
-                        if (alias_name.len > 0) {
-                            // Get the original interface constructor
-                            const iface_name = Meta.name;
-                            const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_name.ptr, @intCast(iface_name.len));
-                            if (iface_key) |ikey| {
-                                const iface_ctor = v8.v8_Object_Get(global, context, @ptrCast(ikey));
-                                if (iface_ctor) |ctor| {
-                                    // Create the alias with non-enumerable property
-                                    // Per WebIDL spec, LegacyWindowAlias should be:
-                                    // - writable: true
-                                    // - enumerable: false
-                                    // - configurable: true
-                                    const alias_key = v8.v8_String_NewFromUtf8(isolate, alias_name.ptr, @intCast(alias_name.len));
-                                    if (alias_key) |akey| {
-                                        _ = v8.v8_Object_DefineProperty(
-                                            global,
-                                            context,
-                                            @ptrCast(akey),
-                                            ctor,
-                                            true, // writable
-                                            false, // enumerable
-                                            true, // configurable
-                                        );
-                                    }
-                                }
-                            }
-                        }
+                        if (alias_name.len > 0) defineAlias(isolate, context, global, Meta.name, alias_name);
                     }
                 }
             }
         }
     }
+}
+
+/// `alias` on the global: the interface object `interface_name`, writable,
+/// configurable, not enumerable (WebIDL [LegacyWindowAlias]).
+fn defineAlias(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object, interface_name: []const u8, alias: []const u8) void {
+    const key = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return;
+    defer v8.v8_String_Dispose(key);
+    const interface_object = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return;
+    defer v8.v8_Value_Dispose(interface_object);
+    const alias_key = v8.v8_String_NewFromUtf8(isolate, alias.ptr, @intCast(alias.len)) orelse return;
+    defer v8.v8_String_Dispose(alias_key);
+    _ = v8.v8_Object_DefineProperty(global, context, @ptrCast(alias_key), interface_object, true, false, true);
 }
 
 /// WebIDL [LegacyFactoryFunction]s - Image, Audio and Option - as their own
@@ -1081,17 +1044,22 @@ fn setupDOMExceptionInheritance(
     comptime getPrototype: fn (*v8.Isolate, *v8.Object, *v8.Context) ?*v8.Object,
     comptime setProto: fn (*v8.Object, *v8.Object, *v8.Context) void,
 ) void {
+    // Every handle is OWNED and released (see setupConstructorInheritance).
     // Get DOMException constructor
     const dom_exception_ctor = getConstructor(isolate, global, context, "DOMException") orelse return;
+    defer v8.v8_Value_Dispose(@ptrCast(dom_exception_ctor));
 
     // Get Error constructor
     const error_ctor = getConstructor(isolate, global, context, "Error") orelse return;
+    defer v8.v8_Value_Dispose(@ptrCast(error_ctor));
 
     // Get DOMException.prototype
     const dom_exception_proto = getPrototype(isolate, dom_exception_ctor, context) orelse return;
+    defer v8.v8_Value_Dispose(@ptrCast(dom_exception_proto));
 
     // Get Error.prototype
     const error_proto = getPrototype(isolate, error_ctor, context) orelse return;
+    defer v8.v8_Value_Dispose(@ptrCast(error_proto));
 
     // Set DOMException.prototype.__proto__ = Error.prototype
     // This makes: new DOMException() instanceof Error === true
@@ -1126,9 +1094,14 @@ pub fn setupConstructorInheritance(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    const global = v8.v8_Context_Global(context);
+    // Every handle below is released: each points into `context`, and the
+    // ~5,000 this used to keep (a key string, a constructor and a prototype
+    // per interface with a parent) held every realm made without the
+    // snapshot alive for the life of the process.
+    const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
-    // Helper to get a global constructor
+    // Helper to get a global constructor. OWNED.
     const GetConstructor = struct {
         fn call(iso: *v8.Isolate, global_obj: *v8.Object, ctx: *v8.Context, name: []const u8) ?*v8.Object {
             const key = v8.v8_String_NewFromUtf8(
@@ -1136,21 +1109,21 @@ pub fn setupConstructorInheritance(
                 name.ptr,
                 @intCast(name.len),
             ) orelse return null;
+            defer v8.v8_String_Dispose(key);
 
-            const value = v8.v8_Object_Get(global_obj, ctx, @ptrCast(key));
-            if (value == null) return null;
+            const value = v8.v8_Object_Get(global_obj, ctx, @ptrCast(key)) orelse return null;
 
             // Cast to Object (constructors are Function objects, which are Objects)
             return @ptrCast(@alignCast(value));
         }
     };
 
-    // Helper to get `prototype` property of a constructor
+    // Helper to get `prototype` property of a constructor. OWNED.
     const GetPrototype = struct {
         fn call(iso: *v8.Isolate, ctor: *v8.Object, ctx: *v8.Context) ?*v8.Object {
             const key = v8.v8_String_NewFromUtf8(iso, "prototype", 9) orelse return null;
-            const value = v8.v8_Object_Get(ctor, ctx, @ptrCast(key));
-            if (value == null) return null;
+            defer v8.v8_String_Dispose(key);
+            const value = v8.v8_Object_Get(ctor, ctx, @ptrCast(key)) orelse return null;
             return @ptrCast(@alignCast(value));
         }
     };
@@ -1167,7 +1140,7 @@ pub fn setupConstructorInheritance(
     // Special case: DOMException must inherit from Error per WebIDL spec
     // https://webidl.spec.whatwg.org/#idl-DOMException
     // "The prototype of DOMException should be Error.prototype"
-    setupDOMExceptionInheritance(isolate, context, global.?, GetConstructor.call, GetPrototype.call, setProto);
+    setupDOMExceptionInheritance(isolate, context, global, GetConstructor.call, GetPrototype.call, setProto);
 
     // Automatically set up inheritance chain for all interfaces
     // Iterate over all interface declarations and set Constructor.__proto__ based on Meta.BaseType
@@ -1228,15 +1201,19 @@ pub fn setupConstructorInheritance(
 
                     // Set child.__proto__ = parent (constructor inheritance)
                     // AND child.prototype.__proto__ = parent.prototype (prototype chain for instanceof)
-                    if (GetConstructor.call(isolate, global.?, context, decl.name)) |child_ctor| {
-                        if (GetConstructor.call(isolate, global.?, context, parent_name)) |parent_ctor| {
+                    if (GetConstructor.call(isolate, global, context, decl.name)) |child_ctor| {
+                        defer v8.v8_Value_Dispose(@ptrCast(child_ctor));
+                        if (GetConstructor.call(isolate, global, context, parent_name)) |parent_ctor| {
+                            defer v8.v8_Value_Dispose(@ptrCast(parent_ctor));
                             // Constructor inheritance: HTMLDivElement.__proto__ = HTMLElement
                             setProto(child_ctor, parent_ctor, context);
 
                             // Prototype chain for instanceof: HTMLDivElement.prototype.__proto__ = HTMLElement.prototype
                             // This is CRITICAL for `div instanceof HTMLElement` to return true
                             if (GetPrototype.call(isolate, child_ctor, context)) |child_proto| {
+                                defer v8.v8_Value_Dispose(@ptrCast(child_proto));
                                 if (GetPrototype.call(isolate, parent_ctor, context)) |parent_proto| {
+                                    defer v8.v8_Value_Dispose(@ptrCast(parent_proto));
                                     setProto(child_proto, parent_proto, context);
                                 }
                             }

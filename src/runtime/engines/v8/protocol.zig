@@ -38,6 +38,10 @@ const webidl_conversions = @import("webidl_conversions.zig");
 const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");
 const value_operations = @import("value_operations.zig");
 const structured_serialization = @import("structured_serialization.zig");
+const protocol_agents = @import("protocol_agents.zig");
+const protocol_modules = @import("protocol_modules.zig");
+const protocol_realms = @import("protocol_realms.zig");
+const protocol_scripts = @import("protocol_scripts.zig");
 
 /// For the worker and agent operations only (see above).
 const table = v8_engine.v8_engine_interface;
@@ -126,30 +130,21 @@ fn notImplemented(comptime operation: []const u8, comptime section: []const u8) 
 // 4.1 Engine and agents
 // ============================================================================
 
-// TODO(protocol): implement - design 4.1 (snapshot_loader.initializePlatformForRuntime is the platform half; the snapshot blob is new)
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
-    _ = options;
-    return error.NotSupported;
+    return protocol_agents.initializeEngine(options);
 }
 
-// TODO(protocol): implement - design 4.1
 pub fn deinitializeEngine() void {
-    notImplemented("deinitializeEngine", "4.1");
+    protocol_agents.deinitializeEngine();
 }
 
-/// Partly wired: an isolate as worker_realm makes one, [[CanBlock]] set.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
-    // TODO(protocol): implement - design 4.1 (agents from the snapshot, and the host hooks installed per agent)
-    if (options.from_snapshot) return error.NotSupported;
-    const hooks = options.hooks;
-    if (hooks.loadImportedModule != null or hooks.importMetaUrl != null or
-        hooks.promiseRejectionTracker != null or hooks.afterMicrotaskCheckpoint != null) return error.NotSupported;
-    const agent = table.createAgent.?() catch |err| return protocolError(err);
-    if (!options.can_block) ffi.v8_Isolate_SetAllowAtomicsWait(isolateOf(agent), false);
-    return agent;
+    return protocol_agents.createAgent(options);
 }
 
+/// The agent's hooks are forgotten before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
+    protocol_agents.forgetAgent(agent);
     table.destroyAgent.?(agent);
 }
 
@@ -175,16 +170,12 @@ pub fn requestGarbageCollection(agent: *Agent) void {
 // 4.2 Realms
 // ============================================================================
 
-// TODO(protocol): implement - design 4.2 (page-realm drafts: createWindowRealm from Context.zig's createV8Context/createV8ContextFresh)
 pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Context {
-    _ = options;
-    return error.NotSupported;
+    return protocol_realms.createWindowRealm(options);
 }
 
-// TODO(protocol): implement - design 4.2 (Blink DisposeContext order)
 pub fn destroyWindowRealm(realm: Context) void {
-    _ = realm;
-    notImplemented("destroyWindowRealm", "4.2");
+    protocol_realms.destroyWindowRealm(realm);
 }
 
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
@@ -199,20 +190,16 @@ pub fn currentRealm() ?Context {
     return current_realm.currentRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (replaces GetEnteredOrMicrotaskContext)
 pub fn entryRealm() ?Context {
-    notImplemented("entryRealm", "4.2");
+    return protocol_realms.entryRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (replaces the accessor-window stack)
 pub fn incumbentRealm() ?Context {
-    notImplemented("incumbentRealm", "4.2");
+    return protocol_realms.incumbentRealm();
 }
 
-// TODO(protocol): implement - design 4.2 (GetFunctionRealm follows bound functions and proxies; V8's creation context does not)
 pub fn functionRealm(value: JSValue) ?Context {
-    _ = value;
-    notImplemented("functionRealm", "4.2");
+    return protocol_realms.functionRealm(value);
 }
 
 pub fn installWindowOperations(realm: Context, operations: *const engine.WindowOperations) Error!void {
@@ -227,66 +214,28 @@ pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: 
 // 4.3 Running script
 // ============================================================================
 
-/// The table's reporter, reporting as the protocol's: the table's
-/// ErrorInfo, with the realm the script ran in.
-const ReportBridge = struct {
-    reporter: engine.Reporter,
-    realm: Context,
-
-    fn report(host: ?*anyopaque, info: *const runtime.ErrorInfo) void {
-        const self: *const ReportBridge = @ptrCast(@alignCast(host.?));
-        const protocol_info: engine.ErrorInfo = .{
-            .message = info.message,
-            .filename = info.filename,
-            .lineno = info.lineno,
-            .colno = info.colno,
-            .error_value = info.error_value orelse JSValue.jsUndefined,
-            .realm = self.realm,
-        };
-        self.reporter.report(self.reporter.host, &protocol_info);
-    }
-};
-
-/// Partly wired: UTF-8 source through the table's runClassicScript.
-pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, reporter: engine.Reporter) Error!void {
-    const text = switch (source) {
-        .utf8 => |text| text,
-        // TODO(protocol): implement - design 4.3 (a string source keeps every code unit: timer string handlers)
-        .string => return error.NotSupported,
-    };
-    const bridge: ReportBridge = .{ .reporter = reporter, .realm = realm };
-    v8_engine.v8RunClassicScript(realm, text, if (url.len == 0) null else url, ReportBridge.report, @constCast(&bridge)) catch |err|
-        return protocolError(err);
+pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (page-realm draft; replaces compileScript/runScript and Context.evaluateScript)
-pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, reporter: engine.Reporter) Error!Owned {
-    _ = .{ realm, source, url, reporter };
-    return error.NotSupported;
+pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!Owned {
+    return protocol_scripts.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (evaluateClassicScript, then ToString)
-pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
-    _ = .{ realm, source, url, allocator, reporter };
-    return error.NotSupported;
+pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
+    return protocol_scripts.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (the handler's scopes: document, form owner, element)
 pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSource, reporter: engine.Reporter) Error!?Owned {
-    _ = .{ realm, source, reporter };
-    return error.NotSupported;
+    return protocol_scripts.compileEventHandler(realm, source, reporter);
 }
 
-// TODO(protocol): implement - design 4.3 (HTML 8.1.4.3: the entry stack, and a checkpoint on clean up; realm_entry.enter is the entering half)
 pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
-    _ = realm;
-    return error.NotSupported;
+    return protocol_scripts.prepareToRunScript(realm);
 }
 
-// TODO(protocol): implement - design 4.3
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
-    _ = scope;
-    notImplemented("cleanUpAfterRunningScript", "4.3");
+    protocol_scripts.cleanUpAfterRunningScript(scope);
 }
 
 pub fn runInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
@@ -305,53 +254,17 @@ pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaqu
     return value_construction.queueMicrotask(realm, steps, data) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.3 (engine.zig's reportPending builds it for runClassicScript)
 pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Allocator) Error!engine.ErrorInfo {
-    _ = .{ realm, value, allocator };
-    return error.NotSupported;
+    return protocol_scripts.extractErrorInformation(realm, value, allocator);
 }
 
-// TODO(protocol): implement - design 4.3 (modules; replace compileModule/runModule/runModuleAsync/hasTopLevelAwait/disposeModule)
-pub fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
-    _ = .{ realm, source, url, host_defined };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn parseJSONModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
-    _ = .{ realm, source, url, host_defined };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn moduleRequests(record: *engine.ModuleRecord, allocator: Allocator) Error![]engine.ModuleRequest {
-    _ = .{ record, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn linkModule(realm: Context, record: *engine.ModuleRecord, resolve: engine.ResolveModule, data: ?*anyopaque) Error!?Owned {
-    _ = .{ realm, record, resolve, data };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn evaluateModule(realm: Context, record: *engine.ModuleRecord) Error!engine.ModuleEvaluation {
-    _ = .{ realm, record };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.DynamicImportOutcome) void {
-    _ = .{ request, outcome };
-    notImplemented("finishDynamicImport", "4.3");
-}
-
-// TODO(protocol): implement - design 4.3 (modules)
-pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
-    _ = record;
-    notImplemented("releaseModuleRecord", "4.3");
-}
+pub const parseModule = protocol_modules.parseModule;
+pub const parseJSONModule = protocol_modules.parseJSONModule;
+pub const moduleRequests = protocol_modules.moduleRequests;
+pub const linkModule = protocol_modules.linkModule;
+pub const evaluateModule = protocol_modules.evaluateModule;
+pub const finishDynamicImport = protocol_modules.finishDynamicImport;
+pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 
 // ============================================================================
 // 4.4 Invoking callbacks

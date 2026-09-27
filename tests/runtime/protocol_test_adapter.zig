@@ -90,13 +90,13 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 }
 
 // 4.3 Running script
-pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!void {
+pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
-pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!Owned {
+pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!Owned {
     return error.NotSupported;
 }
-pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: Allocator, _: engine.Reporter) Error![]u8 {
+pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: Allocator, _: engine.Reporter) Error![]u8 {
     return error.NotSupported;
 }
 pub fn compileEventHandler(_: Context, _: *const engine.EventHandlerSource, _: engine.Reporter) Error!?Owned {

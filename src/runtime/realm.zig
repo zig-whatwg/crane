@@ -264,6 +264,19 @@ pub const Intrinsics = struct {
     /// Function.prototype
     function_prototype: ?*anyopaque,
 
+    /// %Promise%: the realm's own Promise constructor, as it was when the
+    /// realm was made - V8's API has no accessor for the intrinsic, so the
+    /// adapter records it here (realm_v8.populateIntrinsics). The protocol's
+    /// promise operations can take it from `realm.getIntrinsics().promise`
+    /// instead of reaching it indirectly.
+    promise: ?*anyopaque,
+
+    /// %AsyncIteratorPrototype% (ECMA-262 27.1.3): the [[Prototype]] of
+    /// %AsyncGeneratorPrototype%, which no global names and V8's API cannot
+    /// reach - recorded here, as `promise` is, for the protocol's async
+    /// iterators (WebIDL's %AsyncIteratorPrototype% is this object).
+    async_iterator_prototype: ?*anyopaque,
+
     const Self = @This();
 
     /// Create uninitialized intrinsics (all null)
@@ -280,6 +293,8 @@ pub const Intrinsics = struct {
             .object_prototype = null,
             .array_prototype = null,
             .function_prototype = null,
+            .promise = null,
+            .async_iterator_prototype = null,
         };
     }
 
@@ -304,6 +319,8 @@ pub const Intrinsics = struct {
         self.object_prototype = null;
         self.array_prototype = null;
         self.function_prototype = null;
+        self.promise = null;
+        self.async_iterator_prototype = null;
     }
 };
 
@@ -553,16 +570,6 @@ pub const Realm = struct {
             old.deinit();
         }
         self.settings_object = settings;
-    }
-
-    /// Populate this realm's intrinsics from its engine context.
-    ///
-    /// Engine work, kept here only while src/browser/Context.zig still calls
-    /// it as a method (the adapter's own callers use realm_v8.zig's, which v8
-    /// re-exports as `populateRealmIntrinsics`).
-    pub fn populateIntrinsics(self: *Self) bool {
-        const v8 = @import("v8");
-        return v8.realm_v8.populateIntrinsics(self);
     }
 };
 

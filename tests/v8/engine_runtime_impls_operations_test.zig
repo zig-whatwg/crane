@@ -653,14 +653,14 @@ const Reported = struct {
 test "protocol: runClassicScript reports what a UTF-8 script throws, with the realm it ran in" {
     const ctx = try realm();
     var reported: Reported = .{};
-    try protocol.runClassicScript(ctx, .{ .utf8 = "globalThis.ranClassic = 1;\nnull.x;" }, "https://example.test/a.js", .{ .report = Reported.report, .host = &reported });
+    try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(ctx, .{ .utf8 = "globalThis.ranClassic = 1;\nnull.x;" }, "https://example.test/a.js", null, .{ .report = Reported.report, .host = &reported }));
     try std.testing.expectEqual(@as(usize, 1), reported.count);
     try std.testing.expectEqual(@as(?protocol.Context, ctx), reported.realm);
     try std.testing.expectEqual(@as(u32, 2), reported.lineno);
     try std.testing.expect(reported.was_type_error);
     try std.testing.expectEqual(@as(i32, 1), try eval("globalThis.ranClassic"));
-    // A string source is not built yet.
-    try std.testing.expectError(error.NotSupported, protocol.runClassicScript(ctx, .{ .string = runtime.JSValue.jsUndefined }, "", .{ .report = Reported.report, .host = &reported }));
+    // A string source must be a string value.
+    try std.testing.expectError(error.TypeError, protocol.runClassicScript(ctx, .{ .string = runtime.JSValue.jsUndefined }, "", null, .{ .report = Reported.report, .host = &reported }));
 }
 
 test "protocol: sequence<object> is a slice of Owned handles" {

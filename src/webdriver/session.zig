@@ -1,7 +1,7 @@
 //! WebDriver Session Management
 //!
 //! Each WebDriver session corresponds to a browser instance with its own
-//! V8 context. Sessions are isolated from each other.
+//! page realm. Sessions are isolated from each other.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -9,7 +9,6 @@ const protocol = @import("protocol.zig");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
-const v8 = @import("v8");
 const clock = @import("clock");
 
 /// WebDriver Session
@@ -154,35 +153,14 @@ pub const Session = struct {
         return try self.executeScriptReturningString(allocator, "window.__webdriver_async_result");
     }
 
-    /// Execute script and return result as string
+    /// Execute script and return its completion value's ToString, allocated
+    /// with `allocator`.
     fn executeScriptReturningString(self: *Session, allocator: Allocator, script: []const u8) ![]const u8 {
         const ctx = self.browser.current_context orelse return error.NoSuchWindow;
-
-        const result = ctx.evaluateScript(script) catch |err| {
+        return ctx.evaluateScriptToString(script, allocator) catch |err| {
             std.log.err("Script execution error: {}", .{err});
             return error.JavascriptError;
         };
-
-        if (result) |val| {
-            // Convert V8 Value to string using V8 FFI
-            const v8_ctx = ctx.v8_context orelse return error.NoSuchWindow;
-            const str = v8.ffi.v8_Value_ToString(val, v8_ctx) orelse {
-                return try allocator.dupe(u8, "null");
-            };
-
-            // Get UTF-8 length and allocate buffer
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            if (len <= 0) return try allocator.dupe(u8, "");
-
-            const buffer = try allocator.alloc(u8, @intCast(len));
-            errdefer allocator.free(buffer);
-
-            // Write UTF-8 bytes to buffer
-            const written = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-            return buffer[0..@intCast(written)];
-        }
-
-        return try allocator.dupe(u8, "null");
     }
 
     /// Run event loop until page load completes
@@ -234,38 +212,21 @@ pub const Session = struct {
 
     /// Check if page load is complete
     fn isPageLoadComplete(self: *Session) bool {
-        const ctx = self.browser.current_context orelse return true;
-        const v8_ctx = ctx.v8_context orelse return true;
-        const script = "document.readyState === 'complete' ? 'true' : 'false'";
-        const result = ctx.evaluateScript(script) catch return false;
-        if (result) |val| {
-            const str = v8.ffi.v8_Value_ToString(val, v8_ctx) orelse return false;
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            if (len <= 0) return false;
-
-            var buf: [16]u8 = undefined;
-            const written = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(@min(len, 16)));
-            return std.mem.eql(u8, buf[0..@intCast(written)], "true");
-        }
-        return false;
+        return self.scriptSaysTrue("document.readyState === 'complete' ? 'true' : 'false'");
     }
 
     /// Check if async script completed
     fn isAsyncComplete(self: *Session) bool {
-        const ctx = self.browser.current_context orelse return true;
-        const v8_ctx = ctx.v8_context orelse return true;
-        const script = "window.__webdriver_async_complete === true ? 'true' : 'false'";
-        const result = ctx.evaluateScript(script) catch return false;
-        if (result) |val| {
-            const str = v8.ffi.v8_Value_ToString(val, v8_ctx) orelse return false;
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            if (len <= 0) return false;
+        return self.scriptSaysTrue("window.__webdriver_async_complete === true ? 'true' : 'false'");
+    }
 
-            var buf: [16]u8 = undefined;
-            const written = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(@min(len, 16)));
-            return std.mem.eql(u8, buf[0..@intCast(written)], "true");
-        }
-        return false;
+    /// Whether `script` evaluates to the string "true" - and true when there
+    /// is no page to ask.
+    fn scriptSaysTrue(self: *Session, script: []const u8) bool {
+        const ctx = self.browser.current_context orelse return true;
+        const answer = ctx.evaluateScriptToString(script, self.allocator) catch return false;
+        defer self.allocator.free(answer);
+        return std.mem.eql(u8, answer, "true");
     }
 };
 

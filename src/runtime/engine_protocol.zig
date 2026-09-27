@@ -89,9 +89,12 @@ pub const RealmSteps = runtime.RealmSteps;
 /// - `DataCloneError`: HTML serialization "throw a DataCloneError" where
 ///   nothing has been thrown yet.
 /// - `NotSupported`: this engine does not provide the operation.
+/// - `ExceptionReported`: script threw, the exception was reported through
+///   the operation's Reporter, and nothing is pending.
 /// - `OperationFailed`: the engine failed (no context, out of handles).
 pub const Error = error{
     OperationFailed,
+    ExceptionReported,
     OutOfMemory,
     TypeError,
     ExceptionPending,
@@ -153,8 +156,11 @@ pub const ErrorInfo = struct {
 };
 
 /// HTML "report an exception", as the host supplies it to an operation that
-/// runs script with "rethrow errors" false. The engine calls `report` from
-/// inside the operation, after "clean up after running script".
+/// runs script with "rethrow errors" false. The engine calls `report` at the
+/// point the operation's own algorithm reports: WebIDL "invoke a callback
+/// function", after "clean up after running script"; HTML "run a classic
+/// script" (8.1.4.4 step 8.3), evaluateClassicScript* and compileEventHandler,
+/// before it.
 pub const Reporter = struct {
     report: *const fn (host: ?*anyopaque, info: *const ErrorInfo) void,
     host: ?*anyopaque = null,
@@ -381,7 +387,7 @@ pub const AgentOptions = struct {
 pub const HostHooks = struct {
     /// HostLoadImportedModule for `import()` [module_scripts]: the host owns
     /// `request` until `finishDynamicImport`.
-    loadImportedModule: ?*const fn (host: ?*anyopaque, realm: Context, referrer: ?*anyopaque, specifier: []const u8, type_attribute: ?[]const u8, request: *ImportRequest) void = null,
+    loadImportedModule: ?*const fn (host: ?*anyopaque, realm: Context, referrer: ImportReferrer, specifier: []const u8, type_attribute: ?[]const u8, request: *ImportRequest) void = null,
     /// HostGetImportMetaProperties [module_scripts]: `import.meta.url` of the
     /// module the host defined as `module_host_defined`.
     importMetaUrl: ?*const fn (host: ?*anyopaque, module_host_defined: *anyopaque) []const u8 = null,
@@ -394,6 +400,19 @@ pub const HostHooks = struct {
     /// HTML "perform a microtask checkpoint" step 5: notify about rejected
     /// promises.
     afterMicrotaskCheckpoint: ?*const fn (host: ?*anyopaque, agent: *Agent) void = null,
+};
+
+/// HostLoadImportedModule's referrer: the [[HostDefined]] of the script or
+/// module whose `import()` this is, or none.
+pub const ImportReferrer = union(enum) {
+    /// A module record's `host_defined` (parseModule).
+    module: *anyopaque,
+    /// A classic script's `host_defined` (runClassicScript,
+    /// evaluateClassicScript*): the host resolves against its base URL.
+    script: *anyopaque,
+    /// [[ScriptOrModule]] is null (an event handler, eval, a timer's string
+    /// handler): the host uses the current settings object's API base URL.
+    realm,
 };
 
 /// HostPromiseRejectionTracker's operation.
@@ -419,13 +438,18 @@ pub const WindowRealmOptions = struct {
     from_snapshot: bool,
     /// The host's timers, shared by every realm of the agent.
     timer: ?runtime.TimerInterface,
+    /// The host's event loop, recorded in the realm record for host
+    /// algorithms that queue tasks (streams, Blob); shared by every realm of
+    /// the agent. The engine stores it and never runs it.
+    event_loop: ?runtime.EventLoop = null,
     /// The realm's origin, serialized; null for an opaque one.
     origin: ?[]const u8 = null,
     global_this: GlobalThis = .new_window_proxy,
     /// HTML "create a new realm", the customization for the global object:
-    /// the host makes the realm's Window. `global_this` is OWNED and handed
-    /// over: the Window keeps it as the global it is bound to. On null the
-    /// engine releases it, undoes the realm and fails.
+    /// the host makes the realm's Window. `global_this` is BORROWED until
+    /// destroyWindowRealm: the host's Window may keep it as the global it is
+    /// bound to, and must not release it. On null the engine undoes the realm
+    /// and fails.
     create_global_object: *const fn (realm: Context, global_this: JSValue, host: ?*anyopaque) ?*Instance,
     /// HTML IsPlatformObjectSameOrigin, for the WindowProxy and Location
     /// cross-origin checks: whether `object` is same origin-domain with
@@ -629,23 +653,25 @@ pub inline fn defineBuiltinFunction(realm: Context, function_name: []const u8, l
 // ============================================================================
 
 /// HTML "run a classic script": what it throws is reported, then script is
-/// cleaned up after.
-pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []const u8, reporter: Reporter) Error!void {
-    return impl.runClassicScript(realm, source, url, reporter);
+/// cleaned up after. `host_defined` is the host's classic script (the
+/// referrer an `import()` from it names), BORROWED for as long as the script
+/// can run - pending `import()`s included; null for none.
+pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: Reporter) Error!void {
+    return impl.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
 /// A classic script's completion value - for host scripts (the harness,
 /// WebDriver, the REPL) and HTML "evaluate a javascript: URL". What it throws
-/// is reported, and the call fails. OWNED.
-pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: []const u8, reporter: Reporter) Error!Owned {
-    return impl.evaluateClassicScript(realm, source, url, reporter);
+/// is reported, and the call fails with ExceptionReported. OWNED.
+pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: Reporter) Error!Owned {
+    return impl.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
 
 /// As evaluateClassicScript, the completion value then ECMAScript
 /// ToString'd: OWNED, allocated with `allocator`. What the script or ToString
 /// throws is reported, and the call fails.
-pub inline fn evaluateClassicScriptToString(realm: Context, source: ScriptSource, url: []const u8, allocator: std.mem.Allocator, reporter: Reporter) Error![]u8 {
-    return impl.evaluateClassicScriptToString(realm, source, url, allocator, reporter);
+pub inline fn evaluateClassicScriptToString(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: std.mem.Allocator, reporter: Reporter) Error![]u8 {
+    return impl.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
 }
 
 /// HTML "getting the current value of the event handler", step 3: the

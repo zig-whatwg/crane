@@ -168,15 +168,56 @@ pub fn populateIntrinsics(realm: *Realm) bool {
         intrinsics.function_prototype = getObjectProperty(isolate, context, @ptrCast(fn_ctor), "prototype");
     }
 
+    // %Promise%, read before any script of the realm's could replace the
+    // global: the API has no accessor for the intrinsic.
+    intrinsics.promise = getGlobalProperty(isolate, context, global, "Promise");
+
+    // %AsyncIteratorPrototype%, which nothing names.
+    intrinsics.async_iterator_prototype = asyncIteratorPrototype(isolate, context);
+
     return intrinsics.isPopulated();
 }
+
+/// %AsyncIteratorPrototype% of `context`'s realm: the [[Prototype]] of
+/// %AsyncGeneratorPrototype%, itself the [[Prototype]] of an async generator
+/// function's `prototype` (ECMA-262 27.6.1, 27.4.3). Reached by running an
+/// empty async generator function expression - with microtasks held off, or
+/// the automatic checkpoint at the end of Script::Run would run whatever the
+/// agent had queued, in the middle of making a realm. OWNED; null on failure.
+fn asyncIteratorPrototype(isolate: *v8.Isolate, context: *v8.Context) ?*anyopaque {
+    var call = AsyncIteratorPrototype{ .isolate = isolate, .context = context };
+    v8.v8_RunWithMicrotasksSuppressed(isolate, AsyncIteratorPrototype.run, &call);
+    return call.result;
+}
+
+const AsyncIteratorPrototype = struct {
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    result: ?*anyopaque = null,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *AsyncIteratorPrototype = @ptrCast(@alignCast(data orelse return));
+        const source = "(async function* () {}).prototype";
+        const text = v8.v8_String_NewFromUtf8(self.isolate, source.ptr, source.len) orelse return;
+        defer v8.v8_String_Dispose(text);
+        const script = v8.v8_Script_Compile(self.context, text) orelse return;
+        defer v8.v8_Script_Dispose(script);
+        // The function's `prototype`: an object inheriting from
+        // %AsyncGeneratorPrototype%.
+        const generator_prototype = v8.v8_Script_Run(self.context, script) orelse return;
+        defer v8.v8_Value_Dispose(generator_prototype);
+        const async_generator_prototype = v8.v8_Object_GetPrototypeV2(@ptrCast(generator_prototype)) orelse return;
+        defer v8.v8_Value_Dispose(async_generator_prototype);
+        self.result = @ptrCast(v8.v8_Object_GetPrototypeV2(@ptrCast(async_generator_prototype)) orelse return);
+    }
+};
 
 /// Release the handles `populateIntrinsics` took. Each points into the realm's
 /// context, so until they go the whole context stays alive - `Realm.deinit`
 /// only nulls them, leaving the V8 side to whoever tears the realm down.
 pub fn disposeIntrinsics(realm: *Realm) void {
     const intrinsics = realm.getIntrinsicsMut();
-    inline for (.{ "type_error", "range_error", "syntax_error", "object", "object_prototype", "array", "array_prototype", "function_prototype" }) |field| {
+    inline for (.{ "type_error", "range_error", "syntax_error", "object", "object_prototype", "array", "array_prototype", "function_prototype", "promise", "async_iterator_prototype" }) |field| {
         if (@field(intrinsics, field)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
         @field(intrinsics, field) = null;
     }
