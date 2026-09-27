@@ -466,15 +466,18 @@ test "an exception thrown in a realm does not keep that realm alive" {
 /// like V8 here, never torn down.
 var pools_ready = false;
 
+fn ensurePools() void {
+    if (pools_ready) return;
+    runtime.SlabAllocator.init(std.heap.page_allocator);
+    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    pools_ready = true;
+}
+
 /// A platform object with attribute setters, for the setter tests: an Event,
 /// whose cancelBubble setter takes a boolean.
 fn eventInRealm() !void {
     _ = try realm();
-    if (!pools_ready) {
-        runtime.SlabAllocator.init(std.heap.page_allocator);
-        runtime.ArenaAllocator.init(std.heap.page_allocator);
-        pools_ready = true;
-    }
+    ensurePools();
     const context = context_once.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
@@ -531,5 +534,52 @@ test "a value assigned through an attribute setter does not keep its realm alive
     if (after != baseline) {
         std.debug.print("native contexts: {d} before, {d} after the setter's argument realm was released\n", .{ baseline, after });
         return error.RealmKeptAlive;
+    }
+}
+
+// ============================================================================
+// The interfaces of a realm made without the snapshot
+// ============================================================================
+
+test "the interfaces defined on a realm without the snapshot keep none of its handles" {
+    _ = try realm();
+    ensurePools();
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+
+    const Round = struct {
+        /// A context with every interface defined afresh - the no-snapshot
+        /// startup path's setup (inheritance, aliases, Intl, toLocaleString
+        /// included) - then released.
+        fn run(i: *ffi.Isolate) !void {
+            const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+            ffi.v8_Context_Enter(context);
+            v8.interface_bindings.initializeBindingsWithGlobalTemplate(i, context);
+            ffi.v8_Context_Exit(context);
+            _ = ffi.v8_Isolate_ContextDisposedNotification(i, true);
+            ffi.v8_Context_Dispose(context);
+        }
+    };
+    // The first round makes what every later one reuses (the templates).
+    try Round.run(isolate);
+    const contexts_before = liveContexts();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 3;
+    for (0..rounds) |_| try Round.run(isolate);
+    const contexts_after = liveContexts();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    // Before the fix: about 5,000 handles a realm - a key string, a
+    // constructor and a prototype per interface with a parent, and the Intl
+    // constructors and toLocaleString methods - and every such realm alive
+    // for the life of the process.
+    if (after -| before >= handle_bytes or contexts_after != contexts_before) {
+        std.debug.print("global handles {d} -> {d} bytes, native contexts {d} -> {d}, over {d} realms ({d} bytes a handle)\n", .{ before, after, contexts_before, contexts_after, rounds, handle_bytes });
+        return error.HandlesLeaked;
     }
 }
