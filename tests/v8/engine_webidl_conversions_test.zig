@@ -1212,3 +1212,100 @@ test "protocol: callback contexts, asynchronous iterators and async-from-sync le
     // As the area-2 leak check: two one-time nodes allowed, never one per call.
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
 }
+
+// ----------------------------------------------------------------------------
+// The relevant-realm rule: a platform object converts to ITS wrapper
+// ----------------------------------------------------------------------------
+
+const relevant_methods: u8 = 0;
+/// An interface with no template: a realm that has not wrapped the object
+/// cannot make it a wrapper, so only the wrapper its own realm made is found.
+const relevant_vtable = runtime.VTable{ .name = "MockRelevantRealm", .deinit = null, .methods_ptr = &relevant_methods };
+var relevant_state: u64 = 0;
+
+/// Returns its argument.
+fn identityFunction() !Made {
+    return Made.of("(function (x) { return x; })");
+}
+
+test "protocol: a platform object converts to its wrapper in its relevant realm, whichever realm the operation entered" {
+    const ctx = try realm();
+    const here = try hostedRealm();
+    const other = try otherRealm();
+    _ = runtime.SlabAllocator.tryGet() catch runtime.SlabAllocator.init(std.heap.page_allocator);
+
+    // A platform object of `other` (its relevant realm), wrapped there: a
+    // plain object of `other`'s, in `other`'s wrapper cache.
+    const instance = try runtime.SlabAllocator.get().alloc(&relevant_vtable);
+    instance.state = @ptrCast(&relevant_state);
+    instance.ctx = other;
+    ffi.v8_Context_Enter(other_context.?);
+    const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+    ffi.v8_Context_Exit(other_context.?);
+    // The script's own handle keeps it alive; the cache's is weak.
+    const ours = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return error.CloneFailed;
+    defer ffi.v8_Global_Dispose(ours);
+    const cache: *v8.WrapperCache = @ptrCast(@alignCast(other.getV8WrapperCacheStorage().?));
+    try cache.set(instance, wrapper, isolate_once.?);
+    const expected = asValue(ours);
+    const platform_object: runtime.JSValue = .{ .instance = instance };
+
+    // Every operation entered in `here` hands back `other`'s wrapper.
+    const held = try protocol.retainValue(here, platform_object);
+    defer held.release();
+    try std.testing.expect(protocol.sameValue(ctx, held.value, expected));
+
+    const sequence = try protocol.createSequenceOfValues(here, &.{platform_object});
+    defer sequence.release();
+    const item = try protocol.getProperty(here, sequence.value, "0");
+    defer item.release();
+    try std.testing.expect(protocol.sameValue(ctx, item.value, expected));
+
+    const instances = try protocol.createSequenceOfPlatformObjects(here, &.{instance});
+    defer instances.release();
+    const first = try protocol.getProperty(here, instances.value, "0");
+    defer first.release();
+    try std.testing.expect(protocol.sameValue(ctx, first.value, expected));
+
+    const frozen = try protocol.createFrozenArray(here, &.{platform_object});
+    defer frozen.release();
+    const frozen_first = try protocol.getProperty(here, frozen.value, "0");
+    defer frozen_first.release();
+    try std.testing.expect(protocol.sameValue(ctx, frozen_first.value, expected));
+
+    const dictionary = try protocol.createDictionaryObject(here, &.{.{ .name = "member", .value = platform_object }});
+    defer dictionary.release();
+    const member = try protocol.getProperty(here, dictionary.value, "member");
+    defer member.release();
+    try std.testing.expect(protocol.sameValue(ctx, member.value, expected));
+
+    const target = try Made.of("({})");
+    defer target.deinit();
+    try protocol.setProperty(here, target.value(), "set", platform_object);
+    const set = try protocol.getProperty(here, target.value(), "set");
+    defer set.release();
+    try std.testing.expect(protocol.sameValue(ctx, set.value, expected));
+
+    // An argument, and the callback this value.
+    const identity = try identityFunction();
+    defer identity.deinit();
+    const returned = (try protocol.invokeCallbackFunction(here, &callbackFunction(identity.value(), null), .undefined, &.{platform_object}, .rethrow)).normal;
+    defer returned.release();
+    try std.testing.expect(protocol.sameValue(ctx, returned.value, expected));
+    const self_function = try Made.of("(function () { 'use strict'; return this; })");
+    defer self_function.deinit();
+    const this_value = (try protocol.invokeCallbackFunction(here, &callbackFunction(self_function.value(), null), .{ .value = platform_object }, &.{}, .rethrow)).normal;
+    defer this_value.release();
+    try std.testing.expect(protocol.sameValue(ctx, this_value.value, expected));
+
+    // A promise resolved with it.
+    var capability = try protocol.createPromise(here);
+    defer protocol.releasePromiseCapability(&capability);
+    try protocol.resolvePromise(&capability, platform_object);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    const promise: *ffi.Promise = @ptrCast(@alignCast(capability.promise.handle.ptr));
+    try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
+    const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
+    defer ffi.v8_Value_Dispose(result);
+    try std.testing.expect(protocol.sameValue(ctx, asValue(result), expected));
+}

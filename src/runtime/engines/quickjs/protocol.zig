@@ -31,6 +31,9 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
 };
 
+/// No engine is linked yet: every operation answers without one.
+pub const links_engine = false;
+
 /// Nothing runs script, so nothing is ever prepared to.
 pub const ScriptScope = struct {};
 
@@ -191,6 +194,17 @@ pub fn sameValue(_: Context, a: JSValue, b: JSValue) bool {
         .string => |x| b == .string and std.mem.eql(u8, x.data, b.string.data),
         .handle => |x| b == .handle and x.ptr == b.handle.ptr,
         .instance => |x| b == .instance and x == b.instance,
+    };
+}
+/// ECMAScript ToBoolean over the IDL arms. Only an engine makes a handle,
+/// and this adapter has none: a handle is an object.
+pub fn toBoolean(_: Context, value: JSValue) bool {
+    return switch (value) {
+        .undefined, .null => false,
+        .boolean => |b| b,
+        .number => |n| !(n == 0 or std.math.isNan(n)),
+        .string => |text| text.data.len != 0,
+        .handle, .instance => true,
     };
 }
 pub fn retainValue(_: Context, value: JSValue) Error!Owned {

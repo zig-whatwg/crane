@@ -17,6 +17,7 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
+const same_object = @import("same_object.zig");
 const clock = @import("clock");
 
 pub const State = IntersectionObserver.State;
@@ -30,7 +31,10 @@ pub const ImplError = error{
 
 /// Observation state for a single target
 const Observation = struct {
-    target: *runtime.Instance,
+    /// The target, weakly: [[ObservationTargets]] does not keep an element
+    /// alive, and one that is collected is no longer observed. Its slab
+    /// generation says whether it is still the element it was taken on.
+    target: same_object.Link,
     /// Previous threshold index (for detecting threshold crossings)
     previous_threshold_index: i32 = -1,
     /// Previous isIntersecting state
@@ -282,25 +286,26 @@ pub fn get_trackVisibility(instance: *runtime.Instance) anyerror!bool {
 ///
 /// Spec: https://w3c.github.io/IntersectionObserver/#dom-intersectionobserver-observe
 pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
-    std.log.debug("[IntersectionObserver] observe called, target={*}", .{target});
     const internal = getInternal(instance);
+    forgetCollectedTargets(instance, internal);
 
-    // Check if already observing this target
+    // "Observe a target Element":
+    // 1. If target is in observer's internal [[ObservationTargets]] slot,
+    //    return.
     for (internal.observations.items) |obs| {
-        if (obs.target == target) {
-            // Already observing, do nothing
-            std.log.debug("[IntersectionObserver] Already observing target", .{});
-            return;
-        }
+        if (obs.target.instance == target) return;
     }
 
-    // Add to observations
+    // 2-4. A registration with previousThresholdIndex -1 and
+    //    previousIsIntersecting false, and target added to
+    //    [[ObservationTargets]]. (The registration's state lives here, with
+    //    the target, not on the element.)
     try internal.observations.append(internal.allocator, .{
-        .target = target,
+        .target = same_object.Link.to(target),
         .previous_threshold_index = -1,
         .previous_is_intersecting = false,
     });
-    std.log.debug("[IntersectionObserver] Added target to observations, count={}", .{internal.observations.items.len});
+    holdWhileObserving(instance, internal);
 
     // Schedule intersection computation via microtask
     std.log.debug("[IntersectionObserver] Scheduling intersection update", .{});
@@ -313,16 +318,19 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anye
 /// Spec: https://w3c.github.io/IntersectionObserver/#dom-intersectionobserver-unobserve
 pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
+    forgetCollectedTargets(instance, internal);
 
-    // Find and remove the observation
-    var i: usize = 0;
-    while (i < internal.observations.items.len) {
-        if (internal.observations.items[i].target == target) {
+    // 1. Remove the registration whose observer is this from target, if
+    //    present.
+    // 2. Remove target from this's internal [[ObservationTargets]] slot, if
+    //    present.
+    for (internal.observations.items, 0..) |obs, i| {
+        if (obs.target.instance == target) {
             _ = internal.observations.orderedRemove(i);
-            return;
+            break;
         }
-        i += 1;
     }
+    holdWhileObserving(instance, internal);
 }
 
 /// Operation: disconnect
@@ -332,8 +340,10 @@ pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) an
 pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
 
-    // Clear all observations
+    // For each target in this's [[ObservationTargets]]: 1. remove the
+    // registration from target; 2. remove target from [[ObservationTargets]].
     internal.observations.clearRetainingCapacity();
+    holdWhileObserving(instance, internal);
 
     // Clear queued entries
     for (internal.queued_entries.items) |entry| {
@@ -369,6 +379,40 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 // Internal methods
 // ============================================================================
 
+/// The observer's lifetime: "An IntersectionObserver will remain alive until
+/// both of these conditions hold: there are no scripting references to the
+/// observer, and the observer is not observing any targets." A target keeps
+/// its observer alive through its registration in the spec; here the
+/// observer holds its own wrapper while it observes anything - pending
+/// activity, as Blink's IntersectionObserver is ActiveScriptWrappable while it
+/// has observations - and lets it go when it observes nothing.
+fn holdWhileObserving(instance: *runtime.Instance, internal: *InternalState) void {
+    if (internal.observations.items.len > 0) {
+        engine.keepPlatformObjectAlive(instance);
+    } else {
+        engine.releasePlatformObject(instance);
+    }
+}
+
+/// Drop the observations of targets that have been collected: a collected
+/// element is observed by nothing. Deviation, stated: the observer notices
+/// only when it next looks at its targets (observe, unobserve, an update) -
+/// nothing tells it when an element goes - so an observer whose every target
+/// was collected keeps its hold until then.
+fn forgetCollectedTargets(instance: *runtime.Instance, internal: *InternalState) void {
+    var i: usize = 0;
+    var forgot = false;
+    while (i < internal.observations.items.len) {
+        if (internal.observations.items[i].target.isLive()) {
+            i += 1;
+            continue;
+        }
+        _ = internal.observations.orderedRemove(i);
+        forgot = true;
+    }
+    if (forgot) holdWhileObserving(instance, internal);
+}
+
 /// Context for the intersection observer microtask callback. The observer is
 /// held as (address, slab generation): nothing keeps an observer alive while
 /// it observes (the spec's lifetime rule is not implemented), so it may have
@@ -390,6 +434,7 @@ fn intersectionMicrotask(data: ?*anyopaque) void {
     const state = observer.getState(State);
     if (state.own._internal == null) return;
     const internal = getInternal(observer);
+    forgetCollectedTargets(observer, internal);
 
     std.log.debug("[IntersectionObserver] Computing intersections for {} targets", .{internal.observations.items.len});
 
@@ -433,7 +478,9 @@ fn computeIntersections(internal: *InternalState) !void {
 
     for (internal.observations.items, 0..) |*obs, idx| {
         std.log.debug("[IntersectionObserver] Processing observation {}", .{idx});
-        const target = obs.target;
+        // A target collected since the observer last looked: not observed.
+        if (!obs.target.isLive()) continue;
+        const target = obs.target.instance;
 
         // Get target's bounding rect
         std.log.debug("[IntersectionObserver] Getting bounding rect for target", .{});

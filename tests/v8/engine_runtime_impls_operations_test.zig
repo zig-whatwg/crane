@@ -429,6 +429,21 @@ fn evalOwned(expression: []const u8) !protocol.Owned {
     return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression), .needs_disposal = true } } };
 }
 
+test "every protocol operation's V8 function compiles" {
+    // The facade compiles an engine adapter's functions only as they are
+    // called (links_engine); this binary links V8, so it compiles them all -
+    // a stub nothing calls yet still has to type-check.
+    comptime {
+        @setEvalBranchQuota(100_000);
+        for (@typeInfo(protocol).@"struct".decls) |decl| {
+            const T = @TypeOf(@field(protocol, decl.name));
+            if (@typeInfo(T) != .@"fn") continue;
+            if (@typeInfo(T).@"fn".calling_convention != .@"inline") continue;
+            _ = &@field(v8.protocol, decl.name);
+        }
+    }
+}
+
 test "the protocol is bound to V8, which has every capability the protocol declares natively" {
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {
@@ -764,3 +779,47 @@ test "protocol: retainValue holds a primitive by value and anything else as a ha
     for (0..32) |_| try round(ctx, object.value);
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
 }
+
+test "protocol: ToBoolean of engine values, and a boolean dictionary member read through it" {
+    const ctx = try realm();
+    const falsy = try evalOwned("[0n, '', NaN, -0, null, undefined, false]");
+    defer falsy.release();
+    const truthy = try evalOwned("[1n, 'x', {}, [], Symbol(), function () {}, new Boolean(false)]");
+    defer truthy.release();
+    for (0..7) |i| {
+        var index: [2]u8 = undefined;
+        const name = try std.fmt.bufPrint(&index, "{d}", .{i});
+        const f = try protocol.getProperty(ctx, falsy.value, name);
+        defer f.release();
+        try std.testing.expect(!protocol.toBoolean(ctx, f.value));
+        const t = try protocol.getProperty(ctx, truthy.value, name);
+        defer t.release();
+        try std.testing.expect(protocol.toBoolean(ctx, t.value));
+    }
+
+    // WebIDL 3.2.18: a member not present is left out (null); a present one
+    // is ToBoolean'd - `{capture: 2}` is capture, `{once: 0}` is not.
+    const options = try evalOwned("({ capture: 2, once: 0 })");
+    defer options.release();
+    try std.testing.expectEqual(@as(?bool, true), try protocol.getPropertyBoolean(ctx, options.value, "capture"));
+    try std.testing.expectEqual(@as(?bool, false), try protocol.getPropertyBoolean(ctx, options.value, "once"));
+    try std.testing.expectEqual(@as(?bool, null), try protocol.getPropertyBoolean(ctx, options.value, "passive"));
+    // A getter that throws propagates: the exception stays in flight.
+    const throwing = try evalOwned("({ get capture() { throw new RangeError('x'); } })");
+    defer throwing.release();
+    var read: ReadCapture = .{ .ctx = ctx, .object = throwing.value };
+    const thrown = (try catching(ReadCapture.run, &read)) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, read.result);
+}
+
+const ReadCapture = struct {
+    ctx: runtime.Context,
+    object: runtime.JSValue,
+    result: protocol.Error!?bool = null,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *ReadCapture = @ptrCast(@alignCast(data.?));
+        self.result = protocol.getPropertyBoolean(self.ctx, self.object, "capture");
+    }
+};

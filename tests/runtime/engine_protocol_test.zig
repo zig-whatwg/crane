@@ -78,6 +78,31 @@ test "borrow is a view of an Owned value that its holder keeps, and the binding 
     try std.testing.expectEqual(@as(f64, 3), number.borrow().number);
 }
 
+test "ToBoolean of every IDL arm, with no engine behind the realm" {
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    const realm: engine.Context = &data;
+    // ECMAScript 7.1.2: undefined, null, false, +0, -0, NaN and "" are false.
+    for ([_]runtime.JSValue{
+        runtime.JSValue.jsUndefined,
+        runtime.JSValue.jsNull,
+        runtime.JSValue.fromBoolean(false),
+        runtime.JSValue.fromNumber(0.0),
+        runtime.JSValue.fromNumber(-0.0),
+        runtime.JSValue.fromNumber(std.math.nan(f64)),
+        runtime.JSValue.fromStringRef(""),
+    }) |value| try std.testing.expect(!engine.toBoolean(realm, value));
+    // Everything else is true - an object (a platform object) always.
+    var instance: runtime.Instance = undefined;
+    for ([_]runtime.JSValue{
+        runtime.JSValue.fromBoolean(true),
+        runtime.JSValue.fromNumber(-1),
+        runtime.JSValue.fromNumber(std.math.inf(f64)),
+        runtime.JSValue.fromStringRef("0"),
+        .{ .instance = &instance },
+    }) |value| try std.testing.expect(engine.toBoolean(realm, value));
+}
+
 /// A caller of a capability-gated operation: the branch that calls it is
 /// compiled only when the engine has the capability. Without the capability
 /// the call would be a compile error ("engine.promiseIsHandled needs

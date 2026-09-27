@@ -42,6 +42,7 @@ const protocol_agents = @import("protocol_agents.zig");
 const protocol_modules = @import("protocol_modules.zig");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
+const support = @import("protocol_support.zig");
 
 /// For the worker and agent operations only (see above).
 const table = v8_engine.v8_engine_interface;
@@ -69,6 +70,9 @@ pub const capabilities: engine.Capabilities = .{
     .heap_snapshots = .native,
     .diagnostic_counters = .native,
 };
+
+/// Every operation is V8 code: a test binary that compiles them all links V8.
+pub const links_engine = true;
 
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = realm_entry.Entered;
@@ -295,6 +299,7 @@ pub const defineOwnProperty = protocol_values.defineOwnProperty;
 pub const hasProperty = protocol_values.hasProperty;
 pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
+pub const toBoolean = protocol_values.toBoolean;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
     switch (value) {
@@ -303,7 +308,10 @@ pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
         .undefined, .null, .boolean, .number => return .{ .value = value },
         else => {},
     }
-    return owned(value_operations.retainValue(realm, value) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    // A platform object: its wrapper in its relevant realm.
+    return support.owned(try support.ownGlobal(entered, value));
 }
 
 pub fn releaseValue(value: Owned) void {
@@ -311,7 +319,11 @@ pub fn releaseValue(value: Owned) void {
 }
 
 pub fn throwValue(realm: Context, value: JSValue) Error!void {
-    return value_operations.throwValue(realm, value) catch |err| protocolError(err);
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, value);
+    defer relevant.release();
+    return value_operations.throwValue(realm, relevant.value) catch |err| protocolError(err);
 }
 
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
@@ -378,16 +390,35 @@ pub const releaseIteratorRecord = protocol_conversions.releaseIteratorRecord;
 // 4.7 WebIDL: IDL to ECMAScript
 // ============================================================================
 
+/// Each platform object becomes its wrapper in its relevant realm
+/// (support.RelevantList), not the realm the array is made in.
 pub fn createSequenceOfValues(realm: Context, values: []const JSValue) Error!Owned {
-    return owned(webidl_conversions.createSequenceOfValues(realm, values) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    return owned(webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return protocolError(err));
 }
 
 pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Instance) Error!Owned {
-    return owned(v8_engine.v8CreateSequenceOfPlatformObjects(realm, instances) catch |err| return protocolError(err));
+    const values = std.heap.c_allocator.alloc(JSValue, instances.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(values);
+    for (instances, values) |instance, *value| value.* = .{ .instance = instance };
+    return createSequenceOfValues(realm, values);
 }
 
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {
-    return owned(value_construction.createDictionaryObject(realm, members) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const values = std.heap.c_allocator.alloc(JSValue, members.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(values);
+    for (members, values) |member, *value| value.* = member.value;
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    const relevant_members = std.heap.c_allocator.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
+    defer std.heap.c_allocator.free(relevant_members);
+    for (members, relevant.values, relevant_members) |member, value, *out| out.* = .{ .name = member.name, .value = value };
+    return owned(value_construction.createDictionaryObject(realm, relevant_members) catch |err| return protocolError(err));
 }
 
 pub fn createObservableArray(realm: Context) Error!JSValue {
@@ -440,7 +471,15 @@ pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
 
 pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) Error!void {
     const resolved = switch (value) {
-        .instance => |instance| v8_engine.v8ResolvePromiseWithInstance(capability.state, instance),
+        // Its wrapper in its relevant realm, not the promise's.
+        .instance => |instance| blk: {
+            const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+            const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return error.OperationFailed;
+            defer scope.deinit();
+            const wrapper = try support.relevantWrapper(handle.isolate, instance);
+            defer ffi.v8_Global_Dispose(wrapper);
+            break :blk v8_engine.v8ResolvePromise(capability.state, capability.state, wrapper);
+        },
         .handle => |h| v8_engine.v8ResolvePromise(capability.state, capability.state, h.ptr),
         .undefined => v8_engine.v8ResolvePromise(capability.state, capability.state, null),
         else => resolveWithConverted(capability.state, value),
@@ -460,7 +499,12 @@ fn resolveWithConverted(state: *anyopaque, value: JSValue) EngineError!void {
 }
 
 pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Error!void {
-    return v8_engine.v8RejectPromiseWithValue(capability.state, reason) catch |err| protocolError(err);
+    const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+    const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return error.OperationFailed;
+    defer scope.deinit();
+    const relevant = try support.Relevant.of(handle.isolate, reason);
+    defer relevant.release();
+    return v8_engine.v8RejectPromiseWithValue(capability.state, relevant.value) catch |err| protocolError(err);
 }
 
 pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
@@ -469,11 +513,19 @@ pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
 }
 
 pub fn createResolvedPromise(realm: Context, value: JSValue) Error!Owned {
-    return owned(value_construction.createResolvedPromise(realm, value) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, value);
+    defer relevant.release();
+    return owned(value_construction.createResolvedPromise(realm, relevant.value) catch |err| return protocolError(err));
 }
 
 pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
-    return owned(value_construction.createRejectedPromise(realm, reason) catch |err| return protocolError(err));
+    const entered = try enter(realm);
+    defer entered.leave();
+    const relevant = try support.Relevant.of(entered.isolate, reason);
+    defer relevant.release();
+    return owned(value_construction.createRejectedPromise(realm, relevant.value) catch |err| return protocolError(err));
 }
 
 pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;

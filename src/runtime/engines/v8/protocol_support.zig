@@ -13,6 +13,7 @@ const ffi = @import("ffi.zig");
 const realm_entry = @import("realm_entry.zig");
 const value_operations = @import("value_operations.zig");
 const context_manager = @import("context_manager.zig");
+const conversions = @import("conversions.zig");
 
 pub const Error = engine.Error;
 pub const Entered = realm_entry.Entered;
@@ -51,14 +52,104 @@ pub fn handleOf(value: engine.JSValue) ?*ffi.Value {
 }
 
 /// A Global of the caller's own for any value - a platform object as its
-/// wrapper, a primitive made in the realm `at` is in. OWNED.
+/// wrapper in its relevant realm (`relevantWrapper`), a primitive made in the
+/// realm `at` is in. OWNED.
 ///
 /// `at`, here and below: where the work happens - an Entered realm, or a
 /// Here inside a native closure; anything with an `isolate` and a
 /// `context()`.
 pub fn ownGlobal(at: anytype, value: engine.JSValue) Error!*ffi.Value {
-    return value_operations.ownHandle(at.isolate, at.context(), value) catch |err| protocolError(err);
+    return switch (value) {
+        .instance => |instance| relevantWrapper(at.isolate, instance),
+        else => value_operations.ownHandle(at.isolate, at.context(), value) catch |err| protocolError(err),
+    };
 }
+
+/// A platform object's wrapper in its RELEVANT realm (`instance.ctx`) - the
+/// design's relevant-realm rule - whichever realm the operation entered: a
+/// platform object has one wrapper, made in the realm it was created in, so
+/// an object of realm A handed back through an operation entered in realm B
+/// is A's wrapper, with A's prototypes - as `iframe.contentDocument` is the
+/// frame's document, not a second one of the parent's. OWNED (a Global of the
+/// caller's own; the wrapper cache keeps its own).
+///
+/// The wrapper is looked up or made with the relevant realm entered, since
+/// the wrapper cache and the templates are per realm. A platform object whose
+/// realm the engine no longer hosts - retired (its engine context cleared),
+/// or a host's context with none - has no realm left to be wrapped in but the
+/// one the operation is in, so it is wrapped there. One of another agent is
+/// not this agent's to wrap.
+pub fn relevantWrapper(isolate: *ffi.Isolate, instance: *engine.Instance) Error!*ffi.Value {
+    const relevant = instance.ctx;
+    const home: ?Entered = if (relevant.engine_ctx != null) blk: {
+        if (realm_entry.agentOf(relevant) != isolate) return error.OperationFailed;
+        break :blk realm_entry.enter(relevant) catch null;
+    } else null;
+    defer if (home) |h| h.leave();
+    // The wrapper cache's Global, BORROWED - or, when the object cannot be
+    // wrapped (no template for its interface), a new undefined, OWNED: a
+    // wrapper is never undefined, so that answer is this call's to keep.
+    const wrapper = conversions.instanceToV8(isolate, instance);
+    if (ffi.v8_Value_IsUndefined(wrapper)) return wrapper;
+    return ffi.v8_Global_Clone(wrapper) orelse error.OperationFailed;
+}
+
+/// `value` with a platform object replaced by its wrapper in its relevant
+/// realm, BORROWED from the Global this holds until `release` - for handing a
+/// value to an adapter function that would wrap it wherever it is called.
+pub const Relevant = struct {
+    value: engine.JSValue,
+    held: ?*ffi.Value = null,
+
+    pub fn of(isolate: *ffi.Isolate, value: engine.JSValue) Error!Relevant {
+        return switch (value) {
+            .instance => |instance| blk: {
+                const wrapper = try relevantWrapper(isolate, instance);
+                break :blk .{ .value = borrowed(wrapper), .held = wrapper };
+            },
+            else => .{ .value = value },
+        };
+    }
+
+    pub fn release(self: Relevant) void {
+        if (self.held) |held| ffi.v8_Global_Dispose(held);
+    }
+};
+
+/// A list of values as `Relevant` does one: the list itself when it holds no
+/// platform object, else a copy with each replaced. `release` ends both.
+pub const RelevantList = struct {
+    values: []const engine.JSValue,
+    copy: ?[]Relevant = null,
+    copied: ?[]engine.JSValue = null,
+
+    const allocator = std.heap.c_allocator;
+
+    pub fn of(isolate: *ffi.Isolate, values: []const engine.JSValue) Error!RelevantList {
+        for (values) |value| {
+            if (value == .instance) break;
+        } else return .{ .values = values };
+        const copy = allocator.alloc(Relevant, values.len) catch return error.OutOfMemory;
+        errdefer allocator.free(copy);
+        const copied = allocator.alloc(engine.JSValue, values.len) catch return error.OutOfMemory;
+        errdefer allocator.free(copied);
+        var made: usize = 0;
+        errdefer for (copy[0..made]) |relevant| relevant.release();
+        for (values, copy, copied) |value, *slot, *out| {
+            slot.* = try Relevant.of(isolate, value);
+            out.* = slot.value;
+            made += 1;
+        }
+        return .{ .values = copied, .copy = copy, .copied = copied };
+    }
+
+    pub fn release(self: RelevantList) void {
+        const copy = self.copy orelse return;
+        for (copy) |relevant| relevant.release();
+        allocator.free(copy);
+        allocator.free(self.copied.?);
+    }
+};
 
 /// An OWNED protocol value over a Global the FFI made.
 pub fn owned(global: *ffi.Value) engine.Owned {

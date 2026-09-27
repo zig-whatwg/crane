@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const HTMLSelectElement = interfaces.HTMLSelectElement;
 
 const ElementImpl = @import("Element.zig");
@@ -403,33 +404,25 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     return null;
 }
 
-/// Turn an argument that WebIDL typed as a union of interfaces into an instance.
-///
-/// The conversion layer hands a union-typed argument over as `runtime.JSValue`,
-/// and an object arrives as a `.handle`, never a `.instance` - see the
-/// `T == runtime.JSValue` branch in engines/v8/conversions.zig, which builds
-/// `.{ .handle = .{ .ptr = value, .handle_scope = .local } }`. So the instance
-/// has to come out of the wrapper's internal field.
-///
-/// Nothing is acquired here and nothing may be disposed: the handle belongs to
-/// the argument-cleanup path, and reading an aligned internal field allocates no
-/// `Global<T>` - unlike every `v8_*` call that RETURNS a handle pointer.
-///
-/// `EngineInterface` has no unwrap hook (only `wrapInstance`), so this goes
-/// through the v8 module directly, the way FormData.zig and WebSocket.zig reach
-/// for the isolate.
-fn instanceFromJSValue(value: runtime.JSValue) ?*runtime.Instance {
-    if (value.toInstance()) |unwrapped| return unwrapped;
+/// The platform object `value` is, or null: a union argument reaches the impl
+/// unconverted (an object as a handle, never an `.instance`), so the platform
+/// object comes out of it through the engine protocol.
+fn platformObjectOf(instance: *runtime.Instance, value: runtime.JSValue) ?*runtime.Instance {
+    return engine.convertToPlatformObject(engine.currentRealm() orelse instance.ctx, value);
+}
 
-    const v8 = @import("v8");
-    const handle = value.asEngineHandle() orelse return null;
-
-    const untagged = v8.untagPointer(handle);
-    const js_value: *v8.ffi.Value = @ptrCast(untagged.ptr);
-    if (!v8.ffi.v8_Value_IsObject(js_value)) return null;
-
-    const object: *v8.ffi.Object = @ptrCast(js_value);
-    return v8.wrapper_type_info_mod.unwrapAnyInstance(object);
+/// WebIDL 3.2.4.8 "convert to long" of `value` (no [EnforceRange], no
+/// [Clamp]): ToNumber, NaN and the infinities to 0, the integer part, then
+/// modulo 2^32 into the signed range.
+fn convertToLong(instance: *runtime.Instance, value: runtime.JSValue) !i32 {
+    const x = try engine.convertToUnrestrictedDouble(engine.currentRealm() orelse instance.ctx, value);
+    // 1-5 (the default conversion): +/-0, NaN, +/-Infinity are 0.
+    if (std.math.isNan(x) or std.math.isInf(x)) return 0;
+    // 6-7. x = IntegerPart(x), modulo 2^32.
+    const modulo = @mod(@trunc(x), 4294967296.0);
+    // 8. If x >= 2^31, return x - 2^32.
+    const as_unsigned: u32 = @intFromFloat(modulo);
+    return @bitCast(as_unsigned);
 }
 
 fn isInclusiveAncestorOf(ancestor: *runtime.Instance, node: *runtime.Instance) bool {
@@ -444,31 +437,37 @@ fn isInclusiveAncestorOf(ancestor: *runtime.Instance, node: *runtime.Instance) b
 /// Operation: add
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-add
 pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
-    const new_option = instanceFromJSValue(element) orelse return error.TypeError;
+    // `element` is (HTMLOptionElement or HTMLOptGroupElement): a platform
+    // object implementing either, else a TypeError (WebIDL 3.2.24).
+    const new_option = platformObjectOf(instance, element) orelse return error.TypeError;
+    if (new_option.stateAs(interfaces.HTMLOptionElement.State) == null and
+        new_option.stateAs(interfaces.HTMLOptGroupElement.State) == null) return error.TypeError;
 
     // 1. Adding an ancestor of the select would make a cycle.
     if (isInclusiveAncestorOf(new_option, instance)) return error.HierarchyRequestError;
 
-    // 2-4. Resolve `before` to a reference node. It is either an element (which
-    // must be inside the select) or an index into the list of options; anything
-    // else, including omitted, null and undefined, means "append".
+    // 2-4. Resolve `before` - (HTMLElement or long)?, null by default - to a
+    // reference node. An HTMLElement must be inside the select; anything else
+    // but null or undefined converts to long, an index into the options.
     var reference: ?*runtime.Instance = null;
     if (before.wasPassed()) {
         if (before.getValue()) |before_value| {
             switch (before_value) {
-                .number => |n| {
-                    // A non-integral or out-of-range index is not an error - it
-                    // just leaves reference null.
-                    if (n >= 0 and n == @floor(n)) {
-                        reference = try call_item(instance, @intFromFloat(n));
-                    }
-                },
                 .undefined, .null => {},
                 else => {
-                    const before_node = instanceFromJSValue(before_value) orelse
-                        return error.TypeError;
-                    if (!isInclusiveAncestorOf(instance, before_node)) return error.NotFoundError;
-                    reference = before_node;
+                    const html_element = if (platformObjectOf(instance, before_value)) |object|
+                        (if (object.stateAs(interfaces.HTMLElement.State) != null) object else null)
+                    else
+                        null;
+                    if (html_element) |before_node| {
+                        if (!isInclusiveAncestorOf(instance, before_node)) return error.NotFoundError;
+                        reference = before_node;
+                    } else {
+                        // An index with no option at it - negative included -
+                        // leaves reference null: append.
+                        const index = try convertToLong(instance, before_value);
+                        if (index >= 0) reference = try call_item(instance, @intCast(index));
+                    }
                 },
             }
         }
