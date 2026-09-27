@@ -185,3 +185,145 @@ test "copies of a Deferred share its cell, and deinitResolverOnly frees it too" 
     deferred.deinitResolverOnly();
     js.dispose(promise);
 }
+
+// =============================================================================
+// Blob: sequence<BlobPart>, and the promises the read methods return
+// =============================================================================
+//
+// BlobPart is (Blob or BufferSource or USVString): a platform object that is
+// no Blob, and anything else that is no buffer source, is the string it
+// converts to (WebIDL 3.2.24 step 12). The sequence is any iterable. The
+// read methods' promises are settled with the whole blob, and each call
+// leaves no engine handle behind.
+
+const Blob = @import("impls").Blob;
+const protocol = @import("engine");
+
+/// The process-wide pools a platform object's Instance comes from, made
+/// once for the file and, like V8 here, never torn down.
+fn ensurePools() void {
+    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.SlabAllocator.init(std.heap.page_allocator);
+    if (runtime.ArenaAllocator.tryGet()) |_| {} else |_| runtime.ArenaAllocator.init(std.heap.page_allocator);
+}
+
+/// The value `source` evaluates to in this file's context. OWNED.
+fn evalValue(source: []const u8) !protocol.Owned {
+    return .{ .value = runtime.JSValue.fromHandle(@ptrCast(try run(try isolate(), source))) };
+}
+
+fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Blob.Endings) ![]const u8 {
+    const parts = try evalValue(source);
+    defer parts.release();
+    return Blob.processBlobParts(realm, parts.value, endings);
+}
+
+test "a BlobPart is a buffer source's bytes, or else the USVString it converts to" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const bytes = try blobPartsOf(&data,
+        \\[ 'aé', new Uint8Array([98, 99]).subarray(1), new ArrayBuffer(1),
+        \\  new DataView(new Uint8Array([100, 101, 102]).buffer, 1, 1), 7, {}, null, '\ud800' ]
+    , .transparent);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqualStrings("a\xc3\xa9c\x00e7[object Object]null\xef\xbf\xbd", bytes);
+}
+
+test "a sequence<BlobPart> is any iterable, and a value with no @@iterator is a TypeError" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const from_set = try blobPartsOf(&data, "new Set(['x', 'y'])", .transparent);
+    defer std.testing.allocator.free(from_set);
+    try std.testing.expectEqualStrings("xy", from_set);
+    const from_generator = try blobPartsOf(&data, "(function* () { yield 'g'; yield new Uint8Array([104]); })()", .transparent);
+    defer std.testing.allocator.free(from_generator);
+    try std.testing.expectEqualStrings("gh", from_generator);
+    // 3.2.21 step 1: not an Object; step 3: no @@iterator.
+    try std.testing.expectError(error.TypeError, blobPartsOf(&data, "'abc'", .transparent));
+    try std.testing.expectError(error.TypeError, blobPartsOf(&data, "null", .transparent));
+    try std.testing.expectError(error.TypeError, blobPartsOf(&data, "({ length: 1, 0: 'a' })", .transparent));
+}
+
+test "endings: native converts a string part's line endings, and never a buffer's" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const bytes = try blobPartsOf(&data, "['a\\r\\nb\\rc\\n', new Uint8Array([13, 10])]", .native);
+    defer std.testing.allocator.free(bytes);
+    const nl = @import("builtin").os.tag != .windows;
+    try std.testing.expectEqualStrings(if (nl) "a\nb\nc\n\r\n" else "a\r\nb\r\nc\r\n\r\n", bytes);
+}
+
+/// The value `promise` (OWNED, released here) is fulfilled with. OWNED.
+fn fulfillmentOf(promise: runtime.JSValue) !*ffi.Value {
+    defer protocol.releaseValue(.{ .value = promise });
+    const p: *ffi.Promise = @ptrCast(@alignCast(promise.handle.ptr));
+    try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(p)); // fulfilled
+    return ffi.v8_Promise_Result(p) orelse error.NoResult;
+}
+
+test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid byte U+FFFD" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    ensurePools();
+    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "\xef\xbb\xbfa\xffb", "");
+    defer Blob.deinit(blob);
+    const text = try fulfillmentOf(try Blob.call_text(blob));
+    defer ffi.v8_Value_Dispose(text);
+    const decoded = try protocol.convertToDOMString(&data, runtime.JSValue.fromHandleNonOwning(@ptrCast(text)), std.testing.allocator);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualStrings("a\xef\xbf\xbdb", decoded);
+}
+
+test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    ensurePools();
+    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "\x00\x01\xff", "");
+    defer Blob.deinit(blob);
+
+    const buffer = try fulfillmentOf(try Blob.call_arrayBuffer(blob));
+    defer ffi.v8_Value_Dispose(buffer);
+    const buffer_value = runtime.JSValue.fromHandleNonOwning(@ptrCast(buffer));
+    try std.testing.expectEqualSlices(u8, "\x00\x01\xff", protocol.borrowArrayBufferBytes(&data, buffer_value) orelse return error.NotABuffer);
+
+    const view = try fulfillmentOf(try Blob.call_bytes(blob));
+    defer ffi.v8_Value_Dispose(view);
+    const view_value = runtime.JSValue.fromHandleNonOwning(@ptrCast(view));
+    const description = protocol.describeArrayBufferView(&data, view_value) orelse return error.NotAView;
+    try std.testing.expectEqual(protocol.ViewType.uint8_array, description.view_type);
+    try std.testing.expectEqual(@as(usize, 3), description.byte_length);
+    const viewed = try protocol.getViewedArrayBuffer(&data, view_value);
+    defer viewed.release();
+    try std.testing.expectEqualSlices(u8, "\x00\x01\xff", protocol.borrowArrayBufferBytes(&data, viewed.value) orelse return error.NotABuffer);
+}
+
+/// Run `method` on a Blob 33 times, each promise released, and expect no
+/// more engine handles alive after the last 32 than after the first.
+fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.JSValue) !void {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    ensurePools();
+    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "abc", "");
+    defer Blob.deinit(blob);
+    protocol.releaseValue(.{ .value = try method(blob) });
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| protocol.releaseValue(.{ .value = try method(blob) });
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+}
+
+test "Blob.text() leaves no engine handle behind" {
+    try expectNoHandleLeft(Blob.call_text);
+}
+
+test "Blob.arrayBuffer() leaves no engine handle behind" {
+    try expectNoHandleLeft(Blob.call_arrayBuffer);
+}
+
+test "Blob.bytes() leaves no engine handle behind" {
+    try expectNoHandleLeft(Blob.call_bytes);
+}

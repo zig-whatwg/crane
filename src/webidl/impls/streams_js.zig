@@ -440,13 +440,6 @@ pub fn allocateBufferIn(realm: Realm, byte_length: usize) ?Value {
     return adopt(realm.ctx, buffer);
 }
 
-/// AllocateArrayBuffer in the current realm. TRANSITIONAL, for Blob.zig
-/// until it moves onto the protocol; everything else names its realm.
-pub fn allocateBuffer(byte_length: usize) ?Value {
-    const current = engine.currentRealm() orelse return null;
-    return allocateBufferIn(.{ .ctx = current }, byte_length);
-}
-
 /// The completion of a call: a normal return value or a thrown value.
 pub const Completion = union(enum) {
     normal: Value,
