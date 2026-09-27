@@ -191,8 +191,6 @@ src/webdriver/session.zig v8_String_WriteUtf8 3
 src/webdriver/session.zig v8_Value_ToString 3
 src/webdriver/session.zig v8_context 3
 src/webdriver/session.zig v8_ctx 6
-src/webidl/conversions_test.zig @import("v8") 1
-src/webidl/conversions_test.zig v8.conversions 1
 src/webidl/impls/Blob.zig @import("v8") 1
 src/webidl/impls/Blob.zig v8.ffi.Array 1
 src/webidl/impls/Blob.zig v8.ffi.ArrayBuffer 2
