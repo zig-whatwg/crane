@@ -107,7 +107,10 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
-pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: bool, _: Allocator, _: engine.Reporter) Error!Owned {
+pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.Reporter) Error!Owned {
+    return error.NotSupported;
+}
+pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: Allocator, _: engine.Reporter) Error![]u8 {
     return error.NotSupported;
 }
 pub fn compileEventHandler(_: Context, _: *const engine.EventHandlerSource, _: engine.Reporter) Error!?Owned {
@@ -123,7 +126,7 @@ pub fn runInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
 pub fn runTaskInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
-pub fn performMicrotaskCheckpoint(_: Context) void {}
+pub fn performMicrotaskCheckpoint(_: Context) Error!void {}
 pub fn queueMicrotask(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
@@ -149,13 +152,13 @@ pub fn finishDynamicImport(_: *engine.ImportRequest, _: engine.DynamicImportOutc
 pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
-pub fn invokeCallbackFunction(_: JSValue, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+pub fn invokeCallbackFunction(_: Context, _: JSValue, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
-pub fn callUserObjectOperation(_: JSValue, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+pub fn callUserObjectOperation(_: Context, _: JSValue, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
-pub fn isCallable(_: JSValue) bool {
+pub fn isCallable(_: Context, _: JSValue) bool {
     return false;
 }
 pub fn takeCallbackFunction(_: *const anyopaque) Owned {
@@ -177,7 +180,7 @@ pub fn hasProperty(_: Context, _: JSValue, _: []const u8) Error!bool {
 }
 /// Read from the value's IDL arm; with no engine, a handle or a platform
 /// object is an object.
-pub fn typeOf(value: JSValue) engine.ValueType {
+pub fn typeOf(_: Context, value: JSValue) engine.ValueType {
     return switch (value) {
         .undefined => .undefined,
         .null => .null,
@@ -189,7 +192,7 @@ pub fn typeOf(value: JSValue) engine.ValueType {
 }
 /// SameValue over the IDL arms: numbers by SameValue (NaN is NaN, +0 is not
 /// -0), strings by their code units, objects by identity.
-pub fn sameValue(a: JSValue, b: JSValue) bool {
+pub fn sameValue(_: Context, a: JSValue, b: JSValue) bool {
     return switch (a) {
         .undefined => b == .undefined,
         .null => b == .null,
@@ -294,8 +297,12 @@ pub fn createDOMException(_: Context, _: []const u8, _: []const u8) Error!Owned 
 pub fn createPromise(_: Context) Error!engine.PromiseCapability {
     return error.NotSupported;
 }
-pub fn resolvePromise(_: *engine.PromiseCapability, _: JSValue) void {}
-pub fn rejectPromise(_: *engine.PromiseCapability, _: JSValue) void {}
+pub fn resolvePromise(_: *engine.PromiseCapability, _: JSValue) Error!void {
+    return error.NotSupported;
+}
+pub fn rejectPromise(_: *engine.PromiseCapability, _: JSValue) Error!void {
+    return error.NotSupported;
+}
 pub fn releasePromiseCapability(_: *engine.PromiseCapability) void {}
 pub fn createResolvedPromise(_: Context, _: JSValue) Error!Owned {
     return error.NotSupported;
@@ -306,8 +313,8 @@ pub fn createRejectedPromise(_: Context, _: JSValue) Error!Owned {
 pub fn reactToPromise(_: Context, _: JSValue, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
-pub fn markPromiseAsHandled(_: JSValue) void {}
-pub fn promiseIsHandled(_: JSValue) bool {
+pub fn markPromiseAsHandled(_: Context, _: JSValue) void {}
+pub fn promiseIsHandled(_: Context, _: JSValue) bool {
     return false;
 }
 
@@ -321,19 +328,19 @@ pub fn allocateArrayBuffer(_: Context, _: usize) Error!Owned {
 pub fn createArrayBufferView(_: Context, _: engine.ViewType, _: JSValue, _: usize, _: usize) Error!Owned {
     return error.NotSupported;
 }
-pub fn describeArrayBufferView(_: JSValue) ?engine.ArrayBufferViewDescription {
+pub fn describeArrayBufferView(_: Context, _: JSValue) ?engine.ArrayBufferViewDescription {
     return null;
 }
-pub fn writeIntoArrayBufferView(_: JSValue, _: []const u8, _: usize) Error!void {
+pub fn writeIntoArrayBufferView(_: Context, _: JSValue, _: []const u8, _: usize) Error!void {
     return error.NotSupported;
 }
-pub fn borrowArrayBufferBytes(_: JSValue) ?[]u8 {
+pub fn borrowArrayBufferBytes(_: Context, _: JSValue) ?[]u8 {
     return null;
 }
-pub fn isDetachedBuffer(_: JSValue) bool {
+pub fn isDetachedBuffer(_: Context, _: JSValue) bool {
     return false;
 }
-pub fn canTransferArrayBuffer(_: JSValue) bool {
+pub fn canTransferArrayBuffer(_: Context, _: JSValue) bool {
     return false;
 }
 pub fn transferArrayBuffer(_: Context, _: JSValue) Error!Owned {

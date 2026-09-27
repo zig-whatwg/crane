@@ -260,8 +260,14 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
 }
 
 // TODO(protocol): implement - design 4.3 (page-realm draft; replaces compileScript/runScript and Context.evaluateScript)
-pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, to_string: bool, allocator: Allocator, reporter: engine.Reporter) Error!Owned {
-    _ = .{ realm, source, url, to_string, allocator, reporter };
+pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, reporter: engine.Reporter) Error!Owned {
+    _ = .{ realm, source, url, reporter };
+    return error.NotSupported;
+}
+
+// TODO(protocol): implement - design 4.3 (evaluateClassicScript, then ToString)
+pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
+    _ = .{ realm, source, url, allocator, reporter };
     return error.NotSupported;
 }
 
@@ -291,9 +297,8 @@ pub fn runTaskInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaqu
     return v8_engine.v8RunTaskInRealm(realm, steps, data) catch |err| protocolError(err);
 }
 
-/// A realm that cannot be entered any more has no microtasks left to run.
-pub fn performMicrotaskCheckpoint(realm: Context) void {
-    v8_engine.v8PerformMicrotaskCheckpoint(realm) catch {};
+pub fn performMicrotaskCheckpoint(realm: Context) Error!void {
+    return v8_engine.v8PerformMicrotaskCheckpoint(realm) catch |err| protocolError(err);
 }
 
 pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
@@ -352,19 +357,14 @@ pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
 // 4.4 Invoking callbacks
 // ============================================================================
 
-// TODO(protocol): implement - design 4.4 (page_realm.invokeCallbackFunction is the report-only, realm-given form; the protocol's takes the callback's realm and returns the Completion)
-pub fn invokeCallbackFunction(callback: JSValue, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
-    _ = .{ callback, this_arg, args, behavior };
-    return error.NotSupported;
-}
+const protocol_callbacks = @import("protocol_callbacks.zig");
+pub const invokeCallbackFunction = protocol_callbacks.invokeCallbackFunction;
+pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
 
-// TODO(protocol): implement - design 4.4 (callback_interfaces.callUserObjectOperation takes a CallbackWrapper and rethrows only)
-pub fn callUserObjectOperation(callback: JSValue, operation: []const u8, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
-    _ = .{ callback, operation, this_arg, args, behavior };
-    return error.NotSupported;
-}
-
-pub fn isCallable(value: JSValue) bool {
+/// In `realm`'s agent: a realm that cannot be entered reads nothing.
+pub fn isCallable(realm: Context, value: JSValue) bool {
+    const entered = enter(realm) catch return false;
+    defer entered.leave();
     return table.isCallable.?(value);
 }
 
@@ -376,41 +376,13 @@ pub fn takeCallbackFunction(argument: *const anyopaque) Owned {
 // 4.5 ECMAScript values
 // ============================================================================
 
-// TODO(protocol): implement - design 4.5 (engine.zig's getMember is Get for the getProperty* helpers)
-pub fn getProperty(realm: Context, object: JSValue, property: []const u8) Error!Owned {
-    _ = .{ realm, object, property };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5 (replaces setPropertyOnObject, which sets strings only)
-pub fn setProperty(realm: Context, object: JSValue, property: []const u8, value: JSValue) Error!void {
-    _ = .{ realm, object, property, value };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5 (replaces defineOwnPropertyOnObject)
-pub fn defineOwnProperty(realm: Context, object: JSValue, property: []const u8, value: JSValue, attributes: engine.PropertyAttributes) Error!void {
-    _ = .{ realm, object, property, value, attributes };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn hasProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
-    _ = .{ realm, object, property };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn typeOf(value: JSValue) engine.ValueType {
-    _ = value;
-    notImplemented("typeOf", "4.5");
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn sameValue(a: JSValue, b: JSValue) bool {
-    _ = .{ a, b };
-    notImplemented("sameValue", "4.5");
-}
+const protocol_values = @import("protocol_values.zig");
+pub const getProperty = protocol_values.getProperty;
+pub const setProperty = protocol_values.setProperty;
+pub const defineOwnProperty = protocol_values.defineOwnProperty;
+pub const hasProperty = protocol_values.hasProperty;
+pub const typeOf = protocol_values.typeOf;
+pub const sameValue = protocol_values.sameValue;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
     return owned(value_operations.retainValue(realm, value) catch |err| return protocolError(err));
@@ -424,11 +396,7 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
     return value_operations.throwValue(realm, value) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.5 (the table's parseJson evaluates a JSON.parse script; v8_JSON_Parse_FromBuffer returns a Local and leaves the SyntaxError pending)
-pub fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
-    _ = .{ realm, bytes };
-    return error.NotSupported;
-}
+pub const parseJsonToValue = protocol_values.parseJsonToValue;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL
@@ -478,53 +446,15 @@ pub fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: All
     return webidl_conversions.getCopyOfBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.6 (webidl_conversions.iterate is the walk)
-pub fn convertToSequence(realm: Context, value: JSValue, allocator: Allocator) Error![]Owned {
-    _ = .{ realm, value, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (URLSearchParams / Headers init)
-pub fn convertToSequenceOfStringPairs(realm: Context, value: JSValue, conversion: engine.StringConversion, allocator: Allocator) Error!?[]engine.StringRecordEntry {
-    _ = .{ realm, value, conversion, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (replaces invokeForEach/getCollectionLength/getCollectionElement)
-pub fn iterate(realm: Context, value: JSValue, each: engine.IterateSteps, data: ?*anyopaque) Error!bool {
-    _ = .{ realm, value, each, data };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Error!*engine.IteratorRecord {
-    _ = .{ realm, value, kind };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorNext(realm: Context, record: *engine.IteratorRecord) Error!Owned {
-    _ = .{ realm, record };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorReturn(realm: Context, record: *engine.IteratorRecord, value: JSValue) Error!?Owned {
-    _ = .{ realm, record, value };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorResult(realm: Context, result: JSValue) Error!engine.IteratorResult {
-    _ = .{ realm, result };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn releaseIteratorRecord(record: *engine.IteratorRecord) void {
-    _ = record;
-    notImplemented("releaseIteratorRecord", "4.6");
-}
+const protocol_conversions = @import("protocol_conversions.zig");
+pub const convertToSequence = protocol_conversions.convertToSequence;
+pub const convertToSequenceOfStringPairs = protocol_conversions.convertToSequenceOfStringPairs;
+pub const iterate = protocol_conversions.iterate;
+pub const getIterator = protocol_conversions.getIterator;
+pub const iteratorNext = protocol_conversions.iteratorNext;
+pub const iteratorReturn = protocol_conversions.iteratorReturn;
+pub const iteratorResult = protocol_conversions.iteratorResult;
+pub const releaseIteratorRecord = protocol_conversions.releaseIteratorRecord;
 
 // ============================================================================
 // 4.7 WebIDL: IDL to ECMAScript
@@ -546,13 +476,9 @@ pub fn createObservableArray(realm: Context) Error!JSValue {
     return observable_array.createObservableArray(realm) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.7 (value_operations.createFrozenArrayOfPlatformObjects is the platform-object form)
-pub fn createFrozenArray(realm: Context, values: []const JSValue) Error!Owned {
-    _ = .{ realm, values };
-    return error.NotSupported;
-}
+pub const createFrozenArray = protocol_conversions.createFrozenArray;
 
-// TODO(protocol): implement - design 4.7 (was wrapAsyncIterator, a stub)
+// TODO(protocol): implement - design 4.7 (a WebIDL default asynchronous iterator object needs its own next/return per object and a closure per step: Function::New with data, which the FFI does not offer - a FunctionTemplate per object is cached for the context's life; v8_wrapper.cpp is held by the reflection lane)
 pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque) Error!Owned {
     _ = .{ realm, steps, data };
     return error.NotSupported;
@@ -562,9 +488,8 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
 // 4.8 Exceptions
 // ============================================================================
 
-/// Partly wired: every kind but SyntaxError. V8's embedder API reaches no
-/// EvalError or URIError intrinsic either; those stay NotSupported, as the
-/// table's answer them.
+/// V8's embedder API reaches no EvalError or URIError intrinsic; those are
+/// NotSupported, as the table's answer them.
 pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, message: []const u8) Error!Owned {
     const table_kind: runtime.SimpleExceptionKind = switch (kind) {
         .EvalError => .EvalError,
@@ -572,8 +497,7 @@ pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, m
         .ReferenceError => .ReferenceError,
         .TypeError => .TypeError,
         .URIError => .URIError,
-        // TODO(protocol): implement - design 4.8 (SyntaxError, for HTML module errors)
-        .SyntaxError => return error.NotSupported,
+        .SyntaxError => return @import("protocol_values.zig").createSyntaxError(realm, message),
     };
     return owned(value_construction.createSimpleException(realm, table_kind, message) catch |err| return protocolError(err));
 }
@@ -600,15 +524,14 @@ pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
     };
 }
 
-/// A resolve that fails leaves the promise pending: the engine failed, and
-/// "resolve" has no way to say so.
-pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) void {
-    switch (value) {
-        .instance => |instance| v8_engine.v8ResolvePromiseWithInstance(capability.state, instance) catch {},
-        .handle => |h| v8_engine.v8ResolvePromise(capability.state, capability.state, h.ptr) catch {},
-        .undefined => v8_engine.v8ResolvePromise(capability.state, capability.state, null) catch {},
-        else => resolveWithConverted(capability.state, value) catch {},
-    }
+pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) Error!void {
+    const resolved = switch (value) {
+        .instance => |instance| v8_engine.v8ResolvePromiseWithInstance(capability.state, instance),
+        .handle => |h| v8_engine.v8ResolvePromise(capability.state, capability.state, h.ptr),
+        .undefined => v8_engine.v8ResolvePromise(capability.state, capability.state, null),
+        else => resolveWithConverted(capability.state, value),
+    };
+    return resolved catch |err| protocolError(err);
 }
 
 /// A primitive or string, converted in the promise's realm - as the table's
@@ -622,9 +545,8 @@ fn resolveWithConverted(state: *anyopaque, value: JSValue) EngineError!void {
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, converted.ptr)) return EngineError.PromiseError;
 }
 
-/// As resolvePromise: a reject that fails leaves the promise pending.
-pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) void {
-    v8_engine.v8RejectPromiseWithValue(capability.state, reason) catch {};
+pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Error!void {
+    return v8_engine.v8RejectPromiseWithValue(capability.state, reason) catch |err| protocolError(err);
 }
 
 pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
@@ -640,20 +562,22 @@ pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
     return owned(value_construction.createRejectedPromise(realm, reason) catch |err| return protocolError(err));
 }
 
-// TODO(protocol): implement - design 4.9 (was chainPromiseHandlers, whose callbacks get raw engine values)
-pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
-    _ = .{ realm, promise, steps, data };
-    return error.NotSupported;
-}
+pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;
 
 /// A `.handle` is a Global either way it is tagged; the FFI leaves anything
 /// but a promise alone.
-pub fn markPromiseAsHandled(promise: JSValue) void {
-    if (handleOf(promise)) |value| ffi.v8_Promise_MarkAsHandled(value);
+pub fn markPromiseAsHandled(realm: Context, promise: JSValue) void {
+    const value = handleOf(promise) orelse return;
+    const entered = enter(realm) catch return;
+    defer entered.leave();
+    ffi.v8_Promise_MarkAsHandled(value);
 }
 
-pub fn promiseIsHandled(promise: JSValue) bool {
-    return ffi.v8_Promise_HasHandler(handleOf(promise) orelse return false);
+pub fn promiseIsHandled(realm: Context, promise: JSValue) bool {
+    const value = handleOf(promise) orelse return false;
+    const entered = enter(realm) catch return false;
+    defer entered.leave();
+    return ffi.v8_Promise_HasHandler(value);
 }
 
 // ============================================================================
@@ -693,16 +617,22 @@ pub fn createArrayBufferView(realm: Context, view_type: engine.ViewType, buffer:
     return ownedGlobal(ffi.v8_ArrayBufferView_New(kind, target, byte_offset, length) orelse return error.OperationFailed);
 }
 
-pub fn describeArrayBufferView(value: JSValue) ?engine.ArrayBufferViewDescription {
+pub fn describeArrayBufferView(realm: Context, value: JSValue) ?engine.ArrayBufferViewDescription {
+    const entered = enter(realm) catch return null;
+    defer entered.leave();
     return array_buffer_views.describeArrayBufferView(value);
 }
 
-pub fn writeIntoArrayBufferView(view: JSValue, bytes: []const u8, starting_offset: usize) Error!void {
+pub fn writeIntoArrayBufferView(realm: Context, view: JSValue, bytes: []const u8, starting_offset: usize) Error!void {
+    const entered = try enter(realm);
+    defer entered.leave();
     return array_buffer_views.writeIntoArrayBufferView(view, bytes, starting_offset) catch |err| protocolError(err);
 }
 
-pub fn borrowArrayBufferBytes(buffer: JSValue) ?[]u8 {
+pub fn borrowArrayBufferBytes(realm: Context, buffer: JSValue) ?[]u8 {
     const target = handleOf(buffer) orelse return null;
+    const entered = enter(realm) catch return null;
+    defer entered.leave();
     var data: ?*anyopaque = null;
     var byte_length: usize = 0;
     if (!ffi.v8_ArrayBuffer_Bytes(target, &data, &byte_length)) return null;
@@ -710,12 +640,18 @@ pub fn borrowArrayBufferBytes(buffer: JSValue) ?[]u8 {
     return bytes[0..byte_length];
 }
 
-pub fn isDetachedBuffer(buffer: JSValue) bool {
-    return ffi.v8_ArrayBuffer_IsDetachedValue(handleOf(buffer) orelse return false);
+pub fn isDetachedBuffer(realm: Context, buffer: JSValue) bool {
+    const target = handleOf(buffer) orelse return false;
+    const entered = enter(realm) catch return false;
+    defer entered.leave();
+    return ffi.v8_ArrayBuffer_IsDetachedValue(target);
 }
 
-pub fn canTransferArrayBuffer(buffer: JSValue) bool {
-    return ffi.v8_ArrayBuffer_CanTransfer(handleOf(buffer) orelse return false);
+pub fn canTransferArrayBuffer(realm: Context, buffer: JSValue) bool {
+    const target = handleOf(buffer) orelse return false;
+    const entered = enter(realm) catch return false;
+    defer entered.leave();
+    return ffi.v8_ArrayBuffer_CanTransfer(target);
 }
 
 pub fn transferArrayBuffer(realm: Context, buffer: JSValue) Error!Owned {
