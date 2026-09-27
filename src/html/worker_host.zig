@@ -7,9 +7,9 @@
 //! DedicatedWorkerGlobalScope. The ENGINE half - making the agent and the
 //! realm, binding the global object, running script, the engine's own posted
 //! tasks, the realm's end - is the JavaScript engine's, and this file reaches
-//! it only through the Engine table (AGENTS.md, "The engine boundary"; V8's
-//! side is src/runtime/engines/v8/worker_realm.zig). What is here is the
-//! worker as HTML describes it:
+//! it only through the engine protocol (`@import("engine")`; AGENTS.md, "The
+//! engine boundary"; V8's side is src/runtime/engines/v8/worker_realm.zig).
+//! What is here is the worker as HTML describes it:
 //!
 //! - its event loop: the worker's tasks run as timers on the page's loop, and
 //!   each ends the worker's way (`endTask`) - a microtask checkpoint, the
@@ -18,7 +18,10 @@
 //! - its timers (§ 8.6), messages in both directions (the implicit ports),
 //!   errors reported to its global scope and then to its Worker object;
 //! - its life: running, closing (close() or "terminate a worker"), the
-//!   realm's end, the agent's.
+//!   realm's end, the agent's;
+//! - its agent's host hooks: import() in the worker, and import.meta of the
+//!   modules it imports, served by its own module map and resolved against
+//!   its settings (its script's URL is its API base URL).
 
 const std = @import("std");
 const log = std.log.scoped(.worker_host);
@@ -28,6 +31,10 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
+const engine = @import("engine");
+
+// A worker's module scripts: its module map, and import()'s graph.
+const module_script = @import("module_script.zig");
 
 // Firing an event at a target from outside EventTarget's hierarchy, and the
 // MessagePort transfer steps.
@@ -79,8 +86,8 @@ pub fn getCurrentWorkerContext() ?*WorkerHost {
 
 /// One active timer.
 const WorkerTimerContext = struct {
-    /// The timer's handler, retained through the Engine table (OWNED).
-    callback: runtime.JSValue,
+    /// The timer's handler (OWNED), with its callback context.
+    callback: engine.CallbackFunction,
     /// The id script holds: HTML's key in the global's map of setTimeout and
     /// setInterval IDs, and `worker_timer_contexts`' key here. It names the
     /// timer for as long as it lives - a repeating timer keeps it across
@@ -132,8 +139,7 @@ fn initWorkerTimerStorage(allocator: Allocator) void {
 
 /// Release a timer context and the handler it holds.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
-    const wctx = ctx.worker_host;
-    if (wctx.engine.releaseValue) |release| release(ctx.callback);
+    ctx.callback.release();
     ctx.allocator.destroy(ctx);
 }
 
@@ -463,9 +469,13 @@ const TimerCall = struct {
     fn steps(data: ?*anyopaque) void {
         const ctx: *WorkerTimerContext = @ptrCast(@alignCast(data orelse return));
         const wctx = ctx.worker_host;
-        const invoke = wctx.engine.invokeCallbackFunction orelse return;
         const realm = wctx.realm orelse return;
-        invoke(realm, ctx.callback, .global_this, &.{}, WorkerHost.reportException, wctx) catch {};
+        const completion = engine.invokeCallbackFunction(realm, &ctx.callback, .global_this, &.{}, .{
+            .report = wctx.reporter(),
+        }) catch return;
+        switch (completion) {
+            inline else => |value| value.release(),
+        }
     }
 };
 
@@ -494,14 +504,11 @@ const Phase = enum {
     disposed,
 };
 
-/// The worker a Worker object runs: its agent and realm (through the Engine
-/// table), its event loop's tasks, its life.
+/// The worker a Worker object runs: its agent and realm (through the engine
+/// protocol), its event loop's tasks, its life.
 pub const WorkerHost = struct {
-    /// The Engine table of the realm that made the worker; the worker's agent
-    /// and realm are this engine's.
-    engine: *const runtime.EngineInterface,
-
-    /// The worker's agent - its own, separate from its owner's.
+    /// The worker's agent - its own, separate from its owner's - made with
+    /// this host's hooks (`worker_hooks`).
     agent: *runtime.Agent,
 
     /// The worker's realm: its runtime context, which every Instance created
@@ -569,6 +576,21 @@ pub const WorkerHost = struct {
     /// engine reads them on every call, so they live as long as this does.
     builtins: [5]runtime.BuiltinFunction = undefined,
 
+    /// The worker's module map (HTML "module map" of its settings object):
+    /// keys owned, values a `*module_script.ModuleScript` or
+    /// `module_script.fetch_failed`, disposed with the realm.
+    modules: std.StringHashMapUnmanaged(*anyopaque) = .empty,
+
+    /// The classic scripts run in the realm - the worker's own and each
+    /// importScripts() one - as the [[HostDefined]] an import() in them
+    /// names: their base URLs. They live as long as the realm, since a
+    /// function one defined can call import() at any time.
+    classic_scripts: std.ArrayListUnmanaged(*module_script.ClassicScript) = .empty,
+
+    /// import()s whose fetch task is queued and has not run: each holds an
+    /// engine request that must be finished while the agent lives.
+    pending_imports: std.ArrayListUnmanaged(*DynamicImportTask) = .empty,
+
     const Self = @This();
 
     /// Set the timer interface for worker operations.
@@ -588,24 +610,27 @@ pub const WorkerHost = struct {
     }
 
     /// A worker for `script_url`: "run a worker" step 4, obtain a dedicated
-    /// worker agent, through `engine` (the owner realm's Engine table). The
-    /// realm follows when the global scope is set up.
+    /// worker agent - [[CanBlock]] true - with this host's hooks
+    /// (`worker_hooks`). The realm follows when the global scope is set up.
     pub fn init(
         allocator: Allocator,
-        engine: *const runtime.EngineInterface,
         script_url: []const u8,
         worker_type: WorkerType,
     ) !*Self {
-        const create_agent = engine.createAgent orelse return error.NotSupported;
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
 
-        const agent = try create_agent();
+        // The hooks are called with this host, so it exists first.
+        const agent = try engine.createAgent(.{
+            .can_block = true,
+            .from_snapshot = false,
+            .hooks = &worker_hooks,
+            .host = self,
+        });
         self.* = .{
-            .engine = engine,
             .agent = agent,
             .script_url = url_copy,
             .worker_type = worker_type,
@@ -614,6 +639,18 @@ pub const WorkerHost = struct {
         live_contexts.append(std.heap.page_allocator, self) catch {};
         return self;
     }
+
+    /// This host's "report an exception", as the engine protocol takes it.
+    fn reporter(self: *Self) engine.Reporter {
+        return .{ .report = reportEngineException, .host = self };
+    }
+
+    const moduleEnvironment = WorkerModules.moduleEnvironment;
+    const disposeModules = WorkerModules.disposeModules;
+    const queueDynamicImport = WorkerModules.queueDynamicImport;
+    const forgetImport = WorkerModules.forgetImport;
+    const freeImport = WorkerModules.freeImport;
+    const finishPendingImports = WorkerModules.finishPendingImports;
 
     /// Whether the worker runs tasks: not once its closing flag is set.
     pub fn runsTasks(self: *const Self) bool {
@@ -625,20 +662,17 @@ pub const WorkerHost = struct {
     /// entry.
     fn runTask(self: *Self, steps: runtime.RealmSteps, data: ?*anyopaque) void {
         const realm = self.realm orelse return;
-        const run = self.engine.runTaskInRealm orelse return;
         self.entered += 1;
         defer self.entered -= 1;
-        run(realm, steps, data) catch {};
+        engine.runTaskInRealm(realm, steps, data) catch {};
     }
 
     /// The end of a task that ran script in this worker: a microtask
     /// checkpoint, the tasks the engine has posted for its agent, and whatever
     /// the worker posted leaving for the page. Call with the agent entered.
     fn endTask(self: *Self) void {
-        if (self.realm) |realm| {
-            if (self.engine.performMicrotaskCheckpoint) |checkpoint| checkpoint(realm) catch {};
-        }
-        if (self.engine.runEngineTasks) |pump| _ = pump(self.agent);
+        if (self.realm) |realm| engine.performMicrotaskCheckpoint(realm) catch {};
+        _ = engine.runEngineTasks(self.agent);
         DedicatedWorker.flushPendingMessages();
         scheduleMessageDispatch(self);
         self.armPlatformPump(false);
@@ -661,10 +695,7 @@ pub const WorkerHost = struct {
     /// ran a task may have more to run.
     fn armPlatformPump(self: *Self, again: bool) void {
         if (self.platform_pump != null or !self.runsTasks()) return;
-        if (!again) {
-            const pending = self.engine.hasPendingEngineWork orelse return;
-            if (!pending(self.agent)) return;
-        }
+        if (!again and !engine.hasPendingEngineWork(self.agent)) return;
         const timer = getTimerInterface() orelse return;
         const id = timer.setTimeout(platform_pump_interval_ms, platformPumpCallback, self);
         if (id == 0) return;
@@ -694,12 +725,11 @@ pub const WorkerHost = struct {
 
         fn steps(data: ?*anyopaque) void {
             const pump: *Pump = @ptrCast(@alignCast(data orelse return));
-            const engine = pump.host.engine;
             // Read before pumping: background work that ends between the two
             // posts its task after the pump looked, and a pending answer taken
             // first means one more round to find it.
-            if (engine.hasPendingEngineWork) |pending| pump.pending = pending(pump.host.agent);
-            if (engine.runEngineTasks) |run| pump.ran = run(pump.host.agent);
+            pump.pending = engine.hasPendingEngineWork(pump.host.agent);
+            pump.ran = engine.runEngineTasks(pump.host.agent);
         }
     };
 
@@ -768,7 +798,7 @@ pub const WorkerHost = struct {
         self.teardown_timer = null;
         // The worker's script is on the stack - a nested loop inside one of
         // its tasks: after that task, then.
-        const script_running = if (self.engine.hasRunningScript) |running| running(self.agent) else false;
+        const script_running = engine.hasRunningScript(self.agent);
         log.debug("teardown step: entered={d} script_running={}", .{ self.entered, script_running });
         if (self.entered > 0 or script_running) {
             self.scheduleTeardown();
@@ -788,21 +818,30 @@ pub const WorkerHost = struct {
         disarm(&self.platform_pump);
 
         const realm = self.realm orelse return;
+        // The import()s still waiting for their fetch task are discarded with
+        // the worker's other tasks: their requests are finished now, while
+        // the realm and its agent are there to finish them in.
+        self.finishPendingImports();
+        // The module map goes with the settings object: its records are
+        // engine handles of this agent.
+        self.disposeModules();
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
         // its wrapper cache and every Instance in it, the global scope first -
         // goes with it; the realm is retired, so anything holding it across
         // turns (a fetch) reads it as gone.
         self.global_scope = null;
-        if (self.engine.destroyWorkerRealm) |destroy_realm| destroy_realm(realm, sweepFetches, null);
+        engine.destroyWorkerRealm(realm, sweepFetches, null);
+        // Nothing can call import() in the realm any more.
+        self.freeClassicScripts();
         self.releaseOwnerWhenIdle();
     }
 
     /// The worker has ended, so its Worker object has no pending activity
     /// left once nothing the worker posted remains to be delivered - Blink's
-    /// DedicatedWorker::HasPendingActivity() turning false. Then the Engine
-    /// table's `releasePlatformObject` undoes the Worker's
-    /// `keepPlatformObjectAlive`, and a Worker script no longer references is
+    /// DedicatedWorker::HasPendingActivity() turning false. Then the engine's
+    /// `releasePlatformObject` undoes the Worker's `keepPlatformObjectAlive`,
+    /// and a Worker script no longer references is
     /// collected like any other object. Always from a timer turn on the
     /// owner's loop, never from inside a dispatch: a handler that drops the
     /// last reference must not have its Worker collected while the port is
@@ -819,9 +858,8 @@ pub const WorkerHost = struct {
             return;
         }
         const owner: *runtime.Instance = @ptrCast(@alignCast(dedicated_worker.getUserData() orelse return));
-        const engine = owner.ctx.getEngine() orelse return;
         log.debug("owner released: {*}", .{owner});
-        if (engine.releasePlatformObject) |release| release(owner);
+        engine.releasePlatformObject(owner);
     }
 
     fn ownerReleaseCallback(context_ptr: ?*anyopaque) void {
@@ -854,7 +892,7 @@ pub const WorkerHost = struct {
     fn disposeAgentCallback(context_ptr: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
         self.teardown_timer = null;
-        if (self.engine.destroyAgent) |destroy_agent| destroy_agent(self.agent);
+        engine.destroyAgent(self.agent);
         self.phase = .disposed;
         disposed_isolates += 1;
         if (self.owner_released) self.free();
@@ -900,6 +938,12 @@ pub const WorkerHost = struct {
         disarm(&self.platform_pump);
         disarm(&self.message_dispatch);
         disarm(&self.release_owner_timer);
+        // A worker with no teardown ahead of it (no loop to run one on) still
+        // has its realm and agent: what they hold of this host goes now.
+        self.finishPendingImports();
+        self.pending_imports.deinit(self.allocator);
+        self.disposeModules();
+        self.freeClassicScripts();
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
     }
@@ -925,8 +969,7 @@ pub const WorkerHost = struct {
     pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: *DedicatedWorker) !void {
         self.dedicated_worker = dedicated_worker;
 
-        const create_realm = self.engine.createWorkerRealm orelse return error.NotSupported;
-        const made = try create_realm(self.agent, .{
+        const made = try engine.createWorkerRealm(self.agent, &.{
             .url = self.script_url,
             .timer = getTimerInterface(),
             .end_of_task = endTaskOfRealm,
@@ -950,15 +993,14 @@ pub const WorkerHost = struct {
             .{ .steps = clearTimerSteps, .data = self },
             .{ .steps = doneSteps, .data = self },
         };
-        const define = self.engine.defineBuiltinFunction orelse return error.NotSupported;
         const realm = made.realm;
-        try define(realm, "setTimeout", 1, &self.builtins[0]);
-        try define(realm, "clearTimeout", 0, &self.builtins[1]);
-        try define(realm, "setInterval", 1, &self.builtins[2]);
-        try define(realm, "clearInterval", 0, &self.builtins[3]);
+        try engine.defineBuiltinFunction(realm, "setTimeout", 1, &self.builtins[0]);
+        try engine.defineBuiltinFunction(realm, "clearTimeout", 0, &self.builtins[1]);
+        try engine.defineBuiltinFunction(realm, "setInterval", 1, &self.builtins[2]);
+        try engine.defineBuiltinFunction(realm, "clearInterval", 0, &self.builtins[3]);
         // done() for the WPT harness: testharness.js defines its own, which
         // replaces this one when it loads.
-        try define(realm, "done", 0, &self.builtins[4]);
+        try engine.defineBuiltinFunction(realm, "done", 0, &self.builtins[4]);
 
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
@@ -1089,12 +1131,12 @@ pub const WorkerHost = struct {
         installRealmHooks(realm);
     }
 
-    /// Run one of the host's own setup scripts in the realm.
+    /// Run one of the host's own setup scripts in the realm. It is no
+    /// script of the worker's: an import() from it names no referrer.
     fn runSetupScript(self: *Self, source: []const u8) !void {
         const realm = self.realm orelse return error.NoRealm;
-        const run = self.engine.runClassicScript orelse return error.NotSupported;
-        try run(realm, source, null, reportException, self);
-        if (self.engine.performMicrotaskCheckpoint) |checkpoint| try checkpoint(realm);
+        try engine.runClassicScript(realm, .{ .utf8 = source }, "", null, self.reporter());
+        try engine.performMicrotaskCheckpoint(realm);
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -1120,18 +1162,41 @@ pub const WorkerHost = struct {
     // ------------------------------------------------------------------
 
     /// "Run a classic script" for the worker, with this host's "report an
-    /// exception", then "clean up after running script".
+    /// exception", then "clean up after running script". The script - its
+    /// base URL, `url` - is what an import() in it resolves against, for as
+    /// long as the realm lives.
     fn runScript(self: *Self, source: []const u8, url: []const u8, checkpoint_after: bool) !void {
         const realm = self.realm orelse return error.NoRealm;
-        const run = self.engine.runClassicScript orelse return error.NotSupported;
+        const script = try self.classicScript(url);
         self.entered += 1;
         defer self.entered -= 1;
         const prev_context = current_worker_context;
         current_worker_context = self;
         defer current_worker_context = prev_context;
-        try run(realm, source, url, reportException, self);
+        try engine.runClassicScript(realm, .{ .utf8 = source }, url, script, self.reporter());
         if (!checkpoint_after) return;
-        if (self.engine.performMicrotaskCheckpoint) |checkpoint| try checkpoint(realm);
+        try engine.performMicrotaskCheckpoint(realm);
+    }
+
+    /// A classic script whose base URL is `url` (copied), kept until the
+    /// realm's end.
+    fn classicScript(self: *Self, url: []const u8) !*module_script.ClassicScript {
+        const script = try self.allocator.create(module_script.ClassicScript);
+        errdefer self.allocator.destroy(script);
+        const base_url = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(base_url);
+        script.* = .{ .base_url = base_url };
+        try self.classic_scripts.append(self.allocator, script);
+        return script;
+    }
+
+    fn freeClassicScripts(self: *Self) void {
+        for (self.classic_scripts.items) |script| {
+            self.allocator.free(script.base_url);
+            self.allocator.destroy(script);
+        }
+        self.classic_scripts.deinit(self.allocator);
+        self.classic_scripts = .empty;
     }
 
     /// Execute a script in this worker's realm (with optional message
@@ -1151,7 +1216,7 @@ pub const WorkerHost = struct {
 
         // What the engine posted while the script ran; and if it left
         // background work (an asynchronous compile), a pump to finish it.
-        if (self.engine.runEngineTasks) |pump| _ = pump(self.agent);
+        _ = engine.runEngineTasks(self.agent);
         self.armPlatformPump(false);
     }
 
@@ -1165,6 +1230,17 @@ pub const WorkerHost = struct {
     /// at the global scope (cancelable - `self.onerror` returning true, or a
     /// listener's preventDefault(), handles it); if not handled, the worker's
     /// Worker object hears it, with `error` null.
+    fn reportEngineException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const runtime_info: runtime.ErrorInfo = .{
+            .message = info.message,
+            .filename = info.filename,
+            .lineno = info.lineno,
+            .colno = info.colno,
+            .error_value = info.error_value,
+        };
+        reportException(host, &runtime_info);
+    }
+
     fn reportException(host: ?*anyopaque, info: *const runtime.ErrorInfo) void {
         const self: *Self = @ptrCast(@alignCast(host orelse return));
         log.debug("worker script error: {s}", .{info.message});
@@ -1285,7 +1361,7 @@ pub const WorkerHost = struct {
         const realm = self.realm orelse return;
         const global_scope = self.global_scope orelse return;
         const message = if (msg.engine_message) |*m| m else return;
-        deliverEngineMessage(self.engine, realm, global_scope, message, fireMessageEvent);
+        deliverEngineMessage(realm, global_scope, message, fireMessageEvent);
     }
 
     /// The worker's side of the message port post message steps, for its
@@ -1301,7 +1377,7 @@ pub const WorkerHost = struct {
         // (workers/interfaces/WorkerGlobalScope/close/sending-messages).
         if (dedicated_worker.agent.isTerminated() or self.phase == .realm_gone) return;
 
-        var serialized = try serializeMessage(self.engine, realm, message, transfer, self.allocator);
+        var serialized = try serializeMessage(realm, message, transfer, self.allocator);
         const queued = QueuedMessage.initEngine(self.allocator, serialized) catch |err| {
             serialized.deinit();
             return err;
@@ -1343,8 +1419,7 @@ pub const WorkerHost = struct {
         const realm = self.realm orelse return 0;
         // The handler: only a function is supported (a string handler is not).
         if (args.len < 1) return 0;
-        const callable = self.engine.isCallable orelse return 0;
-        if (!callable(args[0])) return 0;
+        if (!engine.isCallable(realm, args[0])) return 0;
 
         // The timeout (second argument, default 0).
         var delay_ms: i64 = 0;
@@ -1360,10 +1435,14 @@ pub const WorkerHost = struct {
         const timer = getTimerInterface() orelse return 0;
         initWorkerTimerStorage(self.allocator);
 
-        const retain = self.engine.retainValue orelse return 0;
-        const handler = retain(realm, args[0]) catch return 0;
+        // The handler as a callback function, with the incumbent realm - the
+        // worker's, whose built-in this is - as its callback context.
+        const handler: engine.CallbackFunction = .{
+            .function = engine.retainValue(realm, args[0]) catch return 0,
+            .context = engine.incumbentRealm() orelse realm,
+        };
         const timer_ctx = self.allocator.create(WorkerTimerContext) catch {
-            if (self.engine.releaseValue) |release| release(handler);
+            handler.release();
             return 0;
         };
 
@@ -1401,14 +1480,12 @@ pub const WorkerHost = struct {
 /// port - from either side: StructuredSerializeWithTransfer, then the
 /// transfer steps of every MessagePort in `transfer`. OWNED (`deinit`).
 pub fn serializeMessage(
-    engine: *const runtime.EngineInterface,
     realm: runtime.Context,
     message: runtime.JSValue,
     transfer: []const runtime.JSValue,
     allocator: Allocator,
 ) !EngineMessage {
-    const serialize = engine.structuredSerializeWithTransfer orelse return error.NotSupported;
-    var result = try serialize(realm, message, transfer, transferablePort, null, allocator);
+    var result = try engine.structuredSerializeWithTransfer(realm, message, transfer, transferablePort, null, allocator);
     errdefer result.deinit(allocator);
 
     // The transfer steps for each MessagePort: its end - queue and
@@ -1434,7 +1511,6 @@ pub fn serializeMessage(
 /// and `message` fired (or `messageerror`, when it does not deserialize).
 /// Call with `realm` entered. The message's port ends are taken.
 pub fn deliverEngineMessage(
-    engine: *const runtime.EngineInterface,
     realm: runtime.Context,
     target: *runtime.Instance,
     message: *EngineMessage,
@@ -1453,13 +1529,12 @@ pub fn deliverEngineMessage(
     allocator.free(message.port_ends);
     message.port_ends = &.{};
 
-    const deserialize = engine.structuredDeserializeWithTransfer orelse return;
-    const data = deserialize(realm, message.serialized, message.array_buffers) catch {
+    const data = engine.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
-    defer if (engine.releaseValue) |release| release(data);
-    fire(realm, target, "message", data, ports.items);
+    defer data.release();
+    fire(realm, target, "message", data.value, ports.items);
 }
 
 /// Which platform objects a worker's postMessage can transfer: MessagePorts
@@ -1494,6 +1569,232 @@ pub fn fireMessageEvent(
 }
 
 // ============================================================================
+// import() in a worker - the agent's host hooks
+// ============================================================================
+
+/// A dedicated worker agent's host hooks (HTML "obtain a dedicated/shared
+/// worker agent", which `WorkerHost.init` does): HostLoadImportedModule for
+/// import() and HostGetImportMetaProperties for the modules it loads. The
+/// hooks' `host` is the WorkerHost. (Only an engine with modules calls them.)
+const worker_hooks: engine.HostHooks = .{
+    .loadImportedModule = if (module_script.supported) loadImportedModule else null,
+    .importMetaUrl = if (module_script.supported) module_script.importMetaUrl else null,
+};
+
+/// FinishLoadingImportedModule for an import(): ends the host's hold on
+/// `request`.
+fn finishImport(request: *engine.ImportRequest, outcome: engine.DynamicImportOutcome) void {
+    if (module_script.supported) engine.finishDynamicImport(request, outcome);
+}
+
+/// FinishLoadingImportedModule with ThrowCompletion(a new TypeError).
+fn finishImportWithTypeError(realm: runtime.Context, request: *engine.ImportRequest, message: []const u8) void {
+    const exception = engine.createSimpleException(realm, .TypeError, message) catch
+        return finishImport(request, .{ .failure = runtime.JSValue.jsUndefined });
+    defer exception.release();
+    finishImport(request, .{ .failure = exception.value });
+}
+
+/// HTML HostLoadImportedModule(referrer, moduleRequest, loadState: undefined,
+/// payload) for an import() in a worker - `HostHooks.loadImportedModule`.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+/// Every path finishes `request`.
+fn loadImportedModule(
+    host: ?*anyopaque,
+    realm: runtime.Context,
+    referrer: engine.ImportReferrer,
+    specifier: []const u8,
+    type_attribute: ?[]const u8,
+    request: *engine.ImportRequest,
+) void {
+    const self: *WorkerHost = @ptrCast(@alignCast(host orelse
+        return finishImportWithTypeError(realm, request, "import() is not supported here")));
+    // Only the worker's own realm has its settings object.
+    if (self.realm != realm or !self.runsTasks())
+        return finishImportWithTypeError(realm, request, "import() in a worker that has ended");
+    const env = self.moduleEnvironment() orelse
+        return finishImportWithTypeError(realm, request, "import() in a worker that has ended");
+
+    // Steps 1-6: the settings object is the current one - the worker's - and
+    // the referencing script is the referrer's [[HostDefined]] when there is
+    // one: its base URL is what the specifier resolves against. With none
+    // (an event handler, eval, a setup script) it is the settings object's
+    // API base URL: for a worker, its global scope's URL - its script's.
+    const base_url: []const u8 = switch (referrer) {
+        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.base_url else self.script_url,
+        .script => |host_defined| module_script.classicScriptBaseUrl(host_defined),
+        .realm => self.script_url,
+    };
+
+    // Steps 7.1.4-7.1.5 (for the one request an import() makes): module type
+    // allowed - "css" only where CSSStyleSheet is exposed, which a worker's
+    // global is not - or a TypeError.
+    const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse
+        return finishImportWithTypeError(realm, request, "Unsupported module type");
+    if (module_type == .css) return finishImportWithTypeError(realm, request, "Unsupported module type");
+
+    // Steps 8-9: resolve a module specifier, or reject with its TypeError.
+    const url = module_script.resolve(&env, specifier, base_url) orelse
+        return finishImportWithTypeError(realm, request, "Failed to resolve module specifier");
+    defer realm.allocator.free(url);
+
+    // Step 14: fetch - as a task of the worker's event loop, so the module
+    // is fetched and evaluated after the script that called import() and its
+    // microtasks, as a network fetch completes.
+    self.queueDynamicImport(url, module_type, request) catch
+        return finishImportWithTypeError(realm, request, "Out of memory");
+}
+
+/// An import() whose fetch is queued on the worker's event loop.
+const DynamicImportTask = struct {
+    host: *WorkerHost,
+    /// Owned (the host's allocator).
+    url: []const u8,
+    module_type: module_script.ModuleType,
+    /// The host's until finished.
+    request: *engine.ImportRequest,
+    /// The timer the task runs from, while it is armed.
+    timer: ?MessageDispatchTimer = null,
+    /// The fetch task ran, and finished the request.
+    finished: bool = false,
+};
+
+fn runDynamicImport(context_ptr: ?*anyopaque) void {
+    const task: *DynamicImportTask = @ptrCast(@alignCast(context_ptr orelse return));
+    task.timer = null;
+    const self = task.host;
+    self.forgetImport(task);
+    defer self.freeImport(task);
+
+    // A worker whose closing flag is set runs no further task: the import is
+    // discarded, and its request finished to release what it holds.
+    if (!self.runsTasks()) return finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
+
+    const prev_context = current_worker_context;
+    current_worker_context = self;
+    defer current_worker_context = prev_context;
+
+    self.runTask(dynamicImportSteps, task);
+    // runTask runs nothing in a realm that has gone: the request is finished
+    // either way.
+    if (!task.finished) finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
+}
+
+/// The fetch task: fetch a single imported module script and its
+/// descendants, link, then FinishLoadingImportedModule - ContinueDynamicImport
+/// (evaluate, and settle with the namespace or the reason) is the engine's.
+fn dynamicImportSteps(data: ?*anyopaque) void {
+    const task: *DynamicImportTask = @ptrCast(@alignCast(data.?));
+    // Every path below finishes the request.
+    task.finished = true;
+    const self = task.host;
+    const realm = self.realm orelse return finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
+    const env = self.moduleEnvironment() orelse
+        return finishImportWithTypeError(realm, task.request, "import() in a worker that has ended");
+
+    // A null graph is a failed fetch: TypeError.
+    const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
+        return finishImportWithTypeError(realm, task.request, "Failed to fetch dynamically imported module");
+
+    // A graph that could not be loaded or linked rejects with its error to
+    // rethrow; else the engine continues with its record.
+    if (graph.error_to_rethrow) |reason| return finishImport(task.request, .{ .failure = reason.value });
+    const record = graph.record orelse
+        return finishImportWithTypeError(realm, task.request, "Failed to load dynamically imported module");
+    finishImport(task.request, .{ .module = record });
+}
+
+// WorkerHost's side of import(), its module map included.
+const WorkerModules = struct {
+    /// The module loading environment for the worker's realm: its global
+    /// scope, its module map, and no import map (a worker global's import map
+    /// is empty).
+    fn moduleEnvironment(self: *WorkerHost) ?module_script.Environment {
+        const global_scope = self.global_scope orelse return null;
+        return .{
+            .allocator = self.allocator,
+            .context_instance = global_scope,
+            .map = .{ .context = self, .getFn = &mapGet, .putFn = &mapPut },
+        };
+    }
+
+    fn mapGet(context: *anyopaque, key: []const u8) ?*anyopaque {
+        const self: *WorkerHost = @ptrCast(@alignCast(context));
+        return self.modules.get(key);
+    }
+
+    fn mapPut(context: *anyopaque, key: []const u8, value: *anyopaque) bool {
+        const self: *WorkerHost = @ptrCast(@alignCast(context));
+        const owned_key = self.allocator.dupe(u8, key) catch return false;
+        const entry = self.modules.getOrPut(self.allocator, owned_key) catch {
+            self.allocator.free(owned_key);
+            return false;
+        };
+        if (entry.found_existing) {
+            self.allocator.free(owned_key);
+            module_script.disposeEntry(entry.value_ptr.*);
+        }
+        entry.value_ptr.* = value;
+        return true;
+    }
+
+    /// Release every module script in the map: their records are the agent's.
+    fn disposeModules(self: *WorkerHost) void {
+        var it = self.modules.iterator();
+        while (it.next()) |entry| {
+            module_script.disposeEntry(entry.value_ptr.*);
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.modules.deinit(self.allocator);
+        self.modules = .empty;
+    }
+
+    fn queueDynamicImport(self: *WorkerHost, url: []const u8, module_type: module_script.ModuleType, request: *engine.ImportRequest) !void {
+        const timer = WorkerHost.getTimerInterface() orelse return error.NoEventLoop;
+        const task = try self.allocator.create(DynamicImportTask);
+        errdefer self.allocator.destroy(task);
+        task.* = .{
+            .host = self,
+            .url = try self.allocator.dupe(u8, url),
+            .module_type = module_type,
+            .request = request,
+        };
+        errdefer self.allocator.free(task.url);
+        try self.pending_imports.append(self.allocator, task);
+        errdefer _ = self.pending_imports.pop();
+        const id = timer.setTimeout(0, runDynamicImport, task);
+        if (id == 0) return error.NoEventLoop;
+        task.timer = .{ .timer = timer, .id = id };
+    }
+
+    fn forgetImport(self: *WorkerHost, task: *DynamicImportTask) void {
+        for (self.pending_imports.items, 0..) |pending, i| {
+            if (pending == task) {
+                _ = self.pending_imports.swapRemove(i);
+                return;
+            }
+        }
+    }
+
+    fn freeImport(self: *WorkerHost, task: *DynamicImportTask) void {
+        self.allocator.free(task.url);
+        self.allocator.destroy(task);
+    }
+
+    /// Discard the import()s whose fetch task has not run: disarm each, and
+    /// finish its request - which rejects a promise nothing will observe - so
+    /// the engine's hold on it ends while the agent is alive.
+    fn finishPendingImports(self: *WorkerHost) void {
+        while (self.pending_imports.pop()) |task| {
+            if (task.timer) |armed| _ = armed.timer.clearTimeout(armed.id);
+            finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
+            self.freeImport(task);
+        }
+    }
+};
+
+// ============================================================================
 // Engine Callbacks Implementation
 // ============================================================================
 
@@ -1526,7 +1827,7 @@ fn compileAndRunModuleCallback(
 fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
     const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
     const realm = self.realm orelse return;
-    if (self.engine.performMicrotaskCheckpoint) |checkpoint| checkpoint(realm) catch {};
+    engine.performMicrotaskCheckpoint(realm) catch {};
 }
 
 /// Dispose engine context
@@ -1560,7 +1861,7 @@ pub fn processIncomingMessages(worker_ctx: *WorkerHost) void {
 
         // The end of the turn: the engine's posted tasks, and a pump if
         // background work is left.
-        if (worker_ctx.engine.runEngineTasks) |pump| _ = pump(worker_ctx.agent);
+        _ = engine.runEngineTasks(worker_ctx.agent);
         worker_ctx.armPlatformPump(false);
     }
 
