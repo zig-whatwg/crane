@@ -28,9 +28,122 @@ pub fn ownHandle(isolate: *ffi.Isolate, context: *ffi.Context, value: runtime.JS
             const wrapper = conversions.instanceToV8(isolate, instance);
             break :blk ffi.v8_Global_Clone(wrapper) orelse EngineError.OperationFailed;
         },
+        // A string is WTF-8 (conversions.fromV8Value writes a lone
+        // surrogate as its three-byte form): one holding a surrogate code
+        // point is made from its UTF-16, which keeps it; UTF-8 would make
+        // each of its bytes a U+FFFD.
+        .string => |text| if (hasSurrogateCodePoint(text.data))
+            stringFromWtf8(isolate, text.data)
+        else
+            conversions.toV8Value(runtime.JSValue, isolate, context, value) catch EngineError.OperationFailed,
         // Every other kind is made here, in the realm: a new Global.
         else => conversions.toV8Value(runtime.JSValue, isolate, context, value) catch EngineError.OperationFailed,
     };
+}
+
+/// Whether `bytes` holds a surrogate code point in WTF-8's three-byte form,
+/// ED A0..BF xx: what v8_String_NewFromUtf8 cannot keep.
+fn hasSurrogateCodePoint(bytes: []const u8) bool {
+    var from: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, bytes, from, 0xED)) |at| {
+        if (at + 1 < bytes.len and bytes[at + 1] >= 0xA0 and bytes[at + 1] <= 0xBF) return true;
+        from = at + 1;
+    }
+    return false;
+}
+
+/// A new V8 string of the code units `bytes` encodes as WTF-8. OWNED.
+fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi.Value {
+    var fallback = std.heap.stackFallback(2048, std.heap.c_allocator);
+    const allocator = fallback.get();
+    // Never more code units than bytes: each decodes from at least one.
+    const units = allocator.alloc(u16, bytes.len) catch return EngineError.OutOfMemory;
+    defer allocator.free(units);
+    const count = wtf8ToUtf16(bytes, units);
+    if (count > std.math.maxInt(c_int)) return EngineError.OperationFailed;
+    return ffi.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(count)) orelse EngineError.OperationFailed;
+}
+
+/// WTF-8 to UTF-16, into `units` (at least `bytes.len` long); the count
+/// written. The WHATWG Encoding standard's UTF-8 decoder with one change:
+/// after ED the upper boundary stays BF rather than 9F, so a surrogate code
+/// point decodes to its own code unit. Anything else ill-formed becomes
+/// U+FFFD exactly as UTF-8 decode makes it.
+fn wtf8ToUtf16(bytes: []const u8, units: []u16) usize {
+    var out: usize = 0;
+    var code_point: u21 = 0;
+    var needed: u2 = 0;
+    var seen: u2 = 0;
+    var lower: u8 = 0x80;
+    var upper: u8 = 0xBF;
+    var i: usize = 0;
+    while (i < bytes.len) {
+        const byte = bytes[i];
+        if (needed == 0) {
+            i += 1;
+            switch (byte) {
+                0x00...0x7F => {
+                    units[out] = byte;
+                    out += 1;
+                },
+                0xC2...0xDF => {
+                    needed = 1;
+                    code_point = byte & 0x1F;
+                },
+                0xE0...0xEF => {
+                    // UTF-8 also sets upper to 9F after ED; WTF-8 does not.
+                    if (byte == 0xE0) lower = 0xA0;
+                    needed = 2;
+                    code_point = byte & 0x0F;
+                },
+                0xF0...0xF4 => {
+                    if (byte == 0xF0) lower = 0x90;
+                    if (byte == 0xF4) upper = 0x8F;
+                    needed = 3;
+                    code_point = byte & 0x07;
+                },
+                else => {
+                    units[out] = 0xFFFD;
+                    out += 1;
+                },
+            }
+            continue;
+        }
+        if (byte < lower or byte > upper) {
+            // An error; the byte is looked at again as the start of what
+            // follows.
+            needed = 0;
+            seen = 0;
+            lower = 0x80;
+            upper = 0xBF;
+            units[out] = 0xFFFD;
+            out += 1;
+            continue;
+        }
+        i += 1;
+        lower = 0x80;
+        upper = 0xBF;
+        code_point = (code_point << 6) | (byte & 0x3F);
+        seen += 1;
+        if (seen != needed) continue;
+        if (code_point < 0x10000) {
+            units[out] = @intCast(code_point);
+            out += 1;
+        } else {
+            const offset = code_point - 0x10000;
+            units[out] = @intCast(0xD800 + (offset >> 10));
+            units[out + 1] = @intCast(0xDC00 + (offset & 0x3FF));
+            out += 2;
+        }
+        needed = 0;
+        seen = 0;
+    }
+    // Input that ends inside a sequence.
+    if (needed != 0) {
+        units[out] = 0xFFFD;
+        out += 1;
+    }
+    return out;
 }
 
 /// The V8 value a `.handle` JSValue holds, BORROWED; null for any other kind.
