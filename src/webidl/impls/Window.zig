@@ -810,8 +810,8 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     // is: two different windows are not known to share one.
     if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
     // 2. "If A and B are both tuple origins, run these substeps:"
-    const a_domain = originDomainOf(a_internal);
-    const b_domain = originDomainOf(b_internal);
+    const a_domain = originDomainOf(a, a_internal, 0);
+    const b_domain = originDomainOf(b, b_internal, 0);
     // 2.1. "If A and B's schemes are identical, and their domains are
     // identical and non-null, then return true."
     if (a_domain != null and b_domain != null) {
@@ -824,10 +824,35 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     return false;
 }
 
-/// The domain of the origin of `internal`'s window - its document's - or null.
-fn originDomainOf(internal: *InternalState) ?[]const u8 {
+/// The domain of the origin of `window`'s document, or null. A document
+/// whose origin is its creator's - about:blank, about:srcdoc, a javascript:
+/// URL's result (inheritsCreatorOrigin) - shares that origin, and so its
+/// domain: setting document.domain in one of the two documents affects both
+/// (HTML: the origin is aliased). Its creator's is read - the parent's for a
+/// frame, the opener's for a popup. Deviation, stated: the setter run in the
+/// aliasing document itself sets only that document's domain.
+fn originDomainOf(window: *runtime.Instance, internal: *InternalState, depth: u8) ?[]const u8 {
     const document = internal.document orelse return null;
+    if (depth < 16 and documentInheritsCreatorOrigin(document)) {
+        const bc = internal.browsing_context;
+        if (bc.parent orelse bc.opener) |creator_bc| {
+            if (creator_bc.getActiveWindow()) |ptr| {
+                const creator: *runtime.Instance = @ptrCast(@alignCast(ptr));
+                if (creator != window) {
+                    if (getInternal(creator)) |creator_internal| return originDomainOf(creator, creator_internal, depth + 1);
+                }
+            }
+        }
+    }
     return @import("dom").document_origin.domain(document);
+}
+
+/// Whether `document`'s URL is one whose document takes its creator's origin.
+fn documentInheritsCreatorOrigin(document: *runtime.Instance) bool {
+    const url = interfaces.Document.get_URL(document) catch return false;
+    // The getter clones into the document's context allocator.
+    defer document.ctx.allocator.free(url);
+    return url.len == 0 or inheritsCreatorOrigin(url);
 }
 
 /// The scheme of a tuple origin's serialization.
