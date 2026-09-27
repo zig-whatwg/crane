@@ -144,3 +144,44 @@ test "createEvent leaves the initialized flag unset until initEvent" {
     // initialize an event, step 1: "Set event's initialized flag."
     try std.testing.expect(impls.Event.getInitializedFlag(event));
 }
+
+test "inner event creation steps initialize an Event subclass's Event attributes through Event's impl" {
+    const allocator = std.testing.allocator;
+
+    runtime.SlabAllocator.init(allocator);
+    defer runtime.SlabAllocator.deinit();
+    runtime.ArenaAllocator.init(allocator);
+    defer runtime.ArenaAllocator.deinit();
+
+    var ctx_data = try runtime.createNullContext(allocator);
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    // An interface that inherits from Event, made as its constructor makes
+    // it (step 1) - its own state ahead of the Event state it contains.
+    const event = try impls.CustomEvent.init(allocator, interfaces.CustomEvent.State, &interfaces.CustomEvent.vtable, ctx);
+    defer interfaces.CustomEvent.deinit(event);
+    try std.testing.expect(!impls.Event.getInitializedFlag(event));
+
+    var caller_owned = try runtime.DOMString.initDupe(allocator, "made");
+    try impls.Event.innerEventCreationSteps(event, caller_owned, .{ .bubbles = true, .composed = true });
+    caller_owned.deinit(allocator);
+
+    // 2. The initialized flag.
+    try std.testing.expect(impls.Event.getInitializedFlag(event));
+    // 3. timeStamp: the creation time.
+    try std.testing.expect(try interfaces.Event.get_timeStamp(event) > 0);
+    // 4. The dictionary's members; a member not present is its default.
+    try std.testing.expect(try interfaces.Event.get_bubbles(event));
+    try std.testing.expect(!try interfaces.Event.get_cancelable(event));
+    try std.testing.expect(try interfaces.Event.get_composed(event));
+    // Every other attribute keeps its initial value.
+    try std.testing.expect(!try interfaces.Event.get_isTrusted(event));
+    try std.testing.expect(try interfaces.Event.get_returnValue(event));
+    try std.testing.expect(!try interfaces.Event.get_defaultPrevented(event));
+    try std.testing.expectEqual(interfaces.Event.get_NONE(), try interfaces.Event.get_eventPhase(event));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Event.get_target(event));
+    // The constructor's step 2: the type, a string the event owns.
+    const observed = try interfaces.Event.get_type(event);
+    try std.testing.expectEqualStrings("made", observed.asSlice());
+}
