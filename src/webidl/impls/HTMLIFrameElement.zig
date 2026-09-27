@@ -19,6 +19,7 @@
 const std = @import("std");
 const log = std.log.scoped(.html_iframe);
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -413,37 +414,9 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // Set the document element (html) on the Document
     DocumentImpl.setDocumentElement(document_instance, html_element);
 
-    // Create the V8 wrapper for the Document in the child context.
-    // This is critical for cross-context access: when the parent context accesses
-    // iframe.contentDocument, we return this pre-created wrapper instead of creating
-    // a new one in the parent context. This avoids callback corruption issues where
-    // the callbacks are registered for the wrong context.
-    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(runtime_ctx.engine_ctx orelse {
-        return null;
-    }));
-
-    // Get the current isolate
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
-        return null;
-    };
-
-    // Enter the child context to create the wrapper
-    v8.ffi.v8_Context_Enter(child_v8_ctx);
-    defer v8.ffi.v8_Context_Exit(child_v8_ctx);
-
-    // Create the V8 wrapper in the child context using template_registry
-    const v8_wrapper = v8.template_registry.wrapInstanceAsV8Object(
-        document_instance,
-        "Document",
-        isolate,
-        child_v8_ctx,
-    ) catch {
-        // Continue without wrapper - will create on demand (may have issues)
-        return document_instance;
-    };
-
-    // Store the wrapper on the Document for cross-context access
-    DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
+    // The Document's wrapper, made now in its own realm (see wrapInOwnRealm).
+    if (runtime_ctx.engine_ctx == null) return null;
+    wrapInOwnRealm(document_instance);
 
     // Get the active window for this browsing context to associate with the document
     if (browsing_ctx_ptr.getActiveWindow()) |window_ptr| {
@@ -539,65 +512,80 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     }
     dom_module.document_lifecycle.finishLoading(document_instance);
 
-    // Create the V8 wrapper for the Document in the child context.
-    // This is critical for cross-context access: when the parent context accesses
-    // iframe.contentDocument, we return this pre-created wrapper instead of creating
-    // a new one in the parent context.
-    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(runtime_ctx.engine_ctx orelse {
-        return document_instance;
-    }));
-
-    // Get the current isolate
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
-        return document_instance;
-    };
-
-    // Enter the child context to create the wrapper
-    v8.ffi.v8_Context_Enter(child_v8_ctx);
-    defer v8.ffi.v8_Context_Exit(child_v8_ctx);
-
-    // Create the V8 wrapper in the child context using template_registry
-    const v8_wrapper = v8.template_registry.wrapInstanceAsV8Object(
-        document_instance,
-        "Document",
-        isolate,
-        child_v8_ctx,
-    ) catch {
-        // Continue without wrapper - will create on demand (may have issues)
-        return document_instance;
-    };
-
-    // Store the wrapper on the Document for cross-context access
-    DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
+    // The Document's wrapper, made now in its own realm (see wrapInOwnRealm).
+    wrapInOwnRealm(document_instance);
 
     return document_instance;
 }
 
+/// Make `document`'s wrapper now, in its relevant realm - the frame's. The
+/// binding still wraps an object in the CURRENT realm, and the first wrapper a
+/// node gets is the one every realm is handed from then on
+/// (template_registry's bound wrapper), so a parent that read
+/// `iframe.contentDocument` first would make the frame's document a wrapper
+/// with the parent's prototypes. The protocol wraps in the relevant realm
+/// (R28); the value is not kept - the wrapper cache holds the wrapper, and the
+/// document is its window's, which keeps it alive.
+fn wrapInOwnRealm(document: *runtime.Instance) void {
+    const held = engine.retainValue(document.ctx, .{ .instance = document }) catch |err| {
+        log.debug("the frame's document was not wrapped in its realm: {}", .{err});
+        return;
+    };
+    held.release();
+}
+
 /// Script execution callback for iframes
-/// Called by IFrameIntegration.executeScriptsInTree to execute scripts in the iframe's V8 context.
-/// Parameters: (engine_context as v8.Context*, script_source) -> void
-fn executeIframeScript(engine_ctx: ?*anyopaque, source: []const u8) void {
-    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse return));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
-
+/// Called by IFrameIntegration.executeScriptsInTree to run a script in the
+/// iframe's realm (engine.runClassicScript: prepared to run, then cleaned up
+/// - a microtask checkpoint when nothing else is running). What it throws is
+/// reported for the frame's window.
+/// Parameters: (the realm, script_source) -> void
+fn executeIframeScript(realm_ptr: ?*anyopaque, source: []const u8) void {
+    const realm: runtime.Context = @ptrCast(@alignCast(realm_ptr orelse return));
     if (source.len == 0) return;
+    engine.runClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = reportException, .host = realm }) catch |err| {
+        log.debug("a frame's script did not run: {}", .{err});
+    };
+}
 
-    // Enter the iframe's context for script execution
-    v8.ffi.v8_Context_Enter(v8_ctx);
-    defer v8.ffi.v8_Context_Exit(v8_ctx);
+/// HTML "report an exception" for the global of the realm the engine names,
+/// or else the frame's (`host`).
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const fallback: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse fallback;
+    const global = windowOfRealm(realm) orelse return;
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = html_module.report_exception.reportErrorInfo(global, &extracted, .{});
+}
 
-    // Create V8 string from source
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
-    defer v8.ffi.v8_String_Dispose(source_str);
+/// `realm`'s global object, when it is a Window: the realm record's.
+fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
+}
 
-    // Compile the script
-    const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse return;
-
-    // Run the script
-    _ = v8.ffi.v8_Script_Run(v8_ctx, compiled);
-
-    // Run microtasks (for Promise resolution, etc.)
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+/// Run `steps` with `args` in `realm` (engine.runInRealm): the navigation
+/// task already running, switching into the navigable's realm. False when
+/// the realm is gone and the steps did not run.
+fn inRealm(realm: runtime.Context, comptime steps: anytype, args: anytype) bool {
+    const Call = struct {
+        args: @TypeOf(args),
+        fn run(data: ?*anyopaque) void {
+            const call: *@This() = @ptrCast(@alignCast(data.?));
+            @call(.auto, steps, call.args);
+        }
+    };
+    var call: Call = .{ .args = args };
+    engine.runInRealm(realm, Call.run, &call) catch return false;
+    return true;
 }
 
 /// HTML "shared attribute processing steps for iframe and frame elements",
@@ -628,22 +616,22 @@ fn resolveSrc(instance: *runtime.Instance, src: []const u8) []const u8 {
 
 /// Location URL update callback for iframes
 /// Called by IFrameIntegration.updateLocationUrl to set the iframe's Location URL.
-/// Parameters: (engine_context as v8.Context*, url) -> void
-fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
-    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse return));
+/// Parameters: (the realm, url) -> void
+fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8) void {
+    const realm: runtime.Context = @ptrCast(@alignCast(realm_ptr orelse return));
 
-    // Get Window from V8 context
-    const window = context_manager.getWindowForContext(v8_ctx) orelse return;
+    // The realm's Window.
+    const window = windowOfRealm(realm) orelse return;
 
     // Get Window's Location
     const WindowImpl = @import("Window.zig");
     const internal = WindowImpl.getInternal(window) orelse return;
     const location = internal.location orelse return;
 
-    // Record it as the child context's document URL too - only top-level
-    // pages and workers ever did, so `document.URL` inside an iframe was "".
+    // Record it as the realm's document URL too - only top-level pages and
+    // workers ever did, so `document.URL` inside an iframe was "".
     // Document.get_URL and, through it, Location read this.
-    context_manager.setDocumentUrl(v8_ctx, url) catch {};
+    realm.setDocumentUrl(url) catch {};
 
     // Update Location's URL
     const LocationImpl = @import("Location.zig");
@@ -1180,18 +1168,20 @@ fn documentBaseUrl(document: *runtime.Instance, allocator: std.mem.Allocator) ?[
 /// False when the realm is gone.
 fn unloadActiveDocument(integration: *IFrameIntegration) bool {
     const ctx = navigableContext(integration) orelse return false;
-    const scope = v8.JsScope.init(ctx) orelse return false;
-    defer scope.deinit();
+    return inRealm(ctx, unloadActive, .{integration});
+}
+
+fn unloadActive(integration: *IFrameIntegration) void {
     if (activeDocumentOf(integration)) |old| unloadDocumentAndDescendants(old, integration);
-    return true;
 }
 
 /// `runCommit`'s commit, inside the realm the document goes in.
 fn commitNavigation(integration: *IFrameIntegration, record: *Navigation, response: *navigation_fetch.NavigationFetchResult) void {
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
-    const scope = v8.JsScope.init(ctx) orelse return endLoadDelay(integration);
-    defer scope.deinit();
+    if (!inRealm(ctx, commitInRealm, .{ integration, record, response })) endLoadDelay(integration);
+}
 
+fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response: *navigation_fetch.NavigationFetchResult) void {
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
@@ -1426,8 +1416,14 @@ fn runHashChange(context: ?*anyopaque) void {
     const task: *HashChange = @ptrCast(@alignCast(context orelse return));
     defer task.destroy();
     if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
-    const scope = v8.JsScope.init(task.window.ctx) orelse return;
-    defer scope.deinit();
+    // A global task of the window: it runs in the window's realm.
+    engine.runTaskInRealm(task.window.ctx, fireHashChange, task) catch |err| {
+        log.debug("hashchange not fired: {}", .{err});
+    };
+}
+
+fn fireHashChange(data: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(data.?));
     const event = interfaces.HashChangeEvent.call_constructor(
         task.window.ctx,
         runtime.DOMString.initInterned("hashchange"),
@@ -1468,8 +1464,10 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
-    const scope = v8.JsScope.init(ctx) orelse return endLoadDelay(integration);
-    defer scope.deinit();
+    if (!inRealm(ctx, commitJavascriptResult, .{ integration, record, url, html })) endLoadDelay(integration);
+}
+
+fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
     integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
     // Step 13: finalized as a "replace".
     recordInHistory(integration, record);
@@ -1478,9 +1476,10 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 /// `runJavascriptNavigation`'s work, inside the navigable's realm.
 fn javascriptNavigation(integration: *IFrameIntegration, record: *Navigation) void {
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
-    const scope = v8.JsScope.init(ctx) orelse return endLoadDelay(integration);
-    defer scope.deinit();
+    if (!inRealm(ctx, javascriptNavigationInRealm, .{ integration, record })) endLoadDelay(integration);
+}
 
+fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigation) void {
     // Step 6: "evaluate a javascript: URL".
     const result = evaluateJavascriptUrl(integration, record.url);
     const html = result orelse {
@@ -1523,33 +1522,19 @@ fn javascriptNavigation(integration: *IFrameIntegration, record: *Navigation) vo
 /// markup (owned); anything else - or a throw - is null.
 fn evaluateJavascriptUrl(integration: *IFrameIntegration, url: []const u8) ?[]u8 {
     const allocator = integration.allocator;
-    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(integration.engine_context orelse return null));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
+    const realm = navigableContext(integration) orelse return null;
     // Steps 1-3: strip the scheme, percent-decode.
     const encoded = url["javascript:".len..];
     const source = percentDecode(allocator, encoded) catch return null;
     defer allocator.free(source);
 
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return null;
-    defer v8.ffi.v8_String_Dispose(source_str);
-    const script = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse return null;
-    defer v8.ffi.v8_Script_Dispose(script);
-    // Step 7: run it. A throw is reported by the safe runner's TryCatch and
+    // Step 7: run it (engine.evaluateClassicScript). A throw is reported, and
     // is not a String.
-    const run = v8.ffi.v8_Script_Run_Safe(v8_ctx, script);
-    defer v8.ffi.v8_FreeScriptRunResult(run);
-    if (run.error_info != null) return null;
-    const value = run.value orelse return null;
+    const completion = engine.evaluateClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = reportException, .host = realm }) catch return null;
+    defer completion.release();
     // Step 9: only a String replaces the document.
-    if (!v8.ffi.v8_Value_IsString(value)) return null;
-    const string = v8.ffi.v8_Value_ToString(value, v8_ctx) orelse return null;
-    defer v8.ffi.v8_String_Dispose(string);
-    const length = v8.ffi.v8_String_Utf8Length(string);
-    if (length < 0) return null;
-    const buffer = allocator.alloc(u8, @as(usize, @intCast(length)) + 1) catch return null;
-    defer allocator.free(buffer);
-    const written = v8.helpers.writtenUtf8(buffer, v8.ffi.v8_String_WriteUtf8(string, buffer.ptr, @intCast(buffer.len))) orelse return null;
-    return allocator.dupe(u8, written) catch null;
+    if (engine.typeOf(realm, completion.value) != .string) return null;
+    return engine.convertToDOMString(realm, completion.value, allocator) catch null;
 }
 
 fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
@@ -2042,12 +2027,11 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         }
     }
 
-    // Return the Window instance from the child context
-    // The Window IS bound to the V8 global, so accessing properties on it
-    // (like DOMRectReadOnly) works correctly for cross-realm scenarios.
-    if (internal.integration.getEngineContext()) |engine_ctx| {
-        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-        if (context_manager.getWindowForContext(v8_ctx)) |window| {
+    // Return the Window of the navigable's realm. The Window IS bound to the
+    // realm's global, so accessing properties on it (like DOMRectReadOnly)
+    // works correctly for cross-realm scenarios.
+    if (navigableContext(internal.integration)) |realm| {
+        if (windowOfRealm(realm)) |window| {
             // WindowProxy typedef is *runtime.Instance
             return window;
         }
@@ -2579,9 +2563,8 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
     // Also propagate to the Window's browsing context if contentWindow exists
     // This ensures iframe.contentWindow.name reflects the updated name
-    if (internal.integration.getEngineContext()) |engine_ctx| {
-        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-        if (context_manager.getWindowForContext(v8_ctx)) |window_instance| {
+    if (navigableContext(internal.integration)) |realm| {
+        if (windowOfRealm(realm)) |window_instance| {
             const WindowImpl = @import("Window.zig");
             if (WindowImpl.getInternal(window_instance)) |window_internal| {
                 window_internal.browsing_context.setTargetName(str) catch {};
@@ -3193,43 +3176,15 @@ fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name:
     const parent_window_ptr = parent_bc.active_window orelse return;
     const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
 
-    // Get the V8 isolate and context from the parent window's realm
-    // We use the realm because it stores the actual V8 context pointer,
-    // unlike GetCurrentContext() which returns the currently-entered context
-    // (which might be the child's context during iframe insertion).
-    const ctx_data = parent_window.ctx;
-    const realm = ctx_data.realm orelse return;
-
-    const isolate_ptr = realm.getIsolate() orelse return;
-    const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(isolate_ptr));
-
-    const parent_v8_ctx_ptr = realm.getV8Context() orelse return;
-    const parent_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(parent_v8_ctx_ptr));
-
-    // Get the parent's global object. Every handle below is owned, and one
-    // to a global keeps its whole page alive: each is released here.
-    const global = v8.ffi.v8_Context_Global(parent_v8_ctx) orelse return;
-    defer v8.ffi.v8_Object_Dispose(global);
-
-    // Get the child Window instance and its V8 context from its realm
+    // The child Window - the navigable's active window.
     const child_window_ptr = child_bc.active_window orelse return;
     const child_window: *runtime.Instance = @ptrCast(@alignCast(child_window_ptr));
-    const child_ctx_data = child_window.ctx;
-    const child_realm = child_ctx_data.realm orelse return;
 
-    const child_v8_ctx_ptr = child_realm.getV8Context() orelse return;
-    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(child_v8_ctx_ptr));
-
-    // Get the child window's V8 wrapper (the global object of the child context)
-    const child_global = v8.ffi.v8_Context_Global(child_v8_ctx) orelse return;
-    defer v8.ffi.v8_Object_Dispose(child_global);
-
-    // Create the property name string
-    const name_str = v8.ffi.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return;
-    defer v8.ffi.v8_String_Dispose(name_str);
-
-    // Set the property: window[name] = child's global (contentWindow)
-    _ = v8.ffi.v8_Object_Set(global, parent_v8_ctx, @ptrCast(name_str), @ptrCast(child_global));
+    // window[name] = the child's WindowProxy, set on the parent's global in
+    // the parent's realm. A Window converts to its WindowProxy.
+    engine.setProperty(parent_window.ctx, .{ .instance = parent_window }, name, .{ .instance = child_window }) catch |err| {
+        log.debug("window[{s}] was not set: {}", .{ name, err });
+    };
 }
 
 /// Register the iframe post-connection steps with the DOM mutation system.

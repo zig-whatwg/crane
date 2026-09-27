@@ -335,13 +335,13 @@ pub const IFrameIntegration = struct {
     // These callbacks are set by modules with V8 access (e.g., HTMLIFrameElement impl)
     // to allow script execution without directly importing v8 in this module.
 
-    /// Callback to execute a script string in the iframe's context
-    /// Parameters: (engine_context, script_source) -> void
+    /// Callback to execute a script string in the iframe's realm
+    /// Parameters: (runtime_context - the realm, script_source) -> void
     /// Set by modules with engine access
     execute_script_callback: ?*const fn (?*anyopaque, []const u8) void,
 
     /// Callback to update the Location URL in the iframe's window
-    /// Parameters: (engine_context, url) -> void
+    /// Parameters: (runtime_context - the realm, url) -> void
     /// Set by modules with engine access
     update_location_callback: ?*const fn (?*anyopaque, []const u8) void,
 
@@ -918,7 +918,7 @@ pub const IFrameIntegration = struct {
         if (std.mem.startsWith(u8, url, "javascript:")) {
             const script = url["javascript:".len..];
             if (self.execute_script_callback) |exec| {
-                exec(self.engine_context, script);
+                exec(self.runtime_context, script);
             }
             self.updateLocationUrl(url);
             try self.recordCommit(url, "text/html");
@@ -1599,19 +1599,19 @@ pub const IFrameIntegration = struct {
     /// Per HTML Standard §4.12.1.1, scripts should execute in document order.
     /// For simplicity, we only execute inline scripts (no external src support here).
     pub fn executeScriptsInTree(self: *IFrameIntegration, document_node: *html_parser.TreeNode) void {
-        // Need both engine context and script execution callback
-        const engine_ctx = self.engine_context orelse return;
+        // Need both the realm and the script execution callback
+        const realm = self.runtime_context orelse return;
         const execute_callback = self.execute_script_callback orelse return;
 
         // Walk the tree and execute scripts
-        self.executeScriptsRecursive(document_node, engine_ctx, execute_callback);
+        self.executeScriptsRecursive(document_node, realm, execute_callback);
     }
 
     /// Recursively walk the tree and execute script elements
     fn executeScriptsRecursive(
         self: *IFrameIntegration,
         node: *html_parser.TreeNode,
-        engine_ctx: *anyopaque,
+        realm: *anyopaque,
         execute_callback: *const fn (?*anyopaque, []const u8) void,
     ) void {
         // Check if this is a script element
@@ -1628,7 +1628,7 @@ pub const IFrameIntegration = struct {
                     const script_text = self.getScriptTextContent(node);
                     if (script_text.len > 0) {
                         // Execute via callback (which has V8 access)
-                        execute_callback(engine_ctx, script_text);
+                        execute_callback(realm, script_text);
                     }
                 }
             }
@@ -1637,7 +1637,7 @@ pub const IFrameIntegration = struct {
         // Recurse to children (depth-first, document order)
         var child = node.first_child;
         while (child) |c| {
-            self.executeScriptsRecursive(c, engine_ctx, execute_callback);
+            self.executeScriptsRecursive(c, realm, execute_callback);
             child = c.next_sibling;
         }
     }
@@ -1661,12 +1661,12 @@ pub const IFrameIntegration = struct {
     /// Update the iframe's Location URL to reflect the navigated URL.
     /// This is called during navigation so that `location.hash`, etc. work correctly.
     fn updateLocationUrl(self: *IFrameIntegration, url: []const u8) void {
-        // Need both engine context and location update callback
-        const engine_ctx = self.engine_context orelse return;
+        // Need both the realm and the location update callback
+        const realm = self.runtime_context orelse return;
         const update_callback = self.update_location_callback orelse return;
 
-        // Call the callback (which has V8/impls access)
-        update_callback(engine_ctx, url);
+        // Call the callback (which has impls access)
+        update_callback(realm, url);
     }
 };
 
