@@ -59,7 +59,7 @@ pub fn init(
 ) !*runtime.Instance {
     // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
     // through this hook.
-    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf });
+    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes });
 
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     return instance;
@@ -69,6 +69,16 @@ pub fn init(
 fn bytesOf(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
     return internal.blob_data.bytes;
+}
+
+/// dom.blob_bytes: give a new Blob a copy of `bytes`, and `mime_type` as its
+/// type (BlobData lowercases it, or drops one with a character outside
+/// U+0020-U+007E).
+fn setBytes(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+    errdefer blob_data.deinit();
+    try setBlobData(instance, allocator, blob_data);
 }
 
 /// Deinitialize instance - clean up owned resources only

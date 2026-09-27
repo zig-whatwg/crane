@@ -23,6 +23,8 @@ const ResponseType = xhr_root.state_machine.ResponseType;
 const ProgressTracker = @import("../internal/progress_tracker.zig").ProgressTracker;
 const event_support = @import("../internal/event_support.zig");
 const XHREventType = event_support.XHREventType;
+const fetch_mod = @import("fetch");
+const mimesniff = @import("mimesniff");
 const ProgressEventData = event_support.ProgressEventData;
 
 /// Response processor - handles response callbacks
@@ -846,4 +848,159 @@ test "isValidJson - invalid json" {
     try std.testing.expect(!isValidJson("["));
     try std.testing.expect(!isValidJson("undefined"));
     try std.testing.expect(!isValidJson("NaN"));
+}
+
+// =============================================================================
+// Response body MIME types (§3.6.6)
+// =============================================================================
+
+/// Fetch "extract a MIME type" from `headers`: the last `Content-Type` value
+/// that parses (and is not */*), carrying an earlier same-essence value's
+/// charset when it has none. Null is failure. OWNED: `deinit` it.
+///
+/// Spec: https://fetch.spec.whatwg.org/#concept-header-extract-mime-type
+pub fn extractMimeType(allocator: std.mem.Allocator, headers: *const fetch_mod.internal.HeaderList) !?mimesniff.MimeType {
+    // 1-3. Let charset, essence and mimeType be null.
+    var charset: ?[]u16 = null;
+    defer if (charset) |c| allocator.free(c);
+    var essence: ?[]const u16 = null;
+    defer if (essence) |e| allocator.free(e);
+    var mime_type: ?mimesniff.MimeType = null;
+    errdefer if (mime_type) |*m| m.deinit();
+    // 4. Let values be the result of getting, decoding, and splitting
+    //    `Content-Type` from headers.
+    // 5. If values is null, then return failure.
+    const values = (try headers.getDecodeSplit(allocator, "Content-Type")) orelse return null;
+    defer {
+        for (values) |v| allocator.free(v);
+        allocator.free(values);
+    }
+    // 6. For each value of values:
+    for (values) |value| {
+        // 1. Let temporaryMimeType be the result of parsing value.
+        var temporary = (try mimesniff.parseMimeType(allocator, value)) orelse continue;
+        // 2. If temporaryMimeType is failure or its essence is "*/*", then
+        //    continue.
+        const temporary_essence = temporary.essence(allocator) catch |err| {
+            temporary.deinit();
+            return err;
+        };
+        if (std.mem.eql(u16, temporary_essence, std.unicode.utf8ToUtf16LeStringLiteral("*/*"))) {
+            allocator.free(temporary_essence);
+            temporary.deinit();
+            continue;
+        }
+        // 3. Set mimeType to temporaryMimeType.
+        if (mime_type) |*m| m.deinit();
+        mime_type = temporary;
+        const current = &mime_type.?;
+        // 4. If mimeType's essence is not essence, then:
+        if (essence == null or !std.mem.eql(u16, essence.?, temporary_essence)) {
+            // 1. Set charset to null.
+            if (charset) |c| allocator.free(c);
+            charset = null;
+            // 2. If mimeType's parameters["charset"] exists, then set charset
+            //    to it.
+            if (parameterIndex(current.*, "charset")) |i| charset = try allocator.dupe(u16, current.parameters.entries.items()[i].value);
+            // 3. Set essence to mimeType's essence.
+            if (essence) |e| allocator.free(e);
+            essence = temporary_essence;
+        } else {
+            allocator.free(temporary_essence);
+            // 5. Otherwise, if mimeType's parameters["charset"] does not
+            //    exist, and charset is non-null, set mimeType's
+            //    parameters["charset"] to charset.
+            if (parameterIndex(current.*, "charset") == null) if (charset) |c| {
+                const key = try current.allocator.dupe(u16, std.unicode.utf8ToUtf16LeStringLiteral("charset"));
+                errdefer current.allocator.free(key);
+                const copy = try current.allocator.dupe(u16, c);
+                errdefer current.allocator.free(copy);
+                try current.parameters.set(key, copy);
+            };
+        }
+    }
+    // 7. If mimeType is null, then return failure.
+    // 8. Return mimeType.
+    return mime_type;
+}
+
+/// The index of `record`'s parameter `name` (ASCII), if it has it. (Its map
+/// compares slice keys by address, so this compares the text.)
+fn parameterIndex(record: mimesniff.MimeType, comptime name: []const u8) ?usize {
+    const wide = std.unicode.utf8ToUtf16LeStringLiteral(name);
+    for (record.parameters.entries.items(), 0..) |entry, i| {
+        if (std.mem.eql(u16, entry.key, wide)) return i;
+    }
+    return null;
+}
+
+/// XHR "get a final MIME type" for `state`, serialized to bytes: this's
+/// override MIME type, or else "get a response MIME type" - the response's
+/// extracted MIME type, text/xml when that is failure. OWNED.
+///
+/// Spec: https://xhr.spec.whatwg.org/#final-mime-type
+pub fn finalMimeTypeBytes(allocator: std.mem.Allocator, state: *const XMLHttpRequestState) ![]const u8 {
+    // 1. If xhr's override MIME type is null, return the result of get a
+    //    response MIME type for xhr.
+    // 2. Return xhr's override MIME type.
+    if (state.override_mime_type) |override| return mimesniff.serializeMimeTypeToBytes(allocator, override);
+    // Get a response MIME type: 1. Let mimeType be the result of extracting
+    // a MIME type from xhr's response's header list. 2. If mimeType is
+    // failure, then set mimeType to text/xml. 3. Return mimeType.
+    const response = state.response orelse return allocator.dupe(u8, "text/xml");
+    var extracted = (try extractMimeType(allocator, &response.header_list)) orelse return allocator.dupe(u8, "text/xml");
+    defer extracted.deinit();
+    return mimesniff.serializeMimeTypeToBytes(allocator, extracted);
+}
+
+fn extractedFrom(values: []const []const u8) !?[]const u8 {
+    const allocator = std.testing.allocator;
+    var headers = fetch_mod.internal.HeaderList.init(allocator);
+    defer headers.deinit();
+    for (values) |v| try headers.append("Content-Type", v);
+    var mime = (try extractMimeType(allocator, &headers)) orelse return null;
+    defer mime.deinit();
+    return try mimesniff.serializeMimeTypeToBytes(allocator, mime);
+}
+
+fn expectExtracted(expected: ?[]const u8, values: []const []const u8) !void {
+    const actual = try extractedFrom(values);
+    defer if (actual) |a| std.testing.allocator.free(a);
+    if (expected) |e| try std.testing.expectEqualStrings(e, actual orelse return error.Failure) else try std.testing.expect(actual == null);
+}
+
+test "extract a MIME type: Fetch's examples" {
+    // Headers as on the network -> the serialized result.
+    try expectExtracted("text/html", &.{"text/plain;charset=gbk, text/html"});
+    try expectExtracted("text/html;x=y;charset=gbk", &.{"text/html;charset=gbk;a=b, text/html;x=y"});
+    try expectExtracted("text/html;x=y;charset=gbk", &.{ "text/html;charset=gbk;a=b", "text/html;x=y" });
+    try expectExtracted("text/html;x=y", &.{ "text/html;charset=gbk", "x/x", "text/html;x=y" });
+    try expectExtracted("text/html", &.{ "text/html", "cannot-parse" });
+    try expectExtracted("text/html", &.{ "text/html", "*/*" });
+    try expectExtracted("text/html", &.{ "text/html", "" });
+    // No Content-Type, or none that parses: failure.
+    try expectExtracted(null, &.{});
+    try expectExtracted(null, &.{"*/*"});
+    try expectExtracted(null, &.{"bogus"});
+}
+
+test "get a final MIME type: the override, else the response's, else text/xml" {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    const no_response = try finalMimeTypeBytes(allocator, &state);
+    defer allocator.free(no_response);
+    try std.testing.expectEqualStrings("text/xml", no_response);
+
+    const response = try fetch_mod.internal.InternalResponse.init(allocator);
+    try response.header_list.append("Content-Type", "Text/Plain;Charset=UTF-8");
+    state.setResponse(response);
+    const from_response = try finalMimeTypeBytes(allocator, &state);
+    defer allocator.free(from_response);
+    try std.testing.expectEqualStrings("text/plain;charset=UTF-8", from_response);
+
+    state.override_mime_type = (try mimesniff.parseMimeType(allocator, "application/x-test")).?;
+    const overridden = try finalMimeTypeBytes(allocator, &state);
+    defer allocator.free(overridden);
+    try std.testing.expectEqualStrings("application/x-test", overridden);
 }
