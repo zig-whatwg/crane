@@ -733,18 +733,50 @@ test "protocol: the diagnostics tier reports the agent's heap and the adapter's 
     try std.testing.expect(statistics.realm_count >= 1);
     const counters = try protocol.diagnosticCounters(std.testing.allocator);
     defer std.testing.allocator.free(counters);
-    try std.testing.expectEqualStrings("live_context_globals", counters[1].name);
-    // The four live-handle counters, then - where the Phase 5 instrument is
-    // compiled in (safe builds) - the agent-ownership pair the WPT runner
-    // journals.
-    if (v8.isolate_ownership.mode == .off) {
-        try std.testing.expectEqual(@as(usize, 4), counters.len);
-    } else {
-        try std.testing.expectEqual(@as(usize, 6), counters.len);
-        try std.testing.expectEqualStrings("ownership_checks", counters[4].name);
-        try std.testing.expectEqualStrings("ownership_violations", counters[5].name);
-        try std.testing.expect(counters[4].value >= counters[5].value);
+    // Hosts read counters by name (the WPT runner the ownership pair, gc_bench
+    // wrapper_cache_entries) and print the rest as they come, so every name
+    // the adapter always reports is pinned here - in this build, which is not
+    // gc_bench's: without -DCRANE_TRACK_GLOBALS=1 globals_created reads 0.
+    //
+    // The live-handle counts are only present: v8_Context_NewWithGlobalConstructor
+    // and a few Object Globals are made uncounted and disposed counted, so
+    // those counts can drift below zero (tmp/plans/lifetime-queue.md).
+    for ([_][]const u8{ "live_string_globals", "live_context_globals", "live_object_globals", "live_weak_callback_data" }) |name| {
+        _ = counterNamed(counters, name) orelse return error.CounterMissing;
     }
+    // Counts that only rise, or count what is held: never negative.
+    for ([_][]const u8{
+        "wrapper_cache_entries",
+        "globals_created",
+        "object_globals_from.FunctionCallbackInfo_This",
+        "object_globals_from.PropertyCallbackInfo_This",
+        "object_globals_from.Context_Global",
+        "object_globals_from.GetGlobalPrototype",
+        "object_globals_from.FunctionTemplate_GetPrototypeObject",
+        "object_globals_from.ObjectTemplate_NewInstance",
+    }) |name| {
+        const value = counterNamed(counters, name) orelse {
+            std.debug.print("the adapter reports no counter named {s}\n", .{name});
+            return error.CounterMissing;
+        };
+        try std.testing.expect(value >= 0);
+    }
+    // Where the Phase 5 instrument is compiled in (safe builds), the
+    // agent-ownership pair the WPT runner journals; none where it is not.
+    if (v8.isolate_ownership.mode == .off) {
+        try std.testing.expect(counterNamed(counters, "ownership_checks") == null);
+    } else {
+        const checks = counterNamed(counters, "ownership_checks") orelse return error.CounterMissing;
+        const violations = counterNamed(counters, "ownership_violations") orelse return error.CounterMissing;
+        try std.testing.expect(checks >= violations);
+    }
+}
+
+fn counterNamed(counters: []const protocol.Counter, name: []const u8) ?i64 {
+    for (counters) |counter| {
+        if (std.mem.eql(u8, counter.name, name)) return counter.value;
+    }
+    return null;
 }
 
 test "protocol: a platform object in a realm that has wrapped nothing has no wrapper" {

@@ -346,16 +346,3 @@ src/webidl/impls/streams_readable.zig v8_String_Utf8Length 1
 src/webidl/impls/streams_readable.zig v8_String_WriteUtf8 1
 src/webidl/impls/streams_readable.zig v8_Value_NumberValue 2
 src/webidl/impls/streams_readable.zig v8_Value_ToString 1
-tools/gc_bench.zig @import("v8") 1
-tools/gc_bench.zig v8.ffi 10
-tools/gc_bench.zig v8.wrapper_cache_mod 1
-tools/gc_bench.zig v8_Debug_CreatedGlobals 1
-tools/gc_bench.zig v8_Debug_GlobalSite 1
-tools/gc_bench.zig v8_Debug_LiveContextGlobals 1
-tools/gc_bench.zig v8_Debug_LiveObjectGlobals 1
-tools/gc_bench.zig v8_Debug_LiveStringGlobals 1
-tools/gc_bench.zig v8_Debug_ObjSrc 1
-tools/gc_bench.zig v8_Isolate_GetHeapUsage 3
-tools/gc_bench.zig v8_external 2
-tools/gc_bench.zig v8_total 2
-tools/gc_bench.zig v8_used 2

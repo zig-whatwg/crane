@@ -699,16 +699,34 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
     return ffi.v8_Debug_WriteHeapSnapshot(isolateOf(agent), path.ptr);
 }
 
-/// The adapter's live-handle counters: Globals created minus disposed. And,
-/// where the Phase 5 instrument is compiled in, how many agent-ownership
+/// The adapter's counters, every one cumulative or live as its comment says:
+/// - live handles by kind: Globals created minus disposed;
+/// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
+///   thread holds, each keeping its instance alive until the wrapper dies;
+/// - `globals_created`: Globals made through the wrapper's tracked path,
+///   cumulative - 0 unless v8_wrapper.cpp is built with
+///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
+/// - `object_globals_from.<entry point>`: Global<Object> creations by the FFI
+///   entry point that made them, cumulative - which of them a per-element
+///   leak comes from;
+/// and, where the Phase 5 instrument is compiled in, how many agent-ownership
 /// checks ran and how many failed (isolate_ownership.zig) - hosts read "not
-/// measured" when neither is reported.
+/// measured" when those are not reported.
 pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
         .{ .name = "live_object_globals", .value = ffi.v8_Debug_LiveObjectGlobals() },
         .{ .name = "live_weak_callback_data", .value = ffi.v8_Debug_LiveWeakCallbackData() },
+        .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
+        .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
+        // v8_wrapper.cpp's g_obj_src slots, in its order.
+        .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },
+        .{ .name = "object_globals_from.PropertyCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(1) },
+        .{ .name = "object_globals_from.Context_Global", .value = ffi.v8_Debug_ObjSrc(2) },
+        .{ .name = "object_globals_from.GetGlobalPrototype", .value = ffi.v8_Debug_ObjSrc(3) },
+        .{ .name = "object_globals_from.FunctionTemplate_GetPrototypeObject", .value = ffi.v8_Debug_ObjSrc(4) },
+        .{ .name = "object_globals_from.ObjectTemplate_NewInstance", .value = ffi.v8_Debug_ObjSrc(5) },
     };
     const ownership = [_]engine.Counter{
         .{ .name = "ownership_checks", .value = @intCast(isolate_ownership.checks()) },

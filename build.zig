@@ -3396,7 +3396,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
                 .{ .name = "engine", .module = engine_mod },
                 .{ .name = "memory", .module = memory_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
@@ -3438,7 +3437,10 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(gc_bench_exe);
 
     const run_gc_bench = b.addRunArtifact(gc_bench_exe);
-    run_gc_bench.step.dependOn(b.getInstallStep());
+    // gc_bench's own install, not the whole install step: that built all 19
+    // installed artifacts, a root-module analysis of the tree each, before a
+    // run that needs one of them.
+    run_gc_bench.step.dependOn(&b.addInstallArtifact(gc_bench_exe, .{}).step);
     if (b.args) |args| run_gc_bench.addArgs(args);
 
     const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
