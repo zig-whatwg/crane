@@ -489,6 +489,7 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         var fetched = script_fetch.fetchWorkerScript(internal.allocator, url_str, .{
             .worker_type = .classic,
             .origin = base_url orelse internal.origin,
+            .requesting_origin = internal.origin,
             .credentials = .same_origin,
             .is_import_scripts = true,
         }) catch |err| {

@@ -772,6 +772,7 @@ pub const WorkerV8Context = struct {
         // The worker's script is on the stack - a nested loop inside one of
         // its tasks: after that task, then.
         const script_running = if (self.engine.hasRunningScript) |running| running(self.agent) else false;
+        log.debug("teardown step: entered={d} script_running={}", .{ self.entered, script_running });
         if (self.entered > 0 or script_running) {
             self.scheduleTeardown();
             return;
@@ -812,6 +813,7 @@ pub const WorkerV8Context = struct {
     fn releaseOwnerWhenIdle(self: *Self) void {
         const dedicated_worker = self.dedicated_worker orelse return;
         if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
+            log.debug("owner release deferred: {d} messages to deliver", .{dedicated_worker.port_pair.outside_port.message_queue.items.len});
             // Delivered by later turns: ask again after them.
             if (self.release_owner_timer != null) return;
             const timer = getTimerInterface() orelse return;
@@ -821,6 +823,7 @@ pub const WorkerV8Context = struct {
         }
         const owner: *runtime.Instance = @ptrCast(@alignCast(dedicated_worker.getUserData() orelse return));
         const engine = owner.ctx.getEngine() orelse return;
+        log.debug("owner released: {*}", .{owner});
         if (engine.releasePlatformObject) |release| release(owner);
     }
 
