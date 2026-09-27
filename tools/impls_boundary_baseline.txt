@@ -164,8 +164,6 @@ src/runtime/engines/v8/wrapper_cache.zig History.getInternal 1
 src/runtime/engines/v8/wrapper_cache.zig Location.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig Node.getInternalState 9
 src/webidl/impls/AbortController.zig AbortSignal.signalAbort 1
-src/webidl/impls/Blob.zig ReadableStream.ZigUnderlyingSource 1
-src/webidl/impls/Blob.zig ReadableStream.createFromZigSource 1
 src/webidl/impls/CSSStyleDeclaration.zig Element.getInternal 1
 src/webidl/impls/CSSStyleDeclaration.zig HTMLElement.InternalState 2
 src/webidl/impls/CSSStyleDeclaration.zig HTMLElement.getInternalState 8

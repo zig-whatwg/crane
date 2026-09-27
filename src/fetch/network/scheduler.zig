@@ -88,6 +88,9 @@ pub const NetworkScheduler = struct {
         /// and once the transfer has ended.
         running: bool = false,
         retry_at_ns: i128 = 0,
+        /// Receiving is paused (`pause`): curl reads nothing more from the
+        /// socket until `unpause`.
+        paused: bool = false,
         /// How the last attempt ended, from the moment curl reports it until
         /// `pump` delivers it.
         ended: ?curl.CURLcode = null,
@@ -205,6 +208,24 @@ pub const NetworkScheduler = struct {
         if (job.running) _ = curl.multi_remove_handle(self.multi.?, job.transfer.handle);
         job.transfer.destroy();
         job.allocator.destroy(job);
+    }
+
+    /// Stop receiving `job`'s body for now - its reader is behind. curl
+    /// stops reading the socket (CURLPAUSE_RECV), so the peer is held back
+    /// by TCP flow control; what curl already read is still delivered. Not
+    /// from inside a curl callback.
+    pub fn pause(self: *NetworkScheduler, job: *Job) void {
+        if (self.indexOf(job) == null or job.paused) return;
+        job.paused = true;
+        if (job.running) _ = curl.easy_pause(job.transfer.handle, curl.CURLPAUSE_RECV);
+    }
+
+    /// Go on receiving after `pause`. curl may hand over bytes it held
+    /// before this returns; they wait for the next `pump`, as all do.
+    pub fn unpause(self: *NetworkScheduler, job: *Job) void {
+        if (self.indexOf(job) == null or !job.paused) return;
+        job.paused = false;
+        if (job.running) _ = curl.easy_pause(job.transfer.handle, curl.CURLPAUSE_CONT);
     }
 
     /// Transfers not yet finalized.

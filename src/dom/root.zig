@@ -67,6 +67,7 @@ pub const navigables = @import("navigables.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
 pub const fetch_objects = @import("fetch_objects.zig");
+pub const blob_bytes = @import("blob_bytes.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
 pub const observer_registrations = @import("observer_registrations.zig");

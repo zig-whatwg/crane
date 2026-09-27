@@ -740,8 +740,11 @@ fn fireAt(
         webidl.Opt(bool).passed(false),
     ) catch return;
 
-    // Every listener, the event handlers among them.
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
+    // Every listener, the event handlers among them. The user agent fires
+    // these, so they are trusted (DOM "fire an event": isTrusted true);
+    // dispatchEvent() is script's, and resets it. The target - this XHR or
+    // its upload object - is an EventTarget, this impl's ancestor.
+    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
     };
 

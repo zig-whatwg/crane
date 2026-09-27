@@ -2286,7 +2286,32 @@ const DefaultTee = struct {
     branch1: ?*runtime.Instance = null,
     branch2: ?*runtime.Instance = null,
     cancel_promise: Deferred,
+    /// Holders of this state, each letting go once: each branch's source
+    /// (until its algorithms are cleared - closed, errored or cancelled), the
+    /// reaction to the reader's closed promise, a read in flight, a chunk's
+    /// queued microtask, and `defaultTee` while it builds the branches. The
+    /// last to let go frees it - mirroring PipeState.
+    refs: usize = 1,
+
+    fn retain(self: *DefaultTee) *DefaultTee {
+        self.refs += 1;
+        return self;
+    }
+
+    fn release(self: *DefaultTee) void {
+        releaseTee(DefaultTee, self);
+    }
 };
+
+/// Let go of a tee's state; the last holder frees it.
+fn releaseTee(comptime T: type, state: *T) void {
+    state.refs -= 1;
+    if (state.refs > 0) return;
+    js.disposeOptional(&state.reason1);
+    js.disposeOptional(&state.reason2);
+    state.cancel_promise.deinit();
+    state.allocator.destroy(state);
+}
 
 /// A tee branch's source: pull and cancel route to the shared tee state.
 const TeeBranch = struct {
@@ -2316,7 +2341,11 @@ const TeeBranch = struct {
 
     fn deinitBranch(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
         const self: *TeeBranch = @ptrCast(@alignCast(ctx.?));
+        const state = self.tee;
+        const byte = self.byte;
         allocator.destroy(self);
+        // This branch no longer reaches the tee's state.
+        if (byte) releaseTee(ByteTee, @ptrCast(@alignCast(state))) else releaseTee(DefaultTee, @ptrCast(@alignCast(state)));
     }
 
     const vtable = Source.VTable{ .start = start, .pull = pull, .cancel = cancelBranch, .deinit = deinitBranch };
@@ -2337,28 +2366,43 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Ins
     const reader = try acquireDefaultReader(realm, stream_instance);
     _ = try realm.wrap(reader);
     // Steps 4-12
-    const state = try allocator.create(DefaultTee);
-    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = try Deferred.init(realm) };
+    const cancel_promise = try Deferred.init(realm);
+    const state = allocator.create(DefaultTee) catch |err| {
+        cancel_promise.deinit();
+        return err;
+    };
+    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = cancel_promise };
+    // Building the branches holds the state; each branch and the reaction
+    // below hold their own from here.
+    defer state.release();
     // Steps 16-18: the branches.
     state.branch1 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, false), 1, .one);
     state.branch2 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, false), 1, .one);
     // Step 19: upon rejection of reader.[[closedPromise]], error both branches.
     if (readerSlots(reader).closed_promise) |closed| {
-        try realm.react(closed.promise, DefaultTee, state, defaultTeeClosedFulfilled, defaultTeeClosedRejected);
+        realm.react(closed.promise, DefaultTee, state.retain(), defaultTeeClosedFulfilled, defaultTeeClosedRejected) catch |err| {
+            state.release();
+            return err;
+        };
     }
     // Step 20
     return .{ state.branch1.?, state.branch2.? };
 }
 
+/// A branch's source, holding the tee's state until the branch's algorithms
+/// are cleared (`TeeBranch.deinitBranch`).
 fn teeSource(allocator: std.mem.Allocator, state: anytype, second: bool, byte: bool) !Source {
     const branch = try allocator.create(TeeBranch);
-    branch.* = .{ .tee = state, .second = second, .byte = byte };
+    branch.* = .{ .tee = state.retain(), .second = second, .byte = byte };
     return .{ .ctx = branch, .vtable = &TeeBranch.vtable };
 }
 
-fn defaultTeeClosedFulfilled(_: *DefaultTee, _: Value) void {}
+fn defaultTeeClosedFulfilled(state: *DefaultTee, _: Value) void {
+    state.release();
+}
 
 fn defaultTeeClosedRejected(state: *DefaultTee, r: Value) void {
+    defer state.release();
     const realm = Realm.of(state.stream) catch return;
     // 19.1-19.3
     defaultControllerError(realm, streamSlots(state.branch1.?).controller.?, r);
@@ -2375,20 +2419,23 @@ fn defaultTeePull(realm: Realm, state: *DefaultTee) void {
     }
     // 13.2
     state.reading = true;
-    // 13.3-13.4
+    // 13.3-13.4 - the read holds the state until one of its steps runs.
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
-    defaultReaderRead(realm, reader, .{ .ctx = state, .vtable = &default_tee_read_vtable });
+    defaultReaderRead(realm, reader, .{ .ctx = state.retain(), .vtable = &default_tee_read_vtable });
 }
 
 const default_tee_read_vtable = ReadRequest.VTable{
     .chunk = defaultTeeChunk,
     .close = defaultTeeClose,
     .err = defaultTeeError,
-    .drop = teeDrop,
+    .drop = defaultTeeDrop,
 };
 
-fn teeDrop(_: *anyopaque) void {}
+fn defaultTeeDrop(ctx: *anyopaque) void {
+    const state: *DefaultTee = @ptrCast(@alignCast(ctx));
+    state.release();
+}
 
 const TeeChunk = struct {
     state: *DefaultTee,
@@ -2397,11 +2444,12 @@ const TeeChunk = struct {
 
 fn defaultTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
-    // 1. Queue a microtask for the rest.
-    const task = state.allocator.create(TeeChunk) catch return;
+    // 1. Queue a microtask for the rest. The read's hold on the state passes
+    // to the microtask.
+    const task = state.allocator.create(TeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     } };
     js.queueMicrotask(realm, TeeChunk, task, defaultTeeChunkMicrotask);
 }
@@ -2411,6 +2459,7 @@ fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1 Set readAgain to false.
@@ -2429,6 +2478,7 @@ fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
 
 fn defaultTeeClose(ctx: *anyopaque, realm: Realm) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
+    defer state.release();
     // Close steps 1-4
     state.reading = false;
     if (!state.canceled1) defaultControllerClose(realm, streamSlots(state.branch1.?).controller.?);
@@ -2440,6 +2490,7 @@ fn defaultTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
     // Error steps 1: Set reading to false.
     state.reading = false;
+    state.release();
 }
 
 /// Steps 14-15 (cancel1Algorithm / cancel2Algorithm), for both tee kinds.
@@ -2484,6 +2535,18 @@ const ByteTee = struct {
     branch1: ?*runtime.Instance = null,
     branch2: ?*runtime.Instance = null,
     cancel_promise: Deferred,
+    /// Holders, as DefaultTee's - with a reaction per reader it has had
+    /// (forwardReaderError), and BYOB reads in flight.
+    refs: usize = 1,
+
+    fn retain(self: *ByteTee) *ByteTee {
+        self.refs += 1;
+        return self;
+    }
+
+    fn release(self: *ByteTee) void {
+        releaseTee(ByteTee, self);
+    }
 };
 
 fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instance {
@@ -2492,8 +2555,15 @@ fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instan
     const reader = try acquireDefaultReader(realm, stream_instance);
     _ = try realm.wrap(reader);
     // Steps 4-13
-    const state = try allocator.create(ByteTee);
-    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = try Deferred.init(realm) };
+    const cancel_promise = try Deferred.init(realm);
+    const state = allocator.create(ByteTee) catch |err| {
+        cancel_promise.deinit();
+        return err;
+    };
+    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = cancel_promise };
+    // Building the branches holds the state; each branch and each reaction
+    // hold their own from here.
+    defer state.release();
     // Steps 21-23
     state.branch1 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, true));
     state.branch2 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, true));
@@ -2512,17 +2582,25 @@ const ForwardError = struct {
 fn byteTeeForwardReaderError(realm: Realm, state: *ByteTee, this_reader: *runtime.Instance) void {
     const closed = readerSlots(this_reader).closed_promise orelse return;
     const ctx = state.allocator.create(ForwardError) catch return;
-    ctx.* = .{ .state = state, .this_reader = this_reader };
-    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected) catch state.allocator.destroy(ctx);
+    ctx.* = .{ .state = state.retain(), .this_reader = this_reader };
+    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected) catch {
+        state.allocator.destroy(ctx);
+        state.release();
+    };
 }
 
 fn forwardErrorFulfilled(ctx: *ForwardError, _: Value) void {
-    ctx.state.allocator.destroy(ctx);
+    const state = ctx.state;
+    state.allocator.destroy(ctx);
+    state.release();
 }
 
 fn forwardErrorRejected(ctx: *ForwardError, r: Value) void {
     const state = ctx.state;
-    defer state.allocator.destroy(ctx);
+    defer {
+        state.allocator.destroy(ctx);
+        state.release();
+    }
     // 14.1.1 If thisReader is not reader, return.
     if (ctx.this_reader != state.reader) return;
     const realm = Realm.of(state.stream) catch return;
@@ -2563,18 +2641,23 @@ fn byteTeePullWithDefaultReader(realm: Realm, state: *ByteTee) void {
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
-    // 15.2-15.3
+    // 15.2-15.3 - the read holds the state until one of its steps runs.
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
-    defaultReaderRead(realm, reader, .{ .ctx = state, .vtable = &byte_tee_read_vtable });
+    defaultReaderRead(realm, reader, .{ .ctx = state.retain(), .vtable = &byte_tee_read_vtable });
 }
 
 const byte_tee_read_vtable = ReadRequest.VTable{
     .chunk = byteTeeDefaultChunk,
     .close = byteTeeDefaultClose,
     .err = byteTeeError,
-    .drop = teeDrop,
+    .drop = byteTeeDrop,
 };
+
+fn byteTeeDrop(ctx: *anyopaque) void {
+    const state: *ByteTee = @ptrCast(@alignCast(ctx));
+    state.release();
+}
 
 const ByteTeeChunk = struct {
     state: *ByteTee,
@@ -2586,10 +2669,11 @@ const ByteTeeChunk = struct {
 
 fn byteTeeDefaultChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
-    const task = state.allocator.create(ByteTeeChunk) catch return;
+    // The read's hold on the state passes to the microtask.
+    const task = state.allocator.create(ByteTeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     } };
     js.queueMicrotask(realm, ByteTeeChunk, task, byteTeeDefaultChunkMicrotask);
 }
@@ -2614,6 +2698,7 @@ fn byteTeeDefaultChunkMicrotask(task: *ByteTeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
@@ -2643,6 +2728,7 @@ fn byteTeeDefaultChunkMicrotask(task: *ByteTeeChunk) void {
 
 fn byteTeeDefaultClose(ctx: *anyopaque, realm: Realm) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
+    defer state.release();
     // Close steps 1-6
     state.reading = false;
     const c1 = streamSlots(state.branch1.?).controller.?;
@@ -2657,6 +2743,7 @@ fn byteTeeDefaultClose(ctx: *anyopaque, realm: Realm) void {
 fn byteTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
     state.reading = false;
+    state.release();
 }
 
 const ByobTeeRead = struct {
@@ -2675,10 +2762,11 @@ fn byteTeePullWithByobReader(realm: Realm, state: *ByteTee, view: Value, for_bra
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
-    const ctx = state.allocator.create(ByobTeeRead) catch return;
-    ctx.* = .{ .state = state, .for_branch2 = for_branch2 };
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
+    // The read holds the state until one of its steps runs.
+    const ctx = state.allocator.create(ByobTeeRead) catch return;
+    ctx.* = .{ .state = state.retain(), .for_branch2 = for_branch2 };
     // 16.5 Perform ! ReadableStreamBYOBReaderRead(reader, view, 1, readIntoRequest).
     byobReaderRead(realm, reader, view, 1, .{ .ctx = ctx, .vtable = &byob_tee_read_vtable });
 }
@@ -2692,7 +2780,9 @@ const byob_tee_read_vtable = ReadIntoRequest.VTable{
 
 fn byobTeeDrop(ctx: *anyopaque) void {
     const read: *ByobTeeRead = @ptrCast(@alignCast(ctx));
-    read.state.allocator.destroy(read);
+    const state = read.state;
+    state.allocator.destroy(read);
+    state.release();
 }
 
 fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
@@ -2700,10 +2790,11 @@ fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state = read.state;
     const for_branch2 = read.for_branch2;
     state.allocator.destroy(read);
-    const task = state.allocator.create(ByteTeeChunk) catch return;
+    // The read's hold on the state passes to the microtask.
+    const task = state.allocator.create(ByteTeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     }, .for_branch2 = for_branch2, .byob = true };
     js.queueMicrotask(realm, ByteTeeChunk, task, byobTeeChunkMicrotask);
 }
@@ -2713,6 +2804,7 @@ fn byobTeeChunkMicrotask(task: *ByteTeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
@@ -2749,6 +2841,7 @@ fn byobTeeClose(ctx: *anyopaque, realm: Realm, chunk: ?Value) void {
     const state = read.state;
     const for_branch2 = read.for_branch2;
     state.allocator.destroy(read);
+    defer state.release();
     // Close steps 1-7
     state.reading = false;
     const byob_branch = if (for_branch2) state.branch2.? else state.branch1.?;
@@ -2768,8 +2861,10 @@ fn byobTeeClose(ctx: *anyopaque, realm: Realm, chunk: ?Value) void {
 
 fn byobTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const read: *ByobTeeRead = @ptrCast(@alignCast(ctx));
-    read.state.reading = false;
-    read.state.allocator.destroy(read);
+    const state = read.state;
+    state.reading = false;
+    state.allocator.destroy(read);
+    state.release();
 }
 
 // ============================================================================

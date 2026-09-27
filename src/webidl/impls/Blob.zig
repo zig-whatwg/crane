@@ -27,8 +27,10 @@ const v8_engine = @import("v8");
 const v8 = v8_engine.ffi;
 const promise_utils = v8_engine.promise;
 
-// Import ReadableStream impl for internal API (Zig-only stream creation)
-const ReadableStreamImpl = @import("ReadableStream.zig");
+// The byte stream "get stream" returns.
+const js = @import("streams_js.zig");
+const srd = @import("streams_readable.zig");
+const same_object = @import("same_object.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Blob.State;
@@ -62,8 +64,18 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
+    // through this hook.
+    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf });
+
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     return instance;
+}
+
+/// dom.blob_bytes: this Blob's bytes, borrowed - a Blob's data never changes.
+fn bytesOf(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.blob_data.bytes;
 }
 
 /// Deinitialize instance - clean up owned resources only
@@ -373,158 +385,111 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Operation: stream
 ///
-/// Spec: https://www.w3.org/TR/FileAPI/#stream-method-algo
-/// Returns a ReadableStream for reading blob contents.
+/// Spec: https://w3c.github.io/FileAPI/#stream-method-algo - "get stream":
+/// a new ReadableStream set up with byte reading support, into which the
+/// blob's bytes are enqueued as Uint8Arrays, and which is closed once all
+/// of them have been.
 ///
-/// The stream() method returns the result of calling "get stream" on the blob:
-/// 1. Create a new ReadableStream with byte reading support
-/// 2. Pull algorithm reads chunks from blob bytes
-/// 3. Returns stream that yields all blob bytes
-///
-/// Implementation note: Uses internal ReadableStream API (createFromZigSource)
-/// to bypass the V8/JavaScript constructor path, similar to how browsers like
-/// Firefox use ReadableStream::CreateByteNative() internally.
+/// The bytes are enqueued as the stream pulls, a chunk at a time, rather
+/// than all at once in parallel: a Blob's data is in memory and never
+/// changes, so reading it when asked is the same bytes in the same order,
+/// and a stream nobody reads holds none of them.
 pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
-    const ctx = instance.ctx;
-
-    // Create the blob stream source state
-    const source_state = allocator.create(BlobStreamSource) catch return error.OutOfMemory;
-    errdefer allocator.destroy(source_state);
-
-    source_state.* = BlobStreamSource{
-        .blob_data = internal.blob_data,
-        .position = 0,
-        .allocator = allocator,
-    };
-
-    // Create ReadableStream using internal Zig API (bypasses V8/JSValue path)
-    // This mirrors browser implementations like Firefox's CreateByteNative()
-    const zig_source = ReadableStreamImpl.ZigUnderlyingSource{
-        .pull = &blobStreamPullNative,
-        .cancel = &blobStreamCancelNative,
-        .context = @ptrCast(source_state),
-        .is_byte_stream = true,
-        .auto_allocate_chunk_size = DEFAULT_CHUNK_SIZE,
-    };
-
-    const stream = ReadableStreamImpl.createFromZigSource(
-        allocator,
-        ctx,
-        zig_source,
-    ) catch |err| {
-        allocator.destroy(source_state);
-        return switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
-            error.NoEventLoop => error.InvalidState,
-        };
-    };
-
-    return stream;
+    _ = getInternal(instance) orelse return error.InvalidState;
+    const realm = try js.Realm.of(instance);
+    return BlobStream.create(realm, instance);
 }
 
-/// Default chunk size for blob streaming (64KB)
-const DEFAULT_CHUNK_SIZE: u64 = 64 * 1024;
+/// The most "get stream" enqueues per pull.
+const chunk_size: usize = 64 * 1024;
 
-/// Type string for byte streams
-const blob_stream_type_bytes: []const u8 = "bytes";
-
-/// Thread-local context for blob stream callbacks
-/// This is a workaround since UnderlyingSource doesn't support context
-threadlocal var blob_stream_context: ?*BlobStreamSource = null;
-
-/// Clear the thread-local blob stream context
-///
-/// MUST be called on isolate disposal to prevent use-after-free.
-/// The blob stream context may hold references to BlobData that becomes
-/// invalid when the isolate's associated Zig state is cleaned up.
-///
-/// Called by the isolate lifecycle cleanup sequence.
-pub fn clearBlobStreamContext() void {
-    blob_stream_context = null;
-}
-
-/// Internal state for blob stream source
-const BlobStreamSource = struct {
-    blob_data: *file.BlobData,
-    position: usize,
+/// The underlying source of a Blob's stream. It reads the Blob's own bytes,
+/// so it keeps the Blob alive (`keep`) until the stream is done with it.
+const BlobStream = struct {
     allocator: std.mem.Allocator,
+    blob: *runtime.Instance,
+    keep: same_object.Pin = .{},
+    /// Bytes of the blob already enqueued.
+    position: usize = 0,
+    /// Every byte is enqueued, or the stream was cancelled: the blob is let
+    /// go, and must not be read again.
+    done: bool = false,
+    /// The stream is done with this source (its algorithms were cleared).
+    detached: bool = false,
+    /// Calls into the stream under way from here: freeing waits for them.
+    busy: u32 = 0,
+
+    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+
+    fn create(realm: js.Realm, blob: *runtime.Instance) !*runtime.Instance {
+        const allocator = blob.ctx.allocator;
+        const self = try allocator.create(BlobStream);
+        self.* = .{ .allocator = allocator, .blob = blob };
+        self.keep.hold(blob);
+        // A failed setup clears the source's algorithms, which must not free
+        // it under this call.
+        self.busy += 1;
+        const stream = srd.createReadableByteStream(realm, blob.ctx, .{ .ctx = self, .vtable = &vtable });
+        self.busy -= 1;
+        if (stream) |st| return st else |err| {
+            self.detached = true;
+            self.freeIfDone();
+            return err;
+        }
+    }
+
+    fn start(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance) js.Error!js.Completion {
+        return .{ .normal = try realm.undefinedValue() };
+    }
+
+    /// Enqueue the next chunk, and close the stream after the last.
+    fn pull(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.busy += 1;
+        defer {
+            self.busy -= 1;
+            self.freeIfDone();
+        }
+        if (self.done) return realm.promiseResolvedWithUndefined();
+        const bytes = if (getInternal(self.blob)) |internal| internal.blob_data.bytes else &[_]u8{};
+        if (self.position < bytes.len) {
+            const chunk = bytes[self.position..][0..@min(chunk_size, bytes.len - self.position)];
+            self.position += chunk.len;
+            const buffer = js.allocateBuffer(chunk.len) orelse return error.V8Failure;
+            defer js.dispose(buffer);
+            if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..chunk.len], chunk);
+            const view = try js.newView(.uint8, buffer, 0, chunk.len);
+            defer js.dispose(view);
+            try srd.byteControllerEnqueue(realm, controller, view);
+        }
+        if (!self.detached and self.position >= bytes.len) {
+            // All of it is enqueued: nothing more to read, so let the blob go.
+            self.done = true;
+            self.keep.release();
+            try srd.byteControllerClose(realm, controller);
+        }
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.done = true;
+        self.keep.release();
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn deinitSource(ctx: ?*anyopaque, _: std.mem.Allocator) void {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.detached = true;
+        self.freeIfDone();
+    }
+
+    fn freeIfDone(self: *BlobStream) void {
+        if (!self.detached or self.busy > 0) return;
+        self.keep.release();
+        self.allocator.destroy(self);
+    }
 };
-
-/// Sentinel value to indicate no result / end of stream
-const null_result: u8 = 0;
-/// Sentinel value to indicate successful read
-const success_result: u8 = 1;
-
-/// Native pull callback for blob stream (used with internal ReadableStream API)
-/// Called by ReadableStream when it needs more data.
-/// Signature matches ZigUnderlyingSource.pull
-fn blobStreamPullNative(controller: *runtime.Instance, context: ?*anyopaque) anyerror!void {
-    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return error.InvalidState));
-
-    // Check if we've read all bytes
-    if (source.position >= source.blob_data.bytes.len) {
-        // Close the stream - no more data
-        // TODO: Call controller.close() when ReadableByteStreamController is fully implemented
-        _ = controller;
-        return;
-    }
-
-    // Calculate chunk size
-    const remaining = source.blob_data.bytes.len - source.position;
-    const chunk_len = @min(remaining, DEFAULT_CHUNK_SIZE);
-
-    // Get the chunk data
-    const chunk_data = source.blob_data.bytes[source.position..][0..chunk_len];
-    _ = chunk_data; // TODO: Enqueue to controller when fully implemented
-
-    // Advance position
-    source.position += chunk_len;
-}
-
-/// Native cancel callback for blob stream (used with internal ReadableStream API)
-/// Signature matches ZigUnderlyingSource.cancel
-fn blobStreamCancelNative(reason: ?*const anyopaque, context: ?*anyopaque) anyerror!void {
-    _ = reason;
-    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return));
-    // Reset position
-    source.position = 0;
-}
-
-/// Legacy pull callback for blob stream (kept for compatibility)
-/// Called by ReadableStream when it needs more data
-fn blobStreamPull(controller: *const anyopaque) *const anyopaque {
-    _ = controller;
-    // Get source state from thread-local context
-    const source = blob_stream_context orelse return @ptrCast(&null_result);
-
-    // Check if we've read all bytes
-    if (source.position >= source.blob_data.bytes.len) {
-        // Signal end of stream
-        return @ptrCast(&null_result);
-    }
-
-    // Calculate chunk size
-    const remaining = source.blob_data.bytes.len - source.position;
-    const chunk_len = @min(remaining, DEFAULT_CHUNK_SIZE);
-
-    // Advance position
-    source.position += chunk_len;
-
-    // Return success marker (in full impl, would enqueue chunk to controller)
-    return @ptrCast(&success_result);
-}
-
-/// Legacy cancel callback for blob stream (kept for compatibility)
-fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
-    _ = controller;
-    // Reset position if source exists
-    if (blob_stream_context) |source| {
-        source.position = 0;
-    }
-    return @ptrCast(&null_result);
-}
 
 /// Operation: bytes
 ///

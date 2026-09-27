@@ -619,97 +619,195 @@ fn convertAllowSharedBufferSource(
     return ConversionError.TypeError;
 }
 
-/// Convert V8 value to BodyInit union
-/// BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
-/// XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
+/// WebIDL §3.2.24, converting to BodyInit - flattened, (ReadableStream or
+/// Blob or BufferSource or FormData or URLSearchParams or USVString).
+///
+/// Step 4: a platform object goes to the member interface it implements
+/// (File implements Blob). Steps 6-9: an ArrayBuffer, DataView or typed
+/// array goes to BufferSource. Anything else - a plain object, a URL, a
+/// platform object of another interface - is a USVString, by ToString.
+///
+/// Ownership, which the argument-cleanup rules in interface.zig depend on
+/// (`freeBodyInitArg`): the interface arms are the Instances the wrappers
+/// hold, owned by nobody here; the USVString arm is an owned buffer, or a
+/// literal "" never freed; the BufferSource arm is always `.array_buffer`,
+/// an ArrayBuffer struct AND its bytes, both allocated here - a copy of the
+/// bytes the value held, which is what Fetch's "extract a body" takes
+/// (BufferSource: "a copy of the bytes held by object"). Copying at
+/// conversion rather than holding a view means a getter in a later argument
+/// that detaches or resizes the buffer cannot leave the impl reading freed
+/// memory.
 fn convertBodyInit(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!typedefs.BodyInit {
-    _ = isolate; // Used only for potential future error reporting
-
-    // Check for null/undefined - return empty USVString (preserving standard coercion)
-    // NOTE: Fetch/XHR treat null body as no-body (empty), matching this behavior.
-    if (v8.v8_Value_IsNullOrUndefined(value)) {
-        // Use ToString() to be explicit and follow WebIDL §3.2.1
-        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
-        const length = v8.v8_String_Utf8Length(string);
-        const buffer = try allocator.alloc(u8, @intCast(length));
-        errdefer allocator.free(buffer);
-        _ = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
-        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
+    // Step 4: a platform object implementing a member interface.
+    if (v8.v8_Value_IsObject(value) and !v8.v8_Value_IsFunction(value)) {
+        if (fromV8Value(*runtime.Instance, allocator, isolate, context, value)) |instance| {
+            if (bodyInitArmOf(instance)) |arm| return arm;
+        } else |_| {}
     }
 
-    // Check if it's a string (most common case: USVString)
-    if (v8.v8_Value_IsString(value)) {
-        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
-        const length = v8.v8_String_Utf8Length(string);
-        if (length <= 0) {
-            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
-        }
-
-        const buffer = try allocator.alloc(u8, @intCast(length));
-        errdefer allocator.free(buffer);
-        const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
-        if (written != length) {
-            allocator.free(buffer);
-            return ConversionError.StringError;
-        }
-        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
+    // Steps 6-9: ArrayBuffer, and the ArrayBufferViews (DataView and the
+    // typed arrays). Not [AllowShared]: a SharedArrayBuffer is no
+    // BufferSource, and a view over one is a TypeError.
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        var data: ?*anyopaque = null;
+        var len: usize = 0;
+        const bytes: []const u8 = if (v8.v8_ArrayBuffer_Bytes(value, &data, &len) and len > 0 and data != null)
+            @as([*]const u8, @ptrCast(data.?))[0..len]
+        else
+            &.{};
+        return bodyInitCopy(allocator, bytes);
+    }
+    if (v8.v8_Value_IsArrayBufferView(value)) {
+        var info: v8.ViewInfo = undefined;
+        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
+        if (info.buffer_shared) return ConversionError.TypeError;
+        if (info.buffer_detached or info.byte_length == 0) return bodyInitCopy(allocator, &.{});
+        const buffer = v8.v8_ArrayBufferView_Buffer(value) orelse return ConversionError.TypeError;
+        defer v8.v8_Global_Dispose(buffer);
+        var data: ?*anyopaque = null;
+        var len: usize = 0;
+        if (!v8.v8_ArrayBuffer_Bytes(buffer, &data, &len) or data == null) return bodyInitCopy(allocator, &.{});
+        if (info.byte_offset + info.byte_length > len) return ConversionError.TypeError;
+        const all: [*]const u8 = @ptrCast(data.?);
+        return bodyInitCopy(allocator, all[info.byte_offset..][0..info.byte_length]);
     }
 
-    // Check if it's a TypedArray (Uint8Array, etc.) - maps to BufferSource
-    if (v8.v8_Value_IsTypedArray(value)) {
-        const byte_length = v8.v8_TypedArray_ByteLength(value);
-
-        if (byte_length == 0) {
-            // Empty BufferSource - for now use an empty string as USVString fallback
-            // TODO: Properly handle BufferSource typedef when it's fully implemented
-            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
-        }
-
-        // Get the underlying ArrayBuffer and offset
-        const ab = v8.v8_TypedArray_Buffer(value) orelse {
-            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
-        };
-        const byte_offset = v8.v8_TypedArray_ByteOffset(value);
-        const data = v8.v8_ArrayBuffer_Data(ab);
-
-        if (data == null) {
-            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
-        }
-
-        // Copy the data from the correct offset
-        const buffer = try allocator.alloc(u8, byte_length);
-        const src_ptr = @as([*]const u8, @ptrCast(data.?)) + byte_offset;
-        @memcpy(buffer, src_ptr[0..byte_length]);
-
-        // TODO: Return as BufferSource when typedef is properly implemented
-        // For now, return as USVString (the buffer contains raw bytes, this is lossy)
-        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
-    }
-
-    // TODO: Check for ReadableStream - return .readable_stream variant
-    // TODO: Check for Blob, FormData, URLSearchParams instances
-
-    // Fallback for other objects (RegExp, etc.) - convert to string via toString()
-    // Per WebIDL §3.2.1, DOMString/USVString conversion calls ToString() on the value
-    const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+    // Step 15: USVString - ToString, so null is "null" and a URL its href.
+    const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
+    defer v8.v8_String_Dispose(string);
     const length = v8.v8_String_Utf8Length(string);
-    if (length <= 0) {
+    if (length < 0) return ConversionError.StringError;
+    if (length == 0) {
         return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
     }
-
     const buffer = try allocator.alloc(u8, @intCast(length));
     errdefer allocator.free(buffer);
     const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
-    if (written != length) {
-        allocator.free(buffer);
-        return ConversionError.StringError;
-    }
+    if (written != length) return ConversionError.StringError;
     return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
+}
+
+/// The BodyInit arm a platform object goes to: the member interface it
+/// implements. Null for any other interface.
+fn bodyInitArmOf(instance: *runtime.Instance) ?typedefs.BodyInit {
+    const interfaces = @import("interfaces");
+    if (instance.stateAs(interfaces.ReadableStream.State) != null) return .{ .readable_stream = instance };
+    if (instance.stateAs(interfaces.Blob.State) != null) return .{ .xmlhttp_request_body_init = .{ .blob = instance } };
+    if (instance.stateAs(interfaces.FormData.State) != null) return .{ .xmlhttp_request_body_init = .{ .form_data = instance } };
+    if (instance.stateAs(interfaces.URLSearchParams.State) != null) return .{ .xmlhttp_request_body_init = .{ .urlsearch_params = instance } };
+    return null;
+}
+
+/// BodyInit's BufferSource arm over a copy of `bytes`: an ArrayBuffer struct
+/// and its data, both owned by the argument (see `convertBodyInit`).
+fn bodyInitCopy(allocator: std.mem.Allocator, bytes: []const u8) ConversionError!typedefs.BodyInit {
+    const copy = try allocator.create(buffer_sources.ArrayBuffer);
+    errdefer allocator.destroy(copy);
+    copy.* = try buffer_sources.ArrayBuffer.init(allocator, bytes.len);
+    @memcpy(copy.data, bytes);
+    return .{ .xmlhttp_request_body_init = .{ .buffer_source = .{ .array_buffer = copy } } };
+}
+
+// =============================================================================
+// Union arms of interface type (WebIDL §3.2.24 step 4)
+// =============================================================================
+
+/// The interface a union arm of type `*runtime.Instance` names, from the
+/// arm's name - which codegen derives from the interface's
+/// (`sanitizeTypeName` in codegen/generator.zig: an underscore before an
+/// upper-case letter that follows a lower-case one, then lower case, so
+/// URLSearchParams is `urlsearch_params`). Null when no interface has that
+/// name: the arm then cannot be checked, and accepts any platform object.
+pub fn unionArmInterface(comptime arm: []const u8) ?type {
+    comptime {
+        @setEvalBranchQuota(10_000_000);
+        const interfaces = @import("interfaces");
+        // Typedefs of an interface type take the typedef's name.
+        const aliases = .{.{ "window_proxy", "Window" }};
+        for (aliases) |alias| {
+            if (std.mem.eql(u8, alias[0], arm)) return @field(interfaces, alias[1]);
+        }
+        for (@typeInfo(interfaces).@"struct".decls) |decl| {
+            if (!isArmNameOf(decl.name, arm)) continue;
+            const I = @field(interfaces, decl.name);
+            if (@TypeOf(I) != type or !@hasDecl(I, "State")) continue;
+            return I;
+        }
+        return null;
+    }
+}
+
+/// The WebIDL name of the interface `unionArmInterface` finds, for tests
+/// (`tests/v8` cannot import `interfaces`).
+pub fn unionArmInterfaceName(comptime arm: []const u8) ?[]const u8 {
+    const I = comptime unionArmInterface(arm);
+    if (comptime I == null) return null;
+    return I.?.Meta.name;
+}
+
+/// The generated typedefs, re-exported so `tests/v8` can walk every union's
+/// interface arms.
+pub const generated_typedefs = @import("typedefs");
+
+/// Whether codegen names a union arm of interface `name` `arm`.
+fn isArmNameOf(comptime name: []const u8, comptime arm: []const u8) bool {
+    comptime {
+        var i: usize = 0;
+        var prev_was_lower = false;
+        for (name) |c| {
+            if (std.ascii.isUpper(c)) {
+                if (prev_was_lower) {
+                    if (i >= arm.len or arm[i] != '_') return false;
+                    i += 1;
+                }
+                if (i >= arm.len or arm[i] != std.ascii.toLower(c)) return false;
+                i += 1;
+                prev_was_lower = false;
+            } else {
+                if (i >= arm.len or arm[i] != c) return false;
+                i += 1;
+                prev_was_lower = std.ascii.isLower(c);
+            }
+        }
+        return i == arm.len;
+    }
+}
+
+/// Whether `instance` implements the interface arm `arm` names: its state
+/// ancestry holds that interface's State, so File implements Blob. An arm
+/// no interface is named for, or an instance whose vtable carries no
+/// ancestry, cannot be checked, and is accepted.
+fn implementsArm(comptime arm: []const u8, instance: *runtime.Instance) bool {
+    const Interface = comptime unionArmInterface(arm);
+    if (comptime Interface == null) return true;
+    if (instance.vtable.ancestors.len == 0) return true;
+    return instance.stateAs(Interface.?.State) != null;
+}
+
+/// WebIDL §3.2.24 step 4 for a union with `*runtime.Instance` arms: if
+/// `value` is a platform object, the arm of the first member interface it
+/// implements. Arms that name an interface are tried before any that
+/// cannot be checked. Null when `value` is no platform object, or one that
+/// implements none of them.
+fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ?T {
+    const fields = @typeInfo(T).@"union".fields;
+    const instance = fromV8Value(*runtime.Instance, allocator, isolate, context, value) catch return null;
+    inline for (fields) |field| {
+        if (field.type == *runtime.Instance and comptime unionArmInterface(field.name) != null) {
+            if (implementsArm(field.name, instance)) return @unionInit(T, field.name, instance);
+        }
+    }
+    inline for (fields) |field| {
+        if (field.type == *runtime.Instance and comptime unionArmInterface(field.name) == null) {
+            return @unionInit(T, field.name, instance);
+        }
+    }
+    return null;
 }
 
 /// WebIDL 3.2.18 steps 4-5: a dictionary's members are read least-derived
@@ -1055,8 +1153,13 @@ pub fn fromV8Value(
         };
 
         // Runtime dispatch based on V8 value type
-        // Check function FIRST since functions are also objects in JavaScript
-        if (v8.v8_Value_IsFunction(value)) {
+        // Check function FIRST since functions are also objects in JavaScript.
+        // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
+        // - if there is one. Otherwise it is just an object and goes on
+        // through the object steps and, failing those, to the string step
+        // (ToString), so `new Request(URL)` - the URL constructor - is the
+        // string it stringifies to.
+        if (function_idx != null and v8.v8_Value_IsFunction(value)) {
             if (function_idx) |idx| {
                 // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
                 // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
@@ -1106,16 +1209,19 @@ pub fn fromV8Value(
             // The problem: v8_Object_InternalFieldCount_Raw segfaults on plain objects.
             // Solution: Try instance conversion, but if it returns an instance with null
             // internal pointer, treat it as a plain object.
-            if (instance_idx) |idx| {
-                const FieldType = fields[idx].type;
+            if (instance_idx != null) {
                 // Try to extract as instance - but first check if we have a string alternative
                 // because strings should take priority over treating them as objects
                 if (string_idx != null and v8.v8_Value_IsString(value)) {
                     // This is a string, skip instance extraction and let string handling below deal with it
-                } else if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
-                    return @unionInit(T, fields[idx].name, converted);
-                } else |_| {
-                    // Instance conversion failed - this might be a native JS object like URL.
+                } else if (platformObjectArm(T, allocator, isolate, context, value)) |arm| {
+                    // WebIDL §3.2.24 step 4: a platform object goes to the
+                    // arm whose interface it implements.
+                    return arm;
+                } else {
+                    // Not a platform object, or one no arm names - a URL
+                    // given for (Request or USVString), a Blob for (Node or
+                    // DOMString) - so it converts as any other object.
                     // If we have a string variant, try to convert the object to string via toString()
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation

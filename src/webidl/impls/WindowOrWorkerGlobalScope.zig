@@ -6,6 +6,7 @@ const html_core = @import("html_core");
 const global_settings = @import("dom").global_settings;
 const streams_js = @import("streams_js.zig");
 const same_object = @import("same_object.zig");
+const fetch_body = @import("fetch_body.zig");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -449,6 +450,12 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fetch_holds: bool = true,
         /// A settle task holds this call, until it runs.
         task_holds: bool = false,
+        /// While requestObject's body is read from its stream to be sent:
+        /// the read, and the request waiting for its bytes. The fetch
+        /// starts once they are all read (`uploadRead`). Until then the
+        /// read stands for the fetch in `fetch_holds`.
+        upload: ?*fetch_body.ReadAll = null,
+        pending_request: ?*fetch.internal.InternalRequest = null,
 
         const Self = @This();
 
@@ -552,6 +559,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 response.deinit();
                 return self.rejectTypeError(realm, "Failed to fetch");
             }
+            // The abort steps name responseObject from here: an abort after
+            // this errors its body (step 11.4's "abort the fetch() call",
+            // step 5) - also once this call is over, so the response carries
+            // the signal itself.
+            if (self.liveSignal()) |signal| _ = fetch_objects.followSignal(response_object, signal);
 
             // Step 5: resolve p with responseObject.
             const wrapper = realm.wrap(response_object) catch return;
@@ -587,13 +599,39 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             // Step 11.1: Set locallyAborted to true.
             self.locally_aborted = true;
 
+            // Step 11.4's "abort the fetch() call", step 2: cancel request's
+            // body with the reason, while it is being read to be sent - the
+            // stream's source hears it at once. (A body of bytes has nothing
+            // script can see to cancel.)
+            if (self.upload) |u| {
+                self.upload = null;
+                if (self.pending_request) |r| r.deinit();
+                self.pending_request = null;
+                const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch null;
+                const reason: ?streams_js.Value = if (signal) |s| blk: {
+                    const value = interfaces.AbortSignal.get_reason(s) catch break :blk null;
+                    const r = cancel_realm orelse break :blk null;
+                    break :blk r.fromRuntime(value) catch null;
+                } else null;
+                if (reason) |r| {
+                    defer streams_js.dispose(r);
+                    u.cancel(r);
+                } else if (cancel_realm) |r| {
+                    const undef = r.undefinedValue() catch null;
+                    if (undef) |v| {
+                        defer streams_js.dispose(v);
+                        u.cancel(v);
+                    }
+                }
+                self.fetch_holds = false;
+            }
+
             // Step 11.3: Abort controller with the signal's abort reason -
             // the fetch ends here, its transfer cancelled, and a body still
             // arriving errors with that reason: step 11.4's "abort the
             // fetch() call" step 5, "error response's body with error", once
             // responseObject exists, reaches the body's stream through its
-            // pipe. Deviation: request's body is bytes, not a stream, so
-            // there is nothing of it to cancel (step 2).
+            // pipe.
             if (self.in_flight) |f| {
                 self.in_flight = null;
                 f.terminateWith(self.abortFailure(signal));
@@ -634,6 +672,54 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             const signal = self.signal orelse return null;
             if (runtime.SlabAllocator.generationOf(signal) != self.signal_generation) return null;
             return signal;
+        }
+
+        /// requestObject's body is read: it is the request's body now, and
+        /// the fetch starts.
+        fn uploadRead(context: *anyopaque, bytes: []const u8) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.upload = null;
+            const request = self.pending_request orelse return self.startFailed();
+            self.pending_request = null;
+            const body = fetch.internal.Body.fromBytes(self.allocator, bytes) catch {
+                request.deinit();
+                return self.startFailed();
+            };
+            if (request.body) |old| switch (old) {
+                .body => |b| b.deinit(),
+                .bytes => {},
+            };
+            request.body = .{ .body = body };
+            // The fetch owns the request from here, and frees it on failure.
+            self.in_flight = fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
+                return self.startFailed();
+        }
+
+        /// requestObject's body could not be read - its stream errored, or a
+        /// chunk was no Uint8Array: a network error. Or the read was dropped
+        /// (`e` null): the realm is going, its stream torn down, and nothing
+        /// may be made in it - p is let go unsettled, as `gone` does.
+        fn uploadFailed(context: *anyopaque, e: ?streams_js.Value) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.upload = null;
+            if (self.pending_request) |r| r.deinit();
+            self.pending_request = null;
+            if (e == null) {
+                self.settleResolver();
+                self.fetch_holds = false;
+                return self.maybeRelease();
+            }
+            self.startFailed();
+        }
+
+        /// The fetch never started: p rejects with a TypeError, as for a
+        /// network error, and the fetch lets go of this call.
+        fn startFailed(self: *Self) void {
+            if (!self.settled) {
+                if (streams_js.Realm.ofContext(self.ctx)) |realm| self.rejectTypeError(realm, "Failed to fetch") else |_| self.settleResolver();
+            }
+            self.fetch_holds = false;
+            self.maybeRelease();
         }
 
         /// A task that will never run: its loop is going.
@@ -708,7 +794,10 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     if (try interfaces.AbortSignal.get_aborted(signal)) {
         const reason = try realm.fromRuntime(try interfaces.AbortSignal.get_reason(signal));
         defer streams_js.dispose(reason);
+        // "Abort the fetch() call" step 1: reject p; step 2: cancel
+        // request's body, if it is readable.
         p.reject(realm, reason);
+        if (fetch_objects.requestBodyStream(request_object)) |stream| fetch_body.cancelStream(realm, stream, reason);
         return p.returnOwned();
     }
 
@@ -726,12 +815,30 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         return error.OutOfMemory;
     };
     call.* = .{ .allocator = allocator, .ctx = instance.ctx, .isolate = realm.isolate, .resolver = p.resolver };
-    call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
-        // The fetch owned the request, and freed it.
-        allocator.destroy(call);
-        rejectWithTypeError(realm, p, "Failed to fetch");
-        return p.returnOwned();
-    };
+    // Only HTTP(S) transmits a request body (HTTP-network fetch); a data:,
+    // blob: or about: fetch never reads it, so neither does this - a stream
+    // that never closes must not hold such a fetch up.
+    const url = fetched_request.getUrl();
+    const transmits_body = std.ascii.startsWithIgnoreCase(url, "http:") or std.ascii.startsWithIgnoreCase(url, "https:");
+    const body_stream = if (transmits_body) fetch_objects.requestBodyStream(request_object) else null;
+    if (body_stream) |stream| {
+        // The body's bytes are only in its stream: read them first (the
+        // read starts below, once the abort steps can reach it).
+        call.pending_request = fetched_request;
+        call.upload = fetch_body.ReadAll.start(allocator, realm, stream, call, Call.uploadRead, Call.uploadFailed) catch {
+            fetched_request.deinit();
+            allocator.destroy(call);
+            rejectWithTypeError(realm, p, "Failed to fetch");
+            return p.returnOwned();
+        };
+    } else {
+        call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
+            // The fetch owned the request, and freed it.
+            allocator.destroy(call);
+            rejectWithTypeError(realm, p, "Failed to fetch");
+            return p.returnOwned();
+        };
+    }
     resolver_taken = true;
 
     // Step 11: Add the abort steps to requestObject's signal. Without them
@@ -743,6 +850,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     } else |err| {
         std.log.scoped(.fetch).warn("fetch(): abort steps not added: {s}", .{@errorName(err)});
     }
+
+    // Read the body to send. It may be read - and the fetch started, or p
+    // rejected and the call freed - before this returns: `call` is not
+    // touched after.
+    if (call.upload) |u| u.begin();
 
     // Step 13.
     return p.returnOwned();

@@ -441,3 +441,91 @@ test "a response with a null body status has a null body, and its transfer stops
     try testing.expectEqual(@as(u16, 204), response.status);
     try testing.expect(response.body == null);
 }
+
+/// Takes the body's bytes only once `taking` is set - a reader that falls
+/// behind.
+const LazyReader = struct {
+    response: ?*fetch.internal.InternalResponse = null,
+    taking: bool = false,
+    received: usize = 0,
+    finished: bool = false,
+
+    fn client(self: *LazyReader) AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = onFinished };
+    }
+    fn done(context: *anyopaque, result: algorithms.FetchError!algorithms.FetchResult) void {
+        const self: *LazyReader = @ptrCast(@alignCast(context));
+        var r = result catch return;
+        r.timing_info.deinit();
+        self.response = r.response;
+        if (r.response.body) |body| if (body.pipe) |pipe| {
+            pipe.consumer = .{ .context = self, .notify = notify };
+        };
+    }
+    fn notify(context: *anyopaque) void {
+        const self: *LazyReader = @ptrCast(@alignCast(context));
+        if (self.taking) self.take();
+    }
+    fn take(self: *LazyReader) void {
+        const pipe = self.response.?.body.?.pipe.?;
+        const taken = pipe.take() catch return;
+        defer testing.allocator.free(taken);
+        self.received += taken.len;
+    }
+    fn bodyPipe(self: *LazyReader) ?*fetch.internal.BodyPipe {
+        const r = self.response orelse return null;
+        const body = r.body orelse return null;
+        return body.pipe;
+    }
+    fn alive(_: *anyopaque) bool {
+        return true;
+    }
+    fn gone(_: *anyopaque) void {}
+    fn onFinished(context: *anyopaque) void {
+        const self: *LazyReader = @ptrCast(@alignCast(context));
+        self.finished = true;
+    }
+    fn deinit(self: *LazyReader) void {
+        if (self.response) |r| r.deinit();
+    }
+};
+
+test "a body nobody reads pauses its transfer at the high-water mark, and reading resumes it" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    // 8 MiB, sent as fast as the connection takes it.
+    const size: usize = 8 * 1024 * 1024;
+    var reader: LazyReader = .{};
+    defer reader.deinit();
+    _ = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/big/8192"), .{}, &scheduler, reader.client());
+
+    // Nobody takes anything: the transfer stops near the high-water mark.
+    const deadline = clock.monotonicMillis() + 1_500;
+    while (clock.monotonicMillis() < deadline) {
+        _ = async_fetch.pumpWith(&scheduler);
+        clock.sleep(std.time.ns_per_ms);
+    }
+    const pipe = reader.bodyPipe() orelse return error.NoBody;
+    try testing.expect(!reader.finished);
+    try testing.expect(pipe.received >= fetch.internal.body_pipe.high_water_mark);
+    // What curl had read before the pause took hold, and no more.
+    try testing.expect(pipe.received <= fetch.internal.body_pipe.high_water_mark + 1024 * 1024);
+
+    // Reading resumes it, to the end.
+    reader.taking = true;
+    reader.take();
+    const Until = struct {
+        fn finished(ctx: *anyopaque) bool {
+            const r: *LazyReader = @ptrCast(@alignCast(ctx));
+            return r.finished;
+        }
+    };
+    turnUntil(&scheduler, 20_000, Until.finished, &reader);
+    try testing.expect(reader.finished);
+    try testing.expectEqual(size, reader.received);
+}

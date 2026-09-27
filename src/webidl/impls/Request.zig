@@ -30,6 +30,7 @@ const webidl = @import("webidl");
 
 const Request = interfaces.Request;
 const same_object = @import("same_object.zig");
+const fetch_body = @import("fetch_body.zig");
 
 pub const State = Request.State;
 
@@ -123,7 +124,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // fetch() reads a Request object's request through this hook.
-    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf });
+    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend });
 
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -325,7 +326,9 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             signal = input_state.own.signal;
         },
     }
-    errdefer base_request.deinit();
+    // The request is this function's until the instance takes it below.
+    var base_request_owned = true;
+    errdefer if (base_request_owned) base_request.deinit();
 
     // Step 12: Set request to a new request (copy of base with modifications)
     // For now, we'll modify base_request in place and create the final instance
@@ -505,13 +508,29 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         }
     }
 
-    // Step 35: Validate GET/HEAD don't have body BEFORE creating instance
+    // Step 34: inputBody is input's request's body if input is a Request
+    // object; otherwise null.
+    const input_request: ?*runtime.Instance = switch (input) {
+        .request => |r| r,
+        .usvstring => null,
+    };
+    const input_has_body = if (input_request) |r| (if (bodyOwner(r)) |o| o.body != null else false) else false;
+
+    // Step 35: If either init["body"] exists and is non-null or inputBody is
+    // non-null, and request's method is `GET` or `HEAD`, then throw a
+    // TypeError.
     const has_init_body = init_opts.body != null;
     const method_is_get_or_head = std.mem.eql(u8, base_request.method, "GET") or
         std.mem.eql(u8, base_request.method, "HEAD");
 
-    if (has_init_body and method_is_get_or_head) {
+    if ((has_init_body or input_has_body) and method_is_get_or_head) {
         return error.TypeError;
+    }
+
+    // Step 41.1, checked before anything is made: if initBody is null and
+    // inputBody is non-null, and inputBody is unusable, throw a TypeError.
+    if (!has_init_body and input_has_body) {
+        if (fetch_body.isUnusable(bodyOwner(input_request.?).?)) return error.TypeError;
     }
 
     // Now create the instance with the configured request
@@ -523,6 +542,11 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     const internal = state.own._internal.?;
     internal.request.deinit(); // Free the default empty request
     internal.request = base_request; // Transfer ownership
+    base_request_owned = false;
+    // A step below that throws leaves an object nobody has wrapped: free it,
+    // and the request with it. (The duplex check on a stream body used to
+    // leak its InternalState here.)
+    errdefer runtime.Instance.deinit(instance);
 
     // Step 29 (with step 13's "If init["signal"] exists, then set signal to
     // it"): signals is « signal » if signal is non-null; otherwise « ».
@@ -532,55 +556,50 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     state.own.signal = try abort_algorithms.createDependent(ctx, signals);
     internal.signal_pin.hold(state.own.signal);
 
-    // Steps 36-42: Handle body from init
+    // Steps 36-37: If init["body"] exists and is non-null, initBody is the
+    // body of extracting it, with keepalive set to request's keepalive, and
+    // its type is appended as `Content-Type` unless the headers have one.
     if (init_opts.body) |body_init| {
-        // Handle BodyInit union type
-        switch (body_init) {
-            .readable_stream => |stream_instance| {
-                // ReadableStream body - store reference
-                // TODO: Implement proper ReadableStream body handling
-                _ = stream_instance;
-            },
-            .xmlhttp_request_body_init => |xhr_body| {
-                // Handle XMLHttpRequestBodyInit variants
-                switch (xhr_body) {
-                    .usvstring => |body_string| {
-                        // String body - USVString is []const u8
-                        const body_bytes = body_string;
-                        if (body_bytes.len > 0) {
-                            // Create Body from bytes - Body.fromBytes copies internally,
-                            // so no need to dupe first (which would leak)
-                            const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, body_bytes) catch {
-                                return instance;
-                            };
-                            internal.request.body = .{ .body = fetch_body };
+        var extracted = fetch_body.extract(ctx.allocator, body_init, internal.request.keepalive) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.TypeError => error.TypeError,
+        };
+        defer extracted.deinit();
 
-                            // Set Content-Type header if not already set
-                            const has_content_type = internal.request.header_list.contains("content-type");
-                            if (!has_content_type) {
-                                internal.request.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
-                            }
-                        }
-                    },
-                    .blob => |blob_instance| {
-                        // TODO: Implement Blob body handling
-                        _ = blob_instance;
-                    },
-                    .buffer_source => |buffer| {
-                        // TODO: Implement BufferSource body handling
-                        _ = buffer;
-                    },
-                    .form_data => |form_instance| {
-                        // TODO: Implement FormData body handling
-                        _ = form_instance;
-                    },
-                    .urlsearch_params => |params_instance| {
-                        // TODO: Implement URLSearchParams body handling
-                        _ = params_instance;
-                    },
-                }
-            },
+        if (extracted.stream) |stream| {
+            // Step 39: a body with a null source - a stream - needs
+            // init["duplex"], and a same-origin or CORS request, and sets
+            // the use-CORS-preflight flag.
+            if (init_opts.duplex == null) return error.TypeError;
+            if (internal.request.mode != .same_origin and internal.request.mode != .cors) return error.TypeError;
+            internal.request.use_cors_preflight = true;
+            // The body's stream is the object itself.
+            state.own.body = stream;
+            internal.body_pin.hold(stream);
         }
+
+        // Step 42: Set this's request's body to finalBody. (Replacing the
+        // input request's, which the request copy above carried over.)
+        if (extracted.takeBody()) |b| {
+            if (internal.request.body) |old_body| switch (old_body) {
+                .body => |ob| ob.deinit(),
+                .bytes => {},
+            };
+            internal.request.body = .{ .body = b };
+        }
+
+        if (extracted.content_type) |content_type| {
+            if (!internal.request.header_list.contains("Content-Type")) {
+                try internal.request.header_list.append("Content-Type", content_type);
+            }
+        }
+    }
+
+    // Step 41.2: if initBody is null and inputBody is non-null, finalBody is
+    // a proxy for inputBody: input's body's stream is piped into it, so
+    // input's body is locked and disturbed from here on.
+    if (!has_init_body and input_has_body) {
+        try fetch_body.proxyInto(bodyOwner(input_request.?).?, bodyOwner(instance).?);
     }
 
     return instance;
@@ -826,73 +845,66 @@ pub fn get_targetAddressSpace(instance: *runtime.Instance) anyerror!enums.IPAddr
 /// create a ReadableStream from internal body data. Falls back to null if
 /// stream creation is not possible (e.g., no event loop).
 pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // If we already have a cached ReadableStream, return it
-    if (state.own.body) |cached_body| {
-        return cached_body;
-    }
-
-    // Check if there's body data
-    const has_body = if (internal.request.body) |body| blk: {
-        switch (body) {
-            .bytes => |bytes| break :blk bytes.len > 0,
-            .body => |body_obj| break :blk body_obj.data.items.len > 0 or body_obj.source != .none,
-        }
-    } else false;
-
-    if (!has_body) {
-        return null;
-    }
-
-    // Try to create a ReadableStream from the body data
-    // This requires an event loop; if not available, return null
-    // (body methods like text()/json() will still work directly)
-    const ctx = instance.ctx;
-
-    // Check if we have an event loop
-    _ = ctx.getOptionalEventLoop() orelse {
-        // No event loop, can't create ReadableStream
-        // Body methods will still work via direct data access
-        return null;
-    };
-
-    // Create a basic ReadableStream (use interface per Golden Rule #13)
-    // For now, create a simple stream that will serve the body data
-    const stream_instance = interfaces.ReadableStream.call_constructor(
-        ctx,
-        webidl.Opt(runtime.JSValue).notPassed(),
-        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
-    ) catch {
-        // Stream creation failed, fall back to null
-        return null;
-    };
-
-    // Cache the stream for future calls
-    // Note: This modifies state, which is mutable through the instance
-    @constCast(&state.own).body = stream_instance;
-    // `state.own.body` is a pointer V8 cannot see: hold the stream's wrapper
-    // for as long as this object, or a collection frees the stream under it.
-    internal.body_pin.hold(stream_instance);
-
-    return stream_instance;
+    const o = bodyOwner(instance) orelse return null;
+    return fetch_body.bodyStream(o);
 }
 
 /// Get bodyUsed
 /// Per Fetch spec: true if body has been read/disturbed
 pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const o = bodyOwner(instance) orelse return false;
+    return fetch_body.bodyUsed(o);
+}
 
-    // Check internal body state
-    if (internal.request.body) |body| {
-        switch (body) {
-            .bytes => return false, // Raw bytes are never "used"
-            .body => |body_obj| return body_obj.isUsed(),
-        }
-    }
-    return false;
+// ============================================================================
+// The Body mixin, through fetch_body.zig
+// ============================================================================
+
+const body_kind = fetch_body.Owner.Kind{ .of = bodyOwner, .steps = bodySteps };
+
+/// This Request as the Body mixin's steps see it.
+pub fn bodyOwner(instance: *runtime.Instance) ?fetch_body.Owner {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    const body: ?*fetch.internal.Body = if (internal.request.body) |rb| switch (rb) {
+        .body => |b| b,
+        // Never a Request object's: its constructor makes a Body.
+        .bytes => null,
+    } else null;
+    return .{
+        .instance = instance,
+        .stream = &state.own.body,
+        .pin = &internal.body_pin,
+        .body = body,
+        .kind = &body_kind,
+    };
+}
+
+/// dom.fetch_objects: this Request's body's stream, when the body's bytes
+/// are only in it - a body with a null source: a ReadableStream, or a proxy
+/// of one. A body of bytes is sent as its bytes, whatever its stream.
+fn bodyStreamToSend(request_object: *runtime.Instance) ?*runtime.Instance {
+    const o = bodyOwner(request_object) orelse return null;
+    const body = o.body orelse return null;
+    if (body.source != .none) return null;
+    return o.stream.*;
+}
+
+/// Each method's own steps on a body that is its bytes.
+fn bodySteps(instance: *runtime.Instance, method: fetch_body.Method) anyerror!runtime.JSValue {
+    return switch (method) {
+        .array_buffer => arrayBufferFromBytes(instance),
+        .blob => blobFromBytes(instance),
+        .bytes => bytesFromBytes(instance),
+        .form_data => formDataFromBytes(instance),
+        .json => jsonFromBytes(instance),
+        .text => textFromBytes(instance),
+    };
+}
+
+fn consumeBody(instance: *runtime.Instance, method: fetch_body.Method) anyerror!runtime.JSValue {
+    const o = bodyOwner(instance) orelse return error.InvalidState;
+    return fetch_body.consume(o, method);
 }
 
 // === Methods - STUBS (Option A) ===
@@ -903,17 +915,8 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Step 1: If this is unusable, throw TypeError
-    if (internal.request.body) |body| {
-        switch (body) {
-            .body => |body_obj| {
-                if (body_obj.isDisturbed()) {
-                    return error.TypeError;
-                }
-            },
-            .bytes => {},
-        }
-    }
+    // Step 1: If this is unusable, throw a TypeError.
+    if (fetch_body.isUnusable(bodyOwner(instance).?)) return error.TypeError;
 
     // Step 2: Clone the internal request
     const cloned_request = try internal.request.clone();
@@ -935,6 +938,11 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     cloned_state.own.signal = try abort_algorithms.createDependent(instance.ctx, &.{state.own.signal});
     cloned_internal.signal_pin.hold(cloned_state.own.signal);
 
+    // "Clone a request" step 2 - "clone a body": a body already in its
+    // stream is teed, this request reading one branch and the clone the
+    // other. (The request clone above teed a body still arriving.)
+    try fetch_body.cloneStream(bodyOwner(instance).?, bodyOwner(cloned_instance).?);
+
     return cloned_instance;
 }
 
@@ -943,6 +951,11 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
 ///
 /// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .array_buffer);
+}
+
+/// `arrayBuffer()` over a body that is its bytes.
+fn arrayBufferFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -1014,6 +1027,11 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .blob);
+}
+
+/// `blob()` over a body that is its bytes.
+fn blobFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -1106,6 +1124,11 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise and Uint8Array creation.
 pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .bytes);
+}
+
+/// `bytes()` over a body that is its bytes.
+fn bytesFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -1177,6 +1200,11 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
 pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .form_data);
+}
+
+/// `formData()` over a body that is its bytes.
+fn formDataFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -1362,6 +1390,11 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
 pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .json);
+}
+
+/// `json()` over a body that is its bytes.
+fn jsonFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -1438,6 +1471,11 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
 ///
 /// Uses the engine abstraction layer for Promise creation and string creation.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    return consumeBody(instance, .text);
+}
+
+/// `text()` over a body that is its bytes.
+fn textFromBytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
