@@ -280,7 +280,7 @@ pub const ScopeSettings = struct {
 pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
     const wctx = forScope(ctx) orelse return null;
     return .{
-        .url = wctx.effective_url,
+        .url = wctx.script_url,
         .worker_type = wctx.worker_type,
         .name = if (wctx.dedicated_worker) |dw| dw.getName() else "",
     };
@@ -469,34 +469,6 @@ const TimerCall = struct {
     }
 };
 
-/// Get the effective URL for a worker, applying WPT URL rewriting rules.
-/// Per WPT convention:
-///   - .https. tests use https://localhost:8443
-///   - .h2. tests use https://localhost:9000 (HTTP/2)
-fn getEffectiveWorkerUrl(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
-    const is_h2 = std.mem.indexOf(u8, url, ".h2.") != null;
-    const is_https = std.mem.indexOf(u8, url, ".https.") != null;
-
-    if (is_h2 or is_https) {
-        // Determine target port based on test type
-        const target_port: []const u8 = if (is_h2) "9000" else "8443";
-
-        // Rewrite http:// to https:// for location object
-        if (std.mem.startsWith(u8, url, "http://localhost:8000")) {
-            // Replace http://localhost:8000 with https://localhost:<port>
-            const rest = url["http://localhost:8000".len..];
-            return try std.fmt.allocPrint(allocator, "https://localhost:{s}{s}", .{ target_port, rest });
-        } else if (std.mem.startsWith(u8, url, "http://")) {
-            // Generic http:// to https:// replacement (preserve original port if present)
-            const rest = url["http://".len..];
-            return try std.fmt.allocPrint(allocator, "https://{s}", .{rest});
-        }
-    }
-
-    // Return a duplicate of the original URL (caller owns the memory)
-    return try allocator.dupe(u8, url);
-}
-
 /// One armed timer on the owner's loop: the manager it was armed on, and its id.
 const MessageDispatchTimer = struct {
     timer: runtime.TimerInterface,
@@ -542,12 +514,10 @@ pub const WorkerHost = struct {
     /// realm goes.
     global_scope: ?*runtime.Instance = null,
 
-    /// Script URL for error messages
+    /// The worker's script URL, absolute: the URL its global scope reports
+    /// as its own ("run a worker" step 9 - HTML takes the response's URL) and
+    /// the one importScripts() resolves against. Owned.
     script_url: []const u8,
-
-    /// The URL the global scope reports as its own: the script's final URL,
-    /// with WPT's https rewrite applied (`getEffectiveWorkerUrl`). Owned.
-    effective_url: []const u8,
 
     /// Worker type (classic or module)
     worker_type: WorkerType,
@@ -632,15 +602,12 @@ pub const WorkerHost = struct {
 
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
-        const effective_url = try getEffectiveWorkerUrl(allocator, script_url);
-        errdefer allocator.free(effective_url);
 
         const agent = try create_agent();
         self.* = .{
             .engine = engine,
             .agent = agent,
             .script_url = url_copy,
-            .effective_url = effective_url,
             .worker_type = worker_type,
             .allocator = allocator,
         };
@@ -934,7 +901,6 @@ pub const WorkerHost = struct {
         disarm(&self.message_dispatch);
         disarm(&self.release_owner_timer);
         self.allocator.free(self.script_url);
-        self.allocator.free(self.effective_url);
         self.allocator.destroy(self);
     }
 
