@@ -51,9 +51,13 @@ pub fn handleOf(value: engine.JSValue) ?*ffi.Value {
 }
 
 /// A Global of the caller's own for any value - a platform object as its
-/// wrapper, a primitive made in the entered realm. OWNED.
-pub fn ownGlobal(entered: Entered, value: engine.JSValue) Error!*ffi.Value {
-    return value_operations.ownHandle(entered.isolate, entered.context(), value) catch |err| protocolError(err);
+/// wrapper, a primitive made in the realm `at` is in. OWNED.
+///
+/// `at`, here and below: where the work happens - an Entered realm, or a
+/// Here inside a native closure; anything with an `isolate` and a
+/// `context()`.
+pub fn ownGlobal(at: anytype, value: engine.JSValue) Error!*ffi.Value {
+    return value_operations.ownHandle(at.isolate, at.context(), value) catch |err| protocolError(err);
 }
 
 /// An OWNED protocol value over a Global the FFI made.
@@ -108,9 +112,9 @@ pub fn newTypeError(isolate: *ffi.Isolate, context: *ffi.Context, message: []con
 /// Throw a new TypeError of the entered realm: the spec's "throw a
 /// TypeError" where the operation must throw it itself (a completion it
 /// hands back, a rejection).
-pub fn throwTypeError(entered: Entered, message: []const u8) Error {
-    const exception = try newTypeError(entered.isolate, entered.context(), message);
-    return rethrow(entered.isolate, exception);
+pub fn throwTypeError(at: anytype, message: []const u8) Error {
+    const exception = try newTypeError(at.isolate, at.context(), message);
+    return rethrow(at.isolate, exception);
 }
 
 /// The realm the context manager hosts for `object`'s creation context - the
@@ -124,15 +128,15 @@ pub fn associatedRealm(object: *ffi.Value) ?engine.Context {
 /// ECMAScript GetMethod(V, P) for an object V and a well-known symbol:
 /// undefined (null here) when the property is undefined or null, a TypeError
 /// when it is not callable. OWNED.
-pub fn getSymbolMethod(entered: Entered, object: *ffi.Value, which: enum { iterator, async_iterator }) Error!?*ffi.Value {
-    const isolate = entered.isolate;
+pub fn getSymbolMethod(at: anytype, object: *ffi.Value, which: enum { iterator, async_iterator }) Error!?*ffi.Value {
+    const isolate = at.isolate;
     const symbol = switch (which) {
         .iterator => ffi.v8_Symbol_GetIterator(isolate),
         .async_iterator => ffi.v8_Symbol_GetAsyncIterator(isolate),
     } orelse return error.OperationFailed;
     defer ffi.v8_Symbol_Dispose(symbol);
     // 1. Let func be ? GetV(V, P).
-    const func = ffi.v8_Object_GetPropertyWithSymbol(entered.context(), @ptrCast(object), symbol) orelse
+    const func = ffi.v8_Object_GetPropertyWithSymbol(at.context(), @ptrCast(object), symbol) orelse
         return error.ExceptionPending;
     // 2. If func is either undefined or null, return undefined.
     if (ffi.v8_Value_IsUndefined(func) or ffi.v8_Value_IsNull(func)) {
@@ -149,24 +153,24 @@ pub fn getSymbolMethod(entered: Entered, object: *ffi.Value, which: enum { itera
 }
 
 /// Get(O, P) for a string key, rethrowing what a getter throws. OWNED.
-pub fn get(entered: Entered, object: *ffi.Value, key: []const u8) Error!*ffi.Value {
+pub fn get(at: anytype, object: *ffi.Value, key: []const u8) Error!*ffi.Value {
     var threw = false;
-    const result = ffi.v8_Object_GetCatching(entered.context(), object, key.ptr, @intCast(key.len), &threw);
-    if (threw) return rethrow(entered.isolate, result);
+    const result = ffi.v8_Object_GetCatching(at.context(), object, key.ptr, @intCast(key.len), &threw);
+    if (threw) return rethrow(at.isolate, result);
     return result orelse error.OperationFailed;
 }
 
 /// Call(F, V, args), rethrowing what it throws. OWNED.
-pub fn call(entered: Entered, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!*ffi.Value {
+pub fn call(at: anytype, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!*ffi.Value {
     var threw = false;
-    const result = ffi.v8_Function_CallCatching(entered.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
-    if (threw) return rethrow(entered.isolate, result);
+    const result = ffi.v8_Function_CallCatching(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
+    if (threw) return rethrow(at.isolate, result);
     return result orelse error.OperationFailed;
 }
 
 /// ToBoolean(V).
-pub fn toBoolean(entered: Entered, value: *ffi.Value) bool {
-    return ffi.v8_Value_BooleanValue(value, entered.isolate);
+pub fn toBoolean(at: anytype, value: *ffi.Value) bool {
+    return ffi.v8_Value_BooleanValue(value, at.isolate);
 }
 
 /// ECMAScript Type(V) of an engine value.
@@ -183,9 +187,9 @@ pub fn typeOfValue(value: *ffi.Value) engine.ValueType {
 
 /// CreateIteratorResultObject(value, done) in the entered realm: an ordinary
 /// object with `value` and `done` data properties. OWNED.
-pub fn iteratorResultObject(entered: Entered, value: *ffi.Value, done: bool) Error!*ffi.Value {
-    const isolate = entered.isolate;
-    const context = entered.context();
+pub fn iteratorResultObject(at: anytype, value: *ffi.Value, done: bool) Error!*ffi.Value {
+    const isolate = at.isolate;
+    const context = at.context();
     // 1. Let obj be OrdinaryObjectCreate(%Object.prototype%).
     const object = ffi.v8_Object_NewInContext(context) orelse return error.OperationFailed;
     errdefer ffi.v8_Object_Dispose(object);
@@ -201,4 +205,202 @@ pub fn iteratorResultObject(entered: Entered, value: *ffi.Value, done: bool) Err
     if (!ffi.v8_Object_CreateDataProperty(object, context, done_key, done_value)) return error.OperationFailed;
     // 4. Return obj.
     return @ptrCast(object);
+}
+
+// ============================================================================
+// Native closures, completions and promises
+// ============================================================================
+
+/// Where engine work happens inside a native closure V8 called: its isolate,
+/// and the closure's own context, which V8 entered for the call. Has what
+/// the helpers here read of an Entered realm.
+pub const Here = struct {
+    isolate: *ffi.Isolate,
+    /// OWNED.
+    current: *ffi.Context,
+
+    pub fn ofCall(info: *const ffi.FunctionCallbackInfo) ?Here {
+        const isolate = info.getIsolate();
+        const current = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        return .{ .isolate = isolate, .current = current };
+    }
+
+    pub fn context(self: Here) *ffi.Context {
+        return self.current;
+    }
+
+    pub fn deinit(self: Here) void {
+        ffi.v8_Context_Dispose(self.current);
+    }
+};
+
+/// ECMAScript CreateBuiltinFunction(steps, length, "", « ») in the realm `at`
+/// is in: a native closure over `data` (BORROWED - the function keeps its
+/// own). Function::New, so it is collected with what references it. OWNED.
+pub fn newClosure(at: anytype, steps: ffi.FunctionCallback, data: ?*ffi.Value, length: c_int) Error!*ffi.Value {
+    return ffi.v8_Function_NewWithData(at.context(), steps, data, length) orelse error.OperationFailed;
+}
+
+/// A native closure's [[data]]. OWNED.
+pub fn closureData(info: *const ffi.FunctionCallbackInfo) *ffi.Value {
+    return info.getData();
+}
+
+/// A native closure's argument `index` (undefined past the last). OWNED.
+pub fn closureArgument(info: *const ffi.FunctionCallbackInfo, index: c_int) *ffi.Value {
+    return info.get(index);
+}
+
+/// Return `value` from a native closure. Takes it.
+pub fn closureReturn(info: *const ffi.FunctionCallbackInfo, value: *ffi.Value) void {
+    defer ffi.v8_Global_Dispose(value);
+    ffi.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueGlobal(info, value);
+}
+
+/// Throw `value` from a native closure. Takes it.
+pub fn closureThrow(isolate: *ffi.Isolate, value: *ffi.Value) void {
+    defer ffi.v8_Global_Dispose(value);
+    ffi.v8_Isolate_ThrowException(isolate, value);
+}
+
+/// ECMAScript's Completion of an operation that can throw: the value, or
+/// what was thrown. OWNED either way.
+pub const Caught = union(enum) {
+    normal: *ffi.Value,
+    thrown: *ffi.Value,
+
+    pub fn release(self: Caught) void {
+        switch (self) {
+            inline else => |value| ffi.v8_Global_Dispose(value),
+        }
+    }
+};
+
+/// Completion(Get(O, P)) for a string key.
+pub fn getCaught(at: anytype, object: *ffi.Value, key: []const u8) Error!Caught {
+    var threw = false;
+    const result = ffi.v8_Object_GetCatching(at.context(), object, key.ptr, @intCast(key.len), &threw);
+    const value = result orelse return error.OperationFailed;
+    return if (threw) .{ .thrown = value } else .{ .normal = value };
+}
+
+/// Completion(Call(F, V, args)); a non-callable F is a TypeError thrown.
+pub fn callCaught(at: anytype, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!Caught {
+    if (!ffi.v8_Value_IsFunction(function)) return .{ .thrown = try newTypeError(at.isolate, at.context(), "not a function") };
+    var threw = false;
+    const result = ffi.v8_Function_CallCatching(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
+    const value = result orelse return error.OperationFailed;
+    return if (threw) .{ .thrown = value } else .{ .normal = value };
+}
+
+/// A new promise of the realm `at` is in, resolved with `value` - the
+/// resolve function's semantics, so a thenable is adopted. OWNED.
+pub fn promiseResolvedWith(at: anytype, value: *ffi.Value) Error!*ffi.Value {
+    return settled(at, value, true);
+}
+
+/// A new promise of the realm `at` is in, rejected with `reason`. OWNED.
+pub fn promiseRejectedWith(at: anytype, reason: *ffi.Value) Error!*ffi.Value {
+    return settled(at, reason, false);
+}
+
+fn settled(at: anytype, value: *ffi.Value, fulfilled: bool) Error!*ffi.Value {
+    const context = at.context();
+    const resolver = ffi.v8_PromiseResolver_New(context) orelse return error.OperationFailed;
+    defer ffi.v8_PromiseResolver_Dispose(resolver);
+    const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.OperationFailed;
+    errdefer ffi.v8_Promise_Dispose(promise);
+    const ok = if (fulfilled) ffi.v8_PromiseResolver_Resolve(resolver, context, value) else ffi.v8_PromiseResolver_Reject(resolver, context, value);
+    if (!ok) return error.OperationFailed;
+    return @ptrCast(promise);
+}
+
+/// A promise rejected with a new TypeError of the realm `at` is in. OWNED.
+pub fn promiseRejectedWithTypeError(at: anytype, message: []const u8) Error!*ffi.Value {
+    const reason = try newTypeError(at.isolate, at.context(), message);
+    defer ffi.v8_Global_Dispose(reason);
+    return promiseRejectedWith(at, reason);
+}
+
+/// PerformPromiseThen(promise, onFulfilled, onRejected, capability) - a null
+/// handler is undefined - the capability being V8's derived promise: NewPromiseCapability of the
+/// promise's species constructor - %Promise% for the promises made here,
+/// unless script replaced Promise[@@species]. OWNED.
+pub fn then(at: anytype, promise: *ffi.Value, on_fulfilled: ?*ffi.Value, on_rejected: ?*ffi.Value) Error!*ffi.Value {
+    return ffi.v8_Promise_ThenWithOptionalHandlers(at.context(), promise, on_fulfilled, on_rejected) orelse error.OperationFailed;
+}
+
+/// ECMAScript PromiseResolve(%Promise%, x) - its Completion.
+///
+/// Step 1.b compares x.constructor with %Promise% as %Promise.prototype%'s
+/// "constructor" names it: the embedder API reaches no intrinsic %Promise%,
+/// and the two differ only once script has replaced that property.
+pub fn promiseResolve(at: anytype, value: *ffi.Value) Error!Caught {
+    // 1. If IsPromise(x) is true, then
+    if (ffi.v8_Value_IsPromise(value)) {
+        // a. Let xConstructor be ? Get(x, "constructor").
+        const x_constructor = switch (try getCaught(at, value, "constructor")) {
+            .thrown => |thrown| return .{ .thrown = thrown },
+            .normal => |v| v,
+        };
+        defer ffi.v8_Global_Dispose(x_constructor);
+        // b. If SameValue(xConstructor, C) is true, return x.
+        if (try isPromiseConstructor(at, x_constructor)) {
+            return .{ .normal = ffi.v8_Global_Clone(value) orelse return error.OperationFailed };
+        }
+    }
+    // 2. Let promiseCapability be ? NewPromiseCapability(C).
+    // 3. Perform ? Call(promiseCapability.[[Resolve]], undefined, « x »).
+    // 4. Return promiseCapability.[[Promise]].
+    return .{ .normal = try promiseResolvedWith(at, value) };
+}
+
+/// Whether `candidate` is %Promise% (see promiseResolve).
+fn isPromiseConstructor(at: anytype, candidate: *ffi.Value) Error!bool {
+    const fresh = try promiseResolvedWith(at, candidate);
+    defer ffi.v8_Global_Dispose(fresh);
+    const prototype = ffi.v8_Object_GetPrototypeV2(@ptrCast(fresh)) orelse return error.OperationFailed;
+    defer ffi.v8_Global_Dispose(prototype);
+    const intrinsic = switch (try getCaught(at, prototype, "constructor")) {
+        .normal => |v| v,
+        .thrown => |thrown| {
+            ffi.v8_Global_Dispose(thrown);
+            return false;
+        },
+    };
+    defer ffi.v8_Global_Dispose(intrinsic);
+    return ffi.v8_Value_StrictEquals(candidate, intrinsic);
+}
+
+/// %AsyncIteratorPrototype% of the realm `at` is in: the [[Prototype]] of
+/// %AsyncGeneratorPrototype%, reached from an async generator function the
+/// realm evaluates (the embedder API names no such intrinsic). Microtasks
+/// are held off for it, so no checkpoint runs here. OWNED.
+pub fn asyncIteratorPrototype(at: anytype) Error!*ffi.Value {
+    var body: struct {
+        isolate: *ffi.Isolate,
+        context: *ffi.Context,
+        result: ?*ffi.Value = null,
+        pub fn run(self: *@This()) void {
+            const code = "(async function* () {}).prototype";
+            const text = ffi.v8_String_NewFromUtf8(self.isolate, code.ptr, code.len) orelse return;
+            defer ffi.v8_String_Dispose(text);
+            const script = ffi.v8_Script_Compile(self.context, text) orelse return;
+            defer ffi.v8_Script_Dispose(script);
+            self.result = ffi.v8_Script_Run(self.context, script);
+        }
+        fn call(data: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.run();
+        }
+    } = .{ .isolate = at.isolate, .context = at.context() };
+    ffi.v8_RunWithMicrotasksSuppressed(at.isolate, @TypeOf(body).call, &body);
+    // The generator function's prototype: an object whose [[Prototype]] is
+    // %AsyncGeneratorPrototype%, whose [[Prototype]] is
+    // %AsyncIteratorPrototype%.
+    const generator_prototype = body.result orelse return error.OperationFailed;
+    defer ffi.v8_Global_Dispose(generator_prototype);
+    const async_generator_prototype = ffi.v8_Object_GetPrototypeV2(@ptrCast(generator_prototype)) orelse return error.OperationFailed;
+    defer ffi.v8_Global_Dispose(async_generator_prototype);
+    return ffi.v8_Object_GetPrototypeV2(@ptrCast(async_generator_prototype)) orelse error.OperationFailed;
 }

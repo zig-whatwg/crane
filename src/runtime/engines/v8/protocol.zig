@@ -368,9 +368,8 @@ pub fn isCallable(realm: Context, value: JSValue) bool {
     return table.isCallable.?(value);
 }
 
-pub fn takeCallbackFunction(argument: *const anyopaque) Owned {
-    return owned(callback_interfaces.takeCallbackFunction(argument));
-}
+pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
+pub const takeCallbackInterface = protocol_callbacks.takeCallbackInterface;
 
 // ============================================================================
 // 4.5 ECMAScript values
@@ -478,11 +477,7 @@ pub fn createObservableArray(realm: Context) Error!JSValue {
 
 pub const createFrozenArray = protocol_conversions.createFrozenArray;
 
-// TODO(protocol): implement - design 4.7 (a WebIDL default asynchronous iterator object needs its own next/return per object and a closure per step: Function::New with data, which the FFI does not offer - a FunctionTemplate per object is cached for the context's life; v8_wrapper.cpp is held by the reflection lane)
-pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque) Error!Owned {
-    _ = .{ realm, steps, data };
-    return error.NotSupported;
-}
+pub const createAsyncIterator = @import("protocol_async_iterator.zig").createAsyncIterator;
 
 // ============================================================================
 // 4.8 Exceptions

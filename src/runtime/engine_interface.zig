@@ -1717,11 +1717,19 @@ pub const EngineInterface = struct {
     isCallable: ?*const fn (value: JSValue) bool,
 
     /// Keep `instance`'s wrapper alive whatever script holds - a platform
-    /// object with pending activity (Blink's ActiveScriptWrappable): a
-    /// running Worker. Released when the realm ends (its wrapper cache goes,
-    /// and the instance with it); there is no earlier release. Idempotent,
-    /// and a no-op for an instance script has never seen (no wrapper yet).
+    /// object with pending activity (Blink's ActiveScriptWrappable,
+    /// HasPendingActivity()): a running Worker, a timeout signal whose timer
+    /// is pending. Until `releasePlatformObject`, or the realm's end.
+    /// Idempotent. For an instance script has not seen yet, the hold is taken
+    /// by its wrapper when the binding makes one.
     keepPlatformObjectAlive: ?*const fn (instance: *Instance) void,
+
+    /// `instance` has no pending activity any more (a Worker terminated, its
+    /// port closed): undo `keepPlatformObjectAlive`, so its wrapper - and,
+    /// once script drops it, the instance - can be collected, unless the
+    /// engine holds it for another reason. Idempotent; a no-op for an
+    /// instance never kept.
+    releasePlatformObject: ?*const fn (instance: *Instance) void,
     // ---- end lane: engine-boundary ----
 
     /// Engine name for debugging/logging
@@ -1835,6 +1843,7 @@ pub const stub_engine: EngineInterface = .{
     .defineBuiltinFunction = null,
     .isCallable = null,
     .keepPlatformObjectAlive = null,
+    .releasePlatformObject = null,
     // ---- end lane: engine-boundary ----
     .name = "stub",
     .version = "0.0.0",

@@ -176,6 +176,8 @@ fn connect(instance: *runtime.Instance, internal: *InternalState) !void {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Whatever pending-activity hold is left on it goes with it.
+    releasePendingActivity(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -241,7 +243,34 @@ fn enableQueue(instance: *runtime.Instance) void {
     if (!internal.owns_port) return;
     if (internal.internal_port.queue_enabled) return;
     internal.internal_port.enableQueue();
+    syncPendingActivity(instance);
     scheduleDelivery(instance);
+}
+
+/// Blink's MessagePort::HasPendingActivity(): a port whose message queue is
+/// enabled and which is entangled must outlive whatever script holds of it.
+/// HTML (9.4.6, ports and garbage collection): entangled ports act as if each
+/// holds the other strongly - "a message port can be received, given an
+/// event listener, and then forgotten, and so long as that event listener
+/// could receive a message, the channel will be maintained". A port nobody
+/// references that has been started - `channel.port2.onmessage = f` and no
+/// other reference - was collected before its message arrived. Kept through
+/// the Engine table's pending-activity hold, taken and released here as the
+/// port's state changes: started, closed, shipped, or its peer closed.
+fn syncPendingActivity(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    const port = internal.internal_port;
+    const active = internal.owns_port and !internal.detached and port.queue_enabled and port.entangled_port != null;
+    if (active) {
+        const engine = instance.ctx.getEngine() orelse return;
+        if (engine.keepPlatformObjectAlive) |keep| keep(instance);
+    } else releasePendingActivity(instance);
+}
+
+/// End the pending-activity hold on a port (idempotent).
+fn releasePendingActivity(instance: *runtime.Instance) void {
+    const engine = instance.ctx.getEngine() orelse return;
+    if (engine.releasePlatformObject) |release| release(instance);
 }
 
 /// Operation: close
@@ -254,6 +283,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     if (!internal.owns_port) return;
     const other = internal.internal_port.entangled_port;
     internal.internal_port.close();
+    syncPendingActivity(instance);
     // Disentangle step 4: fire an event named close at otherPort - from a
     // task of its own realm, which may be another agent's.
     if (other) |end| scheduleClose(end);
@@ -308,7 +338,10 @@ fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
 /// The transfer steps for `instance`: its end.
 fn ship(instance: *runtime.Instance) ?*anyopaque {
     const internal = getInternal(instance) orelse return null;
-    return @ptrCast(internal.transfer());
+    const end = internal.transfer();
+    // Detached: no pending activity is left on this object.
+    syncPendingActivity(instance);
+    return @ptrCast(end);
 }
 
 /// The transfer-receiving steps: a new MessagePort of `realm` on `end`.
@@ -403,6 +436,24 @@ fn armTask(instance: *runtime.Instance, comptime run: fn (?*anyopaque) void) voi
     if (timer.setTimeout(0, run, task) == 0) task.allocator.destroy(task);
 }
 
+/// HTML event loop processing model step 2: a task whose document is not
+/// fully active is not run. A port's is its relevant global's document when
+/// that is a Window - an iframe removed from its document leaves its realm's
+/// ports with none that is (webmessaging/message-channels/detached-iframe:
+/// a port kept alive for its pending activity must still hear nothing). A
+/// worker's realm has no document. Document's `location` getter answers the
+/// question exactly: null unless its document is fully active.
+fn documentIsFullyActive(instance: *runtime.Instance) bool {
+    const engine = instance.ctx.getEngine() orelse return true;
+    const relevant_global = engine.relevantGlobalObject orelse return true;
+    const global = relevant_global(instance) orelse return true;
+    if (global.stateAs(interfaces.Window.State) == null) return true;
+    if (interfaces.Window.get_closed(global) catch true) return false;
+    const document = interfaces.Window.get_document(global) catch return false;
+    const location = interfaces.Document.get_location(document) catch return false;
+    return location != null;
+}
+
 /// One task of the port message queue: the message port post message steps'
 /// step 7, as a task of the receiving port's realm.
 fn deliverNext(data: ?*anyopaque) void {
@@ -411,25 +462,32 @@ fn deliverNext(data: ?*anyopaque) void {
     const instance = task.target() orelse return;
     const internal = getInternal(instance) orelse return;
     if (!internal.owns_port or !internal.internal_port.queue_enabled) return;
-    const message = internal.internal_port.popSerializedMessage() orelse return;
-    defer message.deinit();
+    if (!internal.internal_port.hasSerializedMessages()) return;
 
     const engine = instance.ctx.getEngine() orelse return;
     const run = engine.runTaskInRealm orelse return;
-    var delivery = Delivery{ .port = instance, .record = message.data };
+    var delivery = Delivery{ .port = instance };
     run(instance.ctx, Delivery.steps, &delivery) catch {};
 
-    // One message per task: the next gets its own.
-    if (task.target() != null) scheduleDelivery(instance);
+    // One message per task: the next gets its own - once this one ran.
+    if (delivery.ran and task.target() != null) scheduleDelivery(instance);
 }
 
 const Delivery = struct {
     port: *runtime.Instance,
-    record: []const u8,
+    ran: bool = false,
 
     fn steps(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
-        deliver(self.port, self.record);
+        // The event loop runs no task whose document is not fully active;
+        // the message stays queued. Asked in the realm: the question reads
+        // its global.
+        if (!documentIsFullyActive(self.port)) return;
+        const internal = getInternal(self.port) orelse return;
+        const message = internal.internal_port.popSerializedMessage() orelse return;
+        defer message.deinit();
+        self.ran = true;
+        deliver(self.port, message.data);
     }
 };
 
@@ -505,6 +563,10 @@ fn fireClose(data: ?*anyopaque) void {
 
 fn fireCloseSteps(data: ?*anyopaque) void {
     const port: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+    // Its peer closed: it is no longer entangled, so no longer active - but
+    // the `close` event is dispatched first, while it is still held.
+    defer syncPendingActivity(port);
+    if (!documentIsFullyActive(port)) return;
     const event = interfaces.Event.call_constructor(
         port.ctx,
         runtime.DOMString.initInterned("close"),
