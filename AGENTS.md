@@ -857,6 +857,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
 - [A result the spec hands over from onComplete arrives in a task](docs/lessons/spec-compliance-a-result-handed-over-from-oncomplete-arrives-in-a-task.md) - A synchronous fetch does not make the spec's task synchronous; deliver the result where the spec does.
 - ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
+- [A repeating timer keeps the id script holds](docs/lessons/spec-compliance-a-repeating-timer-keeps-the-id-script-holds.md) - Whatever script holds must outlive the scheduler's handles; a reschedule updates the value, never the key.
 
 ### Codegen
 
@@ -898,6 +899,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A relative URL assigned to another window's location resolves against the caller](docs/lessons/testing-a-relative-url-assigned-to-another-window-s-location-resolves-against-the-caller.md) - Write the URL relative to the script doing the assigning.
 - [A new Window per navigation multiplies whatever leaks per realm](docs/lessons/testing-a-new-window-per-navigation-multiplies-whatever-leaks-per-realm.md) - Compare the heap and native_contexts columns between the two binaries at the same file index before crediting a memory fix.
 - [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
+- [Fewer crashes mean longer processes, and an old leak comes back as an OOM](docs/lessons/testing-fewer-crashes-mean-longer-processes-and-an-old-leak-comes-back-as-oom.md) - A drop in crashes can raise the peak heap. Compare retention per file, not crashes, before calling an OOM a regression.
 - [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
 
 ### Debugging
