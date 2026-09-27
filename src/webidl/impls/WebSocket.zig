@@ -27,6 +27,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const WebSocket = interfaces.WebSocket;
 
 // Import the WebSocket connection module
@@ -189,10 +190,8 @@ fn pumpInScope(instance: *runtime.Instance) bool {
     // `pump` may run script that frees the WebSocket, so nothing after it
     // reads `instance`: the realm is its own object.
     const realm = instance.ctx;
-    const engine = realm.getEngine() orelse return true;
-    const run = engine.runTaskInRealm orelse return true;
     var turn = PumpTurn{ .instance = instance };
-    run(realm, PumpTurn.steps, &turn) catch return true;
+    engine.runTaskInRealm(realm, PumpTurn.steps, &turn) catch return true;
     return turn.live;
 }
 
@@ -352,8 +351,7 @@ pub fn init(
 
 /// End the pending-activity hold the constructor took (idempotent).
 fn releasePendingActivity(instance: *runtime.Instance) void {
-    const engine = instance.ctx.getEngine() orelse return;
-    if (engine.releasePlatformObject) |release| release(instance);
+    engine.releasePlatformObject(instance);
 }
 
 /// Deinitialize instance
@@ -541,9 +539,7 @@ const CloseOutcome = struct {
 /// realm's global, which is a Window or a WorkerGlobalScope and so answers
 /// WindowOrWorkerGlobalScope's `origin`. Owned by `ctx.allocator`.
 fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
-    const engine = instance.ctx.getEngine() orelse return null;
-    const relevant_global = engine.relevantGlobalObject orelse return null;
-    const global_instance = relevant_global(instance) orelse return null;
+    const global_instance = relevantGlobal(instance) orelse return null;
     const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
     // "null" is an opaque origin, and a header saying so is still the one to send.
     return origin;
@@ -606,12 +602,10 @@ fn fireMessageEvent(
     // event outlives this call. `MessageEvent.call_constructor` clones the
     // dictionary's data, so an OWNED string here would be cloned and then
     // leaked; a ref is cloned into an owned copy, which is what is wanted.
-    const payload: runtime.JSValue = blk: {
-        if (is_text) break :blk runtime.JSValue.fromStringRef(data);
-        break :blk binaryPayload(instance, internal, data) orelse return;
-    };
+    const binary: ?engine.Owned = if (is_text) null else (binaryPayload(instance, internal, data) orelse return);
     // The event keeps its own hold on a binary payload.
-    defer if (!is_text) releasePayload(ctx, payload);
+    defer if (binary) |payload| payload.release();
+    const payload: runtime.JSValue = if (binary) |b| b.value else runtime.JSValue.fromStringRef(data);
 
     const init_dict = dictionaries.MessageEventInit{
         .base = .{},
@@ -629,46 +623,35 @@ fn fireMessageEvent(
 }
 
 /// A binary frame as `binaryType` says to present it. OWNED: the caller
-/// releases it (`releasePayload`) once the event holds its own.
+/// releases it once the event holds its own (a Blob is an Instance, the
+/// event's and its wrapper's: releasing it does nothing).
 fn binaryPayload(
     instance: *runtime.Instance,
     internal: *InternalState,
     data: []const u8,
-) ?runtime.JSValue {
+) ?engine.Owned {
     const ctx = instance.ctx;
-    const engine = ctx.getEngine() orelse return null;
-    const create_buffer = engine.createArrayBuffer orelse return null;
     // The ArrayBuffer COPIES the bytes into a buffer the engine owns, so the
     // pump's receive buffer does not have to outlive the call. Made in the
-    // entered realm (the pump's task entered the socket's).
-    const engine_ctx = ctx.engine_ctx orelse return null;
-    const buffer_handle = create_buffer(engine_ctx, data) catch return null;
-    const buffer = runtime.JSValue{ .handle = .{ .ptr = buffer_handle, .needs_disposal = true, .handle_scope = .global } };
+    // socket's realm (the pump's task entered it).
+    const buffer = engine.createArrayBuffer(ctx, data) catch return null;
     switch (internal.binary_type) {
         ._arraybuffer_ => return buffer,
         ._blob_ => {
-            defer releasePayload(ctx, buffer);
+            defer buffer.release();
             // Built through Blob's own constructor rather than by reaching into
             // its impl: `new Blob([arrayBuffer])`, assembled here. The Blob
             // copies the bytes into its BlobData.
-            const create_sequence = engine.createSequenceOfValues orelse return null;
-            const parts = create_sequence(ctx, &.{buffer}) catch return null;
-            defer releasePayload(ctx, parts);
+            const parts = engine.createSequenceOfValues(ctx, &.{buffer.value}) catch return null;
+            defer parts.release();
             const blob = interfaces.Blob.call_constructor(
                 ctx,
-                webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromHandleNonOwning(parts.handle.ptr)),
+                webidl.Opt(runtime.JSValue).passed(parts.borrow()),
                 webidl.Opt(dictionaries.BlobPropertyBag).notPassed(),
             ) catch return null;
-            return runtime.JSValue.fromInstance(blob);
+            return .{ .value = runtime.JSValue.fromInstance(blob) };
         },
     }
-}
-
-/// Release a value `binaryPayload` made (a handle; an Instance is the
-/// event's and its wrapper's).
-fn releasePayload(ctx: runtime.Context, value: runtime.JSValue) void {
-    const engine = ctx.getEngine() orelse return;
-    if (engine.releaseValue) |release| release(value);
 }
 
 /// The origin a MessageEvent from this socket reports: the URL's scheme, host
@@ -854,15 +837,14 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // a socket is routinely held by nothing but its listeners
     // (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
     // channel exists (WebSocket::HasPendingActivity); this is that, through
-    // the Engine table's pending-activity hold - taken before the binding
-    // wraps the socket, and so by the wrapper script gets. (A same_object Pin
+    // the engine's pending-activity hold - taken before the binding wraps the
+    // socket, and so by the wrapper script gets. (A same_object Pin
     // taken here made a wrapper of its own, which the constructor's wrapper
     // then replaced in the cache: the Pin held an object script never saw,
     // and the socket was collected with its connection still pending - the
     // first ~20 of websockets/Create-blocked-port.any.js's sockets in a
     // worker.) Released by the close task, and by deinit.
-    const engine = instance.ctx.getEngine() orelse return instance;
-    if (engine.keepPlatformObjectAlive) |keep| keep(instance);
+    engine.keepPlatformObjectAlive(instance);
 
     return instance;
 }
@@ -892,11 +874,16 @@ fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
     return null;
 }
 
+/// `instance`'s relevant global object: its relevant realm's global object,
+/// from the realm record.
+fn relevantGlobal(instance: *runtime.Instance) ?*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
 /// `instance`'s relevant global object, when it is a Window.
 fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
-    const engine = instance.ctx.getEngine() orelse return null;
-    const relevant_global = engine.relevantGlobalObject orelse return null;
-    const global = relevant_global(instance) orelse return null;
+    const global = relevantGlobal(instance) orelse return null;
     if (global.stateAs(interfaces.Window.State) == null) return null;
     return global;
 }
@@ -964,11 +951,8 @@ fn collectProtocolStrings(
         // `undefined` is the omitted argument's default: the empty sequence.
         .undefined, .instance => return,
     }
-    const engine = ctx.getEngine() orelse return error.NoEngine;
-
     // An object with an @@iterator: the sequence<DOMString>.
-    const sequence = engine.convertToSequenceOfDOMStrings orelse return error.NotSupported;
-    if (try sequence(ctx, value, allocator)) |strings| {
+    if (try engine.convertToSequenceOfDOMStrings(ctx, value, allocator)) |strings| {
         defer allocator.free(strings);
         var taken: usize = 0;
         errdefer for (strings[taken..]) |string| allocator.free(string);
@@ -980,8 +964,7 @@ fn collectProtocolStrings(
     }
 
     // Any other object: the DOMString.
-    const to_string = engine.convertToDOMString orelse return error.NotSupported;
-    const string = try to_string(ctx, value, allocator);
+    const string = try engine.convertToDOMString(ctx, value, allocator);
     errdefer allocator.free(string);
     try list.append(allocator, string);
 }
@@ -1300,38 +1283,33 @@ fn payloadOf(
         .handle => {},
     }
     const ctx = instance.ctx;
-    const engine = ctx.getEngine() orelse return error.NoEngine;
 
     // A platform object implementing Blob (or File, which is one).
-    if (engine.convertToPlatformObject) |platform_object| {
-        if (platform_object(ctx, data)) |object| {
-            if (isBlob(object)) {
-                // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
-                // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
-                // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
-                // promises. Reading them directly would be a new impls-boundary call;
-                // doing it properly needs a hook Blob installs (src/dom/, the shape of
-                // fetch_objects.zig) plus the spec's asynchronous read, holding back
-                // every later frame until the Blob's bytes are in the queue. Until then
-                // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
-                // reports a failure rather than hiding one.
-                return .{ .bytes = "", .is_text = false };
-            }
+    if (engine.convertToPlatformObject(ctx, data)) |object| {
+        if (isBlob(object)) {
+            // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
+            // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
+            // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
+            // promises. Reading them directly would be a new impls-boundary call;
+            // doing it properly needs a hook Blob installs (src/dom/, the shape of
+            // fetch_objects.zig) plus the spec's asynchronous read, holding back
+            // every later frame until the Blob's bytes are in the queue. Until then
+            // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
+            // reports a failure rather than hiding one.
+            return .{ .bytes = "", .is_text = false };
         }
     }
 
     // An ArrayBuffer, or the bytes a view describes of its buffer (NOT the
     // whole buffer - the point of `Send-binary-arraybufferview-*-offset-length`).
-    const buffer_bytes = engine.getCopyOfBufferSourceBytes orelse return error.NotSupported;
-    if (try buffer_bytes(ctx, data, allocator)) |bytes| {
+    if (try engine.getCopyOfBufferSourceBytes(ctx, data, allocator)) |bytes| {
         scratch.* = bytes;
         return .{ .bytes = bytes, .is_text = false };
     }
 
     // Everything else is the USVString member: ToString, which throws for a
     // Symbol and propagates whatever a `toString` throws.
-    const to_usv = engine.convertToUSVString orelse return error.NotSupported;
-    const text = try to_usv(ctx, data, allocator);
+    const text = try engine.convertToUSVString(ctx, data, allocator);
     scratch.* = text;
     return .{ .bytes = text, .is_text = true };
 }
