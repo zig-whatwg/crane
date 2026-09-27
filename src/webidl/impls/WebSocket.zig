@@ -37,9 +37,6 @@ const WebSocketConnection = websocket.WebSocketConnection;
 // The constructor applies the URL parser, per steps 2-5.
 const api_parser = @import("api_parser");
 
-// A socket keeps its own wrapper alive until it has closed.
-const same_object = @import("same_object.zig");
-
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
 const EventTargetImpl = @import("EventTarget.zig");
@@ -257,15 +254,6 @@ pub const InternalState = struct {
     /// The socket's own wrapper, held from construction until the close event
     /// has fired.
     ///
-    /// WebSockets § 7: a WebSocket whose connection is not yet closed must not
-    /// be collected while it has listeners for the events still to come - and
-    /// a socket is routinely held by nothing but its listeners
-    /// (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
-    /// channel exists (WebSocket::HasPendingActivity); this is that, through
-    /// the same Pin XMLHttpRequest holds across a fetch. Released in the close
-    /// task, and in deinit, which is how a realm's teardown gets past it.
-    keep_alive: same_object.Pin = .{},
-
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -282,8 +270,6 @@ pub const InternalState = struct {
             token.detach();
             self.poll = null;
         }
-
-        self.keep_alive.release();
 
         if (self.connection) |conn| {
             conn.deinit();
@@ -364,8 +350,16 @@ pub fn init(
     return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
+/// End the pending-activity hold the constructor took (idempotent).
+fn releasePendingActivity(instance: *runtime.Instance) void {
+    const engine = instance.ctx.getEngine() orelse return;
+    if (engine.releasePlatformObject) |release| release(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Whatever pending-activity hold is left on it goes with it.
+    releasePendingActivity(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -532,7 +526,7 @@ fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
     fireCloseEvent(instance, outcome);
 
     // Nothing more will fire: the socket's lifetime is its wrapper's again.
-    if (getInternal(instance)) |live| live.keep_alive.release();
+    releasePendingActivity(instance);
 }
 
 const CloseOutcome = struct {
@@ -855,7 +849,20 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     internal.poll = token;
     token.arm();
 
-    internal.keep_alive.hold(instance);
+    // WebSockets § 7: a WebSocket whose connection is not yet closed must not
+    // be collected while it has listeners for the events still to come - and
+    // a socket is routinely held by nothing but its listeners
+    // (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
+    // channel exists (WebSocket::HasPendingActivity); this is that, through
+    // the Engine table's pending-activity hold - taken before the binding
+    // wraps the socket, and so by the wrapper script gets. (A same_object Pin
+    // taken here made a wrapper of its own, which the constructor's wrapper
+    // then replaced in the cache: the Pin held an object script never saw,
+    // and the socket was collected with its connection still pending - the
+    // first ~20 of websockets/Create-blocked-port.any.js's sockets in a
+    // worker.) Released by the close task, and by deinit.
+    const engine = instance.ctx.getEngine() orelse return instance;
+    if (engine.keepPlatformObjectAlive) |keep| keep(instance);
 
     return instance;
 }
