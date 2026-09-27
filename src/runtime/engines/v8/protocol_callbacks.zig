@@ -72,8 +72,9 @@ const CallbackRealm = struct {
 };
 
 /// WebIDL "convert a Web IDL arguments list to a JavaScript arguments list":
-/// each argument converted in the callback's realm. `values` owns what was
-/// made for the call.
+/// each argument converted in the callback's realm - a platform object to its
+/// wrapper in its own relevant realm. `values` owns what was made for the
+/// call.
 const Arguments = struct {
     values: [max_arguments]realm_entry.EngineValue = undefined,
     pointers: [max_arguments]*ffi.Value = undefined,
@@ -83,7 +84,10 @@ const Arguments = struct {
         if (args.len > max_arguments) return error.OperationFailed;
         // 4. While i < args's size: append the converted value.
         for (args) |arg| {
-            self.values[self.count] = realm_entry.EngineValue.of(isolate, context, arg) catch |err| return support.protocolError(err);
+            self.values[self.count] = switch (arg) {
+                .instance => |instance| .{ .ptr = try support.relevantWrapper(isolate, instance), .made = true },
+                else => realm_entry.EngineValue.of(isolate, context, arg) catch |err| return support.protocolError(err),
+            };
             self.pointers[self.count] = self.values[self.count].ptr;
             self.count += 1;
         }

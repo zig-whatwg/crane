@@ -619,14 +619,17 @@ fn freeStrings(strings: [][]u8, allocator: Allocator) void {
 
 /// WebIDL "create a frozen array" (3.2.27) from `values`. OWNED.
 pub fn createFrozenArray(realm: Context, values: []const JSValue) Error!Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
     // 1. Let array be the result of converting the sequence of values of
-    //    type T to a JavaScript value.
-    const array = webidl_conversions.createSequenceOfValues(realm, values) catch |err| return support.protocolError(err);
+    //    type T to a JavaScript value - a platform object to its wrapper in
+    //    its relevant realm.
+    const relevant = try support.RelevantList.of(entered.isolate, values);
+    defer relevant.release();
+    const array = webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return support.protocolError(err);
     const handle = support.handleOf(array) orelse return error.OperationFailed;
     errdefer ffi.v8_Global_Dispose(handle);
     // 2. Perform ! SetIntegrityLevel(array, "frozen").
-    const entered = try support.enter(realm);
-    defer entered.leave();
     if (!ffi.v8_Object_Freeze(@ptrCast(handle), entered.context())) return error.OperationFailed;
     // 3. Return array.
     return support.owned(handle);
