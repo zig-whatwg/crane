@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -773,10 +774,11 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     internal.planned_navigation = 0;
 
     // A task is entered from the event loop, not from script: it runs as a
-    // task of the form's realm, which enters it.
-    const engine = task.form.ctx.getEngine() orelse return;
-    const run_task = engine.runTaskInRealm orelse return;
-    run_task(task.form.ctx, navigateSteps, task) catch {};
+    // task of the form's realm, which enters it. A realm with no engine
+    // behind it any more (its page has gone) runs nothing, and the task has
+    // no one to report to: it is dropped, as a task of a document that is
+    // not fully active is.
+    engine.runTaskInRealm(task.form.ctx, navigateSteps, task) catch {};
 }
 
 /// Step 4.2 of the planned navigation's task, inside the form's realm.

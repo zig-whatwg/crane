@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -601,12 +602,11 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// `targets` converted to a JS value as composedPath's sequence<EventTarget>:
 /// a new array of the current realm - the operation's, where WebIDL converts
-/// its result - holding each target's wrapper. OWNED: the binding takes it.
+/// its result - holding each target's wrapper, which is made in the target's
+/// own relevant realm. OWNED: the binding takes it.
 fn sequenceOfEventTargets(instance: *runtime.Instance, targets: []const *runtime.Instance) !runtime.JSValue {
-    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
-    const create_sequence = engine.createSequenceOfPlatformObjects orelse return error.NotSupported;
-    const current_realm = engine.currentRealm orelse return error.NotSupported;
-    return create_sequence(current_realm() orelse instance.ctx, targets);
+    const sequence = try engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, targets);
+    return sequence.take();
 }
 
 // ============================================================================

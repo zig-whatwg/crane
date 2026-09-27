@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
@@ -158,14 +159,12 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
 ///       ii.  Otherwise, break.
 /// 7. Return «[ "read" → read, "written" → written ]».
 pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: runtime.JSValue) anyerror!dictionaries.TextEncoderEncodeIntoResult {
-    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
-    const describe_view = engine.describeArrayBufferView orelse return error.NotSupported;
-    const write_into_view = engine.writeIntoArrayBufferView orelse return error.NotSupported;
+    const realm = engine.currentRealm() orelse instance.ctx;
 
     // The binding hands `destination` over unconverted: WebIDL's conversion
     // to [AllowShared] Uint8Array is a TypeError for anything that is not a
     // Uint8Array - another typed array or a DataView included.
-    const view = describe_view(destination) orelse return error.TypeError;
+    const view = engine.describeArrayBufferView(realm, destination) orelse return error.TypeError;
     if (view.view_type != .uint8_array) return error.TypeError;
     const capacity: u64 = view.byte_length;
 
@@ -202,7 +201,7 @@ pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, d
 
     // Step 6.4.1.3: write the bytes into destination, from startingOffset 0 -
     // all of them at once, since no script runs in between.
-    if (written > 0) try write_into_view(destination, text[0..@intCast(written)], 0);
+    if (written > 0) try engine.writeIntoArrayBufferView(realm, destination, text[0..@intCast(written)], 0);
 
     // Step 7: Return result
     return .{
@@ -255,11 +254,13 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
     return output.toOwnedSlice();
 }
 
-/// A new Uint8Array over a copy of `bytes`, made in the current realm.
+/// A new Uint8Array over a copy of `bytes`, made in the current realm - the
+/// operation's, where WebIDL converts its result - not the encoder's own.
 /// OWNED: the binding takes it.
 fn newUint8Array(instance: *runtime.Instance, bytes: []const u8) !runtime.JSValue {
-    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
-    const create_uint8_array = engine.createUint8Array orelse return error.NotSupported;
-    const engine_ctx = instance.ctx.getEngineContext() orelse return error.NotImplemented;
-    return runtime.JSValue.fromHandle(try create_uint8_array(engine_ctx, bytes));
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const buffer = try engine.createArrayBuffer(realm, bytes);
+    defer buffer.release();
+    const view = try engine.createArrayBufferView(realm, .uint8_array, buffer.value, 0, bytes.len);
+    return view.take();
 }

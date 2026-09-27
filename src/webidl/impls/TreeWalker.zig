@@ -142,7 +142,8 @@ fn setUp(
     internal.what_to_show = what_to_show;
     // Step 4: Set walker's filter to filter - owned from here on.
     node_filter.release(internal.filter);
-    internal.filter = filter;
+    internal.filter = null;
+    internal.filter = try node_filter.store(filter);
 }
 
 // ============================================================================
@@ -544,7 +545,7 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     // with filter's callback, "acceptNode", and « node ».
     // Step 7: Unset traverser's active flag - on the throwing path too.
     // Step 8: If an exception was thrown, re-throw it (node_filter.call has).
-    const result = node_filter.call(node_filter.fromStored(internal.filter).?, node) catch |err| {
+    const result = node_filter.call(internal.filter.?, node) catch |err| {
         internal.active_flag = false;
         return err;
     };
