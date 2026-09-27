@@ -400,6 +400,13 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
 /// wins. Only the essence matters here, so the charset bookkeeping of steps
 /// 6.4-6.5 is not needed.
 fn mimeEssence(content_type: []const u8) []const u8 {
+    // The essence found so far, in a buffer of its own: parseMimeEssence
+    // writes every piece it looks at into ITS buffer, so a slice of that is
+    // overwritten by the next piece - even one then rejected ("*/*", or not a
+    // MIME type at all), which turned "text/plain, */*" into "*/*t/plain".
+    const R = struct {
+        threadlocal var buf: [256]u8 = undefined;
+    };
     var essence: []const u8 = "";
     var start: usize = 0;
     var in_quotes = false;
@@ -415,7 +422,10 @@ fn mimeEssence(content_type: []const u8) []const u8 {
             if (in_quotes or c != ',') continue;
         }
         if (parseMimeEssence(content_type[start..i])) |parsed| {
-            if (!std.mem.eql(u8, parsed, "*/*")) essence = parsed;
+            if (!std.mem.eql(u8, parsed, "*/*")) {
+                @memcpy(R.buf[0..parsed.len], parsed);
+                essence = R.buf[0..parsed.len];
+            }
         }
         start = i + 1;
     }
