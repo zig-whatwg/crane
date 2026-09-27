@@ -2757,91 +2757,114 @@ pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: run
     return pi;
 }
 
-/// Operation: createEvent
-/// DOM §4.6.1 - Creates a legacy event object
+/// DOM `createEvent(interface)` (legacy).
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createevent
-///
-/// This is a legacy API for creating events. New code should use event constructors instead.
-///
-/// Spec steps:
-/// 1. Let constructor be null
-/// 2. If interface is ASCII case-insensitive match for strings in table, set constructor
-/// 3. If constructor is null, throw "NotSupportedError"
-/// 4. If interface not exposed on relevant global object, throw "NotSupportedError"
-/// 5. Return result of creating an event given constructor
 pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
-    const interface_slice = interface.asSlice();
 
-    // Step 2: Check ASCII case-insensitive match against known event types
-    // Convert to lowercase for comparison
-    var lowercase_buf: [64]u8 = undefined;
-    if (interface_slice.len > lowercase_buf.len) {
-        return error.NotSupportedError;
-    }
+    // Steps 1-2: "Let constructor be null. If interface is an ASCII
+    // case-insensitive match for any of the strings in the first column in
+    // the following table, then set constructor to the interface in the
+    // second column on the same row as the matching string."
+    // Step 3: "If constructor is null, then throw a NotSupportedError."
+    const constructor = legacyEventInterface(interface.asSlice()) orelse return error.NotSupportedError;
 
-    for (interface_slice, 0..) |c, i| {
-        lowercase_buf[i] = std.ascii.toLower(c);
-    }
-    const lowercase_interface = lowercase_buf[0..interface_slice.len];
+    // Step 4: "If the interface indicated by constructor is not exposed on the
+    // relevant global object of this, then throw a NotSupportedError." Every
+    // interface in the table is exposed on Window here - TouchEvent too, since
+    // this engine exposes the legacy touch event APIs (`ontouchstart` is in
+    // document) - and a document's relevant global is a Window.
 
-    // Step 2: Match against known event type strings
-    // For now, we only support basic Event type
-    // Full spec requires: BeforeUnloadEvent, CompositionEvent, CustomEvent,
-    // DeviceMotionEvent, DeviceOrientationEvent, DragEvent, Event, FocusEvent,
-    // HashChangeEvent, KeyboardEvent, MessageEvent, MouseEvent, StorageEvent,
-    // TextEvent, TouchEvent, UIEvent
+    // Step 5: "Let event be the result of creating an event given
+    // constructor": its constructor with the dictionary undefined converts
+    // to - where it has one - and otherwise a new object of the interface.
+    // Steps 6-8 fall out of that: type is "", timeStamp is the current high
+    // resolution time, isTrusted is false.
+    const event = try createLegacyEvent(instance.ctx, constructor);
 
-    const is_event = std.mem.eql(u8, lowercase_interface, "event") or
-        std.mem.eql(u8, lowercase_interface, "events") or
-        std.mem.eql(u8, lowercase_interface, "htmlevents") or
-        std.mem.eql(u8, lowercase_interface, "svgevents");
-
-    const is_uievent = std.mem.eql(u8, lowercase_interface, "uievent") or
-        std.mem.eql(u8, lowercase_interface, "uievents");
-
-    const is_mouseevent = std.mem.eql(u8, lowercase_interface, "mouseevent") or
-        std.mem.eql(u8, lowercase_interface, "mouseevents");
-
-    const is_customevent = std.mem.eql(u8, lowercase_interface, "customevent");
-
-    // TODO: Add support for other event types when they're implemented:
-    // - KeyboardEvent, FocusEvent, TouchEvent, etc.
-
-    // Step 3: If constructor is null, throw "NotSupportedError"
-    if (!is_event and !is_uievent and !is_mouseevent and !is_customevent) {
-        return error.NotSupportedError;
-    }
-
-    // Step 4: Interface exposure check (skipped for now - all Event types are exposed)
-
-    // Step 5: Create an event
-    // For now, we create a basic Event for all types
-    // Proper implementation would create specific event subtypes (UIEvent, MouseEvent, etc.)
-    // Note: The created event is in an uninitialized state
-    // The caller must call initEvent() to initialize it - this matches legacy behavior per spec
-
-    // Create with empty type and default EventInit (not initialized)
-    const event_init = dictionaries.EventInit{
-        .bubbles = false,
-        .cancelable = false,
-        .composed = false,
-    };
-    // Use interface instead of impl (per Golden Rule #13)
-    const event = try interfaces.Event.call_constructor(instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
-
-    // Steps 6-8 fall out of constructing with an empty type: type is "",
-    // isTrusted is false, timeStamp is current high resolution time.
-
-    // Step 9: Unset event's initialized flag.
-    //
-    // The Event constructor SETS it, so without this the event created here is
-    // indistinguishable from `new Event("")` and `dispatchEvent` never throws -
-    // which is exactly what "If the event's initialized flag is not set, an
-    // InvalidStateError must be thrown" checks. `initEvent` sets it again.
+    // Step 9: "Unset event's initialized flag." Creating it SETS it, so
+    // without this the event is indistinguishable from `new Event("")` and
+    // dispatchEvent never throws - which is exactly what "If the event's
+    // initialized flag is not set, an InvalidStateError must be thrown"
+    // checks. initEvent() sets it again.
     EventImpl.setInitializedFlag(event, false);
 
+    // Step 10.
     return event;
+}
+
+/// The interfaces createEvent() can create.
+const LegacyEventInterface = enum {
+    BeforeUnloadEvent,
+    CompositionEvent,
+    CustomEvent,
+    DeviceMotionEvent,
+    DeviceOrientationEvent,
+    DragEvent,
+    Event,
+    FocusEvent,
+    HashChangeEvent,
+    KeyboardEvent,
+    MessageEvent,
+    MouseEvent,
+    StorageEvent,
+    TextEvent,
+    TouchEvent,
+    UIEvent,
+};
+
+/// createEvent() step 2's table: each string, and the interface it names.
+const legacy_event_table = [_]struct { []const u8, LegacyEventInterface }{
+    .{ "beforeunloadevent", .BeforeUnloadEvent },
+    .{ "compositionevent", .CompositionEvent },
+    .{ "customevent", .CustomEvent },
+    .{ "devicemotionevent", .DeviceMotionEvent },
+    .{ "deviceorientationevent", .DeviceOrientationEvent },
+    .{ "dragevent", .DragEvent },
+    .{ "event", .Event },
+    .{ "events", .Event },
+    .{ "focusevent", .FocusEvent },
+    .{ "hashchangeevent", .HashChangeEvent },
+    .{ "htmlevents", .Event },
+    .{ "keyboardevent", .KeyboardEvent },
+    .{ "messageevent", .MessageEvent },
+    .{ "mouseevent", .MouseEvent },
+    .{ "mouseevents", .MouseEvent },
+    .{ "storageevent", .StorageEvent },
+    .{ "svgevents", .Event },
+    .{ "textevent", .TextEvent },
+    .{ "touchevent", .TouchEvent },
+    .{ "uievent", .UIEvent },
+    .{ "uievents", .UIEvent },
+};
+
+/// The interface `name` names in createEvent()'s table - an ASCII
+/// case-insensitive match - or null.
+fn legacyEventInterface(name: []const u8) ?LegacyEventInterface {
+    for (legacy_event_table) |row| {
+        if (std.ascii.eqlIgnoreCase(name, row[0])) return row[1];
+    }
+    return null;
+}
+
+/// DOM "create an event" given `interface`, in `realm`, less its step 4
+/// (isTrusted stays false, as createEvent() wants it).
+fn createLegacyEvent(realm: runtime.Context, interface: LegacyEventInterface) anyerror!*runtime.Instance {
+    switch (interface) {
+        inline else => |tag| {
+            const Interface = @field(interfaces, @tagName(tag));
+            if (comptime @hasDecl(Interface, "call_constructor")) {
+                // Step 2: the dictionary the JavaScript value undefined
+                // converts to - the constructor's, not passed.
+                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".params[2].type.?;
+                return Interface.call_constructor(realm, runtime.DOMString.initEmpty(), Dictionary.notPassed());
+            } else {
+                // No constructor (BeforeUnloadEvent, TextEvent): a new object
+                // of the interface, with the Event defaults.
+                return Interface.init(realm.allocator, realm);
+            }
+        },
+    }
 }
 
 /// Operation: getBoxQuads
