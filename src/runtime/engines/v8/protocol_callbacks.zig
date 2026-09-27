@@ -10,8 +10,14 @@
 //! completion is reported, in WebIDL's order.
 //!
 //! Not yet: "prepare to run a callback" with the callback context (the
-//! incumbent settings object) - the entry and incumbent realm stacks are the
-//! realm operations' (design 4.2).
+//! incumbent settings object recorded when the callback was converted).
+//! V8's incumbent is Isolate::GetIncumbentContext, which follows HTML only
+//! while a v8::Context::BackupIncumbentScope for that context is on the C++
+//! stack around the call (Blink's CallbackInvokeHelper) - an FFI taking the
+//! call as a callback, which v8_wrapper.cpp (held by the reflection lane)
+//! does not have yet - and the callback context has to reach these
+//! operations, which take none yet (Blink keeps it on CallbackFunctionBase).
+//! Until then the incumbent during the call is the callback's own realm.
 //!
 //! The conversion of the completion's value to the callback's return type is
 //! the caller's, and so is step 7 onwards of "invoke" for a promise return
@@ -187,7 +193,8 @@ pub fn invokeCallbackFunction(realm: Context, callback: JSValue, this_arg: engin
     // 6-8. Prepare to run script with realm's settings object.
     const callback_realm = try CallbackRealm.enter(function, entered);
     defer callback_realm.leave();
-    // 9. Prepare to run a callback with stored settings: not yet (above).
+    // 9. Prepare to run a callback with stored settings.
+    // TODO(protocol): implement - design 4.4 (a BackupIncumbentScope for the callback context, on the C++ stack around the call; see the file's doc)
 
     // The callback this value, from where it was read.
     const receiver = try Receiver.of(entered, this_arg);
@@ -225,7 +232,8 @@ pub fn callUserObjectOperation(realm: Context, callback: JSValue, operation: []c
     // 5-7. Prepare to run script with realm's settings object.
     const callback_realm = try CallbackRealm.enter(object, entered);
     defer callback_realm.leave();
-    // 8. Prepare to run a callback with stored settings: not yet (above).
+    // 8. Prepare to run a callback with stored settings.
+    // TODO(protocol): implement - design 4.4 (a BackupIncumbentScope for the callback context, on the C++ stack around the call; see the file's doc)
 
     var receiver = try Receiver.of(entered, this_arg);
     defer receiver.release();
