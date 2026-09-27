@@ -805,6 +805,10 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A heap address moves when the GC compacts](docs/lessons/architecture-a-heap-address-moves-when-the-gc-compacts.md) - Never key anything on where a GC-managed object lives; give it an identity it carries with it.
 - [When V8 first collects in a realm, every object needs a stated reason to live](docs/lessons/architecture-when-v8-first-collects-in-a-realm-every-object-needs-a-reason-to-live.md) - When a change lets the GC run where it did not, the regressions are old bugs: give each object its reason to live (pending activity, a trace edge, a generation check) - never restore the leak.
 - [A Pin taken in a constructor pins a wrapper the binding throws away](docs/lessons/architecture-a-pin-taken-in-a-constructor-pins-a-wrapper-the-binding-throws-away.md) - Never pin the object under construction; take a pending-activity hold, which survives the binding's wrap.
+- [An immutable [[Prototype]] is immutable from creation](docs/lessons/architecture-an-immutable-prototype-is-immutable-from-creation.md) - If an object's [[Prototype]] must be immutable, give it the right one at creation; a later SetPrototype on it is a no-op you will not notice.
+- [Under kAuto, V8 checkpoints at the end of Script::Run](docs/lessons/architecture-kauto-checkpoints-at-the-end-of-script-run.md) - With kAuto the checkpoint belongs to V8's call depth; hold the depth up until your own "clean up after running script".
+- [Registering a realm put the legacy import() callback back](docs/lessons/architecture-a-realm-registration-put-the-old-import-callback-back.md) - A per-isolate callback set from per-realm code is overwritten per realm; guard it where it is set.
+- [Entering a realm must enter its agent](docs/lessons/architecture-entering-a-realm-must-enter-its-agent.md) - A realm's agent is recorded on it; "the current one" is only right for realms of the current agent.
 
 ### Spec Compliance
 
@@ -880,6 +884,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Find what keeps a page alive: count native contexts, snapshot, attribute handles by site](docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md) - Every owned handle to anything in a page pins the whole page, and a page is released only when the last one goes.
 - [A 101 response's headers are filed under `CURLH_1XX`](docs/lessons/debugging-a-101-response-s-headers-are-filed-under-curlh-1xx.md) - A header curl says is missing may be filed under another origin bit.
 - [When one subtest in a file hangs and its siblings pass, compare what triggers each one](docs/lessons/debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
+- [The path production rarely takes keeps its leaks](docs/lessons/debugging-the-path-production-rarely-takes-keeps-its-leaks.md) - A path production rarely takes keeps every leak it has; measure the no-snapshot path's handles as well as the snapshot's.
 
 ### Workflow
 
