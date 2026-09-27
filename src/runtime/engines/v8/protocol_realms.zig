@@ -222,8 +222,11 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     if (restored) {
         // The snapshot has the interfaces; the adapter's template registry
         // still has to learn them, or a wrapped Document gets the wrong
-        // prototype.
-        interface_bindings.registerAllTemplatesOnly(isolate, context, .eager);
+        // prototype. A frame's realm builds only the interface objects its
+        // script reads (.lazy_follows, as context_manager's child contexts
+        // did): every one of ~1,260 costs a frame ~25 ms and ~2.8 MB, and a
+        // frame-heavy page makes dozens.
+        interface_bindings.registerAllTemplatesOnly(isolate, context, if (options.parent != null) .lazy_follows else .eager);
     } else {
         interface_bindings.initializeBindingsWithGlobalTemplate(isolate, context);
     }
