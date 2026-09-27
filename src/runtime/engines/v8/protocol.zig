@@ -357,17 +357,9 @@ pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
 // 4.4 Invoking callbacks
 // ============================================================================
 
-// TODO(protocol): implement - design 4.4 (page_realm.invokeCallbackFunction is the report-only, realm-given form; the protocol's takes the callback's realm and returns the Completion)
-pub fn invokeCallbackFunction(realm: Context, callback: JSValue, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
-    _ = .{ realm, callback, this_arg, args, behavior };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.4 (callback_interfaces.callUserObjectOperation takes a CallbackWrapper and rethrows only)
-pub fn callUserObjectOperation(realm: Context, callback: JSValue, operation: []const u8, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
-    _ = .{ realm, callback, operation, this_arg, args, behavior };
-    return error.NotSupported;
-}
+const protocol_callbacks = @import("protocol_callbacks.zig");
+pub const invokeCallbackFunction = protocol_callbacks.invokeCallbackFunction;
+pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
 
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.
 pub fn isCallable(realm: Context, value: JSValue) bool {
@@ -384,41 +376,13 @@ pub fn takeCallbackFunction(argument: *const anyopaque) Owned {
 // 4.5 ECMAScript values
 // ============================================================================
 
-// TODO(protocol): implement - design 4.5 (engine.zig's getMember is Get for the getProperty* helpers)
-pub fn getProperty(realm: Context, object: JSValue, property: []const u8) Error!Owned {
-    _ = .{ realm, object, property };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5 (replaces setPropertyOnObject, which sets strings only)
-pub fn setProperty(realm: Context, object: JSValue, property: []const u8, value: JSValue) Error!void {
-    _ = .{ realm, object, property, value };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5 (replaces defineOwnPropertyOnObject)
-pub fn defineOwnProperty(realm: Context, object: JSValue, property: []const u8, value: JSValue, attributes: engine.PropertyAttributes) Error!void {
-    _ = .{ realm, object, property, value, attributes };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn hasProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
-    _ = .{ realm, object, property };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn typeOf(realm: Context, value: JSValue) engine.ValueType {
-    _ = .{ realm, value };
-    notImplemented("typeOf", "4.5");
-}
-
-// TODO(protocol): implement - design 4.5
-pub fn sameValue(realm: Context, a: JSValue, b: JSValue) bool {
-    _ = .{ realm, a, b };
-    notImplemented("sameValue", "4.5");
-}
+const protocol_values = @import("protocol_values.zig");
+pub const getProperty = protocol_values.getProperty;
+pub const setProperty = protocol_values.setProperty;
+pub const defineOwnProperty = protocol_values.defineOwnProperty;
+pub const hasProperty = protocol_values.hasProperty;
+pub const typeOf = protocol_values.typeOf;
+pub const sameValue = protocol_values.sameValue;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
     return owned(value_operations.retainValue(realm, value) catch |err| return protocolError(err));
@@ -432,11 +396,7 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
     return value_operations.throwValue(realm, value) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.5 (the table's parseJson evaluates a JSON.parse script; v8_JSON_Parse_FromBuffer returns a Local and leaves the SyntaxError pending)
-pub fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
-    _ = .{ realm, bytes };
-    return error.NotSupported;
-}
+pub const parseJsonToValue = protocol_values.parseJsonToValue;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL
@@ -486,53 +446,15 @@ pub fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: All
     return webidl_conversions.getCopyOfBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.6 (webidl_conversions.iterate is the walk)
-pub fn convertToSequence(realm: Context, value: JSValue, allocator: Allocator) Error![]Owned {
-    _ = .{ realm, value, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (URLSearchParams / Headers init)
-pub fn convertToSequenceOfStringPairs(realm: Context, value: JSValue, conversion: engine.StringConversion, allocator: Allocator) Error!?[]engine.StringRecordEntry {
-    _ = .{ realm, value, conversion, allocator };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (replaces invokeForEach/getCollectionLength/getCollectionElement)
-pub fn iterate(realm: Context, value: JSValue, each: engine.IterateSteps, data: ?*anyopaque) Error!bool {
-    _ = .{ realm, value, each, data };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn getIterator(realm: Context, value: JSValue, kind: engine.IteratorKind) Error!*engine.IteratorRecord {
-    _ = .{ realm, value, kind };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorNext(realm: Context, record: *engine.IteratorRecord) Error!Owned {
-    _ = .{ realm, record };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorReturn(realm: Context, record: *engine.IteratorRecord, value: JSValue) Error!?Owned {
-    _ = .{ realm, record, value };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn iteratorResult(realm: Context, result: JSValue) Error!engine.IteratorResult {
-    _ = .{ realm, result };
-    return error.NotSupported;
-}
-
-// TODO(protocol): implement - design 4.6 (iterator records)
-pub fn releaseIteratorRecord(record: *engine.IteratorRecord) void {
-    _ = record;
-    notImplemented("releaseIteratorRecord", "4.6");
-}
+const protocol_conversions = @import("protocol_conversions.zig");
+pub const convertToSequence = protocol_conversions.convertToSequence;
+pub const convertToSequenceOfStringPairs = protocol_conversions.convertToSequenceOfStringPairs;
+pub const iterate = protocol_conversions.iterate;
+pub const getIterator = protocol_conversions.getIterator;
+pub const iteratorNext = protocol_conversions.iteratorNext;
+pub const iteratorReturn = protocol_conversions.iteratorReturn;
+pub const iteratorResult = protocol_conversions.iteratorResult;
+pub const releaseIteratorRecord = protocol_conversions.releaseIteratorRecord;
 
 // ============================================================================
 // 4.7 WebIDL: IDL to ECMAScript
@@ -554,13 +476,9 @@ pub fn createObservableArray(realm: Context) Error!JSValue {
     return observable_array.createObservableArray(realm) catch |err| protocolError(err);
 }
 
-// TODO(protocol): implement - design 4.7 (value_operations.createFrozenArrayOfPlatformObjects is the platform-object form)
-pub fn createFrozenArray(realm: Context, values: []const JSValue) Error!Owned {
-    _ = .{ realm, values };
-    return error.NotSupported;
-}
+pub const createFrozenArray = protocol_conversions.createFrozenArray;
 
-// TODO(protocol): implement - design 4.7 (was wrapAsyncIterator, a stub)
+// TODO(protocol): implement - design 4.7 (a WebIDL default asynchronous iterator object needs its own next/return per object and a closure per step: Function::New with data, which the FFI does not offer - a FunctionTemplate per object is cached for the context's life; v8_wrapper.cpp is held by the reflection lane)
 pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque) Error!Owned {
     _ = .{ realm, steps, data };
     return error.NotSupported;

@@ -435,3 +435,443 @@ test "a sequence of values becomes an Array of the realm" {
     try setGlobal("arr", array.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("Array.isArray(arr) && arr.length === 3 && arr[0] === 7 && arr[1] === 's' && arr[2] === o ? 1 : 0"));
 }
+
+// ============================================================================
+// The engine protocol's values, callbacks, iteration and sequences
+// (design 4.4-4.7), bound to V8
+// ============================================================================
+//
+// `@import("engine")` - under another name here only because this file already
+// calls the table `engine`. Arguments are made as the binding makes them
+// (conversions.fromV8Value): an object is a `.handle` tagged `.local`.
+
+const protocol = @import("engine");
+
+/// `handle` as the binding hands it to an impl. Call `deinit` on the result.
+fn bound(handle: *ffi.Value) !runtime.JSValue {
+    return v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, handle);
+}
+
+/// Run `body.run()` as script calling a binding would: under a TryCatch.
+/// What it threw (OWNED), or null.
+fn thrownBy(body: anytype) ?*ffi.Value {
+    const Body = @TypeOf(body.*);
+    const Trampoline = struct {
+        fn call(data: ?*anyopaque) callconv(.c) void {
+            const self: *Body = @ptrCast(@alignCast(data.?));
+            self.run();
+        }
+    };
+    var thrown: ?*ffi.Value = null;
+    _ = ffi.v8_RunCatching(isolate_once.?, Trampoline.call, body, &thrown);
+    return thrown;
+}
+
+/// Whether script's `expression` over `name` (bound to `value`) is true.
+fn holds(name: []const u8, value: *anyopaque, expression: []const u8) !bool {
+    try setGlobal(name, value);
+    return try evalInt(expression) == 1;
+}
+
+fn int32Of(owned: protocol.Owned) i32 {
+    return ffi.v8_Value_Int32Value(@ptrCast(@alignCast(owned.value.handle.ptr)), context_once.?);
+}
+
+test "protocol: Get reads a property, and what a getter throws is pending" {
+    const ctx = try realm();
+    const object = try Made.of("({ a: 1, get boom() { throw globalThis.boom = new Error('get'); } })");
+    defer object.deinit();
+    var argument = try bound(object.handle);
+    defer argument.deinit(allocator);
+
+    const a = try protocol.getProperty(ctx, argument, "a");
+    defer a.release();
+    try std.testing.expectEqual(@as(i32, 1), int32Of(a));
+    const missing = try protocol.getProperty(ctx, argument, "nope");
+    defer missing.release();
+    try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, missing.value));
+
+    var body: struct {
+        ctx: runtime.Context,
+        argument: runtime.JSValue,
+        result: protocol.Error!protocol.Owned = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.getProperty(self.ctx, self.argument, "boom");
+        }
+    } = .{ .ctx = ctx, .argument = argument };
+    const thrown = thrownBy(&body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, body.result);
+    try std.testing.expect(try holds("thrownGet", thrown, "thrownGet === globalThis.boom ? 1 : 0"));
+
+    try std.testing.expectError(error.TypeError, protocol.getProperty(ctx, runtime.JSValue.fromNumber(1), "a"));
+}
+
+test "protocol: Set and DefinePropertyOrThrow write, HasProperty reads, and a failed define is a TypeError" {
+    const ctx = try realm();
+    const object = try Made.of("globalThis.target = Object.create({ inherited: 1 })");
+    defer object.deinit();
+    var argument = try bound(object.handle);
+    defer argument.deinit(allocator);
+
+    try protocol.setProperty(ctx, argument, "plain", runtime.JSValue.fromNumber(7));
+    try protocol.defineOwnProperty(ctx, argument, "hidden", runtime.JSValue.fromStringRef("h"), .{ .writable = false, .enumerable = false, .configurable = false });
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\target.plain === 7 && target.hidden === "h" && Object.keys(target).join() === "plain" &&
+        \\!Object.getOwnPropertyDescriptor(target, "hidden").writable ? 1 : 0
+    ));
+    try std.testing.expect(try protocol.hasProperty(ctx, argument, "inherited"));
+    try std.testing.expect(try protocol.hasProperty(ctx, argument, "hidden"));
+    try std.testing.expect(!try protocol.hasProperty(ctx, argument, "absent"));
+    // DefinePropertyOrThrow: [[DefineOwnProperty]] returned false.
+    try std.testing.expectError(error.TypeError, protocol.defineOwnProperty(ctx, argument, "hidden", runtime.JSValue.fromNumber(1), .{ .writable = true, .enumerable = true, .configurable = true }));
+    // The deviation, pinned: V8's embedder Set is sloppy, so a Set that fails
+    // without throwing reports success.
+    try protocol.setProperty(ctx, argument, "hidden", runtime.JSValue.fromNumber(2));
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("target.hidden === 'h' ? 1 : 0"));
+
+    const trapped = try Made.of("new Proxy({}, { has() { throw globalThis.boom = new Error('has'); }, set() { throw globalThis.boom2 = new Error('set'); } })");
+    defer trapped.deinit();
+    var proxy = try bound(trapped.handle);
+    defer proxy.deinit(allocator);
+    var has_body: struct {
+        ctx: runtime.Context,
+        argument: runtime.JSValue,
+        result: protocol.Error!bool = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.hasProperty(self.ctx, self.argument, "x");
+        }
+    } = .{ .ctx = ctx, .argument = proxy };
+    const thrown = thrownBy(&has_body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, has_body.result);
+    var set_body: struct {
+        ctx: runtime.Context,
+        argument: runtime.JSValue,
+        result: protocol.Error!void = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.setProperty(self.ctx, self.argument, "x", runtime.JSValue.fromNumber(1));
+        }
+    } = .{ .ctx = ctx, .argument = proxy };
+    const set_thrown = thrownBy(&set_body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(set_thrown);
+    try std.testing.expectError(error.ExceptionPending, set_body.result);
+    try std.testing.expect(try holds("thrownSet", set_thrown, "thrownSet === globalThis.boom2 ? 1 : 0"));
+}
+
+test "protocol: Type and SameValue" {
+    const ctx = try realm();
+    const cases = [_]struct { code: []const u8, type: protocol.ValueType }{
+        .{ .code = "undefined", .type = .undefined },
+        .{ .code = "null", .type = .null },
+        .{ .code = "true", .type = .boolean },
+        .{ .code = "'s'", .type = .string },
+        .{ .code = "Symbol()", .type = .symbol },
+        .{ .code = "1.5", .type = .number },
+        .{ .code = "1n", .type = .bigint },
+        .{ .code = "(function () {})", .type = .object },
+    };
+    for (cases) |case| {
+        const made = try Made.of(case.code);
+        defer made.deinit();
+        try std.testing.expectEqual(case.type, protocol.typeOf(ctx, made.value()));
+    }
+    try std.testing.expectEqual(protocol.ValueType.string, protocol.typeOf(ctx, runtime.JSValue.fromStringRef("x")));
+
+    const nan = try Made.of("NaN");
+    defer nan.deinit();
+    const minus_zero = try Made.of("-0");
+    defer minus_zero.deinit();
+    const object = try Made.of("globalThis.sameObject = {}");
+    defer object.deinit();
+    const again = try Made.of("sameObject");
+    defer again.deinit();
+    const other = try Made.of("({})");
+    defer other.deinit();
+    const text = try Made.of("'a'");
+    defer text.deinit();
+    const big = try Made.of("10n");
+    defer big.deinit();
+    const big_again = try Made.of("10n");
+    defer big_again.deinit();
+    try std.testing.expect(protocol.sameValue(ctx, nan.value(), runtime.JSValue.fromNumber(std.math.nan(f64))));
+    try std.testing.expect(!protocol.sameValue(ctx, minus_zero.value(), runtime.JSValue.fromNumber(0)));
+    try std.testing.expect(protocol.sameValue(ctx, object.value(), again.value()));
+    try std.testing.expect(!protocol.sameValue(ctx, object.value(), other.value()));
+    try std.testing.expect(protocol.sameValue(ctx, text.value(), runtime.JSValue.fromStringRef("a")));
+    try std.testing.expect(!protocol.sameValue(ctx, text.value(), runtime.JSValue.fromNumber(1)));
+    try std.testing.expect(protocol.sameValue(ctx, big.value(), big_again.value()));
+}
+
+test "protocol: JSON bytes parse to a value, a BOM is dropped, and a SyntaxError is pending" {
+    const ctx = try realm();
+    _ = try evalInt("globalThis.JSON = { parse() { return 42; } }; 1");
+    const parsed = try protocol.parseJsonToValue(ctx, "\xEF\xBB\xBF{\"a\":[1,2]}");
+    defer parsed.release();
+    try std.testing.expect(try holds("parsed", parsed.value.handle.ptr, "parsed.a.length === 2 && parsed.a[1] === 2 ? 1 : 0"));
+
+    var body: struct {
+        ctx: runtime.Context,
+        result: protocol.Error!protocol.Owned = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.parseJsonToValue(self.ctx, "{nope");
+        }
+    } = .{ .ctx = ctx };
+    const thrown = thrownBy(&body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, body.result);
+    try std.testing.expect(try holds("jsonError", thrown, "jsonError instanceof SyntaxError ? 1 : 0"));
+}
+
+const Reports = struct {
+    count: usize = 0,
+    realm: ?protocol.Context = null,
+    had_message: bool = false,
+
+    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const self: *Reports = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.realm = info.realm;
+        self.had_message = std.mem.indexOf(u8, info.message, "invoked") != null;
+    }
+};
+
+test "protocol: invoke a callback function - the value, a rethrown or a reported throw, and a non-callable" {
+    const ctx = try realm();
+    v8.context_manager.init(std.heap.page_allocator) catch {};
+    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+
+    const adder = try Made.of("(function (a, b) { 'use strict'; return (this === globalThis ? 100 : 0) + a + b; })");
+    defer adder.deinit();
+    var callback = try bound(adder.handle);
+    defer callback.deinit(allocator);
+    const args = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromNumber(2) };
+
+    const plain = try protocol.invokeCallbackFunction(ctx, callback, .undefined, &args, .rethrow);
+    try std.testing.expectEqual(@as(i32, 3), int32Of(plain.normal));
+    plain.normal.release();
+    const with_global = try protocol.invokeCallbackFunction(ctx, callback, .global_this, &args, .rethrow);
+    try std.testing.expectEqual(@as(i32, 103), int32Of(with_global.normal));
+    with_global.normal.release();
+
+    const thrower = try Made.of("(function () { throw globalThis.invokedError = new Error('invoked'); })");
+    defer thrower.deinit();
+    var throwing = try bound(thrower.handle);
+    defer throwing.deinit(allocator);
+    // "rethrow": the thrown value handed back, not pending.
+    const rethrown = try protocol.invokeCallbackFunction(ctx, throwing, .undefined, &.{}, .rethrow);
+    try std.testing.expect(rethrown == .throw);
+    try std.testing.expect(try holds("rethrown", rethrown.throw.value.handle.ptr, "rethrown === globalThis.invokedError ? 1 : 0"));
+    rethrown.throw.release();
+    // "report": reported for the callback's realm, then undefined.
+    var reports: Reports = .{};
+    const reported = try protocol.invokeCallbackFunction(ctx, throwing, .undefined, &.{}, .{ .report = .{ .report = Reports.report, .host = &reports } });
+    try std.testing.expect(reported == .normal);
+    try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, reported.normal.value));
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    try std.testing.expectEqual(@as(?protocol.Context, hosted), reports.realm);
+    try std.testing.expect(reports.had_message);
+
+    // [LegacyTreatNonObjectAsNull]: not callable, not called.
+    const nothing = try protocol.invokeCallbackFunction(ctx, runtime.JSValue.fromNumber(5), .undefined, &.{}, .rethrow);
+    try std.testing.expectEqual(protocol.ValueType.undefined, protocol.typeOf(ctx, nothing.normal.value));
+}
+
+test "protocol: call a user object's operation - a function, a handleEvent, a throwing getter, a non-callable" {
+    const ctx = try realm();
+    const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(5)};
+
+    const function = try Made.of("(function (x) { return x * 2; })");
+    defer function.deinit();
+    var as_function = try bound(function.handle);
+    defer as_function.deinit(allocator);
+    const doubled = try protocol.callUserObjectOperation(ctx, as_function, "handleEvent", .undefined, &args, .rethrow);
+    try std.testing.expectEqual(@as(i32, 10), int32Of(doubled.normal));
+    doubled.normal.release();
+
+    const listener = try Made.of("({ base: 1, handleEvent(x) { return this.base + x; } })");
+    defer listener.deinit();
+    var as_object = try bound(listener.handle);
+    defer as_object.deinit(allocator);
+    // thisArg is O, whatever was given.
+    const called = try protocol.callUserObjectOperation(ctx, as_object, "handleEvent", .undefined, &args, .rethrow);
+    try std.testing.expectEqual(@as(i32, 6), int32Of(called.normal));
+    called.normal.release();
+
+    const getter = try Made.of("({ get handleEvent() { throw globalThis.getterError = new Error('getter'); } })");
+    defer getter.deinit();
+    var throwing_getter = try bound(getter.handle);
+    defer throwing_getter.deinit(allocator);
+    const from_get = try protocol.callUserObjectOperation(ctx, throwing_getter, "handleEvent", .undefined, &.{}, .rethrow);
+    try std.testing.expect(try holds("fromGet", from_get.throw.value.handle.ptr, "fromGet === globalThis.getterError ? 1 : 0"));
+    from_get.throw.release();
+
+    const not_callable = try Made.of("({ handleEvent: 5 })");
+    defer not_callable.deinit();
+    var five = try bound(not_callable.handle);
+    defer five.deinit(allocator);
+    const type_error = try protocol.callUserObjectOperation(ctx, five, "handleEvent", .undefined, &.{}, .rethrow);
+    try std.testing.expect(try holds("notCallable", type_error.throw.value.handle.ptr, "notCallable instanceof TypeError ? 1 : 0"));
+    type_error.throw.release();
+}
+
+const Visited = struct {
+    sum: i32 = 0,
+    count: usize = 0,
+    fn each(data: ?*anyopaque, item: runtime.JSValue) protocol.Error!void {
+        const self: *Visited = @ptrCast(@alignCast(data.?));
+        self.count += 1;
+        self.sum += ffi.v8_Value_Int32Value(@ptrCast(@alignCast(item.handle.ptr)), context_once.?);
+    }
+};
+
+test "protocol: iterate visits every item; no @@iterator is false; a throwing iterator is pending" {
+    const ctx = try realm();
+    const array = try Made.of("[1, 2, 3]");
+    defer array.deinit();
+    var visited: Visited = .{};
+    try std.testing.expect(try protocol.iterate(ctx, array.value(), Visited.each, &visited));
+    try std.testing.expectEqual(@as(usize, 3), visited.count);
+    try std.testing.expectEqual(@as(i32, 6), visited.sum);
+
+    const plain = try Made.of("({})");
+    defer plain.deinit();
+    try std.testing.expect(!try protocol.iterate(ctx, plain.value(), Visited.each, &visited));
+    try std.testing.expectError(error.TypeError, protocol.iterate(ctx, runtime.JSValue.fromNumber(1), Visited.each, &visited));
+
+    const failing = try Made.of("({ *[Symbol.iterator]() { yield 1; throw globalThis.iterError = new Error('iter'); } })");
+    defer failing.deinit();
+    var body: struct {
+        ctx: runtime.Context,
+        value: runtime.JSValue,
+        visited: Visited = .{},
+        result: protocol.Error!bool = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.iterate(self.ctx, self.value, Visited.each, &self.visited);
+        }
+    } = .{ .ctx = ctx, .value = failing.value() };
+    const thrown = thrownBy(&body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, body.result);
+    try std.testing.expectEqual(@as(usize, 1), body.visited.count);
+}
+
+test "protocol: sequence<any> and a sequence of string pairs" {
+    const ctx = try realm();
+    const generator = try Made.of("(function* () { yield 'a'; yield 2; yield {}; })()");
+    defer generator.deinit();
+    const items = try protocol.convertToSequence(ctx, generator.value(), allocator);
+    defer allocator.free(items);
+    defer for (items) |item| item.release();
+    try std.testing.expectEqual(@as(usize, 3), items.len);
+    try std.testing.expectEqual(protocol.ValueType.object, protocol.typeOf(ctx, items[2].value));
+    const plain = try Made.of("({})");
+    defer plain.deinit();
+    try std.testing.expectError(error.TypeError, protocol.convertToSequence(ctx, plain.value(), allocator));
+
+    const pairs_value = try Made.of("[['a', 'b'], new Set(['c', 'd'])]");
+    defer pairs_value.deinit();
+    const entries = (try protocol.convertToSequenceOfStringPairs(ctx, pairs_value.value(), .usv_string, allocator)) orelse return error.NotASequence;
+    defer runtime.StringRecordEntry.freeAll(entries, allocator);
+    try std.testing.expectEqual(@as(usize, 2), entries.len);
+    try std.testing.expectEqualStrings("c", entries[1].key);
+    try std.testing.expectEqualStrings("d", entries[1].value);
+    // Not the sequence member: a record, or a string.
+    try std.testing.expect(try protocol.convertToSequenceOfStringPairs(ctx, plain.value(), .usv_string, allocator) == null);
+    try std.testing.expect(try protocol.convertToSequenceOfStringPairs(ctx, runtime.JSValue.fromStringRef("a=b"), .usv_string, allocator) == null);
+    const wrong_size = try Made.of("[['a']]");
+    defer wrong_size.deinit();
+    try std.testing.expectError(error.TypeError, protocol.convertToSequenceOfStringPairs(ctx, wrong_size.value(), .usv_string, allocator));
+    // An item that is not iterable is a TypeError of its conversion.
+    const not_pairs = try Made.of("[5]");
+    defer not_pairs.deinit();
+    try std.testing.expectError(error.TypeError, protocol.convertToSequenceOfStringPairs(ctx, not_pairs.value(), .usv_string, allocator));
+}
+
+test "protocol: iterator records - next, the result, return, and an async iterator's promise" {
+    const ctx = try realm();
+    const generator = try Made.of("globalThis.returned = 0; (function* () { try { yield 1; yield 2; } finally { returned++; } })()");
+    defer generator.deinit();
+    const record = try protocol.getIterator(ctx, generator.value(), .sync);
+    defer protocol.releaseIteratorRecord(record);
+    const first = try protocol.iteratorNext(ctx, record);
+    defer first.release();
+    const result = try protocol.iteratorResult(ctx, first.value);
+    defer result.value.release();
+    try std.testing.expect(!result.done);
+    try std.testing.expectEqual(@as(i32, 1), int32Of(result.value));
+    const closed = (try protocol.iteratorReturn(ctx, record, runtime.JSValue.fromNumber(9))) orelse return error.NoReturn;
+    defer closed.release();
+    const closed_result = try protocol.iteratorResult(ctx, closed.value);
+    defer closed_result.value.release();
+    try std.testing.expect(closed_result.done);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.returned"));
+
+    // An array iterator has no `return`.
+    const array = try Made.of("[1]");
+    defer array.deinit();
+    const array_record = try protocol.getIterator(ctx, array.value(), .sync);
+    defer protocol.releaseIteratorRecord(array_record);
+    try std.testing.expect(try protocol.iteratorReturn(ctx, array_record, runtime.JSValue.jsUndefined) == null);
+
+    // An async iterator's next answers a promise, for the caller to await.
+    const async_generator = try Made.of("(async function* () { yield 1; })()");
+    defer async_generator.deinit();
+    const async_record = try protocol.getIterator(ctx, async_generator.value(), .async);
+    defer protocol.releaseIteratorRecord(async_record);
+    const pending = try protocol.iteratorNext(ctx, async_record);
+    defer pending.release();
+    try std.testing.expect(ffi.v8_Value_IsPromise(@ptrCast(@alignCast(pending.value.handle.ptr))));
+    // Not built yet: an async iterator over a sync iterable.
+    try std.testing.expectError(error.NotSupported, protocol.getIterator(ctx, array.value(), .async));
+    try std.testing.expectError(error.TypeError, protocol.getIterator(ctx, runtime.JSValue.fromNumber(1), .sync));
+}
+
+test "protocol: a frozen array" {
+    const ctx = try realm();
+    const values = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromStringRef("two") };
+    const array = try protocol.createFrozenArray(ctx, &values);
+    defer array.release();
+    try std.testing.expect(try holds("frozen", array.value.handle.ptr, "Array.isArray(frozen) && Object.isFrozen(frozen) && frozen[1] === 'two' ? 1 : 0"));
+}
+
+test "protocol: the values, callbacks and iteration operations leave no Global behind" {
+    const ctx = try realm();
+    const object = try Made.of("({ a: 1, handleEvent() { return 1; } })");
+    defer object.deinit();
+    const function = try Made.of("(function () { return 1; })");
+    defer function.deinit();
+    const iterable = try Made.of("[['a', 'b']]");
+    defer iterable.deinit();
+    const round = struct {
+        fn run(c: runtime.Context, o: runtime.JSValue, f: runtime.JSValue, it: runtime.JSValue) !void {
+            (try protocol.getProperty(c, o, "a")).release();
+            try protocol.setProperty(c, o, "b", runtime.JSValue.fromNumber(2));
+            try protocol.defineOwnProperty(c, o, "c", runtime.JSValue.fromNumber(3), .{ .writable = true, .enumerable = true, .configurable = true });
+            _ = try protocol.hasProperty(c, o, "a");
+            _ = protocol.typeOf(c, o);
+            _ = protocol.sameValue(c, o, f);
+            (try protocol.parseJsonToValue(c, "[1]")).release();
+            (try protocol.invokeCallbackFunction(c, f, .global_this, &.{runtime.JSValue.fromNumber(1)}, .rethrow)).normal.release();
+            (try protocol.callUserObjectOperation(c, o, "handleEvent", .undefined, &.{}, .rethrow)).normal.release();
+            const items = try protocol.convertToSequence(c, it, allocator);
+            for (items) |item| item.release();
+            allocator.free(items);
+            const entries = (try protocol.convertToSequenceOfStringPairs(c, it, .dom_string, allocator)).?;
+            runtime.StringRecordEntry.freeAll(entries, allocator);
+            const record = try protocol.getIterator(c, it, .sync);
+            (try protocol.iteratorNext(c, record)).release();
+            protocol.releaseIteratorRecord(record);
+            (try protocol.createFrozenArray(c, &.{runtime.JSValue.fromNumber(1)})).release();
+        }
+    }.run;
+    try round(ctx, object.value(), function.value(), iterable.value());
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, object.value(), function.value(), iterable.value());
+    // A leak here is a node per call: 32 rounds of over a dozen calls, more
+    // than 1 KB. Measured instead: every operation alone flat over 32 rounds,
+    // and the whole round taking one 32-byte node once, at a different round
+    // each run, then flat for 96 - V8's own, as script the round calls tiers
+    // up. Two such nodes are allowed; a per-call leak is not.
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+}
