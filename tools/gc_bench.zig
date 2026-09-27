@@ -8,7 +8,7 @@
 //!
 //! The answer is a curve, not a boolean. Before a collector exists the useful
 //! output is "how much per element, and is it linear" - which says whether the
-//! growth is DOM state, V8 heap, or a fixed startup cost being amortised. A test
+//! growth is DOM state, engine heap, or a fixed startup cost being amortised. A test
 //! can only say pass or fail, and would say "fail" for months while reporting
 //! nothing that helps. Once the number is flat this becomes a test.
 //!
@@ -27,13 +27,11 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const v8 = @import("v8");
 const engine = @import("engine");
 const memory = @import("memory");
 const Browser = @import("browser").Browser;
 const runtime = @import("runtime");
 const instance_bridge = @import("dom").instance_bridge;
-const WrapperCache = v8.wrapper_cache_mod.WrapperCache;
 
 const log = std.log.scoped(.gc_bench);
 
@@ -176,7 +174,10 @@ var counting: CountingAllocator = undefined;
 ///
 /// Resident bytes alone say how much is retained; the allocator counters say WHERE.
 /// Without the split, "5,893 bytes per element" cannot be acted on - it does not
-/// distinguish DOM state in the arena from V8's heap from registry entries.
+/// distinguish DOM state in the arena from the engine's heap from registry entries.
+///
+/// What the engine knows comes from its diagnostics tier - heapStatistics and
+/// diagnosticCounters - so this tool names no engine and reads no engine's API.
 const Sample = struct {
     cycle: usize,
     resident: ?usize,
@@ -197,36 +198,42 @@ const Sample = struct {
     /// Bytes outstanding in the general-purpose allocator - everything that is
     /// neither arena state nor a slab slot.
     gpa_outstanding: usize,
-    /// Entries in the V8 wrapper cache. Each holds a CacheEntry plus a
-    /// Global<Object>, and its weak callback is what frees the instance - so if
-    /// this is not shrinking, nothing downstream of it can.
-    wrapper_entries: usize,
-    /// V8's own heap accounting. Distinguishes objects genuinely retained (`used`
-    /// climbs) from V8 simply not handing pages back (`used` flat while RSS climbs).
-    v8_used: usize,
-    v8_total: usize,
-    /// Cumulative Global<T> creations. Each is a C++ allocation plus a slot in
-    /// V8's global handle table, which `used_heap_size` does not count.
-    live_strings: i64,
-    /// Global<String> handles LIVE right now (created minus disposed). Unlike the
-    /// cumulative count, this shows whether a family is actually leaking: flat
-    /// means every string created per element is also released.
-    live_string_globals: i64,
-    /// Live Global<Context> handles - the family with the highest creation rate.
-    live_context_globals: i64,
-    /// Live Global<Object> handles.
-    live_object_globals: i64,
+    /// The engine's heap accounting (used, total, external), where the engine
+    /// reports one. Distinguishes objects genuinely retained (`used` climbs) from
+    /// the engine simply not handing pages back (`used` flat while RSS climbs).
+    heap: ?engine.HeapStatistics,
+    /// The engine adapter's own counters (live handles by kind, wrapper cache
+    /// entries, ...), whatever it reports: `counters()`. The tool reads one by
+    /// name (`wrapper_cache_entries`) and prints the rest without knowing what
+    /// they are. Held in the sample, not allocated: every allocator here is
+    /// one of the things being measured.
+    counter_storage: [max_counters]engine.Counter,
+    counter_count: usize,
     /// Bytes held by malloc - the C++ heap. Distinguishes a missing `delete` from
-    /// V8's page allocator not returning memory.
+    /// the engine's page allocator not returning memory.
     malloc_in_use: usize,
     /// Total malloc heap, in use or not - fragmentation shows here, not above.
     malloc_heap: usize,
-    /// V8 external memory: backing stores and external strings, outside the JS heap.
-    v8_external: usize,
+
+    fn counters(self: *const Sample) []const engine.Counter {
+        return self.counter_storage[0..self.counter_count];
+    }
+
+    /// The adapter counter named `name`, if it reports one.
+    fn counter(self: *const Sample, name: []const u8) ?i64 {
+        for (self.counters()) |c| {
+            if (std.mem.eql(u8, c.name, name)) return c.value;
+        }
+        return null;
+    }
 };
 
-/// The isolate to ask for heap statistics, set once the browser exists.
-var heap_isolate: ?*v8.ffi.Isolate = null;
+/// The most adapter counters a reading keeps; an adapter reporting more is
+/// read as reporting none.
+const max_counters = 32;
+
+/// The agent to ask for heap statistics, set once the browser exists.
+var heap_agent: ?*engine.Agent = null;
 
 /// How far this image was slid by ASLR, so a recorded return address can be turned
 /// into the static address `atos` understands.
@@ -241,13 +248,28 @@ fn imageSlide() usize {
     return if (builtin.os.tag == .macos) _dyld_get_image_vmaddr_slide(0) else 0;
 }
 
-/// The wrapper cache lives on the runtime Context, not globally.
-var wrapper_cache_ref: ?*WrapperCache = null;
+/// The engine's heap statistics for the page's agent, when it reports them.
+fn readHeap() ?engine.HeapStatistics {
+    if (engine.capabilities.heap_statistics == .unsupported) return null;
+    return engine.heapStatistics(heap_agent orelse return null);
+}
+
+/// The adapter's counters, copied into `storage`; how many. None when it
+/// reports none. Read through a buffer on the stack, so taking a reading
+/// allocates nothing the reading measures.
+fn readCounters(storage: *[max_counters]engine.Counter) usize {
+    if (engine.capabilities.diagnostic_counters == .unsupported) return 0;
+    var bytes: [max_counters * @sizeOf(engine.Counter)]u8 align(@alignOf(engine.Counter)) = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&bytes);
+    const read = engine.diagnosticCounters(fixed.allocator()) catch return 0;
+    @memcpy(storage[0..read.len], read);
+    return read.len;
+}
 
 fn takeSample(cycle: usize) Sample {
     const arena = runtime.ArenaAllocator.tryGet() catch null;
     const slab = runtime.SlabAllocator.tryGet() catch null;
-    return .{
+    var sample: Sample = .{
         .cycle = cycle,
         .resident = memory.residentBytes(),
         // bytes_in_use, not total_bytes_allocated: the question is how much is
@@ -259,32 +281,14 @@ fn takeSample(cycle: usize) Sample {
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
         .bridge_entries = instance_bridge.entryCount(),
         .gpa_outstanding = counting.outstanding,
-        .wrapper_entries = if (wrapper_cache_ref) |wc| wc.size() else 0,
-        .v8_used = blk: {
-            const iso = heap_isolate orelse break :blk 0;
-            var used: usize = 0;
-            v8.ffi.v8_Isolate_GetHeapUsage(iso, &used, null, null);
-            break :blk used;
-        },
-        .live_strings = v8.ffi.v8_Debug_CreatedGlobals(),
-        .live_string_globals = v8.ffi.v8_Debug_LiveStringGlobals(),
-        .live_context_globals = v8.ffi.v8_Debug_LiveContextGlobals(),
-        .live_object_globals = v8.ffi.v8_Debug_LiveObjectGlobals(),
+        .heap = readHeap(),
+        .counter_storage = undefined,
+        .counter_count = 0,
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .malloc_heap = memory.mallocHeapBytes() orelse 0,
-        .v8_external = blk: {
-            const iso = heap_isolate orelse break :blk 0;
-            var ext: usize = 0;
-            v8.ffi.v8_Isolate_GetHeapUsage(iso, null, null, &ext);
-            break :blk ext;
-        },
-        .v8_total = blk: {
-            const iso = heap_isolate orelse break :blk 0;
-            var total: usize = 0;
-            v8.ffi.v8_Isolate_GetHeapUsage(iso, null, &total, null);
-            break :blk total;
-        },
     };
+    sample.counter_count = readCounters(&sample.counter_storage);
+    return sample;
 }
 
 /// 0.16 removed `std.process.argsAlloc` - arguments are no longer process-global,
@@ -302,15 +306,15 @@ pub fn main(init: std.process.Init) !void {
     else
         1_000;
 
-    // `--gc` forces a full V8 collection before each reading. This is the
+    // `--gc` forces a full engine collection before each reading. This is the
     // decomposition experiment, not a mode of the benchmark: if RSS still climbs
-    // with V8 collecting, the retained bytes are Zig-side - the arena that never
+    // with the engine collecting, the retained bytes are Zig-side - the arena that never
     // resets, and the registries keyed on recycled addresses - and no amount of JS
-    // heap work will reach them. If it flattens, the retention is V8's.
+    // heap work will reach them. If it flattens, the retention is the engine's.
     var force_gc = false;
     // `--control` allocates a plain JS object instead of an Element, with everything
     // else identical. It answers the question any RSS growth figure has to survive:
-    // how much of it is V8's heap simply not returning pages, which is normal engine
+    // how much of it is the engine's heap simply not returning pages, which is normal engine
     // behaviour and not a leak? Whatever the control retains is the floor, and only
     // the excess above it is Crane's to fix.
     var control = false;
@@ -365,20 +369,15 @@ pub fn main(init: std.process.Init) !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
 
-    const isolate = browser.isolate orelse return error.NoIsolate;
     const page = browser.current_context orelse return error.NoContext;
     const realm = page.realm orelse return error.NoRealm;
 
-    heap_isolate = isolate;
-
-    if (realm.getV8WrapperCacheStorage()) |storage| {
-        wrapper_cache_ref = @ptrCast(@alignCast(storage));
-    }
+    heap_agent = page.agent;
 
     var samples: std.ArrayListUnmanaged(Sample) = .empty;
     defer samples.deinit(allocator);
 
-    // Baseline AFTER browser startup: the snapshot, the templates and V8's own heap
+    // Baseline AFTER browser startup: the snapshot, the templates and the engine's own heap
     // are a fixed cost, and counting them as cycle-zero growth would hide a real
     // leak behind a large constant.
     try samples.append(allocator, takeSample(0));
@@ -397,14 +396,14 @@ pub fn main(init: std.process.Init) !void {
         const batch = @min(gc_batch, cycles - done);
 
         // The element is created and dropped inside the loop, so nothing in JS
-        // holds it afterwards. `void` on the createElement call keeps V8 from
+        // holds it afterwards. `void` on the createElement call keeps the engine from
         // retaining a completion value for the statement.
         //
         // A fresh script per batch rather than one long-running script: a single
         // 10,000-iteration script keeps one JS stack frame alive throughout, which
         // is itself a root, and would confound "did the state come back".
         const body = if (control)
-            // Shaped to cost V8 about what a wrapper does - an object with a couple
+            // Shaped to cost the engine about what a wrapper does - an object with a couple
             // of properties - while touching no DOM state at all.
             "void ({ a: i, b: 'x' });"
         else
@@ -425,7 +424,7 @@ pub fn main(init: std.process.Init) !void {
         if (force_gc) {
             // Twice: one pass can leave objects that only become unreachable once
             // the first pass has cleared what referenced them, and a single
-            // collection would under-report what V8 can actually reclaim.
+            // collection would under-report what the engine can actually reclaim.
             engine.requestGarbageCollection(page.agent);
             engine.performMicrotaskCheckpoint(realm) catch {};
             engine.requestGarbageCollection(page.agent);
@@ -439,52 +438,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     report(samples.items, force_gc, control);
-
-    {
-        const names = [_][]const u8{
-            "FunctionCallbackInfo_This", "PropertyCallbackInfo_This",
-            "Context_Global",            "GetGlobalPrototype",
-            "FunctionTemplate_GetProto", "ObjectTemplate_NewInstance",
-        };
-        const cycles_run = samples.items[samples.items.len - 1].cycle;
-        std.debug.print("\nGlobal<Object> creations per element, by entry point:\n", .{});
-        for (names, 0..) |n, i| {
-            const c = v8.ffi.v8_Debug_ObjSrc(@intCast(i));
-            if (c <= 0) continue;
-            std.debug.print("  {s:<28} {d:>9}  ({d:.2}/elem)\n", .{
-                n, c, @as(f64, @floatFromInt(c)) / @as(f64, @floatFromInt(@max(cycles_run, 1))),
-            });
-        }
-    }
-
-    {
-        // Where the leaked Global<T> handles are created. Counts are cumulative
-        // creations, not live ones, but on a create-and-discard loop the site that
-        // dominates creation is where the leak is.
-        const Site = struct { pc: usize, count: i64 };
-        var sites: std.ArrayListUnmanaged(Site) = .empty;
-        defer sites.deinit(allocator);
-
-        var i: c_int = 0;
-        while (i < 512) : (i += 1) {
-            var pc: usize = 0;
-            var count: i64 = 0;
-            if (!v8.ffi.v8_Debug_GlobalSite(i, &pc, &count)) break;
-            if (pc != 0 and count > 0) try sites.append(allocator, .{ .pc = pc, .count = count });
-        }
-        std.mem.sort(Site, sites.items, {}, struct {
-            fn lt(_: void, a: Site, b: Site) bool {
-                return a.count > b.count;
-            }
-        }.lt);
-
-        const shown = @min(sites.items.len, 10);
-        std.debug.print("\nGlobal<T> creations by site (top {d} of {d}):\n", .{ shown, sites.items.len });
-        for (sites.items[0..shown]) |site| {
-            std.debug.print("  {d:>12} creations  at 0x{x}\n", .{ site.count, site.pc -| imageSlide() });
-        }
-        std.debug.print("\nResolve with:  atos -o zig-out/bin/gc_bench <address>\n", .{});
-    }
+    reportCounters(samples.items);
 
     if (profile) {
         const sites = try counting.topSites(allocator, 12);
@@ -507,7 +461,7 @@ pub fn main(init: std.process.Init) !void {
 fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void {
     std.debug.print("\n=== Phase 6: {s}{s} ===\n\n", .{
         if (was_control) "plain JS object (CONTROL)" else "createElement + discard",
-        if (gc_was_forced) ", V8 GC forced" else "",
+        if (gc_was_forced) ", engine GC forced" else "",
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
@@ -572,7 +526,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
             .{ last.cycle, @as(f64, @floatFromInt(total)) / (1024.0 * 1024.0), per },
         );
         // The decomposition. Arena growth is the part a state GC can reclaim; the
-        // remainder is V8 heap, registries and allocator overhead, and needs a
+        // remainder is engine heap, registries and allocator overhead, and needs a
         // different fix. Reporting only the total invites attributing all of it to
         // whichever cause is currently being worked on.
         const arena_delta = @as(i128, @intCast(last.arena_bytes)) - @as(i128, @intCast(samples[0].arena_bytes));
@@ -599,7 +553,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
             },
         );
         std.debug.print(
-            "  so {d:.1} MB of the {d:.1} MB is Zig-side; the rest is V8 heap and overhead\n",
+            "  so {d:.1} MB of the {d:.1} MB is Zig-side; the rest is engine heap and overhead\n",
             .{
                 @as(f64, @floatFromInt(gpa_delta)) / (1024.0 * 1024.0),
                 @as(f64, @floatFromInt(total)) / (1024.0 * 1024.0),
@@ -609,11 +563,15 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
             "  states recycled: {d} of {d} arena allocations\n",
             .{ last.arena_recycled, last.arena_allocations },
         );
-        std.debug.print(
-            "  wrapper cache entries: {d} (each is a CacheEntry plus a Global<Object>,\n" ++
-                "    and its weak callback is what frees the instance)\n",
-            .{last.wrapper_entries},
-        );
+        if (last.counter("wrapper_cache_entries")) |entries| {
+            std.debug.print(
+                "  wrapper cache entries: {d} (each holds the engine's wrapper for an instance,\n" ++
+                    "    and the wrapper's death is what frees the instance)\n",
+                .{entries},
+            );
+        } else {
+            std.debug.print("  wrapper cache entries: not measured (the engine reports no such counter)\n", .{});
+        }
         std.debug.print(
             "  instances still live: {d} (slab recycles, so a rising count means\n" ++
                 "    instances are never deinit'd - a different bug from state retention)\n",
@@ -629,5 +587,36 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 "state is retained - see M1: ArenaAllocator.reset() never runs in production.\n",
             .{},
         );
+    }
+}
+
+/// Every counter the engine adapter reports, at the first and last reading and
+/// per element between them. The adapter decides what they are - live handles
+/// by kind, handle creations by source - and names them; this prints them as
+/// they come.
+fn reportCounters(samples: []const Sample) void {
+    const first = &samples[0];
+    const last = &samples[samples.len - 1];
+    if (last.heap) |heap| {
+        std.debug.print("\nEngine heap: {d:.1} MB used of {d:.1} MB, {d:.1} MB external, {d} realms\n", .{
+            @as(f64, @floatFromInt(heap.used)) / (1024.0 * 1024.0),
+            @as(f64, @floatFromInt(heap.total)) / (1024.0 * 1024.0),
+            @as(f64, @floatFromInt(heap.external)) / (1024.0 * 1024.0),
+            heap.realm_count,
+        });
+    } else {
+        std.debug.print("\nEngine heap: not measured (the engine reports no heap statistics)\n", .{});
+    }
+    if (last.counter_count == 0) {
+        std.debug.print("\nEngine counters: not measured (the engine reports none)\n", .{});
+        return;
+    }
+    const cycles_run: f64 = @floatFromInt(@max(last.cycle, 1));
+    std.debug.print("\nEngine counters (start -> end, per element):\n", .{});
+    for (last.counters()) |c| {
+        const start = first.counter(c.name) orelse 0;
+        std.debug.print("  {s:<56} {d:>10} -> {d:>10}  ({d:.2}/elem)\n", .{
+            c.name, start, c.value, @as(f64, @floatFromInt(c.value - start)) / cycles_run,
+        });
     }
 }

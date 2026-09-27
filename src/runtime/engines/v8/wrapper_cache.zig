@@ -392,6 +392,15 @@ fn syncEntry(entry: *CacheEntry) void {
 /// wrapper, and the element's [SameObject] cache, on freed memory.
 threadlocal var live_caches: std.ArrayListUnmanaged(*WrapperCache) = .empty;
 
+/// The wrappers every live cache on this thread holds - every realm's - for
+/// the diagnostics tier (protocol.zig diagnosticCounters,
+/// `wrapper_cache_entries`).
+pub fn liveEntryCount() usize {
+    var total: usize = 0;
+    for (live_caches.items) |cache| total += cache.size();
+    return total;
+}
+
 /// Whether a live cache other than `except` holds a wrapper for this very
 /// instance - same slot, same generation.
 fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bool {

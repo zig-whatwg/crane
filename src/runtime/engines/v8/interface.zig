@@ -923,13 +923,18 @@ pub fn V8Interface(comptime Interface: type) type {
         ///
         /// Creates a FunctionTemplate and attaches it to the global object.
         /// Also registers the template in the global registry for instance wrapping.
+        ///
+        /// The global is taken for the call and released: a Global of the
+        /// global proxy left behind keeps the realm's whole context alive
+        /// after the realm ends.
         pub fn registerGlobal(
             isolate: *v8.Isolate,
             context: *v8.Context,
             global_name: []const u8,
         ) void {
-            const global = v8.v8_Context_Global(context);
-            registerGlobalFast(isolate, context, global.?, global_name);
+            const global = v8.v8_Context_Global(context) orelse return;
+            defer v8.v8_Object_Dispose(global);
+            registerGlobalFast(isolate, context, global, global_name);
         }
 
         /// Register interface as a global constructor in V8 (fast path)
