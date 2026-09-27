@@ -429,6 +429,21 @@ fn evalOwned(expression: []const u8) !protocol.Owned {
     return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression), .needs_disposal = true } } };
 }
 
+test "every protocol operation's V8 function compiles" {
+    // The facade compiles an engine adapter's functions only as they are
+    // called (links_engine); this binary links V8, so it compiles them all -
+    // a stub nothing calls yet still has to type-check.
+    comptime {
+        @setEvalBranchQuota(100_000);
+        for (@typeInfo(protocol).@"struct".decls) |decl| {
+            const T = @TypeOf(@field(protocol, decl.name));
+            if (@typeInfo(T) != .@"fn") continue;
+            if (@typeInfo(T).@"fn".calling_convention != .@"inline") continue;
+            _ = &@field(v8.protocol, decl.name);
+        }
+    }
+}
+
 test "the protocol is bound to V8, which has every capability the protocol declares natively" {
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {

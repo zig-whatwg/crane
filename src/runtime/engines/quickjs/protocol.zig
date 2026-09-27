@@ -31,6 +31,9 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
 };
 
+/// No engine is linked yet: every operation answers without one.
+pub const links_engine = false;
+
 /// Nothing runs script, so nothing is ever prepared to.
 pub const ScriptScope = struct {};
 

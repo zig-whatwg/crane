@@ -67,6 +67,9 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .native,
 };
 
+/// Every operation is V8 code: a test binary that compiles them all links V8.
+pub const links_engine = true;
+
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = realm_entry.Entered;
 

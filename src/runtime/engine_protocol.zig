@@ -1214,8 +1214,13 @@ comptime {
         if (expected.calling_convention != .@"inline") continue;
         conforms(decl.name, expected);
         // In a test build, compile the adapter's function whole: a stub
-        // nothing calls still has to type-check.
-        if (@import("builtin").is_test) _ = &@field(impl, decl.name);
+        // nothing calls still has to type-check. Not an adapter with an
+        // engine behind it: compiling every operation whole links the
+        // engine, and a test of engine-neutral code that reaches the facade
+        // (an impl's Zig state) links none. That adapter's own tests compile
+        // it whole (tests/v8, "every protocol operation's V8 function
+        // compiles").
+        if (@import("builtin").is_test and !impl.links_engine) _ = &@field(impl, decl.name);
     }
 }
 
