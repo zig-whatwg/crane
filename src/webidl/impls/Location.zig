@@ -23,7 +23,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const log = std.log.scoped(.location);
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -679,10 +681,8 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
     }
 
     // Step 12: "Set navigable's active document's URL to url." A document
-    // with a window reads its URL from its context's record.
-    const v8 = @import("v8");
-    const engine_ctx = window.ctx.engine_ctx orelse return false;
-    try v8.context_manager.setDocumentUrl(@ptrCast(@alignCast(engine_ctx)), url);
+    // with a window reads its URL from its realm's record.
+    try window.ctx.setDocumentUrl(url);
 
     // Step 13: "Update the navigation API entries for a same-document
     // navigation given navigation, historyEntry, and historyHandling."
@@ -752,8 +752,14 @@ fn runHashChange(context: ?*anyopaque) void {
     const task: *HashChange = @ptrCast(@alignCast(context orelse return));
     defer task.destroy();
     if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
-    const scope = @import("v8").JsScope.init(task.window.ctx) orelse return;
-    defer scope.deinit();
+    engine.runTaskInRealm(task.window.ctx, fireHashChange, task) catch |err| {
+        log.debug("hashchange not fired: {}", .{err});
+    };
+}
+
+/// Fire "hashchange" at the task's window, in its realm.
+fn fireHashChange(data: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(data orelse return));
     const event = interfaces.HashChangeEvent.call_constructor(
         task.window.ctx,
         runtime.DOMString.initInterned("hashchange"),
@@ -796,14 +802,12 @@ fn parseRelativeToEntry(instance: *runtime.Instance, internal: *InternalState, u
 }
 
 /// The entry global object's associated Document: the document of the
-/// window whose context V8 entered to run the current script. Also the
-/// incumbent's, as far as this engine tells them apart.
+/// window whose realm is the entry realm (engine.entryRealm). Null when no
+/// script is running, or the entry global is no Window.
 fn entryDocument() ?*runtime.Instance {
-    const v8 = @import("v8");
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    const context = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const window = v8.context_manager.getWindowForContext(context) orelse return null;
+    const realm = engine.entryRealm() orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     if (window.stateAs(interfaces.Window.State) == null) return null;
     return interfaces.Window.get_document(window) catch null;
 }
