@@ -349,11 +349,6 @@ src/webidl/impls/HTMLIFrameElement.zig v8_Value_IsString 1
 src/webidl/impls/HTMLIFrameElement.zig v8_Value_ToString 1
 src/webidl/impls/HTMLIFrameElement.zig v8_ctx 20
 src/webidl/impls/HTMLIFrameElement.zig v8_wrapper 4
-src/webidl/impls/HTMLSelectElement.zig @import("v8") 1
-src/webidl/impls/HTMLSelectElement.zig v8.ffi 3
-src/webidl/impls/HTMLSelectElement.zig v8.untagPointer 1
-src/webidl/impls/HTMLSelectElement.zig v8.wrapper_type_info_mod 1
-src/webidl/impls/HTMLSelectElement.zig v8_Value_IsObject 1
 src/webidl/impls/History.zig @import("v8") 4
 src/webidl/impls/History.zig @import("v8").JsScope 2
 src/webidl/impls/History.zig v8.context_manager 1
