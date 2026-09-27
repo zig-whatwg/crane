@@ -210,10 +210,14 @@ pub const formatting_commands = @import("formatting_commands.zig");
 /// (Used by execCommand for list, paragraph, link, and media commands)
 pub const structure_commands = @import("structure_commands.zig");
 
-/// Worker V8 context creation and management
-/// Creates V8 isolates and contexts for worker execution
-pub const worker_v8_context = @import("worker_v8_context.zig");
-pub const WorkerV8Context = worker_v8_context.WorkerV8Context;
+/// The worker host: the HTML half of "run a worker" (its event loop, timers,
+/// messages, errors and life); the engine half is behind the engine.
+pub const worker_host = @import("worker_host.zig");
+pub const WorkerHost = worker_host.WorkerHost;
+/// TRANSITIONAL: the name networking's held files (Response, XMLHttpRequest,
+/// WindowOrWorkerGlobalScope) still call `finishTaskIn` through. Goes when
+/// they move onto runTaskInRealm.
+pub const worker_v8_context = worker_host;
 
 // ============================================================================
 // Re-exports for Testing Convenience

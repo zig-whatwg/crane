@@ -76,8 +76,6 @@ src/browser/Context.zig v8_document 2
 src/browser/Context.zig v8_location 2
 src/browser/Context.zig v8_navigator 4
 src/browser/Context.zig v8_performance 2
-src/html/full.zig @import("worker_v8_context.zig") 1
-src/html/full.zig worker_v8_context.zig.WorkerV8Context 1
 src/html/module_script.zig @import("v8") 1
 src/html/module_script.zig v8.ffi 1
 src/html/module_script.zig v8.ffi.Context 1
@@ -175,7 +173,6 @@ src/lib_exports.zig v8.interface_bindings 1
 src/lib_exports.zig v8.snapshot_loader 1
 src/lib_exports.zig v8.template_registry 1
 src/lib_exports.zig v8_Platform_Dispose 1
-src/root.zig @import("v8") 1
 src/runtime/realm.zig @import("v8") 1
 src/runtime/realm.zig v8.realm_v8 1
 src/runtime/realm.zig v8_context 6

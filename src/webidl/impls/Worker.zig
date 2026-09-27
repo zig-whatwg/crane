@@ -60,8 +60,8 @@ const WorkerContext = workers.WorkerContext;
 // The worker host: the HTML half of "run a worker" (has interface access,
 // unlike html_core).
 const html_full = @import("html");
-const WorkerV8Context = html_full.WorkerV8Context;
-const worker_host = html_full.worker_v8_context;
+const WorkerHost = html_full.WorkerHost;
+const worker_host = html_full.worker_host;
 
 // Import platform for TimerBackend (used to create DedicatedWorker)
 const platform = @import("platform");
@@ -92,7 +92,7 @@ pub const InternalState = struct {
     dedicated_worker: ?*DedicatedWorker = null,
 
     /// The worker host running the worker (created when DedicatedWorker starts)
-    host: ?*WorkerV8Context = null,
+    host: ?*WorkerHost = null,
 
     /// Outside MessagePort (exposed to the caller)
     outside_port: ?*runtime.Instance = null,
@@ -407,7 +407,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         WorkerTask.queue(event_loop, instance, &initializeWorker);
     } else {
         // Fallback: try timer if no event loop available
-        const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
+        const timer = ctx.timer orelse WorkerHost.getTimerInterface();
         if (timer) |t| {
             WorkerTask.arm(t, 1, instance, &initializeWorker);
         } else {
@@ -487,7 +487,7 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 /// It does all the heavy work:
 /// 1. Creates DedicatedWorker with timer backend
 /// 2. Fetches and resolves the script URL
-/// 3. Creates WorkerV8Context (new isolate)
+/// 3. Creates WorkerHost (new isolate)
 /// 4. Sets up DedicatedWorkerGlobalScope
 /// 5. Schedules script execution
 fn initializeWorker(instance: *runtime.Instance) void {
@@ -578,7 +578,7 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
         std.log.warn("Worker: no engine in this realm", .{});
         return;
     };
-    const host = WorkerV8Context.init(
+    const host = WorkerHost.init(
         allocator,
         engine,
         script_final_url,
@@ -605,7 +605,7 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
 
     // Set up the timer interface for worker timers
     if (ctx.timer) |timer| {
-        WorkerV8Context.setTimerInterface(timer);
+        WorkerHost.setTimerInterface(timer);
     }
 
     // Set up DedicatedWorkerGlobalScope with proper globals
@@ -953,18 +953,16 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
     };
     std.log.debug("[executeWorkerScriptSync] Script len={d}, preview: {s}", .{ script.len, script[0..@min(script.len, 80)] });
 
-    // Execute the script in WorkerV8Context - this is the SAME context used for message dispatch.
-    // CRITICAL: We must use internal.v8_context, not dedicated_worker.executeScript(), because:
-    // - internal.v8_context is WorkerV8Context (has onmessage dispatch)
-    // - dedicated_worker.executeScript() uses WorkerContext (different V8 context!)
-    // - If we execute in the wrong context, onmessage won't be set where we dispatch.
+    // Run the script through the worker host - the realm its messages are
+    // dispatched in. dedicated_worker.executeScript() runs through the older
+    // WorkerContext, whose realm is not the one onmessage is looked up in.
     if (internal.host) |host| {
         host.executeScript(script) catch |err| {
             std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
         };
         log.debug("[executeWorkerScriptSync] executeScript returned", .{});
     } else {
-        std.log.err("[executeWorkerScriptSync] No WorkerV8Context!", .{});
+        std.log.err("[executeWorkerScriptSync] No WorkerHost!", .{});
     }
 
     // Flush pending messages to port queues

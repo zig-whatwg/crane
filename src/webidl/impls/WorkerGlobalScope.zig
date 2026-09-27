@@ -144,7 +144,7 @@ pub fn init(
     installSettings();
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
-    if (@import("html").worker_v8_context.scopeSettings(ctx)) |settings| {
+    if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
     }
     return instance;
@@ -505,6 +505,6 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
 
         // Run the fetched script in this worker, as its own scripts run -
         // through the worker host, which owns the realm's agent.
-        try @import("html").worker_v8_context.runImportedScript(instance.ctx, fetched.source, fetched.final_url);
+        try @import("html").worker_host.runImportedScript(instance.ctx, fetched.source, fetched.final_url);
     }
 }

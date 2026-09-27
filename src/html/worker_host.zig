@@ -54,18 +54,18 @@ const EngineContext = workers.worker_context.EngineContext;
 
 // Thread-local storage for the worker whose script is running (used by the
 // built-ins, and by nested workers made from inside one).
-threadlocal var current_worker_context: ?*WorkerV8Context = null;
+threadlocal var current_worker_context: ?*WorkerHost = null;
 
 // Thread-local storage for timer interface (set by caller before worker operations)
 threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
 
 /// Set the current worker context (for use by external code before invoking worker callbacks)
-pub fn setCurrentWorkerContext(ctx: ?*WorkerV8Context) void {
+pub fn setCurrentWorkerContext(ctx: ?*WorkerHost) void {
     current_worker_context = ctx;
 }
 
 /// Get the current worker context (for internal use)
-pub fn getCurrentWorkerContext() ?*WorkerV8Context {
+pub fn getCurrentWorkerContext() ?*WorkerHost {
     return current_worker_context;
 }
 
@@ -103,7 +103,7 @@ const WorkerTimerContext = struct {
     executing: bool = false,
     /// The worker that armed the timer. Its realm is the one the callback
     /// runs in, and it outlives the timer: teardown frees every timer first.
-    worker_v8_context: *WorkerV8Context,
+    worker_host: *WorkerHost,
 };
 
 /// Thread-local storage for worker timer contexts
@@ -118,7 +118,7 @@ fn initWorkerTimerStorage(allocator: Allocator) void {
 
 /// Release a timer context and the handler it holds.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
-    const wctx = ctx.worker_v8_context;
+    const wctx = ctx.worker_host;
     if (wctx.engine.releaseValue) |release| release(ctx.callback);
     ctx.allocator.destroy(ctx);
 }
@@ -130,13 +130,13 @@ fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
 /// it whenever ANY worker was torn down, so one worker's end silently dropped
 /// every other worker's timers. A timer whose callback is on the stack is only
 /// marked: its trampoline owns it until the callback returns, and frees it.
-fn cancelWorkerTimers(owner: *WorkerV8Context) void {
+fn cancelWorkerTimers(owner: *WorkerHost) void {
     const map = if (worker_timer_contexts) |*m| m else return;
     var ids: std.ArrayListUnmanaged(runtime.TimerId) = .empty;
     defer ids.deinit(owner.allocator);
     var iter = map.iterator();
     while (iter.next()) |entry| {
-        if (entry.value_ptr.*.worker_v8_context == owner) ids.append(owner.allocator, entry.key_ptr.*) catch {};
+        if (entry.value_ptr.*.worker_host == owner) ids.append(owner.allocator, entry.key_ptr.*) catch {};
     }
     for (ids.items) |id| {
         const ctx = map.get(id) orelse continue;
@@ -144,7 +144,7 @@ fn cancelWorkerTimers(owner: *WorkerV8Context) void {
         if (ctx.executing) continue;
         // Not armed any more, or armed and now cancelled: either way the
         // timer manager will not hand it back, so it is ours to free.
-        if (WorkerV8Context.getTimerInterface()) |timer| _ = timer.clearTimeout(id);
+        if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(id);
         _ = map.remove(id);
         freeWorkerTimer(ctx);
     }
@@ -170,7 +170,7 @@ fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
     const ctx = map.get(timer_id) orelse return;
     ctx.cancelled = true;
     if (ctx.executing) return;
-    if (WorkerV8Context.getTimerInterface()) |timer| _ = timer.clearTimeout(timer_id);
+    if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(timer_id);
     _ = map.remove(timer_id);
     freeWorkerTimer(ctx);
 }
@@ -201,18 +201,18 @@ const WorkerErrorDispatchContext = struct {
 /// event loop, unless one is already armed - the callback drains the whole
 /// queue, so one is enough.
 ///
-/// The timer carries the WorkerV8Context, which records it so that `deinit`
+/// The timer carries the WorkerHost, which records it so that `deinit`
 /// can disarm it. It used to carry a bare `*DedicatedWorker` that nothing
 /// cancelled: a Worker collected, or torn down with its page, while the timer
 /// was armed left it to fire into freed memory - SIGSEGV at 0xAAAA...AAAA in
 /// `processQueuedMessages`, in whichever test the same process ran next.
 /// One crash per sharded `html/webappapis/timers/` run, in a file with no
 /// worker in it.
-fn scheduleMessageDispatch(wctx: *WorkerV8Context) void {
+fn scheduleMessageDispatch(wctx: *WorkerHost) void {
     if (wctx.message_dispatch != null) return;
     const dedicated_worker = wctx.dedicated_worker orelse return;
     if (dedicated_worker.port_pair.outside_port.message_queue.items.len == 0) return;
-    const timer = WorkerV8Context.getTimerInterface() orelse return;
+    const timer = WorkerHost.getTimerInterface() orelse return;
     const id = timer.setTimeout(0, workerMessageDispatchCallback, wctx);
     if (id == 0) return;
     wctx.message_dispatch = .{ .timer = timer, .id = id };
@@ -220,9 +220,9 @@ fn scheduleMessageDispatch(wctx: *WorkerV8Context) void {
 
 /// Every worker whose realm is still there, for `finishTaskIn` and
 /// `scopeSettings`.
-threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerV8Context) = .empty;
+threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
 
-fn removeLive(wctx: *WorkerV8Context) void {
+fn removeLive(wctx: *WorkerHost) void {
     for (live_contexts.items, 0..) |live, i| {
         if (live == wctx) {
             _ = live_contexts.swapRemove(i);
@@ -289,7 +289,7 @@ pub fn reportExceptionOfRealm(realm: *runtime.ContextData, info: *const runtime.
     const prev_context = current_worker_context;
     current_worker_context = wctx;
     defer current_worker_context = prev_context;
-    WorkerV8Context.reportException(wctx, info);
+    WorkerHost.reportException(wctx, info);
 }
 
 /// The worker's end of a task, as its realm's `end_of_task`: what
@@ -330,7 +330,7 @@ pub fn runImportedScript(ctx: runtime.Context, source: []const u8, url: []const 
     try wctx.runScript(source, url, false);
 }
 
-fn forScope(ctx: runtime.Context) ?*WorkerV8Context {
+fn forScope(ctx: runtime.Context) ?*WorkerHost {
     for (live_contexts.items) |live| {
         if (live.realm == ctx) return live;
     }
@@ -354,7 +354,7 @@ pub fn liveWorkerCount() usize {
 /// This is scheduled after worker timer callbacks flush messages to ensure
 /// messages are processed in a clean state.
 fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
-    const wctx: *WorkerV8Context = @ptrCast(@alignCast(context_ptr orelse return));
+    const wctx: *WorkerHost = @ptrCast(@alignCast(context_ptr orelse return));
     // Fired: nothing left to cancel, and a message queued from here on arms a
     // fresh timer.
     wctx.message_dispatch = null;
@@ -367,7 +367,7 @@ fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
 /// Timer callback trampoline - invoked by the timer manager
 fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
-    const wctx = ctx.worker_v8_context;
+    const wctx = ctx.worker_host;
 
     // Cancelled while armed, or its worker has closed: a discarded task (HTML
     // close() step 1, "terminate a worker" step 2). Free it - this is the last
@@ -387,7 +387,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // For intervals, reschedule the timer
     if (ctx.is_interval and !ctx.cancelled and wctx.runsTasks()) {
-        if (WorkerV8Context.getTimerInterface()) |timer| {
+        if (WorkerHost.getTimerInterface()) |timer| {
             // Unregister the old timer ID from tracking
             if (worker_timer_contexts) |*map| {
                 _ = map.remove(ctx.current_timer_id);
@@ -428,7 +428,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 /// end of the task - a microtask checkpoint, the engine's posted tasks, and
 /// the messages the callback posted leaving for the page.
 fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
-    const wctx = ctx.worker_v8_context;
+    const wctx = ctx.worker_host;
 
     // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
     // so a setTimeout called from inside it nests one deeper. Restored afterwards
@@ -452,10 +452,10 @@ const TimerCall = struct {
     /// "report", and with callback this value set to thisArg" - the global.
     fn steps(data: ?*anyopaque) void {
         const ctx: *WorkerTimerContext = @ptrCast(@alignCast(data orelse return));
-        const wctx = ctx.worker_v8_context;
+        const wctx = ctx.worker_host;
         const invoke = wctx.engine.invokeCallbackFunction orelse return;
         const realm = wctx.realm orelse return;
-        invoke(realm, ctx.callback, .global_this, &.{}, WorkerV8Context.reportException, wctx) catch {};
+        invoke(realm, ctx.callback, .global_this, &.{}, WorkerHost.reportException, wctx) catch {};
     }
 };
 
@@ -514,7 +514,7 @@ const Phase = enum {
 
 /// The worker a Worker object runs: its agent and realm (through the Engine
 /// table), its event loop's tasks, its life.
-pub const WorkerV8Context = struct {
+pub const WorkerHost = struct {
     /// The Engine table of the realm that made the worker; the worker's agent
     /// and realm are this engine's.
     engine: *const runtime.EngineInterface,
@@ -1254,7 +1254,7 @@ pub const WorkerV8Context = struct {
         ) catch return;
 
         // Schedule error dispatch to parent thread via timer (0ms)
-        if (WorkerV8Context.getTimerInterface()) |timer| {
+        if (WorkerHost.getTimerInterface()) |timer| {
             const dispatch_ctx = self.allocator.create(WorkerErrorDispatchContext) catch {
                 error_event.deinit();
                 return;
@@ -1404,7 +1404,7 @@ pub const WorkerV8Context = struct {
             .nesting_level = runtime.timer.nesting_level +| 1,
             .allocator = self.allocator,
             .cancelled = false,
-            .worker_v8_context = self,
+            .worker_host = self,
         };
 
         const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
@@ -1525,7 +1525,7 @@ fn compileAndRunScriptCallback(
     source_url: []const u8,
 ) anyerror!?*anyopaque {
     _ = source_url;
-    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
     try self.executeScript(source);
     return null;
 }
@@ -1537,7 +1537,7 @@ fn compileAndRunModuleCallback(
     source_url: []const u8,
 ) anyerror!void {
     _ = source_url; // TODO: Used for import resolution
-    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
 
     // For now, execute as script.
     try self.executeScript(source);
@@ -1545,14 +1545,14 @@ fn compileAndRunModuleCallback(
 
 /// Run microtask checkpoint
 fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
-    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
     const realm = self.realm orelse return;
     if (self.engine.performMicrotaskCheckpoint) |checkpoint| checkpoint(realm) catch {};
 }
 
 /// Dispose engine context
 fn disposeContextCallback(engine_ctx: *EngineContext) void {
-    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
     self.deinit();
 }
 
@@ -1560,7 +1560,7 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 ///
 /// This should be called after the worker script has set up its onmessage
 /// handler.
-pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
+pub fn processIncomingMessages(worker_ctx: *WorkerHost) void {
     const dedicated_worker = worker_ctx.dedicated_worker orelse return;
 
     // A closing worker runs no further task; its messages are discarded
@@ -1602,7 +1602,7 @@ fn emptyPortQueue(port: anytype) void {
 // Tests
 // ============================================================================
 
-test "WorkerV8Context - struct definition" {
-    const T = WorkerV8Context;
+test "WorkerHost - struct definition" {
+    const T = WorkerHost;
     try std.testing.expect(@sizeOf(T) > 0);
 }

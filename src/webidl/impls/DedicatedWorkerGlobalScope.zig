@@ -30,7 +30,7 @@ const WorkerGlobalScopeImpl = @import("WorkerGlobalScope.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
 /// The worker host: the side of "run a worker" that owns this scope's agent.
-const worker_host = @import("html").worker_v8_context;
+const worker_host = @import("html").worker_host;
 
 pub const State = DedicatedWorkerGlobalScope.State;
 
