@@ -858,6 +858,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [When removing a serialization, check which spec rule it was quietly satisfying](docs/lessons/spec-compliance-when-removing-a-serialization-check-which-rule-it-satisfied.md) - When removing a serialization, check which spec rule it was quietly satisfying.
 - [A result the spec hands over from onComplete arrives in a task](docs/lessons/spec-compliance-a-result-handed-over-from-oncomplete-arrives-in-a-task.md) - A synchronous fetch does not make the spec's task synchronous; deliver the result where the spec does.
 - ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
+- [A pending exception is not an abrupt completion](docs/lessons/spec-compliance-a-pending-exception-is-not-an-abrupt-completion.md) - Wherever the spec reads a completion instead of writing "?", run the step under engine.completionOf.
 
 ### Codegen
 
