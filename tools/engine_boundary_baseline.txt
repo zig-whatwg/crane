@@ -188,9 +188,6 @@ src/webidl/impls/Location.zig v8_Isolate_GetCurrent 1
 src/webidl/impls/Location.zig v8_Isolate_GetEnteredOrMicrotaskContext 1
 src/webidl/impls/Node.zig @import("v8").context_manager 2
 src/webidl/impls/Node.zig v8.context_manager.markInstanceCleanedUp 2
-src/webidl/impls/Request.zig @import("v8") 2
-src/webidl/impls/Request.zig v8_context 4
-src/webidl/impls/Request.zig v8_engine 6
 src/webidl/impls/Window.zig @import("v8") 7
 src/webidl/impls/Window.zig @import("v8").context_manager 1
 src/webidl/impls/Window.zig @import("v8").ffi 2

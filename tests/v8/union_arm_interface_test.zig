@@ -327,3 +327,48 @@ test "Blob.arrayBuffer() leaves no engine handle behind" {
 test "Blob.bytes() leaves no engine handle behind" {
     try expectNoHandleLeft(Blob.call_bytes);
 }
+
+// =============================================================================
+// Response: the body methods' values are released once they settle
+// =============================================================================
+//
+// Each method's value - an ArrayBuffer, a Uint8Array, a string - is made,
+// the promise is settled with it, and it is let go: the promise holds it
+// from there. A null body reads as no bytes, so the steps run inside the
+// method call.
+
+const Response = @import("impls").Response;
+
+test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const params = @typeInfo(@TypeOf(Response.call_constructor)).@"fn".params;
+    ensurePools();
+    const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
+    defer Response.deinit(response);
+    const round = struct {
+        fn run(r: *runtime.Instance) !void {
+            protocol.releaseValue(.{ .value = try Response.call_arrayBuffer(r) });
+            protocol.releaseValue(.{ .value = try Response.call_bytes(r) });
+            protocol.releaseValue(.{ .value = try Response.call_text(r) });
+        }
+    }.run;
+    try round(response);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(response);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+}
+
+test "Response.arrayBuffer() of a null body is fulfilled with an empty ArrayBuffer" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const params = @typeInfo(@TypeOf(Response.call_constructor)).@"fn".params;
+    ensurePools();
+    const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
+    defer Response.deinit(response);
+    const buffer = try fulfillmentOf(try Response.call_arrayBuffer(response));
+    defer ffi.v8_Value_Dispose(buffer);
+    try std.testing.expect(ffi.v8_Value_IsArrayBuffer(buffer));
+}
