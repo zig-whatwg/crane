@@ -65,8 +65,9 @@ const Storage = storage_mod.Storage;
 /// comes first: a `whatwg_snapshot.bin` in the current directory - one that
 /// was tracked in git from January to September 2026 - won over it, and
 /// every run from the repository root restored that stale snapshot against
-/// the running build's callback table. A candidate the loader refuses (no
-/// build stamp, or not a valid blob) is skipped, not taken because it exists.
+/// the running build's callback table. A candidate the engine refuses (no
+/// build stamp, not a valid blob, another build's external references) is
+/// skipped, not taken because it exists.
 const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
     "zig-out/bin/whatwg_snapshot.bin", // Zig build output (highest priority)
     "whatwg_snapshot.bin", // Current directory
@@ -85,10 +86,43 @@ fn firstUsableSnapshot(
     return null;
 }
 
-/// Whether `path` is a snapshot the loader will take: it exists, carries the
-/// build stamp and holds a valid blob (snapshot_loader.hasValidSnapshot).
-fn isUsableSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
-    return v8.snapshot_loader.hasValidSnapshot(allocator, path);
+/// The engine, started with the snapshot of the first candidate it takes
+/// (engine.initializeEngine refuses a blob this build cannot restore).
+const EngineStart = struct {
+    allocator: std.mem.Allocator,
+    /// The accepted snapshot's bytes, OWNED by `allocator` and lent to the
+    /// engine until deinitializeEngine: V8 deserializes from them lazily.
+    snapshot: ?[]u8 = null,
+
+    /// Start the engine with the snapshot at `path`, if it reads and the
+    /// engine takes it.
+    fn offer(self: *EngineStart, path: []const u8) bool {
+        const bytes = readSnapshot(self.allocator, path) orelse return false;
+        engine.initializeEngine(.{ .snapshot = bytes }) catch {
+            self.allocator.free(bytes);
+            return false;
+        };
+        self.snapshot = bytes;
+        return true;
+    }
+};
+
+/// The file's bytes, or null when it cannot be read. OWNED by `allocator`.
+fn readSnapshot(allocator: std.mem.Allocator, path: []const u8) ?[]u8 {
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch return null;
+    defer file.close(io);
+    const stat = file.stat(io) catch return null;
+    const bytes = allocator.alloc(u8, stat.size) catch return null;
+    const read = file.readPositionalAll(io, bytes, 0) catch {
+        allocator.free(bytes);
+        return null;
+    };
+    if (read != stat.size) {
+        allocator.free(bytes);
+        return null;
+    }
+    return bytes;
 }
 
 /// Browser configuration options
@@ -125,6 +159,9 @@ pub const Browser = struct {
     event_loop: ?*v8.V8EventLoop,
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
+    /// The snapshot the engine made the agent from (EngineStart.snapshot):
+    /// freed after the agent is destroyed and the engine has forgotten it.
+    snapshot_bytes: ?[]u8 = null,
 
     /// Initialize a new Browser instance
     ///
@@ -139,70 +176,37 @@ pub const Browser = struct {
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // Initialize the V8 platform. Flags MUST be set before platform init.
-        //
-        // The RUNTIME set, not the snapshot set: `--predictable` and `--hash-seed=0`
-        // are generation-time determinism knobs, and applying them here turned off
-        // V8's own parallelism, pinned Math.random() to a fixed sequence and removed
-        // hash-flooding protection in every browser this code has ever started.
-        // Loading does not need them - the snapshot reports itself rehashable.
-        v8.initializePlatformForRuntime();
-
-        // Determine snapshot path to use
-        const snapshot_path = resolveSnapshotPath(allocator, config.snapshot_path);
-        const use_snapshot = snapshot_path != null;
-
-        // Create V8 isolate (from snapshot if available)
-        var isolate: *v8.ffi.Isolate = undefined;
-        var used_snapshot = false;
-
-        if (use_snapshot) {
-            // Register external references for snapshot loading
-            // These MUST match the order used when creating the snapshot
-            registerSnapshotExternalReferences();
-
-            // Try to initialize from snapshot
-            const init_result = v8.snapshot_loader.initializeV8(allocator, .{
-                .snapshot_path = snapshot_path,
-                .log_performance = config.log_performance,
-            }) catch |err| {
-                if (config.log_performance) {
-                    std.log.warn("Snapshot initialization failed: {}, falling back to fresh isolate", .{err});
-                }
-                // Fall through to create fresh isolate
-                isolate = v8.ffi.v8_Isolate_New() orelse {
-                    runtime.deinitializeRuntime();
-                    return error.V8InitFailed;
-                };
-                v8.ffi.v8_Isolate_Enter(isolate);
-                used_snapshot = false;
-                // Continue execution below
-                return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
-            };
-
-            isolate = init_result.isolate;
-            used_snapshot = init_result.used_snapshot;
-
-            // Note: v8_Isolate_Enter is already called by snapshot_loader.initializeV8
-            // when it creates the isolate
-
-            if (config.log_performance) {
-                if (used_snapshot) {
-                    std.log.info("Browser initialized from snapshot in {d}ms", .{init_result.startup_time_ms});
-                } else {
-                    std.log.info("Browser initialized without snapshot in {d}ms", .{init_result.startup_time_ms});
-                }
-            }
-        } else {
-            // No snapshot - create fresh isolate
-            isolate = v8.ffi.v8_Isolate_New() orelse {
-                runtime.deinitializeRuntime();
-                return error.V8InitFailed;
-            };
-            v8.ffi.v8_Isolate_Enter(isolate);
+        // The engine and the snapshot its agents are made from: the first
+        // candidate the engine takes, or none (engine.initializeEngine). On
+        // V8 it sets the RUNTIME flags, not the snapshot generator's:
+        // `--predictable` and `--hash-seed=0` are generation-time determinism
+        // knobs, and applying them here turned off V8's own parallelism,
+        // pinned Math.random() to a fixed sequence and removed hash-flooding
+        // protection in every browser this code has ever started.
+        var start: EngineStart = .{ .allocator = allocator };
+        startEngine(&start, config.snapshot_path);
+        errdefer if (start.snapshot) |bytes| allocator.free(bytes);
+        if (start.snapshot == null) engine.initializeEngine(.{}) catch return error.V8InitFailed;
+        errdefer engine.deinitializeEngine();
+        const from_snapshot = start.snapshot != null;
+        if (config.log_performance) {
+            std.log.info("Browser starting {s} a snapshot", .{if (from_snapshot) "from" else "without"});
         }
 
-        return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
+        // HTML "obtain a similar-origin window agent": [[CanBlock]] false -
+        // Atomics.wait() throws a TypeError rather than freezing the page's
+        // one thread, as Blink's main thread does; a dedicated worker's agent
+        // keeps it - and the host's hooks: HostPromiseRejectionTracker and
+        // "notify about rejected promises" (html/rejected_promises.zig).
+        const agent = engine.createAgent(.{
+            .can_block = false,
+            .from_snapshot = from_snapshot,
+            .hooks = &@import("html").rejected_promises.hooks,
+        }) catch return error.V8InitFailed;
+        const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(agent));
+        v8.ffi.v8_Isolate_Enter(isolate);
+
+        return initBrowserWithIsolate(allocator, isolate, from_snapshot, config, start.snapshot);
     }
 
     /// Complete browser initialization with an already-created isolate
@@ -211,18 +215,12 @@ pub const Browser = struct {
         isolate: *v8.ffi.Isolate,
         used_snapshot: bool,
         config: BrowserConfig,
+        snapshot_bytes: ?[]u8,
     ) !*Browser {
         errdefer {
             v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_Isolate_Dispose(isolate);
+            engine.destroyAgent(@ptrCast(isolate));
         }
-
-        // This isolate hosts similar-origin window agents, and HTML's "obtain a
-        // similar-origin window agent" creates each with [[CanBlock]] false, so
-        // Atomics.wait() throws a TypeError here. V8's default lets it block, which would
-        // freeze the page's only thread. Blink turns it off on the main thread
-        // too; dedicated workers keep the default, their [[CanBlock]] is true.
-        v8.ffi.v8_Isolate_SetAllowAtomicsWait(isolate, false);
 
         // Register V8 lifecycle cleanup handlers
         v8.registerBuiltinHandlers() catch |err| {
@@ -244,10 +242,6 @@ pub const Browser = struct {
         v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
             log.warn("Failed to initialize ShadowRealm support: {}", .{err});
         };
-
-        // HostPromiseRejectionTracker and "notify about rejected promises":
-        // the unhandledrejection / rejectionhandled events (HTML 8.1.4.7).
-        @import("html").rejected_promises.install(isolate);
 
         // import() in a Window realm loads through the document's module map.
         @import("html").script_execution.installDynamicImport(isolate);
@@ -274,6 +268,7 @@ pub const Browser = struct {
             .initialized = true,
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
+            .snapshot_bytes = snapshot_bytes,
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -284,29 +279,16 @@ pub const Browser = struct {
         return browser;
     }
 
-    /// Resolve snapshot path from config or auto-detect: the configured path,
-    /// or the first of DEFAULT_SNAPSHOT_PATHS, if the loader will take it.
-    fn resolveSnapshotPath(allocator: std.mem.Allocator, config_path: ?[]const u8) ?[]const u8 {
+    /// Start the engine with the configured snapshot, or the first of
+    /// DEFAULT_SNAPSHOT_PATHS the engine takes; an empty configured path
+    /// means none. `start.snapshot` is null when no snapshot was taken, and
+    /// the engine is not started then.
+    fn startEngine(start: *EngineStart, config_path: ?[]const u8) void {
         if (config_path) |path| {
-            // Empty string means explicitly disabled
-            if (path.len == 0) return null;
-            return if (isUsableSnapshot(allocator, path)) path else null;
+            if (path.len > 0) _ = start.offer(path);
+            return;
         }
-        return firstUsableSnapshot(allocator, &DEFAULT_SNAPSHOT_PATHS, isUsableSnapshot);
-    }
-
-    /// Register external references required for snapshot loading
-    ///
-    /// NOTE: With the minimal snapshot approach, the snapshot only contains V8 builtins,
-    /// NOT WebIDL interfaces. Therefore, no external references are needed for loading.
-    /// WebIDL interfaces are registered at runtime on fresh contexts.
-    fn registerSnapshotExternalReferences() void {
-        // Register external references required for snapshot loading.
-        // This must be called before initializeV8() when using snapshots.
-        // The snapshot_loader's registerExternalReferences() registers
-        // C++ and Zig callbacks that V8 needs to properly deserialize
-        // the snapshot's function pointers.
-        v8.snapshot_loader.registerExternalReferences();
+        _ = firstUsableSnapshot(start, &DEFAULT_SNAPSHOT_PATHS, EngineStart.offer);
     }
 
     /// Deinitialize the browser and release all resources
@@ -347,7 +329,7 @@ pub const Browser = struct {
 
             // Release the rejection tracker's promise handles while the
             // isolate that owns them still exists.
-            @import("html").rejected_promises.uninstall(isolate);
+            @import("html").rejected_promises.releaseTracked();
             @import("html").script_execution.uninstallDynamicImport(isolate);
 
             // Central cleanup - calls all registered handlers in priority order
@@ -373,14 +355,14 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
-            // Dispose isolate
+            // The end of the agent: its hooks forgotten, its isolate disposed.
             v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_Isolate_Dispose(isolate);
+            engine.destroyAgent(@ptrCast(isolate));
 
-            // Clean up snapshot data that was allocated during V8 initialization.
-            // This must be done AFTER the isolate is disposed because V8 keeps a
-            // reference to the snapshot data for lazy deserialization.
-            v8.snapshot_loader.cleanupSnapshotData();
+            // The snapshot outlives the isolate - V8 deserializes from it
+            // lazily - and the engine forgets it before it is freed.
+            engine.deinitializeEngine();
+            if (self.snapshot_bytes) |bytes| self.allocator.free(bytes);
         }
 
         // Cleanup WebIDL runtime
