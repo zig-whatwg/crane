@@ -54,9 +54,7 @@ pub const interface_skip_list = .{
     "CSSMediaRule", // Missing cached field
     "CSSViewTransitionRule", // DOMString array issues
     "ChapterInformation", // MediaImage array issues
-    "CookieChangeEvent", // CookieListItem array issues
     "DeviceChangeEvent", // MediaDeviceInfo array issues
-    "ExtendableCookieChangeEvent", // CookieListItem array issues
     "ExtendableMessageEvent", // Union type issues
     "FontFaceSetLoadEvent", // FontFace array issues
     "GamepadHapticActuator", // GamepadHapticEffectType array issues
