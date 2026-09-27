@@ -802,6 +802,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A namespace operation's runtime.Context is a process-wide stand-in](docs/lessons/architecture-a-namespace-operation-s-context-is-a-process-wide-stand-in.md) - A namespace operation must take its realm from the running context, not from a shared stand-in - and an impl's error must throw.
 - [A module bound twice cannot share a compile](docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md) - Before giving a module a second binding, check that nothing in the target's import graph reaches the first.
 - [A forwarding facade checks only what gets called](docs/lessons/architecture-a-forwarding-facade-checks-only-what-gets-called.md) - A contract checked only by calls is checked only where called; check the whole interface at comptime, by exact type.
+- [A heap address moves when the GC compacts](docs/lessons/architecture-a-heap-address-moves-when-the-gc-compacts.md) - Never key anything on where a GC-managed object lives; give it an identity it carries with it.
 
 ### Spec Compliance
 
