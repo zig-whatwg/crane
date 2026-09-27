@@ -38,6 +38,12 @@ const EventTarget = interfaces.EventTarget;
 // Import parent class implementation for proper initialization chain
 const EventTargetImpl = @import("EventTarget.zig");
 
+// The constructor parses the script URL (the URL Standard's API parser), and
+// the blob-URL check needs the outside settings' origin.
+const api_parser = @import("api_parser");
+const url_serializer = @import("url_serializer");
+const url_origin = @import("origin");
+
 // Import workers infrastructure
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -194,6 +200,63 @@ pub fn deinit(instance: *runtime.Instance) void {
     EventTarget.deinit(instance);
 }
 
+/// `script_url` encoding-parsed relative to `api_base_url` and serialized:
+/// the Worker constructor's steps 3-4, given the outside settings' API base
+/// URL. OWNED (`allocator`). SyntaxError when it does not parse - a relative
+/// URL with no base among them.
+pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (api_base_url) |base| base_record = api_parser.parseURL(allocator, base, null) catch null;
+    var record = api_parser.parseURL(allocator, script_url, if (base_record) |*b| b else null) catch
+        return error.SyntaxError;
+    defer record.deinit();
+    return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized: the origin of `api_base_url`,
+/// or "null" (an opaque origin) without one. OWNED (`allocator`).
+fn serializedOriginOf(allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    const base = api_base_url orelse return allocator.dupe(u8, "null");
+    var record = api_parser.parseURL(allocator, base, null) catch return allocator.dupe(u8, "null");
+    defer record.deinit();
+    const origin = try url_origin.getOrigin(allocator, &record);
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
+}
+
+/// The current settings object's API base URL, for the instance a constructor
+/// just made in it: a window's document's base URL, read through the
+/// Document's `baseURI`; a worker's is its script URL, which its realm
+/// records as its document URL. OWNED by `instance.ctx.allocator`. The same
+/// lookup WebSocket's and Request's constructors make.
+fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
+    const ctx = instance.ctx;
+    if (relevantWindow(instance)) |window| {
+        const document = interfaces.Window.get_document(window) catch null;
+        if (document) |d| {
+            const base = interfaces.Node.get_baseURI(d) catch null;
+            if (base) |b| {
+                if (b.len > 0) return @constCast(b);
+                d.ctx.allocator.free(b);
+            }
+        }
+    }
+    if (ctx.documentUrl()) |document_url| {
+        if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
+    }
+    return null;
+}
+
+/// `instance`'s relevant global object, when it is a Window.
+fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
+    const engine = instance.ctx.getEngine() orelse return null;
+    const relevant_global = engine.relevantGlobalObject orelse return null;
+    const global = relevant_global(instance) orelse return null;
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
+}
+
 /// Constructor implementation
 ///
 /// Spec: HTML Standard § 10.2.3.1 The Worker() constructor
@@ -243,9 +306,19 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         }
     }
 
-    // Copy the script URL
-    const url_copy = try ctx.allocator.dupe(u8, scriptURL.asSlice());
+    // Steps 2-4: "Let outsideSettings be the current settings object. Let
+    // workerURL be the result of encoding-parsing a URL given scriptURL,
+    // relative to outsideSettings. If workerURL is failure, then throw a
+    // "SyntaxError" DOMException." Relative to its API base URL - a window's
+    // document's URL - which Crane used to replace with the document's
+    // origin, so `support/x.js` from /workers/y.html fetched /support/x.js.
+    const base_url = apiBaseURL(instance);
+    defer if (base_url) |b| ctx.allocator.free(b);
+    const url_copy = try resolveScriptURL(ctx.allocator, scriptURL.asSlice(), base_url);
     errdefer ctx.allocator.free(url_copy);
+    // Its origin, for the blob-URL store's same-origin check.
+    const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);
+    defer ctx.allocator.free(requesting_origin);
 
     // Copy the name if present
     const name_copy = if (name.len > 0)
@@ -289,7 +362,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // is still valid) and store it. Only the script EXECUTION is deferred.
     const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
         .worker_type = worker_type,
-        .origin = null,
+        .requesting_origin = requesting_origin,
     }) catch |err| {
         std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
         // Continue with null pending_script - initializeWorkerSync will handle this
@@ -419,6 +492,11 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 /// 5. Schedules script execution
 fn initializeWorker(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    // Terminated before it ran: "terminate a worker" sets the closing flag,
+    // and a worker whose flag is set runs nothing - not its script either
+    // (workers/Worker-terminate-forever.html: a `while (1);` script ran, and
+    // hung the page, once its URL resolved).
+    if (internal.terminated) return;
 
     // Get the stored context - we need it for timer operations
     const ctx = internal.ctx orelse {
@@ -1071,8 +1149,10 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         }
         // The host's half: discard the worker's tasks, empty the port queue
         // its implicit port is entangled with, and let its realm and isolate
-        // go (HTML "terminate a worker").
-        if (internal.host) |host| host.terminate();
+        // go (HTML "terminate a worker"). The host releases the Worker's
+        // pending-activity hold once the realm is gone; a worker that never
+        // started has no host, and nothing is left pending now.
+        if (internal.host) |host| host.terminate() else releasePendingActivity(instance);
     }
 }
 

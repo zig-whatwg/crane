@@ -306,6 +306,7 @@ pub const DedicatedWorker = struct {
         return script_fetch.fetchWorkerScript(self.allocator, self.script_url, .{
             .worker_type = self.agent.data.worker_type,
             .origin = origin,
+            .requesting_origin = origin,
             .credentials = .same_origin,
             .is_import_scripts = false,
         });

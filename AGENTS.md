@@ -803,6 +803,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A module bound twice cannot share a compile](docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md) - Before giving a module a second binding, check that nothing in the target's import graph reaches the first.
 - [A forwarding facade checks only what gets called](docs/lessons/architecture-a-forwarding-facade-checks-only-what-gets-called.md) - A contract checked only by calls is checked only where called; check the whole interface at comptime, by exact type.
 - [A heap address moves when the GC compacts](docs/lessons/architecture-a-heap-address-moves-when-the-gc-compacts.md) - Never key anything on where a GC-managed object lives; give it an identity it carries with it.
+- [When V8 first collects in a realm, every object needs a stated reason to live](docs/lessons/architecture-when-v8-first-collects-in-a-realm-every-object-needs-a-reason-to-live.md) - When a change lets the GC run where it did not, the regressions are old bugs: give each object its reason to live (pending activity, a trace edge, a generation check) - never restore the leak.
+- [A Pin taken in a constructor pins a wrapper the binding throws away](docs/lessons/architecture-a-pin-taken-in-a-constructor-pins-a-wrapper-the-binding-throws-away.md) - Never pin the object under construction; take a pending-activity hold, which survives the binding's wrap.
 
 ### Spec Compliance
 

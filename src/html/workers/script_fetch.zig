@@ -30,31 +30,6 @@ const WorkerOptions = types.WorkerOptions;
 const fetch = @import("fetch");
 
 // ============================================================================
-// Thread-Local Origin for URL Resolution
-// ============================================================================
-
-/// Thread-local storage for document origin (needed for resolving relative URLs)
-/// Set by the test runner or browser context before Worker construction.
-threadlocal var current_document_origin: ?[]const u8 = null;
-
-/// Set the document origin for resolving relative worker script URLs.
-/// This should be called by the browser context before executing scripts
-/// that might construct Workers.
-pub fn setDocumentOrigin(origin: []const u8) void {
-    current_document_origin = origin;
-}
-
-/// Get the current document origin.
-pub fn getDocumentOrigin() ?[]const u8 {
-    return current_document_origin;
-}
-
-/// Clear the document origin (for cleanup after test runs).
-pub fn clearDocumentOrigin() void {
-    current_document_origin = null;
-}
-
-// ============================================================================
 // Blob URL Resolution Callback
 // ============================================================================
 
@@ -138,8 +113,13 @@ pub const WorkerScriptError = error{
 pub const WorkerScriptFetchOptions = struct {
     /// Worker type (classic or module)
     worker_type: WorkerType = .classic,
-    /// Origin of the request
+    /// The URL a relative `url` resolves against (importScripts(): the
+    /// worker's script URL). A Worker's script URL arrives already parsed.
     origin: ?[]const u8 = null,
+    /// The serialized origin of the settings object making the request - the
+    /// outside settings for a worker's script - for the blob URL store's
+    /// same-origin check.
+    requesting_origin: ?[]const u8 = null,
     /// Credentials mode
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
@@ -225,7 +205,7 @@ pub fn fetchWorkerScript(
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
-        return handleBlobUrl(allocator, url);
+        return handleBlobUrl(allocator, url, options.requesting_origin);
     }
 
     // Step 3: For HTTP(S) URLs, use the fetch module
@@ -322,7 +302,7 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 /// This uses a callback-based approach to access the BlobURLStore,
 /// which is registered by the browser context during initialization.
 /// This design avoids circular module dependencies (html_core cannot import file).
-fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
+fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8) WorkerScriptError!FetchedScript {
     std.log.debug("handleBlobUrl: resolving URL: {s}", .{url});
 
     // Get the blob resolver callback
@@ -334,10 +314,10 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 
     std.log.debug("handleBlobUrl: blob resolver callback is set", .{});
 
-    // Get the requesting origin for same-origin validation
-    // Per spec, the origin comes from the creating context (document or worker)
-    const origin = current_document_origin orelse {
-        std.log.warn("handleBlobUrl: No document origin set for blob URL resolution", .{});
+    // The requesting origin, for same-origin validation: the creating
+    // context's (document or worker), passed by the caller.
+    const origin = requesting_origin orelse {
+        std.log.warn("handleBlobUrl: no requesting origin for blob URL resolution", .{});
         return WorkerScriptError.FetchFailed;
     };
 
@@ -507,8 +487,7 @@ fn extractOrigin(url: []const u8) ?[]const u8 {
 /// Handles: "/path", "./relative", "../parent", "bare-name.js"
 /// Returns null if no base URL is available
 fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const u8) !?[]u8 {
-    // Get base URL - try provided base, then thread-local document origin
-    const base = base_url orelse current_document_origin orelse return null;
+    const base = base_url orelse return null;
 
     // Base must be an absolute URL (http:// or https://)
     if (!std.mem.startsWith(u8, base, "http://") and !std.mem.startsWith(u8, base, "https://")) {
