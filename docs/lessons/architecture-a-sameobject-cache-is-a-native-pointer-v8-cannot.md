@@ -32,3 +32,12 @@ see. Every `cached_*` field needs an owner that keeps the wrapper alive.**
 **Fix**: the binding records a private-property edge from the owner's wrapper to the child's (`v8_Object_SetPrivateRef`) whenever it returns an attribute whose state has a `cached_<name>` field. That is the edge Blink draws by tracing. It covers every generated `[SameObject]` attribute at once. `same_object.zig`'s `Pin` remains for owners that are not wrappers.
 
 **Takeaway**: **Any native pointer from one GC-managed object to another needs an edge V8 can see. A private property on the owner's wrapper is the cheapest one.**
+
+## A hand-written cache in an impl gets no edge from the binding
+
+**Date**: 2026-09-27
+**Lesson**: The binding's edge covers only generated `cached_<name>` state. Window's `get_sessionStorage`, `get_localStorage` and `get_customElements` cache their object in the impl's own `InternalState`, and nothing held those wrappers: a collection during a frame's navigation freed the parent's Storage, its vtable name read as garbage, the wrap failed, and `sessionStorage` was `undefined` (`crane/nav-session-storage.html`).
+
+**Fix**: each takes a `same_object.Pin` when first made, released in the Window's deinit (dd792cb0f), as `navigator` already did - Blink's `DOMWindowStorage::Trace` and `LocalDOMWindow::Trace` visit the same members. `crane/window-storage-survives-gc.html` checks it: a `WeakRef` to each survives `TestUtils.gc()`.
+
+**Takeaway**: **A getter that caches a child in an impl's own state must pin it; only the generated caches get the binding's edge.** (Open: `window.crypto`, a generated `cached_crypto` attribute, also reads `undefined` in the parent after that frame navigation. Not yet diagnosed - if it is the same free, the edge does not hold on a Window's global.)
