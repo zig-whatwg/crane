@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
@@ -227,13 +228,11 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
     }
 
-    // Mark as cleaned up in V8 wrapper cache to prevent double-free.
-    // When Document.deinit triggers this cleanup, we're cleaning up the DOM tree.
-    // The wrapper cache also has references to these nodes. If we don't mark
-    // them, wrapper_cache.deinit() will try to call deinit again (double-free).
-    // Import context_manager to access markInstanceCleanedUp
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // The host is freeing the node: its wrapper must not free it again.
+    // When Document.deinit triggers this cleanup, we're cleaning up the DOM
+    // tree, and the engine's wrapper cache also references these nodes;
+    // unmarked, its teardown would run deinit again (a double free).
+    engine.platformObjectDestroyed(instance);
 
     // First, recursively deinit all child nodes.
     // We must do this BEFORE removing ourselves from the registry,
@@ -340,7 +339,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
-    // wrapper cache is tearing down, markInstanceCleanedUp cannot flag the
+    // wrapper cache is tearing down, platformObjectDestroyed cannot flag the
     // entry, so this record is the only thing that stops the cache running
     // this deinit a second time. A reissued slot starts fresh (Instance.init).
     runtime.instance_lifecycle.markCleanupComplete(instance);
@@ -366,9 +365,8 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         return; // Already being cleaned up, skip
     }
 
-    // Mark in wrapper cache to prevent double-free during cache cleanup.
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // Its wrapper must not free it again (engine.platformObjectDestroyed).
+    engine.platformObjectDestroyed(instance);
 
     const internal = Registry.get(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
