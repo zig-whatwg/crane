@@ -1010,12 +1010,30 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
         .cleared => return 1,
         .callback => |c| c,
     };
-    // Step 2: Let returnValue be the result of performing the size algorithm.
+    // Step 2: Let returnValue be the result of performing the size algorithm,
+    // passing in chunk, and interpreting the result as a completion record.
+    // The algorithm invokes size() and converts what it returns to
+    // `unrestricted double` (WebIDL "invoke a callback function" step 14),
+    // and either can throw.
     const completion = realm.call(size_fn, null, &.{chunk}) catch return 1;
     defer completion.deinit();
     switch (completion) {
-        .normal => |v| return toNumber(controller_instance.ctx, v),
-        // Step 3: an abrupt completion errors the stream and counts as 1.
+        .normal => |v| {
+            var conversion = SizeConversion{ .realm = controller_instance.ctx, .value = v };
+            // ECMAScript Completion(...): a throwing valueOf comes back here
+            // rather than staying pending for whatever script runs next.
+            const abrupt = engine.completionOf(controller_instance.ctx, SizeConversion.steps, &conversion) catch return 1;
+            const reason = abrupt orelse return conversion.number;
+            defer reason.release();
+            const thrown = realm.fromRuntime(reason.value) catch return 1;
+            defer js.dispose(thrown);
+            // Step 3 (below), for the conversion's abrupt completion.
+            controllerErrorIfNeeded(realm, controller_instance, thrown);
+            return 1;
+        },
+        // Step 3: If returnValue is an abrupt completion, perform
+        // ! WritableStreamDefaultControllerErrorIfNeeded(controller,
+        // returnValue.[[Value]]) and return 1.
         .thrown => |e| {
             controllerErrorIfNeeded(realm, controller_instance, e);
             return 1;
@@ -1023,18 +1041,18 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
     }
 }
 
-/// The size callback's return value as a WebIDL `unrestricted double`.
-///
-/// TODO(protocol): a throwing valueOf is an abrupt completion of the size
-/// algorithm - step 3 above, ErrorIfNeeded(controller, e) and 1 - but the
-/// engine protocol can convert (leaving the exception pending) and cannot yet
-/// hand back what was thrown as a value; that needs an ECMAScript
-/// Completion(...) operation (requested). Until then the exception stays
-/// pending, and the size reads as 0 - both as under V8's NumberValue, which
-/// this replaces.
-fn toNumber(realm: runtime.Context, value: Value) f64 {
-    return engine.convertToUnrestrictedDouble(realm, js.toReturn(value)) catch 0;
-}
+/// The size callback's result converted to `unrestricted double` (ToNumber),
+/// as steps engine.completionOf runs.
+const SizeConversion = struct {
+    realm: runtime.Context,
+    value: Value,
+    number: f64 = 0,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *SizeConversion = @ptrCast(@alignCast(data.?));
+        self.number = try engine.convertToUnrestrictedDouble(self.realm, js.toReturn(self.value));
+    }
+};
 
 /// WritableStreamDefaultControllerGetDesiredSize(controller)
 fn getDesiredSize(controller: *const Controller) f64 {
