@@ -15,6 +15,7 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 
 const Value = js.Value;
 const Realm = js.Realm;
@@ -300,13 +301,18 @@ pub fn extractHighWaterMark(strategy: dictionaries.QueuingStrategy, default_hwm:
 }
 
 /// ExtractSizeAlgorithm(strategy). `size` is the dictionary's callback
-/// member: a tagged Global the conversion layer made for this call, which
-/// nothing else disposes - so it is taken over here.
+/// member, which the conversion layer made for this call and nothing else
+/// releases - so it is taken over here (engine.takeCallbackFunction), and
+/// the algorithm keeps its own handle in the callback's realm.
 pub fn extractSizeAlgorithm(strategy: dictionaries.QueuingStrategy) js.Error!SizeAlgorithm {
     const size = strategy.size orelse return .one;
-    const untagged = @import("v8").pointer_tag.untagPointer(@ptrCast(size));
-    const global: Value = @ptrCast(@alignCast(@constCast(untagged.ptr)));
-    return .{ .callback = try js.clone(global) };
+    const callback = engine.takeCallbackFunction(@ptrCast(size));
+    defer callback.release();
+    // The callback context - the incumbent realm when it was converted - or
+    // the realm of the constructor running now.
+    const realm_context = callback.context orelse engine.currentRealm() orelse return error.NoContext;
+    const realm = try Realm.ofContext(realm_context);
+    return .{ .callback = try realm.fromRuntime(callback.function.value) };
 }
 
 /// IsNonNegativeNumber(v), for a size already known to be a Number.
@@ -1008,7 +1014,7 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
     const completion = realm.call(size_fn, null, &.{chunk}) catch return 1;
     defer completion.deinit();
     switch (completion) {
-        .normal => |v| return toNumber(realm, v),
+        .normal => |v| return toNumber(controller_instance.ctx, v),
         // Step 3: an abrupt completion errors the stream and counts as 1.
         .thrown => |e| {
             controllerErrorIfNeeded(realm, controller_instance, e);
@@ -1018,10 +1024,16 @@ fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
 }
 
 /// The size callback's return value as a WebIDL `unrestricted double`.
-/// Known gap: V8's ToNumber on an object whose valueOf throws leaves that
-/// exception pending rather than completing abruptly into step 3 above.
-fn toNumber(realm: Realm, value: Value) f64 {
-    return @import("v8").ffi.v8_Value_NumberValue(value, realm.context);
+///
+/// TODO(protocol): a throwing valueOf is an abrupt completion of the size
+/// algorithm - step 3 above, ErrorIfNeeded(controller, e) and 1 - but the
+/// engine protocol can convert (leaving the exception pending) and cannot yet
+/// hand back what was thrown as a value; that needs an ECMAScript
+/// Completion(...) operation (requested). Until then the exception stays
+/// pending, and the size reads as 0 - both as under V8's NumberValue, which
+/// this replaces.
+fn toNumber(realm: runtime.Context, value: Value) f64 {
+    return engine.convertToUnrestrictedDouble(realm, js.toReturn(value)) catch 0;
 }
 
 /// WritableStreamDefaultControllerGetDesiredSize(controller)

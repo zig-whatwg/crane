@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 const srd = @import("streams_readable.zig");
 const sw = @import("streams_writable.zig");
 
@@ -168,7 +169,7 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
     const opts = if (options.was_passed) options.value else dictionaries.StreamPipeOptions{};
     const promise = try srd.pipeTo(realm, instance, writable, opts.preventClose orelse false, opts.preventAbort orelse false, opts.preventCancel orelse false, opts.signal);
     // Step 5: Set promise.[[PromiseIsHandled]] to true.
-    @import("v8").ffi.v8_Promise_MarkAsHandled(promise);
+    engine.markPromiseAsHandled(instance.ctx, js.toReturn(promise));
     js.dispose(promise);
     // Step 6: Return transform["readable"].
     return readable;

@@ -443,8 +443,6 @@ src/webidl/impls/Location.zig v8_Isolate_GetCurrent 1
 src/webidl/impls/Location.zig v8_Isolate_GetEnteredOrMicrotaskContext 1
 src/webidl/impls/Node.zig @import("v8").context_manager 2
 src/webidl/impls/Node.zig v8.context_manager.markInstanceCleanedUp 2
-src/webidl/impls/ReadableStream.zig @import("v8").ffi 1
-src/webidl/impls/ReadableStream.zig v8_Promise_MarkAsHandled 1
 src/webidl/impls/Request.zig @import("v8") 2
 src/webidl/impls/Request.zig v8_context 4
 src/webidl/impls/Request.zig v8_engine 6
@@ -607,9 +605,6 @@ src/webidl/impls/streams_readable.zig v8_String_Utf8Length 1
 src/webidl/impls/streams_readable.zig v8_String_WriteUtf8 1
 src/webidl/impls/streams_readable.zig v8_Value_NumberValue 2
 src/webidl/impls/streams_readable.zig v8_Value_ToString 1
-src/webidl/impls/streams_writable.zig @import("v8").ffi 1
-src/webidl/impls/streams_writable.zig @import("v8").pointer_tag 1
-src/webidl/impls/streams_writable.zig v8_Value_NumberValue 1
 tests/browser_document_test.zig @import("v8") 1
 tests/browser_document_test.zig v8.ffi 3
 tests/browser_document_test.zig v8_String_WriteUtf8 1
