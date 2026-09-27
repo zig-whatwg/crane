@@ -1425,3 +1425,97 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.performMicrotaskCheckpoint(r);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
+
+// ----------------------------------------------------------------------------
+// The legacy import() bridge (TODO(protocol): removed when Browser creates its
+// agent with engine.createAgent - navigation lane resume)
+// ----------------------------------------------------------------------------
+
+/// An import() as engine.zig's legacy handler takes one - a Global<Context>
+/// and a Global<Promise::Resolver> it owns - adopted as the protocol's request
+/// and finished; the promise's state and result afterwards.
+const LegacyImport = struct {
+    state: c_int,
+    /// The result's `default`, when it is a namespace; else the number.
+    value: ?i32,
+
+    fn run(r: runtime.Context, outcome: protocol.DynamicImportOutcome) !LegacyImport {
+        const context = ffi.v8_Isolate_GetCurrentContext(isolate_once.?) orelse return error.NoContext;
+        const resolver = ffi.v8_PromiseResolver_New(context) orelse return error.NoResolver;
+        const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.NoPromise;
+        defer ffi.v8_Promise_Dispose(promise);
+        // The request owns the pair from here; finishing it releases both.
+        const request = try v8.protocol_modules.adoptLegacyImport(@ptrCast(context), @ptrCast(resolver), r);
+        protocol.finishDynamicImport(request, outcome);
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+
+        const state = ffi.v8_Promise_State(promise);
+        const result = ffi.v8_Promise_Result(promise) orelse return .{ .state = state, .value = null };
+        defer ffi.v8_Value_Dispose(result);
+        const as_value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(result), .needs_disposal = false } };
+        if (protocol.typeOf(r, as_value) == .object) {
+            const default = try protocol.getProperty(r, as_value, "default");
+            defer default.release();
+            return .{ .state = state, .value = @intFromFloat(try protocol.convertToUnrestrictedDouble(r, default.value)) };
+        }
+        return .{ .state = state, .value = @intFromFloat(try protocol.convertToUnrestrictedDouble(r, as_value)) };
+    }
+};
+
+test "legacy bridge: an import() the legacy handler took is finished through the protocol, and its handles go with it" {
+    const base = try realm();
+    const record = try parsed(try protocol.parseModule(base, "export default 7;", "https://example.test/legacy.js", null));
+    defer protocol.releaseModuleRecord(record);
+    try std.testing.expect(try protocol.linkModule(base, record, Graph.none, null) == null);
+
+    // FinishLoadingImportedModule with the module: ContinueDynamicImport
+    // resolves with its namespace once evaluation settles.
+    const fulfilled = try LegacyImport.run(base, .{ .module = record });
+    try std.testing.expectEqual(@as(c_int, 1), fulfilled.state);
+    try std.testing.expectEqual(@as(?i32, 7), fulfilled.value);
+
+    // With a failure: rejected with that very value.
+    const rejected = try LegacyImport.run(base, .{ .failure = runtime.JSValue.fromNumber(3) });
+    try std.testing.expectEqual(@as(c_int, 2), rejected.state);
+    try std.testing.expectEqual(@as(?i32, 3), rejected.value);
+
+    // The adopted Global pair is released when the request finishes: the
+    // live global-handle bytes stay flat over many imports.
+    const round = struct {
+        fn run(r: runtime.Context, m: *protocol.ModuleRecord) !void {
+            _ = try LegacyImport.run(r, .{ .module = m });
+            _ = try LegacyImport.run(r, .{ .failure = runtime.JSValue.fromNumber(1) });
+        }
+    }.run;
+    try round(base, record);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(base, record);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+}
+
+/// A module script as a legacy import.meta callback's host finds it.
+const MetaScript = struct { url: []const u8 };
+
+/// V8's import.meta callback, as script_execution's shim installs it: the
+/// module's record found by the module, its host_defined the host's script.
+fn legacyImportMetaUrl(identity_hash: c_int, module: *ffi.Module, len: *usize) callconv(.c) ?[*]const u8 {
+    const host_defined = v8.protocol_modules.hostDefinedOf(module, identity_hash) orelse return null;
+    const script: *const MetaScript = @ptrCast(@alignCast(host_defined));
+    len.* = script.url.len;
+    return script.url.ptr;
+}
+
+test "legacy bridge: import.meta finds the host's module script through the record's host_defined" {
+    const base = try realm();
+    ffi.v8_Isolate_SetImportMetaUrlCallback(isolate_once.?, &legacyImportMetaUrl);
+    var script: MetaScript = .{ .url = "https://example.test/dir/meta.js" };
+    const record = try parsed(try protocol.parseModule(base, "globalThis.metaUrl = import.meta.url;", "https://example.test/dir/meta.js", &script));
+    defer protocol.releaseModuleRecord(record);
+    try std.testing.expect(try protocol.linkModule(base, record, Graph.none, null) == null);
+    const scope = try protocol.prepareToRunScript(base);
+    const evaluation = try protocol.evaluateModule(base, record);
+    protocol.cleanUpAfterRunningScript(scope);
+    try std.testing.expect(evaluation == .completed);
+    try expectEval(base, "globalThis.metaUrl", "https://example.test/dir/meta.js");
+    try expectEval(base, "delete globalThis.metaUrl", "true");
+}
