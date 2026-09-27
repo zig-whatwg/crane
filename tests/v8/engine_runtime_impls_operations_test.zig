@@ -560,9 +560,79 @@ test "protocol: a new promise is resolved with a primitive, a value or a platfor
     try std.testing.expectEqual(@as(i32, 7), try eval("globalThis.settled"));
 }
 
-test "protocol: SyntaxError is not yet a simple exception V8 makes" {
+test "protocol: a SyntaxError is the realm's own, and owned" {
     const ctx = try realm();
-    try std.testing.expectError(error.NotSupported, protocol.createSimpleException(ctx, .SyntaxError, "x"));
+    const syntax_error = try protocol.createSimpleException(ctx, .SyntaxError, "bad module");
+    defer syntax_error.release();
+    try expose("syntaxError", syntax_error.value);
+    try std.testing.expectEqual(@as(i32, 1), try eval("syntaxError instanceof SyntaxError && syntaxError.message === 'bad module' ? 1 : 0"));
+}
+
+const Reacted = struct {
+    fulfilled: usize = 0,
+    rejected: usize = 0,
+    last: i32 = 0,
+
+    fn onFulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
+        const self: *Reacted = @ptrCast(@alignCast(data.?));
+        self.fulfilled += 1;
+        self.last = ffi.v8_Value_Int32Value(@ptrCast(@alignCast(value.handle.ptr)), context_once.?);
+    }
+
+    fn onRejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+        const self: *Reacted = @ptrCast(@alignCast(data.?));
+        self.rejected += 1;
+        _ = reason;
+    }
+
+    const both: protocol.PromiseReactionSteps = .{ .fulfilled = onFulfilled, .rejected = onRejected };
+    const fulfilled_only: protocol.PromiseReactionSteps = .{ .fulfilled = onFulfilled };
+};
+
+test "protocol: react to a promise - upon fulfillment, upon rejection, and once" {
+    const ctx = try realm();
+    var reacted: Reacted = .{};
+    const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(5));
+    defer resolved.release();
+    try protocol.reactToPromise(ctx, resolved.value, &Reacted.both, &reacted);
+    // Reactions are jobs: nothing runs before the checkpoint.
+    try std.testing.expectEqual(@as(usize, 0), reacted.fulfilled);
+    try protocol.performMicrotaskCheckpoint(ctx);
+    try std.testing.expectEqual(@as(usize, 1), reacted.fulfilled);
+    try std.testing.expectEqual(@as(i32, 5), reacted.last);
+
+    const reason = try protocol.createSimpleException(ctx, .TypeError, "no");
+    defer reason.release();
+    const rejected = try protocol.createRejectedPromise(ctx, reason.value);
+    defer rejected.release();
+    try protocol.reactToPromise(ctx, rejected.value, &Reacted.both, &reacted);
+    // Upon fulfillment only: the rejection passes by, and nothing is left
+    // unhandled (the derived promise is marked handled).
+    try protocol.reactToPromise(ctx, rejected.value, &Reacted.fulfilled_only, &reacted);
+    try protocol.performMicrotaskCheckpoint(ctx);
+    try std.testing.expectEqual(@as(usize, 1), reacted.rejected);
+    try std.testing.expectEqual(@as(usize, 1), reacted.fulfilled);
+
+    try std.testing.expectError(error.TypeError, protocol.reactToPromise(ctx, runtime.JSValue.fromNumber(1), &Reacted.both, &reacted));
+}
+
+test "protocol: reactions and simple exceptions leave no Global behind" {
+    const ctx = try realm();
+    var reacted: Reacted = .{};
+    const round = struct {
+        fn run(c: runtime.Context, r: *Reacted) !void {
+            const promise = try protocol.createResolvedPromise(c, runtime.JSValue.fromNumber(1));
+            defer promise.release();
+            try protocol.reactToPromise(c, promise.value, &Reacted.both, r);
+            try protocol.performMicrotaskCheckpoint(c);
+            (try protocol.createSimpleException(c, .SyntaxError, "x")).release();
+        }
+    }.run;
+    try round(ctx, &reacted);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    for (0..32) |_| try round(ctx, &reacted);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expectEqual(@as(usize, 33), reacted.fulfilled);
 }
 
 const Reported = struct {
