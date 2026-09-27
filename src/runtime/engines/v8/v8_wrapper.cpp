@@ -11714,5 +11714,21 @@ Global<Value>* v8_Promise_ThenWithOptionalHandlers(Global<Context>* context, Glo
     return trackHandle(new Global<Value>(isolate, result));
 }
 
+/// ECMAScript ToObject(value) in `context`: an object itself, a primitive's
+/// wrapper object (a String, Number, Boolean, Symbol or BigInt object of the
+/// context's realm). Null for undefined and null - ToObject's TypeError,
+/// which the caller throws (nothing is thrown here) - or on failure. A new
+/// Global the caller owns.
+Global<Value>* v8_Value_ToObject(Global<Context>* context, Global<Value>* value) {
+    if (!context || !value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = value->Get(isolate);
+    if (v->IsNullOrUndefined()) return nullptr;
+    Local<Object> object;
+    if (!v->ToObject(context->Get(isolate)).ToLocal(&object)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, object));
+}
+
 } // extern "C"
 // ---- end lane: protocol ----
