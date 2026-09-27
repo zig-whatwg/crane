@@ -25,6 +25,7 @@ const ResponseType = xhr.state_machine.ResponseType;
 const open_algo = xhr.open;
 const headers_algo = xhr.headers;
 const send_algo = xhr.send;
+const response_algo = xhr.response;
 const XHREventType = xhr.XHREventType;
 const EventTargetKind = xhr.EventTargetKind;
 const ProgressEventData = xhr.ProgressEventData;
@@ -34,6 +35,7 @@ const clock = @import("clock");
 const fetch_mod = @import("fetch");
 
 const same_object = @import("same_object.zig");
+const blob_bytes = @import("dom").blob_bytes;
 
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
@@ -66,6 +68,12 @@ pub const InternalState = struct {
     /// which script sets on it and then never touches again.
     upload_pin: same_object.Pin,
 
+    /// This's response object when it is an object - the ArrayBuffer, Blob
+    /// or JSON value `response` made - held so every later read returns that
+    /// same object. OWNED. (Null and failure are xhr_state.response_object's.)
+    /// It holds nothing that can reach this XHR, so the hold makes no cycle.
+    response_value: ?engine.Owned = null,
+
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
@@ -85,9 +93,17 @@ pub const InternalState = struct {
         pending.cancel();
     }
 
+    /// Set this's response object to null (open() step 11).
+    fn releaseResponseValue(self: *InternalState) void {
+        const value = self.response_value orelse return;
+        self.response_value = null;
+        value.release();
+    }
+
     pub fn deinitState(self: *InternalState) void {
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_pin.release();
+        self.releaseResponseValue();
         // Before anything else: a fetch in flight, or its queued task, would
         // otherwise reach an instance that is going away.
         self.cancelFetch();
@@ -305,49 +321,59 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 3: If this's response object is failure, then return null.
     if (xhr_state.response_object == .failure) return .{ .null = {} };
 
+    // Step 4: If this's response object is non-null, then return it - the
+    // same object every time. Borrowed: this XHR keeps holding it.
+    const internal = getInternal(instance);
+    if (internal.response_value) |value| return value.borrow();
+
     switch (xhr_state.response_type) {
-        // Step 8: the JSON response. `parse JSON from bytes`; a parse failure
-        // returns null rather than throwing.
+        // Step 8: the JSON response.
         .json => {
-            if (xhr_state.received_bytes.items.len == 0) return .{ .null = {} };
+            // 8.2. If this's response's body is null, then return null. A
+            //      null body received no bytes, which 8.3's parse rejects -
+            //      the same null, without asking a response this XHR may
+            //      already have let go of its body.
+            // 8.3. Let jsonObject be the result of running parse JSON from
+            //      bytes on this's received bytes. If that threw an
+            //      exception, then return null.
             var parse: JsonParse = .{ .realm = instance.ctx, .bytes = xhr_state.received_bytes.items };
             const thrown = engine.completionOf(instance.ctx, JsonParse.steps, &parse) catch return .{ .null = {} };
             if (thrown) |exception| {
                 exception.release();
                 return .{ .null = {} };
             }
-            const parsed = parse.value orelse return .{ .null = {} };
-            return parsed.take();
+            // 8.4. Set this's response object to jsonObject.
+            internal.response_value = parse.value orelse return .{ .null = {} };
         },
         // Step 5: the ArrayBuffer response. "Set this's response object to a
         // new ArrayBuffer object representing this's received bytes. If this
         // throws an exception, then set this's response object to failure and
         // return null."
         .arraybuffer => {
-            const buffer = engine.createArrayBuffer(instance.ctx, xhr_state.received_bytes.items) catch {
-                // The spec's "if this throws" branch: remember the failure, so
-                // a second read returns null at step 3 rather than retrying an
-                // allocation that has already failed once.
+            internal.response_value = engine.createArrayBuffer(instance.ctx, xhr_state.received_bytes.items) catch {
                 xhr_state.response_object = .failure;
                 return .{ .null = {} };
             };
-            return buffer.take();
         },
-        // Step 6: the Blob response.
-        //
-        // TODO: needs a Blob instance carrying the received bytes with its type
-        // set to the final MIME type. Returning the bytes as a string would be
-        // a worse answer than null, because script could not tell it apart from
-        // a text response.
+        // Step 6: "set this's response object to a new Blob object
+        // representing this's received bytes with type set to the result of
+        // get a final MIME type for this."
         .blob => {
-            _ = allocator;
-            log.debug("blob response type is not implemented", .{});
-            return .{ .null = {} };
+            const mime_type = try response_algo.finalMimeTypeBytes(allocator, xhr_state);
+            defer allocator.free(mime_type);
+            const blob = try blob_bytes.create(instance.ctx, xhr_state.received_bytes.items, mime_type);
+            internal.response_value = engine.retainValue(instance.ctx, .{ .instance = blob }) catch |err| {
+                blob.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(blob));
+                return err;
+            };
         },
         // Step 7: the document response, which needs the HTML/XML parser.
         .document => return .{ .null = {} },
         .empty, .text => unreachable, // handled by step 1
     }
+
+    // Step 9: Return this's response object.
+    return internal.response_value.?.borrow();
 }
 
 /// Getter for responseText
@@ -571,7 +597,11 @@ fn openSteps(
 
     // Step 10 (with 11, which open_algo ran): Terminate this's fetch
     // controller. Nothing observable happens between the two.
-    getInternal(instance).cancelFetch();
+    const internal = getInternal(instance);
+    internal.cancelFetch();
+    // Step 11: "Set this's response object to null" - the object half of it;
+    // open_algo reset the rest.
+    internal.releaseResponseValue();
 
     // Step 12: If this's state is not opened, set it to opened and fire an
     // event named readystatechange at this.

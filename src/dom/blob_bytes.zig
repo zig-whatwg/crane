@@ -18,17 +18,23 @@
 //! lint-impls: hook for Blob
 
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 
 pub const Steps = struct {
     /// `blob`'s bytes, borrowed (see above), or null when `blob` has no
     /// Blob state.
     bytes_of: *const fn (blob: *runtime.Instance) ?[]const u8,
+    /// Give `blob` - new, from `interfaces.Blob.init`, with no bytes yet - a
+    /// copy of `bytes`, and `mime_type` as its type (as the File API's
+    /// constructors take one: lowercased, or empty when it cannot be one).
+    set_bytes: *const fn (blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void,
 };
 
 threadlocal var steps: ?Steps = null;
 
-/// Called by Blob. Idempotent. Every caller holds a Blob already, so it is
-/// installed before anyone can ask.
+/// Called by Blob. Idempotent. Every caller of `bytesOf` holds a Blob
+/// already, so it is installed before anyone can ask; `create` makes a Blob
+/// first.
 pub fn install(s: Steps) void {
     steps = s;
 }
@@ -38,4 +44,17 @@ pub fn install(s: Steps) void {
 pub fn bytesOf(blob: *runtime.Instance) ?[]const u8 {
     const s = steps orelse return null;
     return s.bytes_of(blob);
+}
+
+/// A new Blob of `ctx` "representing" `bytes` (copied), with type
+/// `mime_type` - XHR's blob response, which no IDL member makes. Unwrapped:
+/// the caller wraps or holds it. Making one through Blob's interface installs
+/// Blob's steps, so this works before any other Blob exists.
+pub fn create(ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*runtime.Instance {
+    const blob = try interfaces.Blob.init(ctx.allocator, ctx);
+    const generation = runtime.SlabAllocator.generationOf(blob);
+    errdefer blob.releaseIfUnwrapped(generation);
+    const s = steps orelse return error.NotSupported;
+    try s.set_bytes(blob, bytes, mime_type);
+    return blob;
 }
