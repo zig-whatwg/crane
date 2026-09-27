@@ -111,6 +111,22 @@ fn reportExtracted(
     // Step 5: omitError.
     if (options.omit_error) error_value = null;
 
+    // A realm whose host owns its "report an exception" - a worker's, whose
+    // host fires the ErrorEvent at the WorkerGlobalScope and, unhandled, at
+    // the Worker (runtime.ContextData.report_exception) - is handed the error
+    // information instead of the steps below.
+    if (global.ctx.report_exception) |host_report| {
+        const info = runtime.ErrorInfo{
+            .message = message,
+            .filename = filename,
+            .lineno = lineno,
+            .colno = colno,
+            .error_value = error_value,
+        };
+        host_report(global.ctx, &info);
+        return not_handled;
+    }
+
     // Step 6: If global is not in error reporting mode, then:
     if (!inErrorReportingMode(global)) {
         // 6.1: Set global's in error reporting mode to true.
@@ -218,9 +234,15 @@ fn fireErrorEvent(
     return not_canceled;
 }
 
-/// The Window whose realm `context` (Global<Context>*) is, if any.
+/// The global object of the realm whose context `context` (Global<Context>*)
+/// is: its realm record's global object - a Window's realm or a frame's, and
+/// a worker's once its realm carries a record. Null when no realm is
+/// registered for the context, or its realm has no record.
 pub fn globalForContext(context: *ffi.Context) ?*runtime.Instance {
-    return v8.context_manager.getWindowForContext(context);
+    const realm = v8.context_manager.get(context) orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const global = record.global_object orelse return null;
+    return @ptrCast(@alignCast(global));
 }
 
 /// Run `body(data)` with V8's automatic microtask checkpoints suppressed.
