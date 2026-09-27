@@ -904,18 +904,12 @@ pub const Context = struct {
         // requires that self === globalThis so that properties set on global_scope become
         // accessible as global variables. These are skipped in registerPropertiesAsOwnOnObject
         // because they need to be data properties (not accessors) for object identity.
-        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
-            defer v8.ffi.v8_String_Dispose(self_prop_key);
-            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
-        }
+        defineAsGlobal(runtime_ctx, global, "self");
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
             defer v8.ffi.v8_String_Dispose(window_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
         }
-        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
-            defer v8.ffi.v8_String_Dispose(frames_prop_key);
-            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
-        }
+        defineAsGlobal(runtime_ctx, global, "frames");
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
@@ -1066,18 +1060,12 @@ pub const Context = struct {
 
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility
-        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
-            defer v8.ffi.v8_String_Dispose(self_prop_key);
-            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
-        }
+        defineAsGlobal(runtime_ctx, global, "self");
         if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
             defer v8.ffi.v8_String_Dispose(window_prop_key);
             _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
         }
-        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
-            defer v8.ffi.v8_String_Dispose(frames_prop_key);
-            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
-        }
+        defineAsGlobal(runtime_ctx, global, "frames");
 
         // Set up global aliases
         self.setupGlobalAliases() catch |err| {
@@ -1102,6 +1090,22 @@ pub const Context = struct {
     /// intrinsics, and "the realm's global object", which the timer and
     /// animation frame callbacks report their exceptions to. Both the
     /// snapshot and the fresh path make one; the fresh path used to have none.
+    /// Define `name` on the window's `global` as an own data property whose
+    /// value is the global itself: `self` and `frames` are [Replaceable], and
+    /// this is their setter's one step - [[DefineOwnProperty]], writable,
+    /// enumerable, configurable - through the Engine table. A [[Set]] ran the
+    /// script-facing setter, whose argument handle - a handle to the
+    /// WindowProxy - was never released: two per page (docs/lessons/
+    /// architecture-engine-code-defines-a-realm-s-properties-it-never-assigns-them.md).
+    fn defineAsGlobal(realm: runtime.Context, global: *anyopaque, name: []const u8) void {
+        const engine = realm.getEngine() orelse return;
+        const define = engine.defineOwnPropertyOnObject orelse return;
+        const engine_ctx = realm.getEngineContext() orelse return;
+        define(engine_ctx, global, name, global) catch |err| {
+            log.debug("defining {s} on the global failed: {}", .{ name, err });
+        };
+    }
+
     fn recordRealm(self: *Context, runtime_ctx: runtime.Context, v8_ctx: *v8.ffi.Context, window_instance: *runtime.Instance) void {
         if (runtime_ctx.realm != null) return;
         const realm = runtime.Realm.init(self.allocator, .{
