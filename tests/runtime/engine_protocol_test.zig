@@ -30,7 +30,7 @@ test "an adapter with no engine answers NotSupported, never a guess" {
     try std.testing.expectError(error.NotSupported, engine.runTaskInRealm(realm, noSteps, null));
     // No script runs, so there is no current realm; nothing is callable.
     try std.testing.expectEqual(@as(?engine.Context, null), engine.currentRealm());
-    try std.testing.expect(!engine.isCallable(runtime.JSValue.jsUndefined));
+    try std.testing.expect(!engine.isCallable(realm, runtime.JSValue.jsUndefined));
 }
 
 test "an Owned value is released through the adapter, or taken by whoever takes ownership" {
@@ -48,8 +48,8 @@ test "an Owned value is released through the adapter, or taken by whoever takes 
 /// compiled only when the engine has the capability. Without the capability
 /// the call would be a compile error ("engine.promiseIsHandled needs
 /// engine.capabilities.promise_rejection_tracking ...").
-fn handledOrUnknown(promise: engine.JSValue) ?bool {
-    if (engine.capabilities.promise_rejection_tracking != .unsupported) return engine.promiseIsHandled(promise);
+fn handledOrUnknown(realm: engine.Context, promise: engine.JSValue) ?bool {
+    if (engine.capabilities.promise_rejection_tracking != .unsupported) return engine.promiseIsHandled(realm, promise);
     return null;
 }
 
@@ -57,7 +57,9 @@ test "a capability-gated operation compiles out where the engine lacks the capab
     // comptime-known: `if (engine.capabilities.X != .unsupported)` selects its
     // branch at compile time.
     comptime std.debug.assert(engine.capabilities.promise_rejection_tracking == .unsupported);
-    try std.testing.expectEqual(@as(?bool, null), handledOrUnknown(runtime.JSValue.jsUndefined));
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    try std.testing.expectEqual(@as(?bool, null), handledOrUnknown(&data, runtime.JSValue.jsUndefined));
 }
 
 test "an adapter with no engine has none of the engine capabilities" {
@@ -67,14 +69,17 @@ test "an adapter with no engine has none of the engine capabilities" {
 }
 
 test "with no engine, a value's type and identity come from its IDL arm" {
-    try std.testing.expectEqual(engine.ValueType.undefined, engine.typeOf(runtime.JSValue.jsUndefined));
-    try std.testing.expectEqual(engine.ValueType.number, engine.typeOf(runtime.JSValue.fromNumber(1)));
-    try std.testing.expectEqual(engine.ValueType.string, engine.typeOf(runtime.JSValue.fromStringRef("s")));
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    const realm: engine.Context = &data;
+    try std.testing.expectEqual(engine.ValueType.undefined, engine.typeOf(realm, runtime.JSValue.jsUndefined));
+    try std.testing.expectEqual(engine.ValueType.number, engine.typeOf(realm, runtime.JSValue.fromNumber(1)));
+    try std.testing.expectEqual(engine.ValueType.string, engine.typeOf(realm, runtime.JSValue.fromStringRef("s")));
     // SameValue: NaN is NaN, +0 is not -0, strings by their code units.
-    try std.testing.expect(engine.sameValue(runtime.JSValue.fromNumber(std.math.nan(f64)), runtime.JSValue.fromNumber(std.math.nan(f64))));
-    try std.testing.expect(!engine.sameValue(runtime.JSValue.fromNumber(0.0), runtime.JSValue.fromNumber(-0.0)));
-    try std.testing.expect(engine.sameValue(runtime.JSValue.fromStringRef("a"), runtime.JSValue.fromStringRef("a")));
-    try std.testing.expect(!engine.sameValue(runtime.JSValue.fromStringRef("a"), runtime.JSValue.jsUndefined));
+    try std.testing.expect(engine.sameValue(realm, runtime.JSValue.fromNumber(std.math.nan(f64)), runtime.JSValue.fromNumber(std.math.nan(f64))));
+    try std.testing.expect(!engine.sameValue(realm, runtime.JSValue.fromNumber(0.0), runtime.JSValue.fromNumber(-0.0)));
+    try std.testing.expect(engine.sameValue(realm, runtime.JSValue.fromStringRef("a"), runtime.JSValue.fromStringRef("a")));
+    try std.testing.expect(!engine.sameValue(realm, runtime.JSValue.fromStringRef("a"), runtime.JSValue.jsUndefined));
 }
 
 test "operations that make or run nothing answer NotSupported, and ones that cannot fail answer nothing" {
@@ -85,9 +90,9 @@ test "operations that make or run nothing answer NotSupported, and ones that can
     try std.testing.expectError(error.NotSupported, engine.convertToDOMString(realm, runtime.JSValue.jsUndefined, std.testing.allocator));
     try std.testing.expectError(error.NotSupported, engine.structuredDeserialize(realm, ""));
     try std.testing.expectEqual(@as(?engine.Context, null), engine.entryRealm());
-    try std.testing.expectEqual(@as(?[]u8, null), engine.borrowArrayBufferBytes(runtime.JSValue.jsUndefined));
+    try std.testing.expectEqual(@as(?[]u8, null), engine.borrowArrayBufferBytes(realm, runtime.JSValue.jsUndefined));
     // Nothing to check out: no microtasks without an engine.
-    engine.performMicrotaskCheckpoint(realm);
+    try engine.performMicrotaskCheckpoint(realm);
 }
 
 test "the Agent a realm records is the one the protocol's agent operations take" {
