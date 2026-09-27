@@ -7,6 +7,7 @@ const global_settings = @import("dom").global_settings;
 const streams_js = @import("streams_js.zig");
 const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -168,203 +169,90 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 /// Operation: queueMicrotask
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
 ///
-/// Queues a microtask to invoke the callback. The callback is a V8 GlobalHandle
-/// (tagged pointer) that will be invoked when the microtask queue is processed.
+/// "Queue a microtask to invoke callback with « » and "report"."
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    const v8_engine = @import("v8");
-    const v8_ffi = v8_engine.ffi;
-    const pointer_tag = v8_engine.pointer_tag;
-
-    // Get the V8 context from the instance (engine_ctx is a V8 Context pointer)
-    const v8_context: *v8_ffi.Context = @ptrCast(@alignCast(instance.ctx.engine_ctx orelse {
-        return error.NotImplemented;
-    }));
-
-    // Get the current V8 isolate
-    const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse {
-        return error.NotImplemented;
+    // The binding hands the callback over: take it before anything can fail.
+    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    const task = instance.ctx.allocator.create(Microtask) catch {
+        function.release();
+        return error.OutOfMemory;
     };
-
-    // The callback parameter is a tagged pointer to a V8 GlobalHandle (the JS function)
-    // We need to untag it to get the actual pointer
-    const callback_ptr: *const anyopaque = @ptrCast(callback);
-    const untagged = pointer_tag.untagPointer(callback_ptr);
-
-    // Verify it's a global handle (callback functions are always passed as global handles)
-    if (untagged.tag != .global_handle and untagged.tag != .untagged) {
-        return error.NotImplemented;
-    }
-
-    // The untagged pointer is the V8 Global<Function>* (the JS function)
-    const js_function: *v8_ffi.Function = @ptrCast(@alignCast(untagged.ptr));
-
-    // Allocate context for the microtask callback
-    // This will be freed after the microtask executes
-    const ctx = instance.ctx.allocator.create(MicrotaskContext) catch return error.OutOfMemory;
-    ctx.* = .{
-        .js_function = js_function,
-        .v8_context = v8_context,
-        .context_addr = @intFromPtr(v8_ffi.v8_Context_GetRawAddress(v8_context) orelse {
-            instance.ctx.allocator.destroy(ctx);
-            return error.NotImplemented;
-        }),
-        .isolate = isolate,
-        .allocator = instance.ctx.allocator,
+    task.* = .{ .callback = function, .realm = instance.ctx, .allocator = instance.ctx.allocator };
+    engine.queueMicrotask(instance.ctx, Microtask.run, task) catch |err| {
+        task.deinit();
+        return err;
     };
-
-    // Queue the microtask with V8
-    const callback_fn: ?*const anyopaque = @ptrCast(&microtaskCallback);
-    v8_ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
 }
 
-/// Context passed to the microtask callback
-const MicrotaskContext = struct {
-    js_function: *@import("v8").ffi.Function,
-    v8_context: *@import("v8").ffi.Context,
-    /// Raw address of the context, captured while it was alive.
-    ///
-    /// A queued microtask can outlive its context - the page tears down with
-    /// microtasks still on V8's queue - and using `v8_context` then dereferences a
-    /// freed Global<Context> inside v8_Function_CallWithReceiver_Safe
-    /// (v8_wrapper.cpp:1321). The address is captured up front so liveness can be
-    /// checked WITHOUT touching the handle.
-    context_addr: usize,
-    isolate: *@import("v8").ffi.Isolate,
+/// A queueMicrotask() callback waiting for its microtask. A realm torn down
+/// meanwhile runs nothing: invoking a callback in it fails, and the task is
+/// let go.
+const Microtask = struct {
+    /// OWNED.
+    callback: engine.CallbackFunction,
+    realm: runtime.Context,
     allocator: std.mem.Allocator,
-};
 
-/// Microtask callback that invokes the JS function
-fn microtaskCallback(data: ?*anyopaque) callconv(.c) void {
-    const v8_ffi = @import("v8").ffi;
-
-    const ctx: *MicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    defer ctx.allocator.destroy(ctx);
-
-    // The context may have been torn down since this microtask was queued - a page
-    // can unload with microtasks still on V8's queue. Checking by ADDRESS rather
-    // than by handle is deliberate: any query that takes the Global<Context>* has
-    // to dereference it, which is the use-after-free being guarded against.
-    const context_manager = @import("v8").context_manager;
-    if (!context_manager.isContextAddressAlive(ctx.context_addr)) {
-        // Still dispose the function handle we own, then drop the task.
-        v8_ffi.v8_Function_Dispose(ctx.js_function);
-        return;
+    fn run(data: ?*anyopaque) void {
+        const self: *Microtask = @ptrCast(@alignCast(data.?));
+        defer self.deinit();
+        const completion = engine.invokeCallbackFunction(self.realm, &self.callback, .undefined, &.{}, .{
+            .report = .{ .report = reportException, .host = self.realm },
+        }) catch return;
+        switch (completion) {
+            inline else => |value| value.release(),
+        }
     }
 
-    // Phase 5 instrumentation: microtasks run from V8's own drain, so this should
-    // always be owned - a report here would be a strong signal.
-    @import("v8").isolate_ownership.assertOwned(ctx.isolate, "WindowOrWorkerGlobalScope.microtaskCallback");
+    fn deinit(self: *Microtask) void {
+        self.callback.release();
+        self.allocator.destroy(self);
+    }
+};
 
-    // Create a HandleScope for V8 operations
-    const handle_scope = v8_ffi.v8_HandleScope_New(ctx.isolate);
-    defer v8_ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Call the function with no arguments and undefined as 'this'
-    // v8_Function_CallWithReceiver_Safe signature: (context, function, receiver, argc, argv)
-    const undefined_val = v8_ffi.v8_Undefined(ctx.isolate);
-    _ = v8_ffi.v8_Function_CallWithReceiver_Safe(
-        ctx.v8_context,
-        ctx.js_function,
-        undefined_val,
-        0,
-        null, // No arguments
-    );
-
-    // Dispose the global handle after execution
-    v8_ffi.v8_Function_Dispose(ctx.js_function);
+/// HTML "report an exception" for the global of the realm the engine names -
+/// the callback's associated realm - or else the queueing global's (`host`).
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const queued_in: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse queued_in;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 /// Operation: structuredClone
 /// Spec: https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
 ///
-/// Creates a deep clone of a value using the structured clone algorithm.
-/// Handles circular references, Date, RegExp, Map, Set, ArrayBuffer, etc.
-/// Throws DataCloneError for non-cloneable values like functions and symbols.
+/// 1. Let serialized be ? StructuredSerializeWithTransfer(value,
+///    options["transfer"]).
+/// 2. Let deserializeRecord be ? StructuredDeserializeWithTransfer(
+///    serialized, this's relevant realm).
+/// 3. Return deserializeRecord.[[Deserialized]].
+///
+/// Deviation: a platform object in the transfer list (a MessagePort) is a
+/// DataCloneError here - its transfer steps are MessagePort's, which
+/// postMessage runs and structuredClone does not yet.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    const v8_ffi = @import("v8").ffi;
+    const allocator = instance.ctx.allocator;
+    const transfer: []const runtime.JSValue = if (options.was_passed) (options.value.transfer orelse &.{}) else &.{};
+    // Step 1.
+    var serialized = try engine.structuredSerializeWithTransfer(instance.ctx, value, transfer, notTransferable, null, allocator);
+    defer serialized.deinit(allocator);
+    // Steps 2-3.
+    const deserialized = try engine.structuredDeserializeWithTransfer(instance.ctx, serialized.serialized, serialized.array_buffers);
+    return deserialized.take();
+}
 
-    // For primitives (undefined, null, boolean, number), return them directly
-    // For value types that are passed as handles (strings, objects), use V8's clone
-    switch (value) {
-        .undefined => return runtime.JSValue.jsUndefined,
-        .null => return runtime.JSValue.jsNull,
-        .boolean => |b| return runtime.JSValue.fromBoolean(b),
-        .number => |n| return runtime.JSValue.fromNumber(n),
-        .string => |s| {
-            // Clone the string data since input argument data may be freed after return.
-            // The returned string is owned and will be freed after conversion to V8.
-            const cloned_data = instance.ctx.allocator.dupe(u8, s.data) catch return error.OutOfMemory;
-            return runtime.JSValue{ .string = .{
-                .data = cloned_data,
-                .owned = true,
-            } };
-        },
-        .handle => |h| {
-            // For objects/functions/etc, use V8's structured clone
-            const v8_value: *v8_ffi.Value = @ptrCast(@alignCast(h.ptr));
-
-            // Check if we have a transfer list in options
-            if (options.was_passed and options.value.transfer != null) {
-                const transfer_list = options.value.transfer.?;
-                if (transfer_list.len > 0) {
-                    // Build transfer list for V8
-                    var v8_transfers: [64]*v8_ffi.Value = undefined; // Max 64 transfers
-                    const count = @min(transfer_list.len, 64);
-
-                    for (0..count) |i| {
-                        switch (transfer_list[i]) {
-                            .handle => |th| {
-                                v8_transfers[i] = @ptrCast(@alignCast(th.ptr));
-                            },
-                            else => {
-                                // Non-object in transfer list is a DataCloneError
-                                return error.DataCloneError;
-                            },
-                        }
-                    }
-
-                    var error_code: c_int = 0;
-                    const cloned = v8_ffi.v8_Value_StructuredCloneWithTransfer(
-                        v8_value,
-                        &v8_transfers,
-                        count,
-                        &error_code,
-                    );
-
-                    if (cloned == null or error_code != 0) {
-                        return error.DataCloneError;
-                    }
-
-                    return runtime.JSValue{
-                        .handle = .{
-                            .ptr = @ptrCast(cloned.?),
-                            .needs_disposal = true,
-                            .handle_scope = .global,
-                        },
-                    };
-                }
-            }
-
-            // No transfer list, use simple clone
-            const cloned = v8_ffi.v8_Value_StructuredClone(v8_value);
-            if (cloned == null) {
-                // Clone failed - value contains non-cloneable types (functions, symbols, etc.)
-                return error.DataCloneError;
-            }
-
-            return runtime.JSValue{
-                .handle = .{
-                    .ptr = @ptrCast(cloned.?),
-                    .needs_disposal = true,
-                    .handle_scope = .global,
-                },
-            };
-        },
-        .instance => {
-            // Zig instances cannot be cloned
-            return error.DataCloneError;
-        },
-    }
+/// structuredClone transfers no platform object (see its deviation).
+fn notTransferable(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
+    return .not_transferable;
 }
 
 /// Operation: setTimeout
@@ -405,7 +293,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const fetch = @import("fetch");
     const fetch_objects = @import("dom").fetch_objects;
     const abort_algorithms = @import("dom").abort_algorithms;
-    const v8 = @import("v8");
     const allocator = instance.ctx.allocator;
 
     // One call, from the moment the fetch starts until it is entirely over:
@@ -422,11 +309,10 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// context rather than freeing it, and empties it - `engine_ctx`
         /// becomes null - which is how `alive` tells that the realm is gone.
         ctx: runtime.Context,
-        isolate: *v8.ffi.Isolate,
-        /// p's resolver, a Global this call owns until p is settled or its
-        /// realm is gone. Keeping it keeps p, and so the realm, alive while
-        /// the fetch is in flight.
-        resolver: *v8.ffi.PromiseResolver,
+        /// p's capability, this call's until p is settled or its realm is
+        /// gone. Keeping it keeps p, and so the realm, alive while the fetch
+        /// is in flight.
+        capability: engine.PromiseCapability,
         outcome: ?(fetch.algorithms.FetchError!fetch.algorithms.FetchResult) = null,
         /// The fetch, from start until it ends (`done` or `gone`) or is
         /// aborted.
@@ -509,55 +395,48 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             settle(self);
         }
 
-        /// The fetch task. It runs from the event loop, not from script, so
-        /// it enters the realm itself.
+        /// The fetch task: HTML "queue a global task", its run side - it runs
+        /// in the realm, which ends it (a worker's end of task too).
         fn settle(context: ?*anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             // The realm can end while the task waits in the queue. And
             // processResponse step 1: if locallyAborted is true, abort these
             // steps - the abort steps settled p already.
             if (!alive(self) or self.locally_aborted) return self.taskDone();
+            // An error means the steps never ran (the realm is gone): the
+            // task is over either way.
+            engine.runTaskInRealm(self.ctx, settleSteps, self) catch {};
+            self.taskDone();
+        }
 
-            // Read once: `taskDone` can free this call, and the isolate is
-            // exited after it - the defers run in reverse.
-            const isolate = self.isolate;
-            const entered = v8.ffi.v8_Isolate_GetCurrent() != isolate;
-            if (entered) v8.ffi.v8_Isolate_Enter(isolate);
-            defer if (entered) v8.ffi.v8_Isolate_Exit(isolate);
-            defer self.taskDone();
-            {
-                const scope = v8.JsScope.init(self.ctx) orelse return;
-                defer scope.deinit();
-                self.processResponse();
-            }
-            // In a worker, the task's end is the worker's to run.
-            @import("html").worker_v8_context.finishTaskIn(isolate);
+        fn settleSteps(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data.?));
+            self.processResponse();
         }
 
         /// processResponse, given fetch's outcome.
         fn processResponse(self: *Self) void {
-            const realm = streams_js.Realm.ofContext(self.ctx) catch return;
             const outcome = self.outcome orelse return;
             self.outcome = null;
-            var result = outcome catch return self.rejectTypeError(realm, "Failed to fetch");
+            var result = outcome catch return self.rejectTypeError("Failed to fetch");
             result.timing_info.deinit();
             const response = result.response;
 
             // Step 3: a network error rejects p with a TypeError.
             if (response.response_type == .@"error") {
                 response.deinit();
-                return self.rejectTypeError(realm, "Failed to fetch");
+                return self.rejectTypeError("Failed to fetch");
             }
 
             // Step 4: responseObject is the result of creating a Response
             // object given response, "immutable" and relevantRealm.
             const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
                 response.deinit();
-                return self.rejectTypeError(realm, "Failed to fetch");
+                return self.rejectTypeError("Failed to fetch");
             };
             if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
                 response.deinit();
-                return self.rejectTypeError(realm, "Failed to fetch");
+                return self.rejectTypeError("Failed to fetch");
             }
             // The abort steps name responseObject from here: an abort after
             // this errors its body (step 11.4's "abort the fetch() call",
@@ -565,24 +444,25 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             // the signal itself.
             if (self.liveSignal()) |signal| _ = fetch_objects.followSignal(response_object, signal);
 
-            // Step 5: resolve p with responseObject.
-            const wrapper = realm.wrap(response_object) catch return;
-            _ = v8.ffi.v8_PromiseResolver_Resolve(self.resolver, realm.context, wrapper);
+            // Step 5: resolve p with responseObject - its wrapper in its
+            // relevant realm.
+            engine.resolvePromise(&self.capability, .{ .instance = response_object }) catch {};
             self.settleResolver();
         }
 
-        /// p is settled: its resolver has done its job. Holding it longer
+        /// p is settled: its capability has done its job. Holding it longer
         /// keeps p, and through it the realm, for nothing.
         fn settleResolver(self: *Self) void {
             if (self.settled) return;
             self.settled = true;
-            v8.ffi.v8_PromiseResolver_Dispose(self.resolver);
+            engine.releasePromiseCapability(&self.capability);
         }
 
-        fn rejectTypeError(self: *Self, realm: streams_js.Realm, message: []const u8) void {
-            const reason = realm.typeError(message) catch return;
-            defer streams_js.dispose(reason);
-            _ = v8.ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
+        fn rejectTypeError(self: *Self, message: []const u8) void {
+            if (self.settled) return;
+            const reason = engine.createSimpleException(self.ctx, .TypeError, message) catch return self.settleResolver();
+            defer reason.release();
+            engine.rejectPromise(&self.capability, reason.value) catch {};
             self.settleResolver();
         }
 
@@ -651,21 +531,13 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fn abortFailure(self: *Self, signal: ?*runtime.Instance) fetch.algorithms.async_fetch.Failure {
             const s = signal orelse return .{ .kind = .aborted };
             const reason_value = interfaces.AbortSignal.get_reason(s) catch return .{ .kind = .aborted };
-            const realm = streams_js.Realm.ofContext(self.ctx) catch return .{ .kind = .aborted };
-            const reason = realm.fromRuntime(reason_value) catch return .{ .kind = .aborted };
-            return .{ .kind = .aborted, .reason = @ptrCast(reason), .release_reason = releaseReason };
-        }
-
-        fn releaseReason(reason: *anyopaque) void {
-            streams_js.dispose(@ptrCast(@alignCast(reason)));
+            const held = fetch_body.AbortReason.create(self.ctx, reason_value) orelse return .{ .kind = .aborted };
+            return .{ .kind = .aborted, .reason = held, .release_reason = fetch_body.AbortReason.release };
         }
 
         fn rejectWithAbortReason(self: *Self, signal: *runtime.Instance) void {
-            const realm = streams_js.Realm.ofContext(self.ctx) catch return;
             const reason_value = interfaces.AbortSignal.get_reason(signal) catch return;
-            const reason = realm.fromRuntime(reason_value) catch return;
-            defer streams_js.dispose(reason);
-            _ = v8.ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
+            engine.rejectPromise(&self.capability, reason_value) catch {};
         }
 
         fn liveSignal(self: *const Self) ?*runtime.Instance {
@@ -715,9 +587,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// The fetch never started: p rejects with a TypeError, as for a
         /// network error, and the fetch lets go of this call.
         fn startFailed(self: *Self) void {
-            if (!self.settled) {
-                if (streams_js.Realm.ofContext(self.ctx)) |realm| self.rejectTypeError(realm, "Failed to fetch") else |_| self.settleResolver();
-            }
+            self.rejectTypeError("Failed to fetch");
             self.fetch_holds = false;
             self.maybeRelease();
         }
@@ -759,12 +629,19 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const realm = try streams_js.Realm.of(instance);
 
     // Step 1: Let p be a new promise.
-    const p = try streams_js.Deferred.init(realm);
-    // The promise is made for this call and kept nowhere, so it is handed to
-    // the binding with the result (returnOwned) - kept, it pinned the page.
-    // The resolver is released here unless the fetch takes it.
-    var resolver_taken = false;
-    defer if (!resolver_taken) v8.ffi.v8_PromiseResolver_Dispose(p.resolver);
+    var capability = try engine.createPromise(instance.ctx);
+    // What this call returns: p, held now, before anything can settle p and
+    // release the capability (and its view of p) - a body read to the end
+    // inside this call does. Handed to the binding with the result; kept, it
+    // pinned the page.
+    const p = engine.retainValue(instance.ctx, capability.promise) catch |err| {
+        engine.releasePromiseCapability(&capability);
+        return err;
+    };
+    errdefer p.release();
+    // The capability is released here unless the fetch takes it.
+    var capability_taken = false;
+    defer if (!capability_taken) engine.releasePromiseCapability(&capability);
 
     // Step 2: Let requestObject be the result of invoking the initial value
     // of Request as constructor with input and init. If this throws, reject
@@ -776,8 +653,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const request_object = interfaces.Request.call_constructor(instance.ctx, input, init_data) catch |err| switch (err) {
         error.OutOfMemory => return err,
         else => {
-            rejectWithTypeError(realm, p, "Failed to execute 'fetch': the Request could not be constructed.");
-            return p.returnOwned();
+            rejectWithTypeError(instance.ctx, &capability, "Failed to execute 'fetch': the Request could not be constructed.");
+            return p.take();
         },
     };
     // Nothing script can see holds requestObject, unless its signal's
@@ -796,9 +673,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         defer streams_js.dispose(reason);
         // "Abort the fetch() call" step 1: reject p; step 2: cancel
         // request's body, if it is readable.
-        p.reject(realm, reason);
+        engine.rejectPromise(&capability, reason.value) catch {};
         if (fetch_objects.requestBodyStream(request_object)) |stream| fetch_body.cancelStream(realm, stream, reason);
-        return p.returnOwned();
+        return p.take();
     }
 
     // Steps 5-6: no ServiceWorkerGlobalScope exists here.
@@ -814,7 +691,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fetched_request.deinit();
         return error.OutOfMemory;
     };
-    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .isolate = realm.isolate, .resolver = p.resolver };
+    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .capability = capability };
     // Only HTTP(S) transmits a request body (HTTP-network fetch); a data:,
     // blob: or about: fetch never reads it, so neither does this - a stream
     // that never closes must not hold such a fetch up.
@@ -828,18 +705,18 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         call.upload = fetch_body.ReadAll.start(allocator, realm, stream, call, Call.uploadRead, Call.uploadFailed) catch {
             fetched_request.deinit();
             allocator.destroy(call);
-            rejectWithTypeError(realm, p, "Failed to fetch");
-            return p.returnOwned();
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
         };
     } else {
         call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
             // The fetch owned the request, and freed it.
             allocator.destroy(call);
-            rejectWithTypeError(realm, p, "Failed to fetch");
-            return p.returnOwned();
+            rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+            return p.take();
         };
     }
-    resolver_taken = true;
+    capability_taken = true;
 
     // Step 11: Add the abort steps to requestObject's signal. Without them
     // the call still settles; it just cannot be aborted.
@@ -857,11 +734,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     if (call.upload) |u| u.begin();
 
     // Step 13.
-    return p.returnOwned();
+    return p.take();
 }
 
-fn rejectWithTypeError(realm: streams_js.Realm, p: streams_js.Deferred, message: []const u8) void {
-    const reason = realm.typeError(message) catch return;
-    defer streams_js.dispose(reason);
-    p.reject(realm, reason);
+fn rejectWithTypeError(realm: runtime.Context, capability: *engine.PromiseCapability, message: []const u8) void {
+    const reason = engine.createSimpleException(realm, .TypeError, message) catch return;
+    defer reason.release();
+    engine.rejectPromise(capability, reason.value) catch {};
 }

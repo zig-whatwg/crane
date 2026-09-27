@@ -46,7 +46,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
 
 /// `enqueue(chunk)` - § 4.7.3.
 pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView) anyerror!void {
-    const chunk_js: js.Value = @ptrCast(@alignCast(chunk.jsHandle() orelse return error.TypeError));
+    const chunk_js = js.adoptHandle(try js.Realm.of(instance), chunk.jsHandle() orelse return error.TypeError);
     defer js.dispose(chunk_js);
     const c = srd.byteControllerOf(instance) orelse return error.TypeError;
     const info = js.describeView(chunk_js) orelse return error.TypeError;

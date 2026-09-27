@@ -71,7 +71,7 @@ fn rejectWith(realm: js.Realm, reader: *srd.Reader, err: js.Error!js.Value) !run
 /// `read(view, options)` - § 4.5.3.
 pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, options: webidl.Opt(dictionaries.ReadableStreamBYOBReaderReadOptions)) anyerror!runtime.JSValue {
     // The IDL value owns its reference to the view object.
-    const view_js: js.Value = @ptrCast(@alignCast(view.jsHandle() orelse return error.TypeError));
+    const view_js = js.adoptHandle(try js.Realm.of(instance), view.jsHandle() orelse return error.TypeError);
     defer js.dispose(view_js);
     const reader = srd.readerOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);

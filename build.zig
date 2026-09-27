@@ -2599,6 +2599,9 @@ pub fn build(b: *std.Build) void {
             // The generated interfaces, for a test host that makes platform
             // objects - a Window for a realm (page_realm_operations_test.zig).
             .{ .name = "interfaces", .module = interfaces_mod },
+            // The impl helpers a tests/v8 test reaches through an impl's
+            // re-export (Response.streams_js, for the Deferred lifetime test).
+            .{ .name = "impls", .module = impls_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});

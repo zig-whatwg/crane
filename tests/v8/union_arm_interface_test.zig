@@ -129,3 +129,59 @@ test "a function given to a union with a callback arm is the callback" {
     const result = try conv.fromV8Value(TimerHandler, std.testing.allocator, i, context_once.?, value);
     try std.testing.expect(result == .function);
 }
+
+// =============================================================================
+// streams_js.Deferred: the settled cell lives from init to deinit
+// =============================================================================
+//
+// [[PromiseState]] has no engine operation, so a Deferred records its own
+// settling in a cell it allocates with its realm's allocator. That realm's
+// allocator is injected here as std.testing.allocator: a cell deinit forgets,
+// or frees twice, fails the test.
+
+const js = @import("impls").Response.streams_js;
+
+/// Make `data` a realm over this file's isolate and context whose allocator
+/// is std.testing.allocator. The caller deinits it.
+fn initTestingRealm(data: *runtime.ContextData) !void {
+    const i = try isolate();
+    data.* = try runtime.ContextData.init(std.testing.allocator, .{
+        .engine = &v8.engine.v8_engine_interface,
+        .engine_ctx = context_once.?,
+    });
+    data.agent = @ptrCast(i);
+}
+
+test "a Deferred's settled cell is allocated, settled and freed with the Deferred" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const realm = try js.Realm.ofContext(&data);
+
+    const deferred = try js.Deferred.init(realm);
+    try std.testing.expect(deferred.isPending());
+    deferred.resolve(realm, try realm.undefinedValue());
+    try std.testing.expect(!deferred.isPending());
+    // Settling a settled promise is a no-op, as in the spec.
+    const reason = try realm.typeError("late");
+    defer js.dispose(reason);
+    deferred.reject(realm, reason);
+    try std.testing.expect(!deferred.isPending());
+    deferred.deinit();
+}
+
+test "copies of a Deferred share its cell, and deinitResolverOnly frees it too" {
+    var data: runtime.ContextData = undefined;
+    try initTestingRealm(&data);
+    defer data.deinit();
+    const realm = try js.Realm.ofContext(&data);
+
+    const deferred = try js.Deferred.init(realm);
+    const copy = deferred;
+    copy.reject(realm, try realm.undefinedValue());
+    try std.testing.expect(!deferred.isPending());
+    // The promise stays the caller's after deinitResolverOnly.
+    const promise = deferred.promise;
+    deferred.deinitResolverOnly();
+    js.dispose(promise);
+}
