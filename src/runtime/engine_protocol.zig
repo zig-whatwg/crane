@@ -117,6 +117,17 @@ pub const Owned = struct {
     pub fn take(self: Owned) JSValue {
         return self.value;
     }
+
+    /// The value BORROWED, while this Owned is held: what an attribute getter
+    /// returns for a value its object keeps (an event's `any` member). The
+    /// binding reads a borrowed value and never releases it.
+    pub fn borrow(self: Owned) JSValue {
+        return switch (self.value) {
+            .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+            .string => |text| .{ .string = .{ .data = text.data, .owned = false } },
+            else => self.value,
+        };
+    }
 };
 
 /// ECMAScript's Completion Record, from an operation that runs script: the
@@ -380,8 +391,12 @@ pub const HostHooks = struct {
     /// HostGetImportMetaProperties [module_scripts]: `import.meta.url` of the
     /// module the host defined as `module_host_defined`.
     importMetaUrl: ?*const fn (host: ?*anyopaque, module_host_defined: *anyopaque) []const u8 = null,
-    /// HostPromiseRejectionTracker [promise_rejection_tracking]. `promise` OWNED.
-    promiseRejectionTracker: ?*const fn (host: ?*anyopaque, realm: Context, promise: Owned, operation: RejectionOperation) void = null,
+    /// HostPromiseRejectionTracker [promise_rejection_tracking]. `promise`
+    /// OWNED. `reason` OWNED: on "reject" the rejection value - the promise's
+    /// [[PromiseResult]] from then on, which the host keeps beside the promise
+    /// because no operation reads [[PromiseResult]] (JavaScriptCore has none);
+    /// null on "handle".
+    promiseRejectionTracker: ?*const fn (host: ?*anyopaque, realm: Context, promise: Owned, operation: RejectionOperation, reason: ?Owned) void = null,
     /// HTML "perform a microtask checkpoint" step 5: notify about rejected
     /// promises.
     afterMicrotaskCheckpoint: ?*const fn (host: ?*anyopaque, agent: *Agent) void = null,
@@ -828,7 +843,11 @@ pub inline fn sameValue(realm: Context, a: JSValue, b: JSValue) bool {
     return impl.sameValue(realm, a, b);
 }
 
-/// Hold `value` past the call. OWNED.
+/// Hold `value` past the call. OWNED. Undefined, null, a boolean or a
+/// number holds no engine resource: it is held by value, with nothing entered
+/// (any realm will do), and releasing it does nothing. A platform object is
+/// held as its wrapper, made in `realm` if it has none yet - pass its relevant
+/// realm.
 pub inline fn retainValue(realm: Context, value: JSValue) Error!Owned {
     return impl.retainValue(realm, value);
 }

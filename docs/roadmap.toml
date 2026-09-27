@@ -102,6 +102,10 @@ progress = [
   name = "Decide tracing (TracedReference / cppgc) versus manual disposal"
   status = "todo"
 
+  [[infra.items]]
+  name = "Event listeners and handlers are traced from their target, not held as strong roots - today a target whose listener closure captures the target can never be collected (Blink traces listeners from the target)"
+  status = "todo"
+
 [[infra]]
 id = "navigation"
 title = "Navigation and document lifecycle"
@@ -201,6 +205,11 @@ progress = [
   "d452ed281, 9d2f144ef - engine-boundary lane: values, WebIDL conversions, agents, worker realms, structured serialization with transfer; MessageEvent and MessagePort through the table",
   "bfc9224db, 1bb4707f4 - runtime-impls lane: dead V8-coupled code deleted, not ported; promise, exception, dictionary, microtask, observable-array and callback-interface operations",
   "11d457bab, 572fd3a08 - page-realm lane: invokeCallbackFunction and installWindowOperations; the top-level window keeps EventTarget's WebIDL operations",
+  "df6852607, 924c8dec2 - the engine becomes a PROTOCOL: a statically dispatched `engine` module, all operations declared and conformance-checked against every adapter",
+  "8364a9725, b661aafa7 - protocol areas 2-3 implemented for V8: callbacks with their callback context and incumbent realm, values, conversions, iterators, promises, async iterators",
+  "a20811318, 45fa1d65b - WebSocket and the worker host off V8; pending-activity holds",
+  "838ecf09a - a context's registry key survives compacting GCs",
+  "74cc04689 - migration set X (events, observers, rejected promises) onto the protocol; the migration recipes",
 ]
 
   [[infra.items]]

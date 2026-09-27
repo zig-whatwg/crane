@@ -205,10 +205,10 @@ const kPromiseHandlerAddedAfterReject = 1;
 /// muted-errors classic script is not taken.
 fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, reason: ?*ffi.Value) callconv(.c) void {
     var handed_on = false;
-    defer if (!handed_on) ffi.v8_Global_Dispose(promise);
-    // TODO(protocol): the tracker takes the reason once the facade's
-    // declaration gains it; until then it is released here.
-    defer if (reason) |r| ffi.v8_Global_Dispose(r);
+    defer if (!handed_on) {
+        ffi.v8_Global_Dispose(promise);
+        if (reason) |r| ffi.v8_Global_Dispose(r);
+    };
 
     const record = recordOf(isolate) orelse return;
     const tracker = record.hooks.promiseRejectionTracker orelse return;
@@ -219,7 +219,16 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
     };
     const realm: Context = current_realm.currentRealm() orelse support.associatedRealm(promise) orelse return;
     handed_on = true;
-    tracker(record.host, realm, support.owned(promise), operation);
+    // The rejection's value goes with "reject" (PromiseRejectionEvent's
+    // reason); "handle" has none.
+    const handed_reason: ?engine.Owned = switch (operation) {
+        .reject => if (reason) |r| support.owned(r) else null,
+        .handle => blk: {
+            if (reason) |r| ffi.v8_Global_Dispose(r);
+            break :blk null;
+        },
+    };
+    tracker(record.host, realm, support.owned(promise), operation, handed_reason);
 }
 
 /// HTML "perform a microtask checkpoint" step 5 - "notify about rejected

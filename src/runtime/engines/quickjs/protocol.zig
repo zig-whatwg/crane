@@ -193,8 +193,12 @@ pub fn sameValue(_: Context, a: JSValue, b: JSValue) bool {
         .instance => |x| b == .instance and x == b.instance,
     };
 }
-pub fn retainValue(_: Context, _: JSValue) Error!Owned {
-    return error.NotSupported;
+pub fn retainValue(_: Context, value: JSValue) Error!Owned {
+    return switch (value) {
+        // No engine resource: held by value (the protocol's contract).
+        .undefined, .null, .boolean, .number => .{ .value = value },
+        else => error.NotSupported,
+    };
 }
 pub fn releaseValue(_: Owned) void {}
 pub fn throwValue(_: Context, _: JSValue) Error!void {

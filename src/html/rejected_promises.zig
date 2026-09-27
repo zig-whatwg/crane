@@ -4,31 +4,28 @@
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#unhandled-promise-rejections
 //!       https://html.spec.whatwg.org/multipage/webappapis.html#the-hostpromiserejectiontracker-implementation
 //!
-//! V8 reports the two HostPromiseRejectionTracker operations through its
-//! promise reject callback: kPromiseRejectWithNoHandler is "reject",
-//! kPromiseHandlerAddedAfterReject is "handle". HTML runs "notify about
-//! rejected promises" at the end of every microtask checkpoint; V8 runs its
-//! microtasks-completed callbacks at exactly that point, automatic checkpoints
-//! included, so that is where notification is hooked.
+//! The spec's side is `hooks`, the engine's HostHooks: HostPromiseRejectionTracker
+//! (`promiseRejectionTracker`) and "perform a microtask checkpoint" step 5
+//! (`afterMicrotaskCheckpoint`), over the engine protocol's types. The engine
+//! hands the rejection reason over at "reject" - [[PromiseResult]] from then on,
+//! which no protocol operation reads - and it is kept beside its promise.
 //!
 //! Nothing installed either callback before, so no page ever saw an
 //! unhandledrejection event, and a test waiting on one waited out the harness
 //! timeout.
 //!
 //! Deviation, stated: a global's "outstanding rejected promises weak set" holds
-//! STRONG Globals here, released when the global goes away (or, past a cap,
-//! oldest first). Weak V8 handles carry teardown obligations (AGENTS.md "Whoever
-//! ends a weak arm inherits V8's Reset obligation") that are not worth taking on
-//! for a set whose only purpose is to notice a late handler. What it changes: a
-//! promise nobody will ever handle stays alive until its page does.
+//! its promises STRONGLY here, released when the global goes away (or, past a
+//! cap, oldest first). Weak engine handles carry teardown obligations (AGENTS.md
+//! "Whoever ends a weak arm inherits V8's Reset obligation") that are not worth
+//! taking on for a set whose only purpose is to notice a late handler. What it
+//! changes: a promise nobody will ever handle stays alive until its page does.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
-const v8 = @import("v8");
-const ffi = v8.ffi;
-const report_exception = @import("report_exception.zig");
+const engine = @import("engine");
 
 const log = std.log.scoped(.rejected_promises);
 const allocator = std.heap.c_allocator;
@@ -37,9 +34,28 @@ const allocator = std.heap.c_allocator;
 /// oldest (see the module doc).
 const max_outstanding = 1024;
 
-/// V8's PromiseRejectEvent values (v8-promise.h).
-const kPromiseRejectWithNoHandler: c_int = 0;
-const kPromiseHandlerAddedAfterReject: c_int = 1;
+/// The engine's host hooks for promise rejection tracking. The host that
+/// creates an agent installs them (AgentOptions.hooks).
+pub const hooks: engine.HostHooks = .{
+    .promiseRejectionTracker = promiseRejectionTracker,
+    .afterMicrotaskCheckpoint = afterMicrotaskCheckpoint,
+};
+
+/// A rejected promise and its [[PromiseResult]], both held (OWNED).
+const Rejected = struct {
+    promise: engine.Owned,
+    /// Null when the engine gave none.
+    reason: ?engine.Owned,
+
+    fn release(self: Rejected) void {
+        self.promise.release();
+        if (self.reason) |reason| reason.release();
+    }
+
+    fn reasonValue(self: Rejected) ?runtime.JSValue {
+        return if (self.reason) |reason| reason.borrow() else null;
+    }
+};
 
 /// One global's rejection bookkeeping.
 const Tracked = struct {
@@ -47,18 +63,18 @@ const Tracked = struct {
     /// Window's slot, and a stale entry must not be mistaken for the new one.
     global: *runtime.Instance,
     generation: u64,
-    /// "about-to-be-notified rejected promises list": owned Globals.
-    about_to_be_notified: std.ArrayListUnmanaged(*ffi.Value) = .empty,
-    /// "outstanding rejected promises weak set": owned Globals.
-    outstanding: std.ArrayListUnmanaged(*ffi.Value) = .empty,
+    /// "about-to-be-notified rejected promises list".
+    about_to_be_notified: std.ArrayListUnmanaged(Rejected) = .empty,
+    /// "outstanding rejected promises weak set".
+    outstanding: std.ArrayListUnmanaged(Rejected) = .empty,
 
     fn isAlive(self: *const Tracked) bool {
         return runtime.SlabAllocator.generationOf(self.global) == self.generation;
     }
 
     fn destroy(self: *Tracked) void {
-        for (self.about_to_be_notified.items) |p| ffi.v8_Global_Dispose(p);
-        for (self.outstanding.items) |p| ffi.v8_Global_Dispose(p);
+        releaseAll(self.about_to_be_notified.items);
+        releaseAll(self.outstanding.items);
         self.about_to_be_notified.deinit(allocator);
         self.outstanding.deinit(allocator);
         allocator.destroy(self);
@@ -66,25 +82,16 @@ const Tracked = struct {
 };
 
 var tracked: std.ArrayListUnmanaged(*Tracked) = .empty;
-var installed_isolate: ?*ffi.Isolate = null;
 
-/// Start tracking promise rejections on `isolate`. Idempotent per isolate.
-pub fn install(isolate: *ffi.Isolate) void {
-    if (installed_isolate == isolate) return;
-    ffi.v8_Isolate_SetPromiseRejectCallback(isolate, null, &onPromiseReject);
-    ffi.v8_Isolate_AddMicrotasksCompletedCallback(isolate, &onMicrotasksCompleted, null);
-    installed_isolate = isolate;
+fn releaseAll(list: []const Rejected) void {
+    for (list) |rejected| rejected.release();
 }
 
-/// Stop tracking and release every handle, before `isolate` is disposed.
-pub fn uninstall(isolate: *ffi.Isolate) void {
-    if (installed_isolate != isolate) return;
-    ffi.v8_Isolate_ClearPromiseRejectCallback(isolate);
-    ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, &onMicrotasksCompleted, null);
+/// Release every promise held, before the agent is destroyed.
+pub fn releaseTracked() void {
     for (tracked.items) |t| t.destroy();
     tracked.deinit(allocator);
     tracked = .empty;
-    installed_isolate = null;
 }
 
 /// The bookkeeping for `global`, created on first use. Entries whose global
@@ -113,67 +120,60 @@ fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
     return t;
 }
 
-/// HostPromiseRejectionTracker steps 3-5: the current settings object's global.
-fn currentGlobal() ?*runtime.Instance {
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
-    // GetCurrentContext hands back a Global the caller owns.
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
-    defer ffi.v8_Context_Dispose(context);
-    return v8.context_manager.getWindowForContext(context);
+/// The global object of `realm`'s settings object.
+fn globalOf(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
 }
 
-/// Remove the entry of `list` that is `promise`, returning it (owned).
-fn takeMatching(list: *std.ArrayListUnmanaged(*ffi.Value), promise: *ffi.Value) ?*ffi.Value {
+/// Remove the entry of `list` whose promise is `promise`, returning it
+/// (owned). Promises are objects: SameValue is their identity.
+fn takeMatching(realm: runtime.Context, list: *std.ArrayListUnmanaged(Rejected), promise: runtime.JSValue) ?Rejected {
     for (list.items, 0..) |candidate, i| {
-        if (ffi.v8_Value_StrictEquals(candidate, promise)) return list.orderedRemove(i);
+        if (engine.sameValue(realm, candidate.promise.value, promise)) return list.orderedRemove(i);
     }
     return null;
 }
 
-/// HostPromiseRejectionTracker(promise, operation).
-///
-/// `promise_ptr` and `value_ptr` are new Globals this callback owns.
-fn onPromiseReject(user_data: ?*anyopaque, event_type: c_int, promise_ptr: ?*anyopaque, value_ptr: ?*anyopaque) callconv(.c) void {
-    _ = user_data;
-    const promise: *ffi.Value = @ptrCast(@alignCast(promise_ptr orelse return));
-    var keep_promise = false;
-    defer if (!keep_promise) ffi.v8_Global_Dispose(promise);
-    defer if (value_ptr) |v| ffi.v8_Global_Dispose(@ptrCast(@alignCast(v)));
+/// HostPromiseRejectionTracker(promise, operation). `promise` and `reason`
+/// are OWNED by this hook.
+fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: engine.Owned, operation: engine.RejectionOperation, reason: ?engine.Owned) void {
+    _ = host;
+    const rejected: Rejected = .{ .promise = promise, .reason = reason };
 
-    // Steps 1-5. (Step 2's muted-errors exception needs the running script,
-    // which V8 does not hand this callback.)
-    const global = currentGlobal() orelse return;
+    // Steps 1-5: the current settings object's global. (Step 2's muted-errors
+    // exception needs the running script, which the engine does not report
+    // here; step 4's script settings object is the current one for every
+    // script this engine runs.)
+    const global = globalOf(realm) orelse return rejected.release();
 
-    switch (event_type) {
+    switch (operation) {
         // Step 6: operation "reject" - append promise to the global's
         // about-to-be-notified rejected promises list.
-        kPromiseRejectWithNoHandler => {
-            const t = trackedFor(global, true) orelse return;
-            t.about_to_be_notified.append(allocator, promise) catch return;
-            keep_promise = true;
+        .reject => {
+            const t = trackedFor(global, true) orelse return rejected.release();
+            t.about_to_be_notified.append(allocator, rejected) catch rejected.release();
         },
         // Step 7: operation "handle".
-        kPromiseHandlerAddedAfterReject => {
+        .handle => {
+            defer rejected.release();
             const t = trackedFor(global, false) orelse return;
-            // 7.1: still waiting to be notified - just forget it.
-            if (takeMatching(&t.about_to_be_notified, promise)) |pending| {
-                ffi.v8_Global_Dispose(pending);
-                return;
-            }
-            // 7.2-7.3: not outstanding - nothing was ever reported.
-            const outstanding = takeMatching(&t.outstanding, promise) orelse return;
+            // 7.1: still waiting to be notified - remove it and return.
+            if (takeMatching(realm, &t.about_to_be_notified, promise.value)) |pending| return pending.release();
+            // 7.2: not outstanding - nothing was ever reported.
+            // 7.3: remove promise from the outstanding rejected promises weak set.
+            const outstanding = takeMatching(realm, &t.outstanding, promise.value) orelse return;
             // 7.4: queue a global task to fire rejectionhandled.
             queueNotification(global, .rejection_handled, &.{outstanding});
         },
-        else => {},
     }
 }
 
-/// End of a microtask checkpoint: "notify about rejected promises" for every
-/// global with promises waiting.
-fn onMicrotasksCompleted(isolate: *ffi.Isolate, data: ?*anyopaque) callconv(.c) void {
-    _ = isolate;
-    _ = data;
+/// "Perform a microtask checkpoint" step 5: "notify about rejected promises"
+/// for every global with promises waiting.
+fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
+    _ = host;
+    _ = agent;
     var i: usize = 0;
     while (i < tracked.items.len) {
         const t = tracked.items[i];
@@ -183,7 +183,8 @@ fn onMicrotasksCompleted(isolate: *ffi.Isolate, data: ?*anyopaque) callconv(.c) 
             continue;
         }
         i += 1;
-        // Steps 1-3: take the list, leaving it empty.
+        // Steps 1-3: take the list, leaving it empty; nothing to do when it
+        // is empty.
         if (t.about_to_be_notified.items.len == 0) continue;
         const list = t.about_to_be_notified.toOwnedSlice(allocator) catch continue;
         defer allocator.free(list);
@@ -198,19 +199,19 @@ const Notification = struct {
     global: *runtime.Instance,
     generation: u64,
     kind: Kind,
-    /// Owned Globals.
-    promises: []*ffi.Value,
+    /// Owned.
+    promises: []Rejected,
 };
 
 /// Queue a global task on the DOM manipulation task source to run
-/// `runNotification`. Takes ownership of every Global in `promises` (the
+/// `runNotification`. Takes ownership of every entry in `promises` (the
 /// slice itself is copied).
-fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const *ffi.Value) void {
-    const loop = global.ctx.getOptionalEventLoop() orelse return disposeAll(promises);
-    const task = allocator.create(Notification) catch return disposeAll(promises);
-    const copy = allocator.dupe(*ffi.Value, promises) catch {
+fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Rejected) void {
+    const loop = global.ctx.getOptionalEventLoop() orelse return releaseAll(promises);
+    const task = allocator.create(Notification) catch return releaseAll(promises);
+    const copy = allocator.dupe(Rejected, promises) catch {
         allocator.destroy(task);
-        return disposeAll(promises);
+        return releaseAll(promises);
     };
     task.* = .{
         .global = global,
@@ -221,64 +222,65 @@ fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const *f
     loop.queueTask(.{ .callback = &runNotification, .context = task });
 }
 
-fn disposeAll(promises: []const *ffi.Value) void {
-    for (promises) |p| ffi.v8_Global_Dispose(p);
-}
-
+/// The queued global task: its steps run as a task of the global's realm.
 fn runNotification(data: ?*anyopaque) void {
     const task: *Notification = @ptrCast(@alignCast(data orelse return));
     defer {
         allocator.free(task.promises);
         allocator.destroy(task);
     }
+    if (runtime.SlabAllocator.generationOf(task.global) != task.generation) return releaseAll(task.promises);
+    engine.runTaskInRealm(task.global.ctx, notificationSteps, task) catch releaseAll(task.promises);
+}
 
-    const global = task.global;
-    if (runtime.SlabAllocator.generationOf(global) != task.generation) return disposeAll(task.promises);
-
-    // A task runs from the event loop: no HandleScope, no entered context.
-    const scope = v8.JsScope.init(global.ctx) orelse return disposeAll(task.promises);
-    defer scope.deinit();
-
-    for (task.promises) |promise| {
+fn notificationSteps(data: ?*anyopaque) void {
+    const task: *Notification = @ptrCast(@alignCast(data.?));
+    for (task.promises) |rejected| {
         switch (task.kind) {
-            .unhandled_rejection => notifyOne(global, promise),
+            .unhandled_rejection => notifyOne(task.global, rejected),
             .rejection_handled => {
-                defer ffi.v8_Global_Dispose(promise);
-                _ = firePromiseRejectionEvent(global, "rejectionhandled", promise, false);
+                defer rejected.release();
+                _ = firePromiseRejectionEvent(task.global, "rejectionhandled", rejected, false);
             },
         }
     }
 }
 
+/// [[PromiseIsHandled]]. Only an engine with promise rejection tracking calls
+/// the hooks at all; on another this is never reached.
+fn isHandled(realm: runtime.Context, promise: runtime.JSValue) bool {
+    if (engine.capabilities.promise_rejection_tracking != .unsupported) return engine.promiseIsHandled(realm, promise);
+    return false;
+}
+
 /// "Notify about rejected promises" step 4.1, for one promise it owns.
-fn notifyOne(global: *runtime.Instance, promise: *ffi.Value) void {
+fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
+    const realm = global.ctx;
     // 4.1.1: If p.[[PromiseIsHandled]] is true, continue.
-    if (ffi.v8_Promise_HasHandler(promise)) return ffi.v8_Global_Dispose(promise);
+    if (isHandled(realm, rejected.promise.value)) return rejected.release();
 
     // 4.1.2: fire unhandledrejection, cancelable, with p and its result.
-    const not_canceled = firePromiseRejectionEvent(global, "unhandledrejection", promise, true);
+    const not_canceled = firePromiseRejectionEvent(global, "unhandledrejection", rejected, true);
 
     // 4.1.3: the user agent may report it to a developer console.
     if (not_canceled) log.debug("unhandled promise rejection", .{});
 
-    // 4.1.4: still not handled - it is now outstanding.
-    if (ffi.v8_Promise_HasHandler(promise)) return ffi.v8_Global_Dispose(promise);
-    const t = trackedFor(global, true) orelse return ffi.v8_Global_Dispose(promise);
-    if (t.outstanding.items.len >= max_outstanding) ffi.v8_Global_Dispose(t.outstanding.orderedRemove(0));
-    t.outstanding.append(allocator, promise) catch ffi.v8_Global_Dispose(promise);
+    // 4.1.4: If p.[[PromiseIsHandled]] is false, append p to the global's
+    // outstanding rejected promises weak set.
+    if (isHandled(realm, rejected.promise.value)) return rejected.release();
+    const t = trackedFor(global, true) orelse return rejected.release();
+    if (t.outstanding.items.len >= max_outstanding) t.outstanding.orderedRemove(0).release();
+    t.outstanding.append(allocator, rejected) catch rejected.release();
 }
 
 /// Fire a PromiseRejectionEvent named `event_type` at `global`, with
-/// `promise` and its [[PromiseResult]] as the reason. Returns notCanceled.
-fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, promise: *ffi.Value, cancelable: bool) bool {
-    const reason = ffi.v8_Promise_Result(@ptrCast(promise));
-    defer if (reason) |r| ffi.v8_Global_Dispose(r);
-
+/// the promise and its [[PromiseResult]] as the reason. Returns notCanceled.
+fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, rejected: Rejected, cancelable: bool) bool {
     const init = dictionaries.PromiseRejectionEventInit{
         .base = .{ .bubbles = false, .cancelable = cancelable, .composed = false },
-        // The event takes Globals of its own.
-        .promise = runtime.JSValue.fromHandleNonOwning(promise),
-        .reason = if (reason) |r| runtime.JSValue.fromHandleNonOwning(r) else null,
+        // BORROWED: the event holds values of its own.
+        .promise = rejected.promise.borrow(),
+        .reason = rejected.reasonValue(),
     };
     const event = interfaces.PromiseRejectionEvent.call_constructor(
         global.ctx,
@@ -293,4 +295,77 @@ fn firePromiseRejectionEvent(global: *runtime.Instance, event_type: []const u8, 
     const not_canceled = @import("dom").fire_event.dispatchTrusted(global, event) catch true;
     event.releaseIfUnwrapped(generation);
     return not_canceled;
+}
+
+// ============================================================================
+// The V8 shim - the only engine-specific code here.
+//
+// TODO(protocol): installed by createAgent (area 1). Browser.zig makes its
+// isolate itself and installs the hooks through `install`; once it creates its
+// agent with engine.createAgent(.{ .hooks = ... }), which installs `hooks`, this
+// shim goes.
+// ============================================================================
+
+const v8 = @import("v8");
+const ffi = v8.ffi;
+
+/// V8's PromiseRejectEvent values (v8-promise.h).
+const kPromiseRejectWithNoHandler: c_int = 0;
+const kPromiseHandlerAddedAfterReject: c_int = 1;
+
+var installed_isolate: ?*ffi.Isolate = null;
+
+/// Start tracking promise rejections on `isolate`. Idempotent per isolate.
+pub fn install(isolate: *ffi.Isolate) void {
+    if (installed_isolate == isolate) return;
+    ffi.v8_Isolate_SetPromiseRejectCallback(isolate, null, &onPromiseReject);
+    ffi.v8_Isolate_AddMicrotasksCompletedCallback(isolate, &onMicrotasksCompleted, null);
+    installed_isolate = isolate;
+}
+
+/// Stop tracking and release every promise held, before `isolate` is disposed.
+pub fn uninstall(isolate: *ffi.Isolate) void {
+    if (installed_isolate != isolate) return;
+    ffi.v8_Isolate_ClearPromiseRejectCallback(isolate);
+    ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, &onMicrotasksCompleted, null);
+    releaseTracked();
+    installed_isolate = null;
+}
+
+/// V8's promise reject callback, into `hooks.promiseRejectionTracker`.
+/// `promise_ptr` and `value_ptr` are new handles this callback owns.
+fn onPromiseReject(user_data: ?*anyopaque, event_type: c_int, promise_ptr: ?*anyopaque, value_ptr: ?*anyopaque) callconv(.c) void {
+    _ = user_data;
+    const value: ?engine.Owned = if (value_ptr) |v| .{ .value = runtime.JSValue.fromHandle(v) } else null;
+    const promise: engine.Owned = .{ .value = runtime.JSValue.fromHandle(promise_ptr orelse {
+        if (value) |v| v.release();
+        return;
+    }) };
+    const operation: engine.RejectionOperation = switch (event_type) {
+        kPromiseRejectWithNoHandler => .reject,
+        kPromiseHandlerAddedAfterReject => .handle,
+        else => {
+            promise.release();
+            if (value) |v| v.release();
+            return;
+        },
+    };
+    // The reason is the rejection value on "reject"; "handle" has none.
+    const reason = if (operation == .reject) value else blk: {
+        if (value) |v| v.release();
+        break :blk null;
+    };
+    const realm = engine.currentRealm() orelse {
+        promise.release();
+        if (reason) |r| r.release();
+        return;
+    };
+    hooks.promiseRejectionTracker.?(null, realm, promise, operation, reason);
+}
+
+/// V8's microtasks-completed callback, into `hooks.afterMicrotaskCheckpoint`.
+/// V8 runs it at the end of every checkpoint, automatic ones included.
+fn onMicrotasksCompleted(isolate: *ffi.Isolate, data: ?*anyopaque) callconv(.c) void {
+    _ = data;
+    hooks.afterMicrotaskCheckpoint.?(null, @ptrCast(isolate));
 }

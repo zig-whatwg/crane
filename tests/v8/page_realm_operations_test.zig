@@ -1113,18 +1113,23 @@ const AgentHost = struct {
     handled: usize = 0,
     realm: ?runtime.Context = null,
     promise_was_object: bool = false,
+    /// The last call carried the rejection's value (a reject does; a
+    /// handle does not).
+    had_reason: bool = false,
     checkpoints: usize = 0,
     agent: ?*protocol.Agent = null,
 
-    fn tracker(host: ?*anyopaque, r: runtime.Context, promise: protocol.Owned, operation: protocol.RejectionOperation) void {
+    fn tracker(host: ?*anyopaque, r: runtime.Context, promise: protocol.Owned, operation: protocol.RejectionOperation, reason: ?protocol.Owned) void {
         const self: *AgentHost = @ptrCast(@alignCast(host.?));
         defer promise.release();
+        defer if (reason) |value| value.release();
         switch (operation) {
             .reject => self.rejected += 1,
             .handle => self.handled += 1,
         }
         self.realm = r;
         self.promise_was_object = promise.value == .handle;
+        self.had_reason = reason != null;
     }
 
     fn afterCheckpoint(host: ?*anyopaque, agent: *protocol.Agent) void {
@@ -1153,6 +1158,7 @@ test "protocol: an agent's host hears of rejections, their handling, and each mi
     try std.testing.expectEqual(@as(usize, 0), host.handled);
     try std.testing.expectEqual(in_agent.realm, host.realm.?);
     try std.testing.expect(host.promise_was_object);
+    try std.testing.expect(host.had_reason);
     // Clean up after running script performed a checkpoint, and the host
     // was told - with its agent.
     try std.testing.expect(host.checkpoints >= 1);
@@ -1161,6 +1167,7 @@ test "protocol: an agent's host hears of rejections, their handling, and each mi
     // HostPromiseRejectionTracker(promise, "handle").
     try protocol.runClassicScript(in_agent.realm, .{ .utf8 = "p.catch(() => {}); delete globalThis.p;" }, "", null, reports.reporter());
     try std.testing.expectEqual(@as(usize, 1), host.handled);
+    try std.testing.expect(!host.had_reason);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 
     // Another agent's rejections are not this host's.

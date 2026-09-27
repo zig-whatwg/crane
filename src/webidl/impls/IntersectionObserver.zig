@@ -14,7 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const v8_engine = @import("v8");
+const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
 const clock = @import("clock");
@@ -41,12 +41,9 @@ const Observation = struct {
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// Callback invoked when intersections change
-    /// Uses V8 Global handle to persist across HandleScope boundaries
-    callback: v8_engine.OptionalGlobalHandle = null,
-
-    /// V8 isolate for Global handle operations
-    isolate: ?*v8_engine.ffi.Isolate = null,
+    /// [[callback]]: the IntersectionObserverCallback value, OWNED -
+    /// released in deinit.
+    callback: ?engine.CallbackFunction = null,
 
     /// List of observed targets with their state
     observations: std.ArrayListUnmanaged(Observation),
@@ -88,8 +85,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Dispose Global handle for callback
-        v8_engine.disposeOptionalGlobalHandle(&self.callback);
+        if (self.callback) |callback| callback.release();
+        self.callback = null;
 
         // Clear observations (don't free targets, we don't own them)
         self.observations.deinit(self.allocator);
@@ -163,19 +160,10 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     const internal = getInternal(instance);
     internal.self_instance = instance;
 
-    // Get the current isolate for Global handle creation
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-    internal.isolate = isolate;
-
-    // Extract Global handle from the callback
-    // The callback comes from V8 conversion which creates a Global handle and tags the pointer
-    const callback_ptr: ?*const anyopaque = @ptrCast(callback);
-    if (callback_ptr) |ptr| {
-        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
-        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-        }
-    }
+    // Set this's internal [[callback]] slot to callback: the binding hands
+    // the converted function over, and the observer keeps it (OWNED) with
+    // its callback context.
+    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
 
     // Parse options
     const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
@@ -227,14 +215,8 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
 /// Returns the root Element or Document, or null for implicit viewport root
 pub fn get_root(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance);
-    if (internal.root) |root| {
-        // Convert instance to JSValue
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-        if (isolate) |iso| {
-            const v8_val = v8_engine.conversions.instanceToV8(iso, root);
-            return runtime.JSValue.fromHandle(@ptrCast(v8_val));
-        }
-    }
+    // A platform object: the binding converts it to its wrapper.
+    if (internal.root) |root| return runtime.JSValue.fromInstance(root);
     return null;
 }
 
@@ -273,20 +255,14 @@ pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString 
 /// Returns the list of thresholds as a frozen array
 pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
-    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
-    defer v8_engine.ffi.v8_Context_Dispose(context);
+    const values = try internal.allocator.alloc(runtime.JSValue, internal.thresholds.items.len);
+    defer internal.allocator.free(values);
+    for (internal.thresholds.items, values) |threshold, *value| value.* = runtime.JSValue.fromNumber(threshold);
 
-    // Create a V8 array with the thresholds
-    const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(internal.thresholds.items.len));
-
-    for (internal.thresholds.items, 0..) |threshold, i| {
-        const num = v8_engine.ffi.v8_Number_New(isolate, threshold);
-        _ = v8_engine.ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(num));
-    }
-
-    // TODO: Freeze the array per spec
-    return runtime.JSValue.fromHandle(@ptrCast(array));
+    // A FrozenArray<double>, made in the current realm. OWNED: the binding
+    // takes it.
+    const array = try engine.createFrozenArray(engine.currentRealm() orelse instance.ctx, values);
+    return array.take();
 }
 
 /// Getter for delay
@@ -328,7 +304,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anye
 
     // Schedule intersection computation via microtask
     std.log.debug("[IntersectionObserver] Scheduling intersection update", .{});
-    try scheduleIntersectionUpdate(internal);
+    try scheduleIntersectionUpdate(instance, internal);
 }
 
 /// Operation: unobserve
@@ -372,45 +348,48 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 /// Spec: https://w3c.github.io/IntersectionObserver/#dom-intersectionobserver-takerecords
 pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
-    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return runtime.JSValue.jsUndefined;
-    defer v8_engine.ffi.v8_Context_Dispose(context);
 
-    // Create a V8 array with the entries
-    const entries = internal.queued_entries.toOwnedSlice(internal.allocator) catch return runtime.JSValue.jsUndefined;
+    // 1. Let queue be a copy of this's internal [[QueuedEntries]] slot.
+    // 2. Clear this's internal [[QueuedEntries]] slot.
+    const entries = try internal.queued_entries.toOwnedSlice(internal.allocator);
     defer internal.allocator.free(entries);
 
-    const array = v8_engine.ffi.v8_Array_New(isolate, @intCast(entries.len));
-
-    for (entries, 0..) |entry, i| {
-        const wrapped = v8_engine.conversions.instanceToV8(isolate, entry);
-        _ = v8_engine.ffi.v8_Array_Set(array, context, @intCast(i), wrapped);
-    }
-
-    return runtime.JSValue.fromHandle(@ptrCast(array));
+    // 3. Return queue - a sequence<IntersectionObserverEntry>, an Array of
+    // the current realm. Wrapping hands each entry to the wrapper cache,
+    // which owns them from here.
+    const array = engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, entries) catch |err| {
+        for (entries) |entry| runtime.Instance.deinit(entry);
+        return err;
+    };
+    // OWNED: the binding takes it.
+    return array.take();
 }
 
 // ============================================================================
 // Internal methods
 // ============================================================================
 
-/// Context for the intersection observer microtask callback
+/// Context for the intersection observer microtask callback. The observer is
+/// held as (address, slab generation): nothing keeps an observer alive while
+/// it observes (the spec's lifetime rule is not implemented), so it may have
+/// been collected, and its slot reused, by the time the microtask runs.
 const IntersectionMicrotaskContext = struct {
-    internal: *InternalState,
+    allocator: std.mem.Allocator,
+    observer: *runtime.Instance,
+    generation: u64,
 };
 
-/// Microtask trampoline callback that computes intersections
-fn intersectionMicrotaskCallback(data: ?*anyopaque) callconv(.c) void {
+/// The microtask's steps: compute the intersections, then notify.
+fn intersectionMicrotask(data: ?*anyopaque) void {
     std.log.debug("[IntersectionObserver] Microtask callback invoked", .{});
-    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse {
-        std.log.err("[IntersectionObserver] Microtask callback: null data!", .{});
-        return;
-    }));
-    const internal = ctx.internal;
-    const allocator = internal.allocator;
-
-    // Free the context
-    allocator.destroy(ctx);
+    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    const observer = ctx.observer;
+    const generation = ctx.generation;
+    ctx.allocator.destroy(ctx);
+    if (runtime.SlabAllocator.generationOf(observer) != generation) return;
+    const state = observer.getState(State);
+    if (state.own._internal == null) return;
+    const internal = getInternal(observer);
 
     std.log.debug("[IntersectionObserver] Computing intersections for {} targets", .{internal.observations.items.len});
 
@@ -431,29 +410,20 @@ fn intersectionMicrotaskCallback(data: ?*anyopaque) callconv(.c) void {
     }
 }
 
-/// Schedule an intersection update via microtask
-fn scheduleIntersectionUpdate(internal: *InternalState) !void {
-    std.log.debug("[IntersectionObserver] scheduleIntersectionUpdate called", .{});
-    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-        std.log.debug("[IntersectionObserver] No V8 isolate, computing synchronously", .{});
-        // No V8 isolate - compute synchronously
-        try computeIntersections(internal);
-        if (internal.queued_entries.items.len > 0) {
-            try invokeCallback(internal);
-        }
-        return;
-    };
-
-    std.log.debug("[IntersectionObserver] Got V8 isolate, enqueueing microtask", .{});
-
-    // Allocate context for the microtask
+/// Schedule an intersection update via microtask, in the agent of the
+/// observer's relevant realm. (The spec runs the observation steps in "update
+/// the rendering" and notifies from a task; a microtask is this engine's
+/// stand-in, with no rendering loop.)
+fn scheduleIntersectionUpdate(instance: *runtime.Instance, internal: *InternalState) !void {
     const ctx = try internal.allocator.create(IntersectionMicrotaskContext);
-    ctx.* = .{ .internal = internal };
-
-    // Queue the microtask with V8
-    const callback_fn: ?*const anyopaque = @ptrCast(&intersectionMicrotaskCallback);
-    v8_engine.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
-    std.log.debug("[IntersectionObserver] Microtask enqueued", .{});
+    ctx.* = .{ .allocator = internal.allocator, .observer = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
+    engine.queueMicrotask(internal.ctx, intersectionMicrotask, ctx) catch |err| {
+        internal.allocator.destroy(ctx);
+        if (err == error.OutOfMemory) return error.OutOfMemory;
+        // No engine behind the realm, so no microtask queue: compute now.
+        try computeIntersections(internal);
+        if (internal.queued_entries.items.len > 0) try invokeCallback(internal);
+    };
 }
 
 /// Compute intersections for all observed targets
@@ -586,81 +556,57 @@ fn computeIntersections(internal: *InternalState) !void {
     }
 }
 
-/// Invoke the callback with queued entries
+/// Notify intersection observers, step 3 for this observer.
+///
+/// Spec: https://w3c.github.io/IntersectionObserver/#notify-intersection-observers
 fn invokeCallback(internal: *InternalState) !void {
-    std.log.debug("[IntersectionObserver] invokeCallback called", .{});
-    const callback_global = internal.callback orelse {
-        std.log.debug("[IntersectionObserver] No callback stored!", .{});
+    const observer = internal.self_instance orelse return;
+    const realm = internal.ctx;
+
+    // 1. If observer's internal [[QueuedEntries]] slot is empty, continue.
+    if (internal.queued_entries.items.len == 0) return;
+    // 2. Let queue be a copy of observer's internal [[QueuedEntries]] slot.
+    // 3. Clear observer's internal [[QueuedEntries]] slot.
+    const queue = try internal.queued_entries.toOwnedSlice(internal.allocator);
+    defer internal.allocator.free(queue);
+
+    // 4. Let callback be the value of observer's internal [[callback]] slot.
+    const callback = internal.callback orelse {
+        for (queue) |entry| runtime.Instance.deinit(entry);
         return;
     };
-    const isolate = internal.isolate orelse {
-        std.log.debug("[IntersectionObserver] No isolate!", .{});
-        return;
+
+    // queue as a sequence<IntersectionObserverEntry>. Wrapping hands each
+    // entry to the wrapper cache, which owns them from here.
+    const entries = engine.createSequenceOfPlatformObjects(realm, queue) catch |err| {
+        for (queue) |entry| runtime.Instance.deinit(entry);
+        return err;
     };
-    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.log.debug("[IntersectionObserver] No current context!", .{});
-        return;
-    };
-    defer v8_engine.ffi.v8_Context_Dispose(context);
-    std.log.debug("[IntersectionObserver] Got callback={*}, isolate={*}, context={*}", .{ callback_global.ptr, isolate, context });
+    defer entries.release();
 
-    // Create a HandleScope for V8 operations
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse return;
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Create a V8 array for the entries
-    std.log.debug("[IntersectionObserver] Creating entries array with {} entries", .{internal.queued_entries.items.len});
-    const entries_array = v8_engine.ffi.v8_Array_New(isolate, @intCast(internal.queued_entries.items.len));
-    std.log.debug("[IntersectionObserver] Created entries array: {*}", .{entries_array});
-
-    // Populate the array with wrapped entry objects
-    const conv = v8_engine.conversions;
-    for (internal.queued_entries.items, 0..) |entry, idx| {
-        std.log.debug("[IntersectionObserver] Wrapping entry {} at {*}", .{ idx, entry });
-        const wrapped = conv.instanceToV8(isolate, entry);
-        std.log.debug("[IntersectionObserver] Wrapped entry to V8 value: {*}", .{wrapped});
-        const set_result = v8_engine.ffi.v8_Array_Set(entries_array, context, @intCast(idx), wrapped);
-        std.log.debug("[IntersectionObserver] Array set result: {}", .{set_result});
+    // 5. Invoke callback with queue as the first argument, observer as the
+    // second argument, and observer as the callback this value. If this
+    // throws an exception, report the exception.
+    const this_value: runtime.JSValue = .{ .instance = observer };
+    const completion = try engine.invokeCallbackFunction(realm, &callback, .{ .value = this_value }, &.{ entries.value, this_value }, .{
+        .report = .{ .report = reportException, .host = realm },
+    });
+    switch (completion) {
+        inline else => |value| value.release(),
     }
+}
 
-    // Clear the queue (entries are now owned by V8)
-    internal.queued_entries.clearRetainingCapacity();
-    std.log.debug("[IntersectionObserver] Cleared entry queue", .{});
-
-    // Wrap the observer instance as V8 object for the second argument
-    const observer_v8 = if (internal.self_instance) |self| conv.instanceToV8(isolate, self) else return;
-
-    // Get undefined for 'this' value
-    const recv_global = v8_engine.ffi.v8_Undefined(isolate) orelse return;
-
-    // Prepare arguments: [entries, observer]
-    var global_args: [2]*v8_engine.ffi.Value = .{
-        @ptrCast(entries_array),
-        observer_v8,
-    };
-
-    // Get the callback function pointer
-    const func_ptr = callback_global.ptr;
-    std.log.debug("[IntersectionObserver] Calling callback function at {*}", .{func_ptr});
-
-    // Call the callback function
-    const result = v8_engine.ffi.v8_Function_Call_Safe(
-        @ptrCast(func_ptr),
-        context,
-        @ptrCast(recv_global),
-        2,
-        @ptrCast(&global_args),
-    );
-    defer v8_engine.ffi.v8_FreeFunctionCallResult(result);
-
-    // Check for errors
-    if (result.error_info) |err_info| {
-        if (err_info.message) |msg| {
-            std.log.err("[IntersectionObserver] Callback error: {s}", .{msg});
-        } else {
-            std.log.err("[IntersectionObserver] Callback error (no message)", .{});
-        }
-    } else {
-        std.log.debug("[IntersectionObserver] Callback invoked successfully", .{});
-    }
+/// HTML "report an exception" for the global of the realm the engine names -
+/// the callback's associated realm - or else the observer's (`host`).
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const observer_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse observer_realm;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    // TODO(protocol): report_exception.reportErrorInfo(global, info, .{}) once
+    // page-realm lands it; until then report_exception takes the engine's own
+    // value, handed through unexamined, and extracts the error information
+    // from it again.
+    const report = @import("html").report_exception;
+    _ = report.reportException(global, @ptrCast(@alignCast(info.error_value.asEngineHandle())), .{});
 }

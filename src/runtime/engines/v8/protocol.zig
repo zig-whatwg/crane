@@ -297,6 +297,12 @@ pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
 
 pub fn retainValue(realm: Context, value: JSValue) Error!Owned {
+    switch (value) {
+        // No engine resource to hold: by value, with nothing entered, so a
+        // realm with no engine behind it (a host's stack context) will do.
+        .undefined, .null, .boolean, .number => return .{ .value = value },
+        else => {},
+    }
     return owned(value_operations.retainValue(realm, value) catch |err| return protocolError(err));
 }
 
@@ -611,10 +617,8 @@ pub fn keepPlatformObjectAlive(instance: *Instance) void {
     table.keepPlatformObjectAlive.?(instance);
 }
 
-// TODO(protocol): implement - design 4.12 (the engine-boundary lane's commit 4 adds the release of pending activity)
 pub fn releasePlatformObject(instance: *Instance) void {
-    _ = instance;
-    notImplemented("releasePlatformObject", "4.12");
+    table.releasePlatformObject.?(instance);
 }
 
 pub fn platformObjectDestroyed(instance: *Instance) void {
