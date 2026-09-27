@@ -447,8 +447,36 @@ fn bindWindowToGlobal(
     }
 }
 
+/// A realm whose end is under way on this thread: a stack, one node per
+/// destroyWindowRealm frame, innermost first.
+const EndingRealm = struct {
+    realm: Context,
+    next: ?*const EndingRealm,
+};
+threadlocal var ending_realms: ?*const EndingRealm = null;
+
+fn isEnding(realm: Context) bool {
+    var node = ending_realms;
+    while (node) |n| : (node = n.next) {
+        if (n.realm == realm) return true;
+    }
+    return false;
+}
+
 /// The end of a Window realm (Blink's LocalWindowProxy::DisposeContext order).
 pub fn destroyWindowRealm(realm: Context) void {
+    // A realm ends once, and its end can reach itself: the context manager's
+    // teardown frees what the realm's wrapper cache holds, and a removed
+    // iframe element wrapped only here (`frames[0].frameElement`) takes its
+    // integration with it - whose cleanup is this realm's end. The inner call
+    // does nothing; the outer one finishes. Blink's
+    // LocalWindowProxy::DisposeContext likewise returns unless its lifecycle
+    // is still kContextIsInitialized.
+    if (isEnding(realm)) return;
+    const ending: EndingRealm = .{ .realm = realm, .next = ending_realms };
+    ending_realms = &ending;
+    defer ending_realms = ending.next;
+
     // Its frames' realms that are still alive end first.
     if (window_realms.get(realm)) |s| {
         while (s.children.pop()) |child| destroyWindowRealm(child);

@@ -60,3 +60,61 @@ test "document.getElementsByTagName available after Browser.init" {
     // The page has a Document interface and a document.
     try std.testing.expect(std.mem.indexOf(u8, result, "typeof Document: function") != null);
 }
+
+// execution-timing/084.html, then any next page. `frames[0].frameElement`
+// wraps the iframe element in the FRAME's realm, and the page removes it: the
+// element is then kept by that wrapper alone. The page's end ends the frame's
+// realm, whose wrapper cache frees the element, whose integration ends the
+// frame's realm - the one already ending. Ended twice, the realm's context
+// handle was released under the outer call's DetachGlobal (a misaligned-load
+// ABRT, deterministic after 084 in a sweep).
+test "a page whose written-into frame was removed ends cleanly when it navigates" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html>
+        \\<html><head><script>
+        \\  var eventOrder = [];
+        \\  function log(s) { eventOrder.push(s); }
+        \\</script></head>
+        \\<body>
+        \\<iframe src="about:blank"></iframe>
+        \\<script>
+        \\  log('inline script #1');
+        \\  function fireFooEvent(){
+        \\    var evt=document.createEvent('Event');
+        \\    evt.initEvent('foo', true, true);
+        \\    document.dispatchEvent(evt);
+        \\  }
+        \\  var doc=frames[0].document;
+        \\  doc.open( 'text/html' );
+        \\  doc.write( '<script>top.log("IFRAME script");top.document.addEventListener("foo", function(e){ top.log("event: "+e.type); }, false)<\/script>' );
+        \\  log('end script #1');
+        \\</script>
+        \\<script>
+        \\  fireFooEvent();
+        \\  frames[0].frameElement.parentNode.removeChild( frames[0].frameElement );
+        \\</script>
+        \\<script>
+        \\  fireFooEvent();
+        \\</script>
+        \\<script>
+        \\  log( 'inline script #2' );
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/execution-timing/084.html" });
+    _ = try browser.runEventLoopBlocking(50);
+
+    const result = try ctx.evaluateScriptToString("eventOrder.join()", allocator);
+    defer allocator.free(result);
+    // The page's own scripts ran, around the frame's removal.
+    try std.testing.expect(std.mem.startsWith(u8, result, "inline script #1,"));
+    try std.testing.expect(std.mem.endsWith(u8, result, ",inline script #2"));
+
+    try browser.navigate("about:blank", .window);
+    try browser.navigate("about:blank", .window);
+}
