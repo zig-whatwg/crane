@@ -32,7 +32,8 @@
 
 const std = @import("std");
 const clock = @import("clock");
-const runtime = @import("runtime");
+// Part of the runtime module: its own root, by path.
+const runtime = @import("root.zig");
 
 const Allocator = std.mem.Allocator;
 const TimerId = runtime.TimerId;

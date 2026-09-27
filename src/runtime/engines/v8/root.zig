@@ -147,7 +147,7 @@ pub const WrapperCache = wrapper_cache_mod.WrapperCache;
 pub const isolate_ownership = @import("isolate_ownership.zig");
 
 /// Timer manager for V8 isolates. libuv-free since Phase 7 - see native_timer.zig.
-pub const native_timer = @import("native_timer.zig");
+pub const native_timer = @import("runtime").native_timer;
 pub const NativeTimerManager = native_timer.NativeTimerManager;
 
 /// Template registry for wrapping Zig instances as V8 objects

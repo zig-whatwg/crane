@@ -48,7 +48,6 @@
 
 const std = @import("std");
 const log = std.log.scoped(.browser);
-const v8 = @import("v8");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const impls = @import("impls");
@@ -60,6 +59,8 @@ const storage_mod = @import("storage/Storage.zig");
 const clock = @import("clock");
 const host = @import("host");
 const Storage = storage_mod.Storage;
+/// The page agent's event loop - the host's (HTML 8.1.7).
+const EventLoop = @import("event_loop.zig").EventLoop;
 
 /// Where a snapshot is looked for, first to last. The build's own output
 /// comes first: a `whatwg_snapshot.bin` in the current directory - one that
@@ -157,7 +158,7 @@ pub const Browser = struct {
     /// Whether the browser has been initialized
     initialized: bool,
     /// V8 event loop with timer support
-    event_loop: ?*v8.V8EventLoop,
+    event_loop: ?*EventLoop,
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
     /// The snapshot the engine made the agent from (EngineStart.snapshot):
@@ -228,10 +229,10 @@ pub const Browser = struct {
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
         errdefer storage.deinit();
 
-        // Create V8 event loop with timer support
-        const event_loop = try allocator.create(v8.V8EventLoop);
+        // The agent's event loop, with its timers (the host's).
+        const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try v8.V8EventLoop.init(@ptrCast(@alignCast(agent)), allocator);
+        event_loop.* = try EventLoop.init(agent, allocator);
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);

@@ -128,7 +128,8 @@ threadlocal var animation_frame_origin_ms: i64 = 0;
 // Crane already had a correct implementation of this in
 // src/html/event_loop/timers.zig (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD,
 // setTimerInternal). It is DEAD CODE - nothing references its TimerManager. The live
-// path is this file -> the thread-local TimerInterface -> V8EventLoop -> libuv_timer,
+// path is this file -> the thread-local TimerInterface -> the Browser's event loop
+// (browser/event_loop.zig) -> runtime.native_timer,
 // which applied no clamping whatsoever. So the clamp is implemented here, at the
 // setTimeout boundary, which is where the spec puts it: initialisation runs before
 // the timer is handed to any scheduler.
@@ -728,9 +729,7 @@ pub const Context = struct {
     /// Make the page's realm in `agent` and give it what a page's Window has.
     ///
     /// `agent` is the Browser's agent and `event_loop` its event loop (whose
-    /// timers the realm shares): the Browser passes its isolate and its
-    /// V8EventLoop, taken as they come until Browser.zig hands over the
-    /// engine-neutral agent (tmp/scratch/Browser_final.patch). `from_snapshot`
+    /// timers the realm shares; browser/event_loop.zig). `from_snapshot`
     /// restores the realm from the engine's snapshot, when the agent was made
     /// from one; otherwise every interface is defined afresh.
     pub fn init(
