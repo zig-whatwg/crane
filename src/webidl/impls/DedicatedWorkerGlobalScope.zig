@@ -14,6 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
 
 // Import workers infrastructure
@@ -213,13 +214,15 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// that the DedicatedWorkerGlobalScope object's implicit port is entangled
 /// with" - the worker host's side of that port.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const engine = instance.ctx.getEngine() orelse return error.NoEngine;
-    const convert = engine.convertToSequenceOfObjects orelse return error.NotSupported;
-    const list = try convert(instance.ctx, transfer, instance.ctx.allocator);
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
     defer {
-        if (engine.releaseValue) |release| for (list) |item| release(item);
-        instance.ctx.allocator.free(list);
+        for (objects) |object| object.release();
+        allocator.free(objects);
     }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
     try worker_host.postMessageFromScope(instance.ctx, message, list);
 }
 
