@@ -405,6 +405,8 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
     return value_operations.throwValue(realm, value) catch |err| protocolError(err);
 }
 
+pub const completionOf = @import("protocol_completion.zig").completionOf;
+
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
 
 // ============================================================================

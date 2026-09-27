@@ -841,6 +841,17 @@ pub inline fn throwValue(realm: Context, value: JSValue) Error!void {
     return impl.throwValue(realm, value);
 }
 
+/// ECMAScript Completion(...): run `steps` in `realm`; if they leave an
+/// exception pending, catch it and return the thrown value OWNED, with nothing
+/// pending; null on a normal completion. A step's TypeError or DataCloneError
+/// ("the spec throws one here", nothing thrown yet) is a throw completion of a
+/// new one; any other error is the engine failing and propagates. For spec
+/// steps that consume an abrupt completion rather than propagate it - the
+/// Streams size algorithm's result conversion, say.
+pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) Error!void, data: ?*anyopaque) Error!?Owned {
+    return impl.completionOf(realm, steps, data);
+}
+
 /// Infra "parse JSON bytes to a JavaScript value".
 pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);

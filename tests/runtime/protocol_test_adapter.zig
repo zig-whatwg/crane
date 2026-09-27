@@ -206,6 +206,9 @@ pub fn releaseValue(_: Owned) void {}
 pub fn throwValue(_: Context, _: JSValue) Error!void {
     return error.NotSupported;
 }
+pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
+    return error.NotSupported;
+}
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }
