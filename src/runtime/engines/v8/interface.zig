@@ -8644,7 +8644,14 @@ fn captureDOMExceptionStack(
     // This creates a proper stack trace on the target object
     //
     // We pass 'this_obj' as a temporary global variable for the script to use
+    // Every handle below is an owned Global, and each is released here: the
+    // global object, the script and its completion value. v8_Object_Set and
+    // v8_Script_Run read them as Locals and keep nothing. Kept, they were three
+    // Globals per DOMException - the global object is the whole page, and
+    // the script is bound to the realm - so every page that made or threw
+    // one stayed alive for the life of the process.
     const global = v8.v8_Context_Global(v8_context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     // Store the DOMException object as a temporary global for the script to access
     const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
@@ -8671,7 +8678,8 @@ fn captureDOMExceptionStack(
     const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
     defer v8.v8_String_Dispose(source);
     const script = v8.v8_Script_Compile(v8_context, source) orelse return;
-    _ = v8.v8_Script_Run(v8_context, script);
+    defer v8.v8_Script_Dispose(script);
+    if (v8.v8_Script_Run(v8_context, script)) |result| v8.v8_Value_Dispose(result);
 }
 
 // ============================================================================
