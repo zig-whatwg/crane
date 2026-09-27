@@ -24,6 +24,7 @@ const fetch = @import("fetch");
 const blob_bytes = @import("dom").blob_bytes;
 const srd = @import("streams_readable.zig");
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 const same_object = @import("same_object.zig");
 const BodyPipe = fetch.internal.BodyPipe;
 
@@ -471,10 +472,13 @@ fn settleWithBytes(instance: *runtime.Instance, kind: *const Owner.Kind, method:
     // from another window). A stream that has already ended reads to its
     // end inside the method call, before any microtask would enter it.
     var run: MethodSteps = .{ .instance = instance, .kind = kind, .method = method, .realm = realm, .deferred = deferred };
-    const in_realm = if (instance.ctx.getEngine()) |engine| engine.runInRealm else null;
-    if (in_realm) |f| {
-        f(instance.ctx, MethodSteps.steps, &run) catch MethodSteps.steps(&run);
-    } else MethodSteps.steps(&run);
+    engine.runInRealm(instance.ctx, MethodSteps.steps, &run) catch {
+        // The realm could not be entered (none behind it, or no handle
+        // left): the steps still settle the promise, from the current realm -
+        // the value lands in the wrong realm only for a method borrowed from
+        // another window, which is better than a promise never settled.
+        MethodSteps.steps(&run);
+    };
 }
 
 /// The method's own steps and the settling of its promise, run in the
@@ -715,11 +719,9 @@ const PipeStream = struct {
                 return;
             }
             // No reason given: an "AbortError" DOMException.
-            const engine = self.ctx.getEngine() orelse return;
-            const createException = engine.createDOMException orelse return;
-            const exception = createException(self.ctx, "AbortError", "The operation was aborted.") catch return;
-            defer if (engine.releaseValue) |release| release(exception);
-            const e = realm.fromRuntime(exception) catch return;
+            const exception = engine.createDOMException(self.ctx, "AbortError", "The operation was aborted.") catch return;
+            defer exception.release();
+            const e = realm.fromRuntime(exception.value) catch return;
             defer js.dispose(e);
             srd.byteControllerError(realm, controller, e);
             return;
@@ -754,10 +756,10 @@ const PipeStream = struct {
         // A task from the event loop, not from script: HTML "queue a global
         // task" - it runs in the realm, which ends it (a microtask
         // checkpoint; a worker's end of task).
-        const engine = self.ctx.getEngine() orelse return self.freeIfDone();
-        const run = engine.runTaskInRealm orelse return self.freeIfDone();
         self.busy += 1;
-        run(self.ctx, taskSteps, self) catch {};
+        // An error means the steps never ran (the realm is gone): the news
+        // has nobody to reach, and freeIfDone lets this go.
+        engine.runTaskInRealm(self.ctx, taskSteps, self) catch {};
         self.busy -= 1;
         self.freeIfDone();
     }
