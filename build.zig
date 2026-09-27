@@ -2610,6 +2610,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "engine", .module = engine_mod },
+            // The generated interfaces, for a test host that makes platform
+            // objects - a Window for a realm (page_realm_operations_test.zig).
+            .{ .name = "interfaces", .module = interfaces_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});

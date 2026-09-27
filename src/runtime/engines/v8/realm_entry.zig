@@ -33,6 +33,12 @@ pub const Entered = struct {
 /// The agent `realm` belongs to: the isolate recorded on it (a worker realm on
 /// this thread needs that), else the current one.
 pub fn agentOf(realm: runtime.Context) ?*ffi.Isolate {
+    // The agent the context manager recorded when it registered the realm
+    // (ContextData.agent) - which a realm with no Realm record has too. The
+    // current isolate is right only for a realm of the current agent: for
+    // another agent's it put a handle scope of the wrong isolate around
+    // that agent's context.
+    if (realm.agent) |agent| return @ptrCast(@alignCast(agent));
     if (realm.realm) |r| {
         if (r.isolate) |isolate| return @ptrCast(@alignCast(isolate));
     }

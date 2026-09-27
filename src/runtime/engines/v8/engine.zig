@@ -1756,6 +1756,11 @@ fn dynamicImportCallbackWrapper(
 /// ```
 pub fn setDynamicImportHandler(isolate: *ffi.Isolate, handler: DynamicImportHandler) void {
     g_dynamic_import_handler = handler;
+    // An agent the engine protocol made with a loadImportedModule hook keeps
+    // the protocol's import(): registering a realm in it must not put this
+    // one back (protocol_agents.zig).
+    // TODO(protocol): goes when every agent comes from createAgent.
+    if (@import("protocol_agents.zig").hasModuleHooks(isolate)) return;
     ffi.v8_Isolate_SetHostImportModuleDynamicallyCallback(
         isolate,
         handler.context,
