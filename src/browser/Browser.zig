@@ -145,8 +145,9 @@ pub const BrowserConfig = struct {
 /// Browser instance managing a single V8 isolate
 pub const Browser = struct {
     allocator: std.mem.Allocator,
-    /// V8 isolate - lives for the entire browser lifetime
-    isolate: ?*v8.ffi.Isolate,
+    /// The page's agent (engine.createAgent) - lives for the entire browser
+    /// lifetime.
+    agent: ?*engine.Agent,
     /// Current browsing context (V8 context + DOM)
     current_context: ?*Context,
     /// Persistent storage subsystem
@@ -198,53 +199,30 @@ pub const Browser = struct {
         // one thread, as Blink's main thread does; a dedicated worker's agent
         // keeps it - and the host's hooks: HostPromiseRejectionTracker and
         // "notify about rejected promises" (html/rejected_promises.zig).
+        // The agent is set up by the engine (its per-isolate state, ShadowRealm
+        // support) and entered by each realm and operation that runs in it.
         const agent = engine.createAgent(.{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &@import("html").rejected_promises.hooks,
+            .allocator = allocator,
         }) catch return error.V8InitFailed;
-        const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(agent));
-        v8.ffi.v8_Isolate_Enter(isolate);
 
-        return initBrowserWithIsolate(allocator, isolate, from_snapshot, config, start.snapshot);
+        return initBrowserWithAgent(allocator, agent, from_snapshot, config, start.snapshot);
     }
 
-    /// Complete browser initialization with an already-created isolate
-    fn initBrowserWithIsolate(
+    /// Complete browser initialization with its agent.
+    fn initBrowserWithAgent(
         allocator: std.mem.Allocator,
-        isolate: *v8.ffi.Isolate,
+        agent: *engine.Agent,
         used_snapshot: bool,
         config: BrowserConfig,
         snapshot_bytes: ?[]u8,
     ) !*Browser {
-        errdefer {
-            v8.ffi.v8_Isolate_Exit(isolate);
-            engine.destroyAgent(@ptrCast(isolate));
-        }
-
-        // Register V8 lifecycle cleanup handlers
-        v8.registerBuiltinHandlers() catch |err| {
-            log.warn("Failed to register lifecycle handlers: {}", .{err});
-        };
-
-        // Initialize isolate-scoped allocator for template caching
-        // This allows FunctionTemplates to be cached at the isolate level.
-        v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
-            // Already initialized is OK (e.g., from snapshot loading)
-            if (err != error.AllocatorAlreadyInitialized) {
-                log.warn("Failed to init isolate allocator: {}", .{err});
-            }
-        };
-
-        // Initialize ShadowRealm support (TC39 Stage 3 proposal)
-        // This registers the HostCreateShadowRealmContextCallback with V8 so that
-        // JavaScript `new ShadowRealm()` creates properly isolated execution contexts.
-        v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
-            log.warn("Failed to initialize ShadowRealm support: {}", .{err});
-        };
+        errdefer engine.destroyAgent(agent);
 
         // import() in a Window realm loads through the document's module map.
-        @import("html").script_execution.installDynamicImport(isolate);
+        @import("html").script_execution.installDynamicImport(@ptrCast(@alignCast(agent)));
 
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
@@ -253,7 +231,7 @@ pub const Browser = struct {
         // Create V8 event loop with timer support
         const event_loop = try allocator.create(v8.V8EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try v8.V8EventLoop.init(isolate, allocator);
+        event_loop.* = try v8.V8EventLoop.init(@ptrCast(@alignCast(agent)), allocator);
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);
@@ -261,7 +239,7 @@ pub const Browser = struct {
 
         browser.* = Browser{
             .allocator = allocator,
-            .isolate = isolate,
+            .agent = agent,
             .current_context = null,
             .storage = storage,
             .config = config,
@@ -317,47 +295,26 @@ pub const Browser = struct {
             self.allocator.destroy(event_loop);
         }
 
-        // Use the isolate lifecycle manager for centralized cleanup
-        // This ensures all V8-dependent modules are cleaned up in the correct order
-        // See src/runtime/engines/v8/isolate_lifecycle.zig for the full list
-
-        if (self.isolate) |isolate| {
-            // IMPORTANT: Clean up orphaned DOM nodes BEFORE cleaning up V8 resources!
-            // DOM node internal states may use the isolate's allocator, which gets
-            // freed by cleanupAll(). We must clean them up while allocators are valid.
+        if (self.agent) |agent| {
+            // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
+            // DOM node internal states may use the agent's allocator, which
+            // its end frees. We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
 
             // Release the rejection tracker's promise handles while the
-            // isolate that owns them still exists.
+            // agent that owns them still exists.
             @import("html").rejected_promises.releaseTracked();
-            @import("html").script_execution.uninstallDynamicImport(isolate);
+            @import("html").script_execution.uninstallDynamicImport(@ptrCast(@alignCast(agent)));
 
-            // Central cleanup - calls all registered handlers in priority order
-            // This includes: isolate_templates, template_registry, context_manager, etc.
-            // IMPORTANT: context_manager.deinit() calls disposeByInitiator() for each
-            // context being destroyed, which cleans up ShadowRealms created by that context.
-            v8.cleanupAll(isolate, self.allocator);
+            // The end of the agent (engine.destroyAgent): its hooks forgotten,
+            // the engine's per-isolate and per-thread state torn down in
+            // order, its garbage collected, its isolate disposed.
+            engine.destroyAgent(agent);
 
             // Every Window is gone now, so the browsing contexts their
             // containers retired while a Window might still read them
             // (BrowsingContext.discard) can finally be freed.
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
-
-            // Final ShadowRealm cleanup - dispose any remaining tracked contexts
-            // (safety net) and free the callback data structure.
-            // This must happen AFTER cleanupAll() because individual context cleanup
-            // handles ShadowRealm disposal per-context.
-            v8.deinitializeShadowRealmSupport();
-
-            // Force V8 garbage collection before isolate disposal
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-            // The end of the agent: its hooks forgotten, its isolate disposed.
-            v8.ffi.v8_Isolate_Exit(isolate);
-            engine.destroyAgent(@ptrCast(isolate));
 
             // The snapshot outlives the isolate - V8 deserializes from it
             // lazily - and the engine forgets it before it is freed.
@@ -403,7 +360,7 @@ pub const Browser = struct {
         context_type: context_mod.ContextType,
         options: NavigateOptions,
     ) !void {
-        const isolate = self.isolate orelse return error.NotInitialized;
+        const agent = self.agent orelse return error.NotInitialized;
 
         // Destroy current context if any
         if (self.current_context) |old_ctx| {
@@ -421,17 +378,12 @@ pub const Browser = struct {
                 _ = event_loop.drainCloseCallbacks();
             }
 
-            // Aggressive GC to clean up disposed context objects
-            // Per Chrome's WindowProxy lifecycle, we call ContextDisposedNotification
-            // which tells V8 a context was disposed and helps GC. Then we force GC
-            // multiple times to ensure all weak handles and garbage are collected.
-            // This is critical for sequential test execution to prevent heap growth.
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            // Third GC pass for any objects revived during weak callbacks
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            // The page was let go: what it held is garbage now, and the
+            // engine collects it before the next page's realm is made
+            // (engine.notifyMemoryPressure .critical - on V8, three full
+            // collections with checkpoints between). This is critical for
+            // sequential test execution to prevent heap growth.
+            engine.notifyMemoryPressure(agent, .critical);
         }
 
         // The URL to navigate to is the parsed URL, serialized: a space in a
@@ -445,7 +397,7 @@ pub const Browser = struct {
         // Pass used_snapshot flag so Context knows whether to skip initializeBindings
         const ctx = try Context.init(
             self.allocator,
-            isolate,
+            agent,
             self.storage,
             serialized orelse url,
             self.event_loop,
@@ -556,12 +508,12 @@ pub const Browser = struct {
 
     /// Check if browser is initialized
     pub fn isInitialized(self: *Browser) bool {
-        return self.initialized and self.isolate != null;
+        return self.initialized and self.agent != null;
     }
 
-    /// Get the V8 isolate (for advanced usage)
-    pub fn getIsolate(self: *Browser) ?*v8.ffi.Isolate {
-        return self.isolate;
+    /// The page's agent (for advanced usage: engine operations that take one).
+    pub fn getAgent(self: *Browser) ?*engine.Agent {
+        return self.agent;
     }
 
     /// The current page's realm (for advanced usage)
@@ -620,5 +572,5 @@ test "Browser - basic lifecycle" {
     defer browser.deinit();
 
     try testing.expect(browser.isInitialized());
-    try testing.expect(browser.getIsolate() != null);
+    try testing.expect(browser.getAgent() != null);
 }

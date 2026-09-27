@@ -1243,6 +1243,26 @@ const AgentRealm = struct {
     }
 };
 
+test "protocol: an agent ended while another isolate is entered leaves that isolate's realms working" {
+    const base = try realm();
+    const no_hooks: protocol.HostHooks = .{};
+    // Made with its per-isolate state (templates, allocator, ShadowRealm
+    // support), and a realm made and ended in it.
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
+    {
+        const in_agent = try AgentRealm.make(agent);
+        defer in_agent.end();
+        try expectEval(in_agent.realm, "typeof ShadowRealm === 'function' || typeof ShadowRealm === 'undefined'", "true");
+    }
+    // Ended while this file's isolate is the entered one: only its own
+    // isolate's state goes, not the thread's (the context manager keeps this
+    // file's realm).
+    protocol.destroyAgent(agent);
+    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
+    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+}
+
 test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" {
     _ = try realm();
     const no_hooks: protocol.HostHooks = .{};

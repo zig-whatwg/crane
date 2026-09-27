@@ -365,11 +365,11 @@ pub fn main(init: std.process.Init) !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
 
-    const isolate = browser.isolate orelse return error.NoIsolate;
+    const agent = browser.agent orelse return error.NoIsolate;
     const page = browser.current_context orelse return error.NoContext;
     const realm = page.realm orelse return error.NoRealm;
 
-    heap_isolate = isolate;
+    heap_isolate = @ptrCast(@alignCast(agent));
 
     if (realm.getV8WrapperCacheStorage()) |storage| {
         wrapper_cache_ref = @ptrCast(@alignCast(storage));

@@ -150,9 +150,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     return protocol_agents.createAgent(options);
 }
 
-/// The agent's hooks are forgotten before its isolate is disposed.
+/// The agent ends (its hooks forgotten, the adapter's per-isolate modules
+/// torn down, its garbage collected) before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
-    protocol_agents.forgetAgent(agent);
+    protocol_agents.endAgent(agent);
     table.destroyAgent.?(agent);
 }
 

@@ -388,6 +388,9 @@ pub const AgentOptions = struct {
     hooks: *const HostHooks,
     /// Passed to every hook.
     host: ?*anyopaque = null,
+    /// What the engine allocates for the agent itself (its caches, what
+    /// destroyAgent frees), BORROWED for the agent's life.
+    allocator: std.mem.Allocator = std.heap.c_allocator,
 };
 
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook

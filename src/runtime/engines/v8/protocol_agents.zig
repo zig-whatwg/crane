@@ -18,6 +18,11 @@ const external_references = @import("external_references.zig");
 const current_realm = @import("current_realm.zig");
 const support = @import("protocol_support.zig");
 const protocol_modules = @import("protocol_modules.zig");
+const isolate_lifecycle = @import("isolate_lifecycle.zig");
+const isolate_allocator = @import("isolate_allocator.zig");
+const shadow_realm = @import("shadow_realm.zig");
+const isolate_templates = @import("isolate_templates.zig");
+const template_registry = @import("template_registry.zig");
 /// worker_realm.zig's agent operations, through the Engine table (see
 /// protocol.zig).
 const table = @import("engine.zig").v8_engine_interface;
@@ -94,6 +99,8 @@ const AgentRecord = struct {
     isolate: *ffi.Isolate,
     hooks: *const engine.HostHooks,
     host: ?*anyopaque,
+    /// AgentOptions.allocator: the agent's own state.
+    allocator: std.mem.Allocator,
 };
 
 var agents_lock: std.Io.Mutex = .init;
@@ -141,7 +148,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -166,7 +173,55 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
             if (meta) protocol_modules.onImportMetaUrl else null,
         );
     }
+
+    // What every agent's isolate has before a realm is made in it: the
+    // teardown handlers of the adapter's per-isolate modules, the isolate's
+    // allocator (the templates it caches), and ShadowRealm support
+    // (HostCreateShadowRealmContextCallback). destroyAgent undoes them.
+    {
+        const entered = EnteredIsolate.of(@ptrCast(isolate));
+        defer entered.leave();
+        isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate's teardown handlers were not registered: {}", .{err});
+        isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
+            // One restored from a snapshot may have it already.
+            if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
+        };
+        shadow_realm.initializeShadowRealmSupport(isolate, options.allocator) catch |err| log.warn("ShadowRealm support was not installed: {}", .{err});
+    }
     return @ptrCast(isolate);
+}
+
+/// The end of an agent, before its isolate is disposed: its hooks are
+/// forgotten (no callback reaches the host from here on), what the adapter
+/// keeps for its isolate is released, and its garbage collected twice with a
+/// checkpoint between. The isolate is left not entered, as disposal requires.
+///
+/// The adapter also keeps state per THREAD (the context manager, ShadowRealm
+/// support). The thread's host agent - the one no other isolate is entered
+/// above when it ends, as a Browser's page agent is once its realms have
+/// ended - takes that down too (isolate_lifecycle.cleanupAll). An agent that
+/// ends while another isolate is entered on the thread (a test's second
+/// agent, one made inside another's script) releases only its own isolate's.
+pub fn endAgent(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    const allocator = if (recordOf(isolate)) |record| record.allocator else std.heap.c_allocator;
+    forgetAgent(agent);
+    const host_agent = if (ffi.v8_Isolate_GetCurrent()) |current| current == isolate else true;
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    if (host_agent) {
+        isolate_lifecycle.cleanupAll(isolate, allocator);
+        shadow_realm.deinitializeShadowRealmSupport();
+    } else {
+        // cleanupAll's isolate-scoped handlers, without the thread's.
+        isolate_templates.cleanupTemplateStorage(isolate, allocator);
+        template_registry.clearForIsolate(isolate);
+        isolate_allocator.deinitIsolateAllocator(isolate);
+    }
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
 // ============================================================================
@@ -201,9 +256,9 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
 }
 
 /// notifyMemoryPressure: `.critical` is LowMemoryNotification - a full,
-/// synchronous collection, run twice with a checkpoint between so that what
-/// the first pass's weak callbacks let go (and the reactions they queued)
-/// is collected by the second; `.moderate` is the hint V8 takes after a
+/// synchronous collection - three times with checkpoints between, so that
+/// what each pass's weak callbacks let go (and the reactions they queued) is
+/// collected by the next; `.moderate` is the hint V8 takes after a
 /// context is let go (ContextDisposedNotification, not forced), which moves
 /// its next collection up.
 pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
@@ -213,6 +268,9 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
         .critical => {
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+            ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+            // A third pass for what the second's weak callbacks revived.
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
         },
         .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
