@@ -334,15 +334,6 @@ src/webidl/impls/XMLHttpRequest.zig v8_Object_Dispose 1
 src/webidl/impls/XMLHttpRequest.zig v8_Object_GetAlignedPointerFromInternalField 1
 src/webidl/impls/XMLHttpRequest.zig v8_context 2
 src/webidl/impls/XMLHttpRequest.zig v8_engine 17
-src/webidl/impls/streams_from.zig @import("v8").ffi 1
-src/webidl/impls/streams_from.zig v8.ffi.Array 1
-src/webidl/impls/streams_from.zig v8_Array_Get 2
-src/webidl/impls/streams_from.zig v8_Script_Compile 1
-src/webidl/impls/streams_from.zig v8_Script_Dispose 1
-src/webidl/impls/streams_from.zig v8_Script_Run 1
-src/webidl/impls/streams_from.zig v8_String_Dispose 1
-src/webidl/impls/streams_from.zig v8_String_NewFromUtf8 1
-src/webidl/impls/streams_from.zig v8_Value_BooleanValue 1
 src/webidl/impls/streams_js.zig @import("v8") 1
 src/webidl/impls/streams_js.zig v8.conversions 1
 src/webidl/impls/streams_js.zig v8.ffi 1

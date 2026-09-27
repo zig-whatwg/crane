@@ -115,10 +115,7 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
 /// `ReadableStream.from(asyncIterable)` - § 4.2.4:
 /// Return ? ReadableStreamFromIterable(asyncIterable).
 pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
-    const realm = try js.Realm.of(instance);
-    const iterable = try realm.fromRuntime(asyncIterable);
-    defer js.dispose(iterable);
-    return @import("streams_from.zig").fromIterable(realm, instance.ctx, iterable);
+    return @import("streams_from.zig").fromIterable(try js.Realm.of(instance), instance.ctx, asyncIterable);
 }
 
 /// `locked` - § 4.2.4.
