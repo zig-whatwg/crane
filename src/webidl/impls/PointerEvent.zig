@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -248,8 +249,6 @@ pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!runtime.JSV
 /// of the current realm - the operation's, where WebIDL converts its result.
 /// OWNED: the binding takes it.
 fn sequenceOfPointerEvents(instance: *runtime.Instance, events: []const *runtime.Instance) !runtime.JSValue {
-    const engine = instance.ctx.getEngine() orelse return error.NotImplemented;
-    const create_sequence = engine.createSequenceOfPlatformObjects orelse return error.NotSupported;
-    const current_realm = engine.currentRealm orelse return error.NotSupported;
-    return create_sequence(current_realm() orelse instance.ctx, events);
+    const sequence = try engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, events);
+    return sequence.take();
 }

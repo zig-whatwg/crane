@@ -20,6 +20,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -462,10 +463,9 @@ fn fireEventTaskCallback(data: ?*anyopaque) void {
 
     // The task runs from the event loop, not from script: it is run as a task
     // of the element's realm, which enters it. A realm that has gone (the page
-    // navigated away) runs nothing - silently abort.
-    const engine = instance.ctx.getEngine() orelse return;
-    const run_task = engine.runTaskInRealm orelse return;
-    run_task(instance.ctx, fireEventTaskSteps, ctx) catch {};
+    // navigated away) runs nothing, and the task has no one to report to: it
+    // is dropped, as a task of a document that is not fully active is.
+    engine.runTaskInRealm(instance.ctx, fireEventTaskSteps, ctx) catch {};
 }
 
 /// The task's steps, inside the element's realm: fire the event.

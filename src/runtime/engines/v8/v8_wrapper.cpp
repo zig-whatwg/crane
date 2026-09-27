@@ -12333,5 +12333,125 @@ Global<Value>* v8_Value_ToObject(Global<Context>* context, Global<Value>* value)
     return trackHandle(new Global<Value>(isolate, object));
 }
 
+/// HTML "extract error information" at the throw site: what the TryCatch
+/// that caught an exception knows of where it was thrown - its Message's
+/// script, line and column - taken while the TryCatch still holds it.
+/// v8::Exception::CreateMessage, asked after the call has returned, can only
+/// read a stack an Error object captured when it was made: a thrown string or
+/// number has none, and no frame is left to capture. The message is the
+/// value's ToString, as v8_Exception_GetErrorInfo makes it, under a TryCatch
+/// of its own so that a throwing toString neither replaces the exception nor
+/// stays pending. `exception` is null. Null when the TryCatch has no message.
+static V8ErrorInfo* errorInfoAtThrowSite(Isolate* isolate, Local<Context> ctx, TryCatch& try_catch) {
+    Local<Message> message = try_catch.Message();
+    if (message.IsEmpty()) return nullptr;
+    Local<Value> exception = try_catch.Exception();
+
+    V8ErrorInfo* info = new V8ErrorInfo();
+    info->has_error = true;
+    info->message = nullptr;
+    info->stack_trace = nullptr;
+    info->source_line = nullptr;
+    info->resource_name = nullptr;
+    info->exception = nullptr;
+    info->line_number = message->GetLineNumber(ctx).FromMaybe(-1);
+    info->column_number = message->GetStartColumn();
+    String::Utf8Value resource(isolate, message->GetScriptResourceName());
+    info->resource_name = strdup(*resource ? *resource : "");
+    {
+        TryCatch to_string(isolate);
+        String::Utf8Value text(isolate, exception);
+        info->message = strdup(*text ? *text : "Uncaught exception");
+    }
+    return info;
+}
+
+/// v8_Function_CallCatching, and on a throw `*site` is where it was thrown
+/// (errorInfoAtThrowSite; the caller frees it with v8_FreeErrorInfo, and it
+/// may be null). Every non-null result is a new Global the caller owns.
+Global<Value>* v8_Function_CallCatchingWithSite(
+    Global<Context>* context,
+    Global<Value>* function,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv,
+    bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+
+    if (!context || !function || function->IsEmpty()) return nullptr;
+    Local<Value> fn_value = function->Get(isolate);
+    if (!fn_value->IsFunction()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Value> this_val = recv ? recv->Get(isolate) : Undefined(isolate).As<Value>();
+
+    std::vector<Local<Value>> local_argv;
+    local_argv.reserve(argc > 0 ? argc : 0);
+    for (int i = 0; i < argc; i++) {
+        local_argv.push_back(argv[i] ? argv[i]->Get(isolate) : Undefined(isolate).As<Value>());
+    }
+
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    MaybeLocal<Value> maybe_result = fn_value.As<Function>()->Call(
+        ctx, this_val, argc, local_argv.empty() ? nullptr : local_argv.data());
+
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (maybe_result.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
+}
+
+/// v8_Object_GetCatching, and on a throw `*site` is where it was thrown, as
+/// v8_Function_CallCatchingWithSite has it.
+Global<Value>* v8_Object_GetCatchingWithSite(
+    Global<Context>* context,
+    Global<Value>* object,
+    const char* key,
+    int key_len,
+    bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+
+    if (!context || !object || object->IsEmpty() || !key) return nullptr;
+    Local<Value> obj_value = object->Get(isolate);
+    if (!obj_value->IsObject()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
+
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    MaybeLocal<Value> maybe_value = obj_value.As<Object>()->Get(ctx, name);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (maybe_value.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
+}
+
 } // extern "C"
 // ---- end lane: protocol ----

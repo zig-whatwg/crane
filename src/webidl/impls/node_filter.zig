@@ -3,45 +3,77 @@
 //!
 //! The filter is a WebIDL callback interface: a function, or an object whose
 //! `acceptNode` is looked up when it is called. Either way the call is the
-//! Engine table's callUserObjectOperation, which performs that lookup and
-//! rethrows what the filter throws - step 8.
+//! engine's "call a user object's operation", which performs that lookup,
+//! and what the filter throws is rethrown - step 8.
 //! The active flag (steps 1, 5 and 7) stays with each traverser.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 
-/// Invoke `filter` with « node » and return its answer as an unsigned short,
-/// or `error.ExceptionPending` once the exception it threw has been rethrown.
+/// A traverser's filter: the value the binding converted - what the `filter`
+/// attribute returns - and the callback interface value the calls are made
+/// through, taken at the conversion, so that its callback context is the
+/// incumbent realm of createNodeIterator() or createTreeWalker().
+const Filter = struct {
+    wrapper: *runtime.CallbackWrapper,
+    callback: engine.CallbackInterface,
+};
+
+/// Keep `wrapper`, the filter argument the binding converted, as a
+/// traverser's filter: null for none. The result is the traverser's, freed by
+/// `release`; `wrapper` is the result's from here on, and is released here
+/// if keeping it fails.
+pub fn store(wrapper: ?*runtime.CallbackWrapper) error{OutOfMemory}!?*anyopaque {
+    const converted = wrapper orelse return null;
+    const filter = converted.allocator.create(Filter) catch |err| {
+        releaseWrapper(converted);
+        return err;
+    };
+    filter.* = .{ .wrapper = converted, .callback = engine.takeCallbackInterface(converted) };
+    return filter;
+}
+
+/// Invoke the filter `stored` keeps with « node » and return its answer as an
+/// unsigned short, or `error.ExceptionPending` once the exception it threw
+/// has been rethrown.
 ///
 /// The call is made from the current realm - the traversal method's - as
 /// script calling the traverser would make it.
-pub fn call(filter: *runtime.CallbackWrapper, node: *runtime.Instance) Error!u16 {
-    const engine = node.ctx.getEngine() orelse return error.InvalidStateError;
-    const call_operation = engine.callUserObjectOperation orelse return error.InvalidStateError;
-    const to_number = engine.convertToUnrestrictedDouble orelse return error.InvalidStateError;
-    const current_realm = engine.currentRealm orelse return error.InvalidStateError;
-    const realm = current_realm() orelse node.ctx;
+pub fn call(stored: *anyopaque, node: *runtime.Instance) Error!u16 {
+    const filter: *Filter = @ptrCast(@alignCast(stored));
+    const realm = engine.currentRealm() orelse node.ctx;
 
-    // Step 6: "call a user object's operation" acceptNode with « node »; step
-    // 8's "If an exception was thrown, re-throw the exception" is the
-    // operation's "rethrow" - it comes back as ExceptionPending.
-    const result = call_operation(realm, filter, "acceptNode", &.{runtime.JSValue.fromInstance(node)}) catch |err|
+    // Step 6: "call a user object's operation" acceptNode with « node » and no
+    // this value - the operation makes the filter object `this` when it gets
+    // acceptNode from it. Step 8's "If an exception was thrown, re-throw the
+    // exception" is the operation's "rethrow": what the filter threw comes
+    // back as a throw completion, and is thrown on.
+    const completion = engine.callUserObjectOperation(realm, &filter.callback, "acceptNode", .undefined, &.{.{ .instance = node }}, .rethrow) catch |err|
         return traverserError(err);
-    defer if (engine.releaseValue) |release_value| release_value(result);
+    const result = switch (completion) {
+        .normal => |value| value,
+        .throw => |exception| {
+            defer exception.release();
+            engine.throwValue(realm, exception.value) catch |err| return traverserError(err);
+            return error.ExceptionPending;
+        },
+    };
+    defer result.release();
 
     // The callback's return type is `unsigned short`: ToNumber - which throws
     // for a Symbol or a BigInt - then ConvertToInt.
-    const number = to_number(realm, result) catch |err| return traverserError(err);
+    const number = engine.convertToUnrestrictedDouble(realm, result.value) catch |err| return traverserError(err);
     return convertToUnsignedShort(number);
 }
 
 /// What `call` fails with: the traversers' own errors.
 pub const Error = error{ ExceptionPending, InvalidStateError, NotImplemented, OutOfMemory };
 
-/// An Engine operation's failure as a traverser reports it: a pending
+/// An engine operation's failure as a traverser reports it: a pending
 /// exception stays pending; anything else means the engine could not make
 /// the call at all.
-fn traverserError(err: runtime.EngineError) Error {
+fn traverserError(err: engine.Error) Error {
     return switch (err) {
         error.ExceptionPending => error.ExceptionPending,
         error.OutOfMemory => error.OutOfMemory,
@@ -60,16 +92,25 @@ fn convertToUnsignedShort(x: f64) u16 {
 
 /// The filter as script sees it: `nodeIterator.filter`, `treeWalker.filter`.
 pub fn fromStored(stored: ?*anyopaque) ?*runtime.CallbackWrapper {
-    const raw = stored orelse return null;
-    return @ptrCast(@alignCast(raw));
+    const filter: *Filter = @ptrCast(@alignCast(stored orelse return null));
+    return filter.wrapper;
 }
 
-/// Release a stored filter: the engine's wrapper (and the Global it holds),
-/// then the runtime wrapper, which the conversion allocated.
+/// Release a stored filter: the callback interface value, then the binding's
+/// wrapper.
 pub fn release(stored: ?*anyopaque) void {
-    const filter = fromStored(stored) orelse return;
-    filter.deinit();
-    filter.allocator.destroy(filter);
+    const filter: *Filter = @ptrCast(@alignCast(stored orelse return));
+    const wrapper = filter.wrapper;
+    filter.callback.release();
+    wrapper.allocator.destroy(filter);
+    releaseWrapper(wrapper);
+}
+
+/// The engine's wrapper (and the handle it holds), then the runtime wrapper,
+/// which the conversion allocated.
+fn releaseWrapper(wrapper: *runtime.CallbackWrapper) void {
+    wrapper.deinit();
+    wrapper.allocator.destroy(wrapper);
 }
 
 test "ConvertToInt for unsigned short wraps modulo 2^16 and truncates toward zero" {
