@@ -18,6 +18,7 @@
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -635,12 +636,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Set the V8 wrapper for this Document (created in the Document's owning context).
-/// This should be called immediately after creating the Document, before returning
-/// it to any other context. The wrapper ensures cross-context access works correctly.
-pub fn setBoundV8Wrapper(instance: *runtime.Instance, v8_wrapper: *anyopaque) void {
+/// Set the engine's wrapper for this Document (created in the Document's
+/// owning realm). This should be called immediately after creating the
+/// Document, before returning it to any other realm. The wrapper ensures
+/// cross-realm access works correctly.
+pub fn setBoundV8Wrapper(instance: *runtime.Instance, wrapper: *anyopaque) void {
     if (getInternalState(instance)) |internal| {
-        internal.bound_v8_wrapper = v8_wrapper;
+        internal.bound_v8_wrapper = wrapper;
     }
 }
 
@@ -794,9 +796,7 @@ pub fn get_URL(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// context, not the current one: a parent reading `iframe.contentDocument.URL`
 /// must get the iframe's URL.
 fn navigatedUrl(instance: *runtime.Instance) ?[]const u8 {
-    const v8_engine = @import("v8");
-    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
-    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    const url = instance.ctx.documentUrl() orelse return null;
     return if (url.len == 0) null else url;
 }
 
@@ -1475,9 +1475,12 @@ pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowPro
 pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.default_view = window;
-    // The window aliases this document's wrapper from here on, so the wrapper
-    // cache holds it strongly (see wrapper_cache.holdStrong).
-    @import("v8").wrapper_cache_mod.holdStrong(instance);
+    // The window aliases this document's wrapper from here on - WebKit's
+    // `document` is a strong reference - so it is kept whatever script holds,
+    // until its realm ends. A document whose wrapper was collected under its
+    // window died on the next `document` access
+    // (custom-elements/connected-callbacks.html, SIGTRAP).
+    engine.keepPlatformObjectAlive(instance);
 }
 
 /// Getter for designMode
@@ -3699,10 +3702,14 @@ fn theEnd(instance: *runtime.Instance) void {
 /// readiness to "interactive"."
 fn lifecycleParsingStopped(document: *runtime.Instance) void {
     // A parser that runs outside script - the top-level one, loading a page -
-    // has no scope open, and readystatechange needs one.
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
-    defer scope.deinit();
-    updateReadiness(document, ._interactive_);
+    // is in no realm, and readystatechange's listeners run in the document's.
+    engine.runInRealm(document.ctx, becomeInteractive, document) catch |err| {
+        log.debug("readystatechange (interactive) not fired: {}", .{err});
+    };
+}
+
+fn becomeInteractive(data: ?*anyopaque) void {
+    updateReadiness(@ptrCast(@alignCast(data.?)), ._interactive_);
 }
 
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
@@ -3780,11 +3787,28 @@ fn lifecycleIsUnloading(document: *runtime.Instance) bool {
 /// cancels the event or sets its returnValue is recorded in the result's
 /// `prompt_requested` and changes nothing else, as in a browser whose user
 /// never interacted with the page.
-fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").document_lifecycle.BeforeUnloadResult {
+fn lifecycleFireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
+    var call: BeforeUnloadCall = .{ .document = document };
+    engine.runInRealm(document.ctx, BeforeUnloadCall.steps, &call) catch return .{};
+    return call.result;
+}
+
+const BeforeUnloadResult = @import("dom").document_lifecycle.BeforeUnloadResult;
+
+/// The steps to fire beforeunload, run in the document's realm.
+const BeforeUnloadCall = struct {
+    document: *runtime.Instance,
+    result: BeforeUnloadResult = .{},
+
+    fn steps(data: ?*anyopaque) void {
+        const call: *BeforeUnloadCall = @ptrCast(@alignCast(data.?));
+        call.result = fireBeforeUnload(call.document);
+    }
+};
+
+fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const internal = getInternal(document) orelse return .{};
     const window = (get_defaultView(document) catch null) orelse return .{};
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return .{};
-    defer scope.deinit();
 
     // Step 2: "Increase the document's unload counter by 1." Step 7 lowers
     // it again, however the event handlers leave.
@@ -3818,10 +3842,15 @@ fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").documen
 /// Steps 16 and 18-20 (suspended timers, cleanup steps, destroy) are the
 /// navigable's: navigation clears the window's timers once this returns.
 fn lifecycleUnload(document: *runtime.Instance) void {
+    engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
+        log.debug("unload not run: {}", .{err});
+    };
+}
+
+fn unloadSteps(data: ?*anyopaque) void {
+    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
     const internal = getInternal(document) orelse return;
     const window = (get_defaultView(document) catch null) orelse return;
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
-    defer scope.deinit();
 
     // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
     // lowers it after the unload event.
@@ -3941,10 +3970,14 @@ fn runLifecycleTask(context: ?*anyopaque) void {
     defer task.allocator.destroy(task);
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
-    // A task runs from the event loop, not from V8, so it opens the scope and
-    // enters the context an event needs.
-    const scope = @import("v8").JsScope.init(task.target.ctx) orelse return;
-    defer scope.deinit();
+    // A task runs from the event loop, in no realm: it runs in the target's.
+    engine.runTaskInRealm(task.target.ctx, lifecycleTaskSteps, task) catch |err| {
+        log.debug("document lifecycle task not run: {}", .{err});
+    };
+}
+
+fn lifecycleTaskSteps(data: ?*anyopaque) void {
+    const task: *LifecycleTask = @ptrCast(@alignCast(data.?));
 
     // The event loop runs only a task whose document is fully active: a
     // navigation that replaced the document before its "the end" ran leaves
