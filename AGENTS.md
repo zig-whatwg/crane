@@ -838,6 +838,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Under kAuto, V8 checkpoints at the end of Script::Run](docs/lessons/architecture-kauto-checkpoints-at-the-end-of-script-run.md) - With kAuto the checkpoint belongs to V8's call depth; hold the depth up until your own "clean up after running script".
 - [Registering a realm put the legacy import() callback back](docs/lessons/architecture-a-realm-registration-put-the-old-import-callback-back.md) - A per-isolate callback set from per-realm code is overwritten per realm; guard it where it is set.
 - [Entering a realm must enter its agent](docs/lessons/architecture-entering-a-realm-must-enter-its-agent.md) - A realm's agent is recorded on it; "the current one" is only right for realms of the current agent.
+- [A per-isolate leak is a per-realm leak for workers](docs/lessons/architecture-a-per-isolate-leak-is-a-per-realm-leak-for-workers.md) - Test handle flatness per realm kind: a worker realm pays every per-isolate cost a Window agent pays once, so measure with global handle bytes and native contexts, not the live counters.
 
 ### Spec Compliance
 
