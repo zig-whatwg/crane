@@ -81,7 +81,14 @@ pub fn getCurrentWorkerContext() ?*WorkerHost {
 const WorkerTimerContext = struct {
     /// The timer's handler, retained through the Engine table (OWNED).
     callback: runtime.JSValue,
-    /// Current timer ID (may change on reschedule for intervals)
+    /// The id script holds: HTML's key in the global's map of setTimeout and
+    /// setInterval IDs, and `worker_timer_contexts`' key here. It names the
+    /// timer for as long as it lives - a repeating timer keeps it across
+    /// repeats (timer initialization steps, "previousId") - so clearInterval
+    /// finds an interval however often it has fired.
+    id: runtime.TimerId,
+    /// The timer manager's id for the run currently armed; a repeat arms a
+    /// new one. Never seen by script.
     current_timer_id: runtime.TimerId,
     /// Whether this is an interval (repeating) timer
     is_interval: bool,
@@ -106,8 +113,15 @@ const WorkerTimerContext = struct {
     worker_host: *WorkerHost,
 };
 
-/// Thread-local storage for worker timer contexts
+/// Thread-local storage for worker timer contexts, keyed by the id script
+/// holds (`WorkerTimerContext.id`).
 threadlocal var worker_timer_contexts: ?std.AutoHashMap(runtime.TimerId, *WorkerTimerContext) = null;
+
+/// The next id handed to script: greater than zero, and never one a live
+/// timer on this thread has (HTML timer initialization step 2). Its own
+/// counter, not the timer manager's: an interval's manager id changes on
+/// every repeat, and the id script holds must not.
+threadlocal var next_worker_timer_id: runtime.TimerId = 1;
 
 /// Initialize worker timer storage
 fn initWorkerTimerStorage(allocator: Allocator) void {
@@ -144,16 +158,16 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
         if (ctx.executing) continue;
         // Not armed any more, or armed and now cancelled: either way the
         // timer manager will not hand it back, so it is ours to free.
-        if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(id);
+        if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
         _ = map.remove(id);
         freeWorkerTimer(ctx);
     }
 }
 
-/// Register a timer context for tracking
-fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContext) void {
+/// Register a timer context for tracking, under the id script holds.
+fn registerWorkerTimerContext(ctx: *WorkerTimerContext) void {
     if (worker_timer_contexts) |*map| {
-        map.put(timer_id, ctx) catch {};
+        map.put(ctx.id, ctx) catch {};
     }
 }
 
@@ -165,13 +179,13 @@ fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContex
 /// workerTimerTrampoline, which read ctx.cancelled from freed memory. clearTimeout
 /// removes an armed timer from the manager, and a fired one-shot is already out
 /// of the map, so a context found here and not executing is never handed back.
-fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
+fn unregisterWorkerTimerContext(id: runtime.TimerId) void {
     const map = if (worker_timer_contexts) |*m| m else return;
-    const ctx = map.get(timer_id) orelse return;
+    const ctx = map.get(id) orelse return;
     ctx.cancelled = true;
     if (ctx.executing) return;
-    if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(timer_id);
-    _ = map.remove(timer_id);
+    if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
+    _ = map.remove(id);
     freeWorkerTimer(ctx);
 }
 
@@ -373,7 +387,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // close() step 1, "terminate a worker" step 2). Free it - this is the last
     // time the timer system will reference this context.
     if (ctx.cancelled or !wctx.runsTasks()) {
-        if (worker_timer_contexts) |*map| _ = map.remove(ctx.current_timer_id);
+        if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
         freeWorkerTimer(ctx);
         return;
     }
@@ -388,11 +402,6 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // For intervals, reschedule the timer
     if (ctx.is_interval and !ctx.cancelled and wctx.runsTasks()) {
         if (WorkerHost.getTimerInterface()) |timer| {
-            // Unregister the old timer ID from tracking
-            if (worker_timer_contexts) |*map| {
-                _ = map.remove(ctx.current_timer_id);
-            }
-
             // HTML §8.6: each repeat nests one deeper, and the clamp is re-applied.
             // Without this a `setInterval(f, 0)` stays at 0ms forever and spins the
             // loop as fast as it can reschedule - the spec's answer is that by the
@@ -407,12 +416,13 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
             // Schedule the next interval
             const new_timer_id = timer.setTimeout(ctx.interval_delay_ms, workerTimerTrampoline, ctx);
             if (new_timer_id != 0) {
+                // The same timer, armed again: script's id, and the map entry
+                // under it, stay (HTML timer initialization, "previousId").
                 ctx.current_timer_id = new_timer_id;
-                // Re-register with the new timer ID
-                registerWorkerTimerContext(new_timer_id, ctx);
                 return;
             }
-            // Reschedule failed: it is neither armed nor tracked now, so free it.
+            // Reschedule failed: it is not armed now, so untrack and free it.
+            if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
             freeWorkerTimer(ctx);
             return;
         }
@@ -420,7 +430,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // A one-shot that has run, or a repeat that was cancelled: the timer
     // manager has already dropped it, so nothing will hand it back.
-    if (worker_timer_contexts) |*map| _ = map.remove(ctx.current_timer_id);
+    if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
     freeWorkerTimer(ctx);
 }
 
@@ -1398,6 +1408,7 @@ pub const WorkerHost = struct {
         const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
         timer_ctx.* = .{
             .callback = handler,
+            .id = 0, // Given once the timer is armed
             .current_timer_id = 0, // Updated after scheduling
             .is_interval = repeat,
             .interval_delay_ms = delay_u64,
@@ -1413,8 +1424,10 @@ pub const WorkerHost = struct {
             return 0;
         }
         timer_ctx.current_timer_id = timer_id;
-        registerWorkerTimerContext(timer_id, timer_ctx);
-        return @truncate(timer_id);
+        timer_ctx.id = next_worker_timer_id;
+        next_worker_timer_id += 1;
+        registerWorkerTimerContext(timer_ctx);
+        return @truncate(timer_ctx.id);
     }
 };
 
