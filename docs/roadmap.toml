@@ -210,6 +210,7 @@ progress = [
   "a20811318, 45fa1d65b - WebSocket and the worker host off V8; pending-activity holds",
   "838ecf09a - a context's registry key survives compacting GCs",
   "74cc04689 - migration set X (events, observers, rejected promises) onto the protocol; the migration recipes",
+  "6f36451ed, edb1744cb, a17df68af, cba274368 - networking lane: streams interop, Blob, XHR, Request/Response and the global scope onto the protocol",
   "985d9db85 - engine-boundary 4c-4d: Worker script URLs against the outside settings; a realm's own report-an-exception hook",
   "7c7606ce4 - getIterator follows GetV: a primitive is ToObject'd",
   "175b95ba4, f6007d292, 27b64ab5d - protocol area 1 (agents, Window realms, scripts, modules) for V8; Context.zig, the REPL, WebDriver, lib_exports and runtime off V8; the no-snapshot startup path under test",
