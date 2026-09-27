@@ -34,6 +34,9 @@ const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
+const engine = @import("engine");
+const navigation_entries = @import("navigation_entries.zig");
+const log = std.log.scoped(.history);
 const history_documents = @import("history_documents.zig");
 
 pub const State = History.State;
@@ -62,14 +65,14 @@ pub const InternalState = struct {
     /// twice gives the same object.
     state_entry: u64 = 0,
     state_value: ?runtime.JSValue = null,
-    /// Every deserialized state's Global, released with the History: an
-    /// event or script may hold one past the entry that made it.
-    state_handles: std.ArrayListUnmanaged(*anyopaque) = .empty,
+    /// Every state deserialized, kept (OWNED) until the History goes:
+    /// `state_value` borrows the latest, and an event or script may still
+    /// hold an earlier one past the entry that made it.
+    state_values: std.ArrayListUnmanaged(engine.Owned) = .empty,
 
     pub fn deinit(self: *InternalState) void {
-        const v8 = @import("v8");
-        for (self.state_handles.items) |handle| v8.ffi.v8_Global_Dispose(@ptrCast(@alignCast(handle)));
-        self.state_handles.deinit(self.allocator);
+        for (self.state_values.items) |value| value.release();
+        self.state_values.deinit(self.allocator);
     }
 };
 
@@ -199,70 +202,15 @@ fn stateValue(internal: *InternalState, entry: *joint_history.Entry) !runtime.JS
     if (internal.state_value) |value| {
         if (internal.state_entry == entry.id) return value;
     }
-    const value = try deserialize(internal, entry.state);
+    // Restored in the History's relevant realm - its window's.
+    const owned = try navigation_entries.deserialize(internal.window.?.ctx, entry.state);
+    internal.state_values.append(internal.allocator, owned) catch {
+        owned.release();
+        return error.OutOfMemory;
+    };
     internal.state_entry = entry.id;
-    internal.state_value = value;
-    return value;
-}
-
-// =============================================================================
-// StructuredSerializeForStorage / StructuredDeserialize
-// =============================================================================
-
-/// StructuredSerializeForStorage(`value`): a primitive or string as it is,
-/// an object through V8's serializer (which throws the DataCloneError).
-fn serialize(allocator: Allocator, value: runtime.JSValue) !joint_history.SerializedState {
-    return switch (value) {
-        .undefined => .undefined,
-        .null => .null,
-        .boolean => |b| .{ .boolean = b },
-        .number => |n| .{ .number = n },
-        .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-        .handle => |h| blk: {
-            const v8 = @import("v8");
-            var no_transfer: [1]*v8.ffi.Value = undefined;
-            var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var size: usize = 0;
-            var code: c_int = 0;
-            const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
-                @ptrCast(@alignCast(h.ptr)),
-                &no_transfer,
-                0,
-                &size,
-                &no_buffers,
-                &code,
-            ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
-            defer v8.ffi.v8_Free_SerializedBuffer(bytes);
-            break :blk .{ .bytes = try allocator.dupe(u8, bytes[0..size]) };
-        },
-        // A platform object the binding handed over unwrapped: none is
-        // [Serializable] here yet.
-        .instance => error.DataCloneError,
-    };
-}
-
-/// StructuredDeserialize(`state`) in the current realm. An object's Global
-/// is kept by the History (`state_handles`); a string is copied.
-fn deserialize(internal: *InternalState, state: joint_history.SerializedState) !runtime.JSValue {
-    return switch (state) {
-        .undefined => runtime.JSValue.jsUndefined,
-        .null => runtime.JSValue.jsNull,
-        .boolean => |b| runtime.JSValue.fromBoolean(b),
-        .number => |n| runtime.JSValue.fromNumber(n),
-        .string => |s| .{ .string = .{ .data = s, .owned = false } },
-        .bytes => |b| blk: {
-            const v8 = @import("v8");
-            const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var code: c_int = 0;
-            const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
-                return error.DataCloneError;
-            internal.state_handles.append(internal.allocator, @ptrCast(value)) catch {
-                v8.ffi.v8_Global_Dispose(value);
-                return error.OutOfMemory;
-            };
-            break :blk runtime.JSValue.fromHandleNonOwning(@ptrCast(value));
-        },
-    };
+    internal.state_value = owned.borrow();
+    return owned.borrow();
 }
 
 // =============================================================================
@@ -352,7 +300,8 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
     const allocator = internal.allocator;
 
     // Step 3: "Let serializedData be StructuredSerializeForStorage(data)."
-    var serialized = try serialize(allocator, data);
+    // Rethrown: a DataCloneError not yet thrown is the binding's to throw.
+    var serialized = try navigation_entries.serialize(engine.currentRealm() orelse window.ctx, allocator, data);
     errdefer serialized.deinit(allocator);
 
     // Step 4: "Let newURL be document's URL."
@@ -465,12 +414,10 @@ fn urlAndHistoryUpdate(
     });
 }
 
-/// Set the URL of `window`'s associated Document - which its context's
-/// record holds, and its Location reads.
+/// Set the URL of `window`'s associated Document - which its realm records,
+/// and its Location reads.
 fn setDocumentUrl(window: *runtime.Instance, url: []const u8) void {
-    const v8 = @import("v8");
-    const engine_ctx = window.ctx.engine_ctx orelse return;
-    v8.context_manager.setDocumentUrl(@ptrCast(@alignCast(engine_ctx)), url) catch {};
+    window.ctx.setDocumentUrl(url) catch |err| log.warn("history: the document URL was not recorded: {s}", .{@errorName(err)});
 }
 
 // =============================================================================
@@ -593,10 +540,28 @@ fn runTraversal(context: ?*anyopaque) void {
 /// the fragment changed.
 fn sameDocumentTraversal(bc: *BrowsingContext, old_url: []const u8, entry: *joint_history.Entry) void {
     const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return));
+    // The traversal task switches into each changed navigable's realm.
+    var traversal: SameDocumentTraversal = .{ .window = window, .old_url = old_url, .entry = entry };
+    engine.runInRealm(window.ctx, SameDocumentTraversal.steps, &traversal) catch |err| {
+        log.debug("history: same-document traversal not applied: {s}", .{@errorName(err)});
+    };
+}
+
+/// sameDocumentTraversal's steps, in the window's realm.
+const SameDocumentTraversal = struct {
+    window: *runtime.Instance,
+    old_url: []const u8,
+    entry: *joint_history.Entry,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *SameDocumentTraversal = @ptrCast(@alignCast(data.?));
+        applySameDocumentEntry(self.window, self.old_url, self.entry);
+    }
+};
+
+fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry: *joint_history.Entry) void {
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    const scope = @import("v8").JsScope.init(window.ctx) orelse return;
-    defer scope.deinit();
 
     // Copied: popstate's handlers can push entries, which moves them.
     const allocator = internal.allocator;
@@ -673,8 +638,12 @@ fn runHashChange(context: ?*anyopaque) void {
     const task: *HashChange = @ptrCast(@alignCast(context orelse return));
     defer task.destroy();
     if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
-    const scope = @import("v8").JsScope.init(task.window.ctx) orelse return;
-    defer scope.deinit();
+    // A global task of the window: it runs in the window's realm.
+    engine.runTaskInRealm(task.window.ctx, fireHashChange, task) catch |err| log.debug("history: hashchange not fired: {s}", .{@errorName(err)});
+}
+
+fn fireHashChange(data: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(data.?));
     const event = interfaces.HashChangeEvent.call_constructor(
         task.window.ctx,
         runtime.DOMString.initInterned("hashchange"),

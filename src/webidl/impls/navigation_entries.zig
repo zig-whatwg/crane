@@ -11,6 +11,7 @@ const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
 const joint_history = html_core.navigation.joint_history;
 const history_documents = @import("history_documents.zig");
+const engine = @import("engine");
 
 /// A window whose document is fully active: its navigable, that document,
 /// and the traversable's session history (with entries for the navigable
@@ -44,55 +45,31 @@ pub fn disabled(scope: ?Scope) bool {
     return std.mem.eql(u8, current.origin, "null");
 }
 
-/// StructuredSerializeForStorage(`value`): a primitive or string as it is,
-/// an object through V8's serializer (which throws the DataCloneError).
-pub fn serialize(allocator: std.mem.Allocator, value: runtime.JSValue) !joint_history.SerializedState {
+/// StructuredSerializeForStorage(`value`) for a session history entry: a
+/// primitive or string as it is, anything else through the engine's
+/// serializer, in `realm`. `error.DataCloneError` means "throw a
+/// DataCloneError" (nothing is thrown yet); `error.ExceptionPending` means
+/// script threw while serializing (a getter).
+pub fn serialize(realm: runtime.Context, allocator: std.mem.Allocator, value: runtime.JSValue) !joint_history.SerializedState {
     return switch (value) {
         .undefined => .undefined,
         .null => .null,
         .boolean => |b| .{ .boolean = b },
         .number => |n| .{ .number = n },
         .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-        .handle => |h| blk: {
-            const v8 = @import("v8");
-            var no_transfer: [1]*v8.ffi.Value = undefined;
-            var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var size: usize = 0;
-            var code: c_int = 0;
-            const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
-                @ptrCast(@alignCast(h.ptr)),
-                &no_transfer,
-                0,
-                &size,
-                &no_buffers,
-                &code,
-            ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
-            defer v8.ffi.v8_Free_SerializedBuffer(bytes);
-            break :blk .{ .bytes = try allocator.dupe(u8, bytes[0..size]) };
-        },
-        // A platform object the binding handed over unwrapped: none is
-        // [Serializable] here yet.
-        .instance => error.DataCloneError,
+        .handle, .instance => .{ .bytes = try engine.structuredSerializeForStorage(realm, value, allocator) },
     };
 }
 
-/// StructuredDeserialize(`state`) in the current realm - a fresh value each
-/// call. An object comes back as a Global the caller (the binding) owns; a
-/// string is borrowed from `state`, which outlives the binding's conversion.
-pub fn deserialize(state: joint_history.SerializedState) !runtime.JSValue {
+/// StructuredDeserialize(`state`) in `realm` - a fresh value each call,
+/// OWNED by the caller: release it, or `take()` it as an operation's result.
+pub fn deserialize(realm: runtime.Context, state: joint_history.SerializedState) !engine.Owned {
     return switch (state) {
-        .undefined => runtime.JSValue.jsUndefined,
-        .null => runtime.JSValue.jsNull,
-        .boolean => |b| runtime.JSValue.fromBoolean(b),
-        .number => |n| runtime.JSValue.fromNumber(n),
-        .string => |s| .{ .string = .{ .data = s, .owned = false } },
-        .bytes => |b| blk: {
-            const v8 = @import("v8");
-            const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var code: c_int = 0;
-            const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
-                return error.DataCloneError;
-            break :blk runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
-        },
+        .undefined => engine.retainValue(realm, runtime.JSValue.jsUndefined),
+        .null => engine.retainValue(realm, runtime.JSValue.jsNull),
+        .boolean => |b| engine.retainValue(realm, runtime.JSValue.fromBoolean(b)),
+        .number => |n| engine.retainValue(realm, runtime.JSValue.fromNumber(n)),
+        .string => |s| engine.retainValue(realm, runtime.JSValue.fromStringRef(s)),
+        .bytes => |b| engine.structuredDeserialize(realm, b),
     };
 }

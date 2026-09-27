@@ -40,7 +40,8 @@ const navigation_entries = @import("navigation_entries.zig");
 const html_core = @import("html_core");
 const joint_history = html_core.navigation.joint_history;
 const dom = @import("dom");
-const v8 = @import("v8");
+const engine = @import("engine");
+const log = std.log.scoped(.navigation_api);
 
 pub const State = Navigation.State;
 
@@ -60,19 +61,20 @@ const Handed = struct {
 };
 
 /// An API method tracker (HTML 7.2.6.8), reduced to what settles its
-/// promises: which navigation it waits for, and the two resolvers.
+/// promises: which navigation it waits for, and its committed and finished
+/// promises (OWNED until the tracker goes).
 const Tracker = struct {
     kind: enum { traverse, non_traverse },
     /// A traversal's destination key.
     key: [36]u8 = undefined,
     /// A navigate()'s navigation API state, set on the entry it commits.
     api_state: ?joint_history.SerializedState = null,
-    committed: *v8.ffi.PromiseResolver,
-    finished: *v8.ffi.PromiseResolver,
+    committed: engine.PromiseCapability,
+    finished: engine.PromiseCapability,
 
     fn destroy(self: *Tracker, allocator: Allocator) void {
-        v8.ffi.v8_PromiseResolver_Dispose(self.committed);
-        v8.ffi.v8_PromiseResolver_Dispose(self.finished);
+        engine.releasePromiseCapability(&self.committed);
+        engine.releasePromiseCapability(&self.finished);
         if (self.api_state) |*s| s.deinit(allocator);
         allocator.destroy(self);
     }
@@ -143,11 +145,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 // The window, its navigable and the entry list
 // ============================================================================
 
-/// The relevant global object: the Window of this object's realm.
+/// The relevant global object: the Window of this object's realm, from the
+/// realm record.
 fn windowOf(instance: *runtime.Instance, internal: *InternalState) ?*runtime.Instance {
     if (internal.window) |window| return window;
-    const engine_ctx = instance.ctx.engine_ctx orelse return null;
-    const window = v8.context_manager.getWindowForContext(@ptrCast(@alignCast(engine_ctx))) orelse return null;
+    const record = instance.ctx.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     internal.window = window;
     internal.window_generation = runtime.SlabAllocator.generationOf(window);
     return window;
@@ -284,24 +287,18 @@ pub fn set_oncurrententrychange(instance: *runtime.Instance, value: typedefs.Eve
 /// empty list. 2. Return this's entry list." A new array on each call.
 pub fn call_entries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(context);
-
     var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
     defer entries.deinit(internal.allocator);
     const scope = scopeOf(instance, internal);
     const listed = entryList(scope, internal.allocator, &entries) != null;
     const count: usize = if (listed) entries.items.len else 0;
 
-    // A Global<Array> the binding owns, as MutationObserver.takeRecords does.
-    const array = v8.ffi.v8_Array_New(isolate, @intCast(count));
-    for (entries.items[0..count], 0..) |entry, i| {
-        const nhe = try entryObject(internal, scope.?.window, entry);
-        // The wrapper cache's own Global - borrowed; Set takes its reference.
-        _ = v8.ffi.v8_Array_Set(array, context, @intCast(i), v8.conversions.instanceToV8(isolate, nhe));
-    }
-    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    const objects = try internal.allocator.alloc(*runtime.Instance, count);
+    defer internal.allocator.free(objects);
+    for (entries.items[0..count], objects) |entry, *object| object.* = try entryObject(internal, scope.?.window, entry);
+    // sequence<NavigationHistoryEntry>, made in the current realm: the
+    // entries are kept (pinned), so the array only references them.
+    return (try engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, objects)).take();
 }
 
 /// updateCurrentEntry(options): "1. Let current be the current entry of
@@ -319,7 +316,7 @@ pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionarie
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const current = (try currentEntryObject(instance, internal)) orelse return error.InvalidStateError;
     const scope = scopeOf(instance, internal) orelse return error.InvalidStateError;
-    const serialized = try navigation_entries.serialize(internal.allocator, options.state);
+    const serialized = try navigation_entries.serialize(engine.currentRealm() orelse instance.ctx, internal.allocator, options.state);
     try scope.history.setCurrentApiState(scope.navigable.id, serialized);
     fireCurrentEntryChange(instance, null, current);
 }
@@ -357,11 +354,16 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         return earlyError(instance, "NotSupportedError", "A push is not possible here.");
     }
 
-    // Steps 4-5: the state, serialized; an exception is an early error.
+    // Steps 4-5: the state, serialized; an exception is an early error
+    // result for that exception.
     var state: ?joint_history.SerializedState = null;
     if (opts) |o| {
-        if (o.state) |value| state = navigation_entries.serialize(internal.allocator, value) catch
-            return earlyError(instance, "DataCloneError", "The state could not be serialized.");
+        if (o.state) |value| {
+            switch (try serializeState(instance, internal, value)) {
+                .serialized => |serialized| state = serialized,
+                .threw => |reason| return earlyErrorWith(instance, reason),
+            }
+        }
     }
     errdefer if (state) |*s| s.deinit(internal.allocator);
 
@@ -395,9 +397,13 @@ pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries
     // exception, then return an early error result for that exception."
     if (options.was_passed) {
         if (options.value.state) |value| {
-            var state = navigation_entries.serialize(internal.allocator, value) catch
-                return earlyError(instance, "DataCloneError", "The state could not be serialized.");
-            state.deinit(internal.allocator);
+            switch (try serializeState(instance, internal, value)) {
+                .serialized => |serialized| {
+                    var state = serialized;
+                    state.deinit(internal.allocator);
+                },
+                .threw => |reason| return earlyErrorWith(instance, reason),
+            }
         }
     }
     const scope = scopeOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
@@ -461,7 +467,7 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8) anyerror!dictiona
     const current = entries.items[index];
     if (std.mem.eql(u8, &current.api_key, key)) {
         const nhe = try entryObject(internal, scope.window, current);
-        return settledResult(nhe);
+        return settledResult(instance, nhe);
     }
     // Step 5: "If navigation's entry list does not contain a
     // NavigationHistoryEntry whose session history entry's navigation API
@@ -537,7 +543,7 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: dom.navigation_api.Ki
     var tracker: ?*Tracker = null;
     if (tracker_index) |i| {
         tracker = internal.trackers.orderedRemove(i);
-        resolveWith(tracker.?.committed, new_current);
+        resolveWith(&tracker.?.committed, new_current);
     }
 
     // Step 11: currententrychange, from the old current entry.
@@ -559,7 +565,7 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: dom.navigation_api.Ki
 
     // Step 13, less the navigate event: the navigation is finished.
     if (tracker) |t| {
-        resolveWith(t.finished, new_current);
+        resolveWith(&t.finished, new_current);
         t.destroy(internal.allocator);
     }
 }
@@ -589,19 +595,20 @@ fn findTracker(internal: *InternalState, kind: dom.navigation_api.Kind, key: *co
 /// handled: a navigation that ends in an error rejects it with nobody
 /// listening.
 fn track(instance: *runtime.Instance, internal: *InternalState, template: Tracker0) !dictionaries.NavigationResult {
-    _ = instance;
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const committed = v8.ffi.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-    errdefer v8.ffi.v8_PromiseResolver_Dispose(committed);
-    const finished = v8.ffi.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-    errdefer v8.ffi.v8_PromiseResolver_Dispose(finished);
-    const committed_promise = v8.ffi.v8_PromiseResolver_GetPromise(committed) orelse return error.OutOfMemory;
-    const finished_promise = v8.ffi.v8_PromiseResolver_GetPromise(finished) orelse return error.OutOfMemory;
-    v8.ffi.v8_Promise_MarkAsHandled(@ptrCast(finished_promise));
+    const realm = engine.currentRealm() orelse instance.ctx;
+    var committed = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&committed);
+    var finished = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&finished);
+    engine.markPromiseAsHandled(realm, finished.promise);
+
+    const committed_result = try engine.retainValue(realm, committed.promise);
+    errdefer committed_result.release();
+    const finished_result = try engine.retainValue(realm, finished.promise);
+    errdefer finished_result.release();
 
     const tracker = try internal.allocator.create(Tracker);
+    errdefer internal.allocator.destroy(tracker);
     tracker.* = .{
         .kind = template.kind,
         .key = template.key,
@@ -609,14 +616,8 @@ fn track(instance: *runtime.Instance, internal: *InternalState, template: Tracke
         .committed = committed,
         .finished = finished,
     };
-    internal.trackers.append(internal.allocator, tracker) catch |err| {
-        internal.allocator.destroy(tracker);
-        return err;
-    };
-    return .{
-        .committed = runtime.JSValue.fromPromise(@ptrCast(committed_promise)),
-        .finished = runtime.JSValue.fromPromise(@ptrCast(finished_promise)),
-    };
+    try internal.trackers.append(internal.allocator, tracker);
+    return .{ .committed = committed_result.take(), .finished = finished_result.take() };
 }
 
 /// What a tracker is made from.
@@ -626,54 +627,76 @@ const Tracker0 = struct {
     api_state: ?joint_history.SerializedState = null,
 };
 
-/// Resolve `resolver`'s promise with the entry `nhe`.
-fn resolveWith(resolver: *v8.ffi.PromiseResolver, nhe: *runtime.Instance) void {
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.ffi.v8_Context_Dispose(context);
-    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, context, v8.conversions.instanceToV8(isolate, nhe));
+/// Resolve `capability`'s promise with the entry `nhe` (its wrapper, in the
+/// entry's relevant realm). A failure leaves it pending, which is what a
+/// navigation whose document went away does anyway.
+fn resolveWith(capability: *engine.PromiseCapability, nhe: *runtime.Instance) void {
+    engine.resolvePromise(capability, .{ .instance = nhe }) catch |err| log.debug("[navigation] resolve: {s}", .{@errorName(err)});
 }
 
 /// A NavigationResult whose promises are both resolved with `nhe`.
-fn settledResult(nhe: *runtime.Instance) !dictionaries.NavigationResult {
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(context);
-    var promises: [2]*v8.ffi.Promise = undefined;
-    for (&promises) |*slot| {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-        defer v8.ffi.v8_PromiseResolver_Dispose(resolver);
-        slot.* = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, context, v8.conversions.instanceToV8(isolate, nhe));
-    }
-    return .{
-        .committed = runtime.JSValue.fromPromise(@ptrCast(promises[0])),
-        .finished = runtime.JSValue.fromPromise(@ptrCast(promises[1])),
-    };
+fn settledResult(instance: *runtime.Instance, nhe: *runtime.Instance) !dictionaries.NavigationResult {
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const committed = try engine.createResolvedPromise(realm, .{ .instance = nhe });
+    errdefer committed.release();
+    const finished = try engine.createResolvedPromise(realm, .{ .instance = nhe });
+    return .{ .committed = committed.take(), .finished = finished.take() };
 }
 
 /// HTML "an early error result" for a DOMException named `name`: committed
 /// and finished both rejected with it, finished marked as handled.
 fn earlyError(instance: *runtime.Instance, name: []const u8, message: []const u8) !dictionaries.NavigationResult {
-    _ = instance;
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const exception = v8.conversions.newDOMExceptionFromContext(isolate, context, name, message) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Value_Dispose(exception);
-    var promises: [2]*v8.ffi.Promise = undefined;
-    for (&promises) |*slot| {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-        defer v8.ffi.v8_PromiseResolver_Dispose(resolver);
-        slot.* = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, exception);
-    }
-    v8.ffi.v8_Promise_MarkAsHandled(@ptrCast(promises[1]));
-    return .{
-        .committed = runtime.JSValue.fromPromise(@ptrCast(promises[0])),
-        .finished = runtime.JSValue.fromPromise(@ptrCast(promises[1])),
-    };
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const exception = try engine.createDOMException(realm, name, message);
+    defer exception.release();
+    return earlyErrorWith(instance, exception);
 }
+
+/// HTML "an early error result" for `reason` (OWNED by the caller, which
+/// releases it): committed and finished both rejected with it, finished
+/// marked as handled.
+fn earlyErrorWith(instance: *runtime.Instance, reason: engine.Owned) !dictionaries.NavigationResult {
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const committed = try engine.createRejectedPromise(realm, reason.value);
+    errdefer committed.release();
+    const finished = try engine.createRejectedPromise(realm, reason.value);
+    engine.markPromiseAsHandled(realm, finished.value);
+    return .{ .committed = committed.take(), .finished = finished.take() };
+}
+
+/// The outcome of serializing a navigation API state: the serialization, or
+/// what it threw (OWNED) - which navigate() and reload() return as an early
+/// error result.
+const StateSerialization = union(enum) {
+    serialized: joint_history.SerializedState,
+    threw: engine.Owned,
+};
+
+/// StructuredSerializeForStorage(`value`), catching what it throws - a
+/// DataCloneError, or an exception from a getter - as a value.
+fn serializeState(instance: *runtime.Instance, internal: *InternalState, value: runtime.JSValue) !StateSerialization {
+    const realm = engine.currentRealm() orelse instance.ctx;
+    var job: SerializeJob = .{ .realm = realm, .allocator = internal.allocator, .value = value };
+    if (try engine.completionOf(realm, SerializeJob.run, &job)) |thrown| return .{ .threw = thrown };
+    return .{ .serialized = job.result.? };
+}
+
+const SerializeJob = struct {
+    realm: runtime.Context,
+    allocator: Allocator,
+    value: runtime.JSValue,
+    result: ?joint_history.SerializedState = null,
+
+    fn run(data: ?*anyopaque) engine.Error!void {
+        const self: *SerializeJob = @ptrCast(@alignCast(data.?));
+        self.result = navigation_entries.serialize(self.realm, self.allocator, self.value) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.DataCloneError => error.DataCloneError,
+            error.ExceptionPending => error.ExceptionPending,
+            else => error.OperationFailed,
+        };
+    }
+};
 
 /// Fire currententrychange at `navigation` with `navigation_type` and `from`.
 fn fireCurrentEntryChange(navigation: *runtime.Instance, navigation_type: ?enums.NavigationType, from: *runtime.Instance) void {

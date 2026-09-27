@@ -26,6 +26,7 @@ const callbacks = @import("callbacks");
 const NavigationHistoryEntry = interfaces.NavigationHistoryEntry;
 const EventTargetImpl = @import("EventTarget.zig");
 const navigation_entries = @import("navigation_entries.zig");
+const engine = @import("engine");
 const joint_history = @import("html_core").navigation.joint_history;
 
 pub const State = NavigationHistoryEntry.State;
@@ -202,5 +203,6 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const scope = scopeOf(internal) orelse return runtime.JSValue.jsUndefined;
     const entry = scope.history.entryById(internal.entry_id) orelse return runtime.JSValue.jsUndefined;
-    return navigation_entries.deserialize(entry.api_state);
+    // A fresh value each call, made in the current realm.
+    return (try navigation_entries.deserialize(engine.currentRealm() orelse instance.ctx, entry.api_state)).take();
 }
