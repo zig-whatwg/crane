@@ -146,6 +146,9 @@ pub const InternalState = struct {
     navigation_pin: same_object.Pin = .{},
     performance: ?*runtime.Instance = null,
     custom_elements: ?*runtime.Instance = null,
+    /// Keeps the CustomElementRegistry alive for the Window's life, as
+    /// LocalDOMWindow::Trace visits custom_elements_.
+    custom_elements_pin: same_object.Pin = .{},
 
     /// BarProp instances (lazily created)
     locationbar: ?*runtime.Instance = null,
@@ -167,6 +170,14 @@ pub const InternalState = struct {
     /// HTML Standard § 12.2.2 (sessionStorage), § 12.2.3 (localStorage)
     local_storage: ?*runtime.Instance = null,
     session_storage: ?*runtime.Instance = null,
+    /// Keep both Storage objects alive for the Window's life - they are its
+    /// Document's local and session storage holders - as Blink's
+    /// DOMWindowStorage::Trace visits local_storage_ and session_storage_.
+    /// Unheld, a collection freed the Storage under these pointers and the
+    /// next read wrapped whatever the slab had put there: `sessionStorage`
+    /// read undefined.
+    local_storage_pin: same_object.Pin = .{},
+    session_storage_pin: same_object.Pin = .{},
     local_storage_backend: ?*WebStorage = null,
     session_storage_backend: ?*WebStorage = null,
 
@@ -233,6 +244,9 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         self.navigator_pin.release();
         self.navigation_pin.release();
+        self.custom_elements_pin.release();
+        self.local_storage_pin.release();
+        self.session_storage_pin.release();
         // The popups first: each integration ends its navigable's realm (a
         // child of this window's, and already gone if this window's page is
         // being torn down - destroyWindowRealm ends a realm once).
@@ -962,6 +976,7 @@ pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instanc
     );
 
     internal.custom_elements = registry;
+    internal.custom_elements_pin.hold(registry);
     return registry;
 }
 
@@ -1572,6 +1587,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // Cache both
     internal.session_storage_backend = backend;
     internal.session_storage = storage_instance;
+    internal.session_storage_pin.hold(storage_instance);
 
     return storage_instance;
 }
@@ -1615,6 +1631,7 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     // Cache both
     internal.local_storage_backend = backend;
     internal.local_storage = storage_instance;
+    internal.local_storage_pin.hold(storage_instance);
 
     return storage_instance;
 }
