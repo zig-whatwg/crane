@@ -171,35 +171,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The GC integration layer handles slab freeing after this returns.
 }
 
-/// Fetch "append" a header (name, value) to a Headers object whose guard is
-/// "request", or "request-no-cors" when `no_cors` - the constructor's "fill"
-/// runs it for each pair of init["headers"].
-fn appendHeader(allocator: std.mem.Allocator, list: *fetch.internal.HeaderList, name: []const u8, raw_value: []const u8, no_cors: bool) !void {
-    const validation = fetch.internal.validation;
-    // Step 1: Normalize value (strip leading and trailing HTTP whitespace).
-    const value = std.mem.trim(u8, raw_value, " \t\r\n");
-    // Step 2: "validate" - an invalid name or value throws; a forbidden
-    // request-header is dropped under the "request" guard.
-    if (!validation.isValidHeaderName(name) or !validation.isValidHeaderValue(value)) return error.TypeError;
-    if (validation.isForbiddenRequestHeader(name, value)) return;
-    if (no_cors) {
-        // Step 3: under "request-no-cors", the value it would combine to
-        // must keep the header no-CORS-safelisted, or nothing is appended.
-        const existing = try list.get(allocator, name);
-        defer if (existing) |e| allocator.free(e);
-        const combined = if (existing) |e| try std.fmt.allocPrint(allocator, "{s}, {s}", .{ e, value }) else try allocator.dupe(u8, value);
-        defer allocator.free(combined);
-        if (!validation.isNoCORSSafelistedRequestHeader(name, combined)) return;
-    }
-    // Step 4: Append (name, value) to headers's header list.
-    try list.append(name, value);
-    // Step 5: under "request-no-cors", remove privileged no-CORS request
-    // headers from headers.
-    if (no_cors) {
-        for ([_][]const u8{"range"}) |privileged| list.delete(privileged);
-    }
-}
-
 /// This's relevant settings object's API base URL, owned by
 /// `ctx.allocator`. A window's is its document's base URL - for an
 /// about:srcdoc document, its container's - so a srcdoc frame's
@@ -485,22 +456,17 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     if (init_opts.headers) |headers_init| {
         // Step 32.2: this's headers' guard is "request-no-cors" when the
         // mode is "no-cors", otherwise "request".
-        const no_cors = base_request.mode == .no_cors;
+        const guard: fetch.internal.HeaderGuard = if (base_request.mode == .no_cors) .request_no_cors else .request;
         // Step 32.3 / 34: fill this's headers with headers_init - "fill" is
         // Headers' "append" for each pair, under that guard.
+        const headers_class = fetch.webidl.headers;
         switch (headers_init) {
             .sequence_byte_string_sequence => |outer_seq| {
-                // Array of [name, value] pairs: sequence<sequence<ByteString>>
-                for (outer_seq) |inner_seq| {
-                    // "If header's size is not 2, then throw a TypeError."
-                    if (inner_seq.len != 2) return error.TypeError;
-                    try appendHeader(ctx.allocator, &base_request.header_list, inner_seq[0], inner_seq[1], no_cors);
-                }
+                try headers_class.fillFromSequence(ctx.allocator, &base_request.header_list, guard, outer_seq);
             },
             .byte_string_byte_string_record => |entries| {
-                // Object with header entries: record<ByteString, ByteString>
                 for (entries) |entry| {
-                    try appendHeader(ctx.allocator, &base_request.header_list, entry.key, entry.value, no_cors);
+                    try headers_class.append(ctx.allocator, &base_request.header_list, guard, entry.key, entry.value);
                 }
             },
         }
@@ -648,12 +614,15 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // The Headers object's list IS this request's header list, by reference,
     // so it keeps this request alive and clears `cached_headers` when it is
     // collected - see Headers.InternalState.Owner.
+    //
+    // Its guard is "request", or "request-no-cors" for a no-cors request
+    // (constructor step 32.2; the mode cannot change after).
     const Headers = @import("Headers.zig");
     return Headers.initWithHeaderList(
         internal.allocator,
         instance.ctx,
         &internal.request.header_list,
-        .request,
+        if (internal.request.mode == .no_cors) .request_no_cors else .request,
         instance,
         &state.own.cached_headers,
     );
