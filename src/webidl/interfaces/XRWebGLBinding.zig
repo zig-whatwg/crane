@@ -209,4 +209,11 @@ pub const XRWebGLBinding = struct {
     pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: webidl.Opt(XREquirectLayerInit)) anyerror!*runtime.Instance {
         return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init_data);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_foveateBoundTexture", 0b10 },
+    };
 };

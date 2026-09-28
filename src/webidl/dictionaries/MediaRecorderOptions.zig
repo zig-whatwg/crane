@@ -14,4 +14,8 @@ pub const MediaRecorderOptions = struct {
     audioBitrateMode: ?enums.BitrateMode = null,
     videoKeyFrameIntervalDuration: ?typedefs.DOMHighResTimeStamp = null,
     videoKeyFrameIntervalCount: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"videoKeyFrameIntervalDuration"};
 };

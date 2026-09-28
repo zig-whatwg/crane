@@ -11,4 +11,8 @@ pub const PeriodicWaveOptions = struct {
 
     real: ?[]const f32 = null,
     imag: ?[]const f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "real", "imag" };
 };

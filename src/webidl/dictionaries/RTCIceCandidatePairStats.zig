@@ -33,4 +33,8 @@ pub const RTCIceCandidatePairStats = struct {
     consentRequestsSent: ?u64 = null,
     packetsDiscardedOnSend: ?u32 = null,
     bytesDiscardedOnSend: ?u64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "lastPacketSentTimestamp", "lastPacketReceivedTimestamp", "totalRoundTripTime", "currentRoundTripTime", "availableOutgoingBitrate", "availableIncomingBitrate" };
 };

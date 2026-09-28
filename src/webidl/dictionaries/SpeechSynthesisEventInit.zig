@@ -15,4 +15,8 @@ pub const SpeechSynthesisEventInit = struct {
     charLength: ?u32 = null,
     elapsedTime: ?f32 = null,
     name: ?runtime.DOMString = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"elapsedTime"};
 };

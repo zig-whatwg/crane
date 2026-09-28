@@ -255,4 +255,11 @@ pub const VTTCue = struct {
     pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VTTCueImpl.call_getCueAsHTML(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_size", 0b1 },
+    };
 };

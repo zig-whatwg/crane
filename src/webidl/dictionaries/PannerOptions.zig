@@ -24,4 +24,8 @@ pub const PannerOptions = struct {
     coneInnerAngle: ?f64 = null,
     coneOuterAngle: ?f64 = null,
     coneOuterGain: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "positionX", "positionY", "positionZ", "orientationX", "orientationY", "orientationZ", "refDistance", "maxDistance", "rolloffFactor", "coneInnerAngle", "coneOuterAngle", "coneOuterGain" };
 };

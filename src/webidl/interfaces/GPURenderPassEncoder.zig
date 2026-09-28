@@ -248,4 +248,11 @@ pub const GPURenderPassEncoder = struct {
             .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(mixins.GPUBindingCommandsMixin.impl, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.other} }, .{ .kinds = &.{.other} } } },
         } },
     };
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setViewport", 0b111111 },
+    };
 };

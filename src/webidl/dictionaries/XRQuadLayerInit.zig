@@ -12,4 +12,8 @@ pub const XRQuadLayerInit = struct {
     transform: ?*runtime.Instance = null,
     width: ?f32 = null,
     height: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "width", "height" };
 };

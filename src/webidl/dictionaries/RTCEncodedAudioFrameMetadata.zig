@@ -11,4 +11,8 @@ pub const RTCEncodedAudioFrameMetadata = struct {
 
     sequenceNumber: ?i16 = null,
     audioLevel: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"audioLevel"};
 };

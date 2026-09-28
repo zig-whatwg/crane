@@ -11,4 +11,8 @@ pub const IIRFilterOptions = struct {
 
     feedforward: []const f64,
     feedback: []const f64,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "feedforward", "feedback" };
 };

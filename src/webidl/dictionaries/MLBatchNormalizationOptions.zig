@@ -13,4 +13,8 @@ pub const MLBatchNormalizationOptions = struct {
     bias: ?*runtime.Instance = null,
     axis: ?u32 = null,
     epsilon: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"epsilon"};
 };

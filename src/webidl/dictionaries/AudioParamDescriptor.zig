@@ -12,4 +12,8 @@ pub const AudioParamDescriptor = struct {
     minValue: ?f32 = null,
     maxValue: ?f32 = null,
     automationRate: ?enums.AutomationRate = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "defaultValue", "minValue", "maxValue" };
 };

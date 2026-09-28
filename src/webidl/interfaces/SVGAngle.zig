@@ -192,4 +192,13 @@ pub const SVGAngle = struct {
     pub fn call_convertToSpecifiedUnits(instance: *runtime.Instance, unitType: u16) anyerror!void {
         return try SVGAngleImpl.call_convertToSpecifiedUnits(instance, unitType);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_value", 0b1 },
+        .{ "set_valueInSpecifiedUnits", 0b1 },
+        .{ "call_newValueSpecifiedUnits", 0b10 },
+    };
 };

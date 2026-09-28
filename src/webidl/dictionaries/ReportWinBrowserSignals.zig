@@ -19,4 +19,8 @@ pub const ReportWinBrowserSignals = struct {
     modelingSignals: ?u16 = null,
     dataVersion: ?u32 = null,
     kAnonStatus: ?enums.KAnonStatus = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"adCost"};
 };

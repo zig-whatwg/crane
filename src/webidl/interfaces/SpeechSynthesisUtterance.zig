@@ -277,4 +277,13 @@ pub const SpeechSynthesisUtterance = struct {
     pub fn set_onboundary(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_onboundary(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_volume", 0b1 },
+        .{ "set_rate", 0b1 },
+        .{ "set_pitch", 0b1 },
+    };
 };

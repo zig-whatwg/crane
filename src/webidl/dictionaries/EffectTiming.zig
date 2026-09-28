@@ -16,4 +16,8 @@ pub const EffectTiming = struct {
     endDelay: ?f64 = null,
     playbackRate: ?f64 = null,
     duration: ?runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "iterationStart", "delay", "endDelay", "playbackRate" };
 };

@@ -160,4 +160,11 @@ pub const XRProjectionLayer = struct {
     pub fn set_deltaPose(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try XRProjectionLayerImpl.set_deltaPose(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_fixedFoveation", 0b1 },
+    };
 };

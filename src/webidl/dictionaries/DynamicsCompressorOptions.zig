@@ -14,4 +14,8 @@ pub const DynamicsCompressorOptions = struct {
     ratio: ?f32 = null,
     release: ?f32 = null,
     threshold: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "attack", "knee", "ratio", "release", "threshold" };
 };

@@ -25,4 +25,8 @@ pub const PointerEventInit = struct {
     persistentDeviceId: ?i32 = null,
     coalescedEvents: ?[]const *runtime.Instance = null,
     predictedEvents: ?[]const *runtime.Instance = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "width", "height", "pressure", "tangentialPressure", "altitudeAngle", "azimuthAngle" };
 };

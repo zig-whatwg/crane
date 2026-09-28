@@ -8,4 +8,8 @@ const typedefs = @import("typedefs");
 pub const PerformanceMarkOptions = struct {
     detail: ?runtime.JSValue = null,
     startTime: ?typedefs.DOMHighResTimeStamp = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"startTime"};
 };

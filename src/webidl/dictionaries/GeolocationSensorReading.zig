@@ -14,4 +14,8 @@ pub const GeolocationSensorReading = struct {
     altitudeAccuracy: ?f64 = null,
     heading: ?f64 = null,
     speed: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "timestamp", "latitude", "longitude", "altitude", "accuracy", "altitudeAccuracy", "heading", "speed" };
 };

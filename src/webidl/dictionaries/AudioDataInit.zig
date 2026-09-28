@@ -14,4 +14,8 @@ pub const AudioDataInit = struct {
     timestamp: i64,
     data: typedefs.BufferSource,
     transfer: ?[]const runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"sampleRate"};
 };

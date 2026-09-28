@@ -108,4 +108,11 @@ pub const SVGPathSegment = struct {
     pub fn set_values(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try SVGPathSegmentImpl.set_values(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_values", 0b1 },
+    };
 };

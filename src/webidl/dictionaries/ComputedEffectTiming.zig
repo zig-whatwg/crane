@@ -16,4 +16,8 @@ pub const ComputedEffectTiming = struct {
     endTime: ?typedefs.CSSNumberish = null,
     activeDuration: ?typedefs.CSSNumberish = null,
     localTime: ?typedefs.CSSNumberish = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"progress"};
 };

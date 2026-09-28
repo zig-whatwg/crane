@@ -13,4 +13,8 @@ pub const TransitionEventInit = struct {
     propertyName: ?typedefs.CSSOMString = null,
     elapsedTime: ?f64 = null,
     pseudoElement: ?typedefs.CSSOMString = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"elapsedTime"};
 };

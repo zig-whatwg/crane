@@ -16,4 +16,8 @@ pub const RTCRemoteInboundRtpStreamStats = struct {
     fractionLost: ?f64 = null,
     roundTripTimeMeasurements: ?u64 = null,
     packetsWithBleachedEct1Marking: ?u64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "roundTripTime", "totalRoundTripTime", "fractionLost" };
 };

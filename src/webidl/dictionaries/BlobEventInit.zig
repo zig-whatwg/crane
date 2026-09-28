@@ -12,4 +12,8 @@ pub const BlobEventInit = struct {
 
     data: *runtime.Instance,
     timecode: ?typedefs.DOMHighResTimeStamp = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"timecode"};
 };

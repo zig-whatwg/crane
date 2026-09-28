@@ -349,4 +349,11 @@ pub const SVGFEGaussianBlurElement = struct {
     pub fn call_setStdDeviation(instance: *runtime.Instance, stdDeviationX: f32, stdDeviationY: f32) anyerror!void {
         return try SVGFEGaussianBlurElementImpl.call_setStdDeviation(instance, stdDeviationX, stdDeviationY);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setStdDeviation", 0b11 },
+    };
 };

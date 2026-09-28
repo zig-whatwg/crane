@@ -20,4 +20,8 @@ pub const GPUSamplerDescriptor = struct {
     lodMaxClamp: ?f32 = null,
     compare: ?enums.GPUCompareFunction = null,
     maxAnisotropy: ?u16 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "lodMinClamp", "lodMaxClamp" };
 };

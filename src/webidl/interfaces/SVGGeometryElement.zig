@@ -292,4 +292,11 @@ pub const SVGGeometryElement = struct {
     pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         return try SVGGeometryElementImpl.call_isPointInFill(instance, point);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_getPointAtLength", 0b1 },
+    };
 };

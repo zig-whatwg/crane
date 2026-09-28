@@ -10,4 +10,8 @@ pub const OfflineAudioContextOptions = struct {
     length: u32,
     sampleRate: f32,
     renderSizeHint: ?runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"sampleRate"};
 };

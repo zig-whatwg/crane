@@ -12,4 +12,8 @@ pub const FragmentResultOptions = struct {
     childFragments: ?[]const *runtime.Instance = null,
     data: ?runtime.JSValue = null,
     breakToken: ?BreakTokenOptions = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "inlineSize", "blockSize", "autoBlockSize" };
 };

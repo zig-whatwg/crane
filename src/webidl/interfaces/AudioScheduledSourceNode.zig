@@ -142,4 +142,12 @@ pub const AudioScheduledSourceNode = struct {
     pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         return try AudioScheduledSourceNodeImpl.call_stop(instance, when);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_start", 0b1 },
+        .{ "call_stop", 0b1 },
+    };
 };

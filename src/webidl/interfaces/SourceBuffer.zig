@@ -296,4 +296,13 @@ pub const SourceBuffer = struct {
     pub fn call_remove(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
         return try SourceBufferImpl.call_remove(instance, start, end);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_timestampOffset", 0b1 },
+        .{ "set_appendWindowStart", 0b1 },
+        .{ "call_remove", 0b1 },
+    };
 };

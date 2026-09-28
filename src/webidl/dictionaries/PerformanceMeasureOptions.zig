@@ -10,4 +10,8 @@ pub const PerformanceMeasureOptions = struct {
     start: ?runtime.JSValue = null,
     duration: ?typedefs.DOMHighResTimeStamp = null,
     end: ?runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"duration"};
 };

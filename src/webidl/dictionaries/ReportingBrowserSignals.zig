@@ -17,4 +17,8 @@ pub const ReportingBrowserSignals = struct {
     componentSeller: ?runtime.USVString = null,
     buyerAndSellerReportingId: ?runtime.USVString = null,
     selectedBuyerAndSellerReportingId: ?runtime.USVString = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "bid", "highestScoringOtherBid" };
 };
