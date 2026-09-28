@@ -118,3 +118,47 @@ test "a page whose written-into frame was removed ends cleanly when it navigates
     try browser.navigate("about:blank", .window);
     try browser.navigate("about:blank", .window);
 }
+
+// A realm's wrapper cache is torn down in hash order. A detached tree whose
+// root and children script has all touched - `cloneNode(true)`'s result and
+// the elements matched in it, as dom/nodes/Element-matches-init.js does in a
+// frame - has every node in the cache: a child freed on its own before its
+// root left the root's child list pointing at a freed NodeBase, and the
+// root's teardown walk read it (Element.deinit -> instance_bridge.getInstance
+// SEGV, flaky in sweeps after Element-webkitMatchesSelector.html). A node
+// with a parent is its tree's to free, never its wrapper cache's.
+test "a detached tree whose nodes were all wrapped ends cleanly with its realm" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html>
+        \\<html><body>
+        \\<iframe src="about:blank"></iframe>
+        \\<script>
+        \\  // One detached tree in this realm, one in the frame's: every node of
+        \\  // each wrapped, in the realm whose document made it.
+        \\  function build(doc) {
+        \\    var root = doc.createElement("div");
+        \\    for (var i = 0; i < 64; i++) {
+        \\      var child = root.appendChild(doc.createElement("span"));
+        \\      child.appendChild(doc.createElement("b"));
+        \\    }
+        \\    return root;
+        \\  }
+        \\  var here = build(document);
+        \\  var there = build(frames[0].document);
+        \\  var built = here.childNodes.length + there.querySelectorAll("b").length;
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/detached-trees.html" });
+    const result = try ctx.evaluateScriptToString("String(built)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("128", result);
+
+    try browser.navigate("about:blank", .window);
+    try browser.navigate("about:blank", .window);
+}

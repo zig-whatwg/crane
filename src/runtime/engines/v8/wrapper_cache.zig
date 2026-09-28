@@ -203,17 +203,24 @@ fn slotReissued(entry: *const CacheEntry) bool {
 fn engineOwns(instance: *runtime.Instance) bool {
     if (isStreamsGraphObject(instance.vtable.name)) return true;
     if (isWindowOwned(instance)) return true;
-    const NodeImpl = @import("impls").Node;
-    if (NodeImpl.getInternalState(instance)) |node_internal| {
-        if (node_internal.node_base) |node_base| {
-            if (node_base.parent_node != null) return true;
-        }
-    }
+    if (treeOwns(instance)) return true;
     const DocumentImpl = @import("impls").Document;
     if (DocumentImpl.getInternalState(instance)) |doc_internal| {
         if (doc_internal.default_view != null) return true;
     }
     return false;
+}
+
+/// True for a node with a parent: its tree holds it - the parent's child list
+/// points at it - and only the tree's teardown may free it (Node.deinit walks a
+/// root's subtree). WebKit asserts the same in Node::~Node: a node is never
+/// destroyed while it has a parent. Anything that is not a node, and a node
+/// that is a root, answers false and is freed as before.
+pub fn treeOwns(instance: *runtime.Instance) bool {
+    const NodeImpl = @import("impls").Node;
+    const node_internal = NodeImpl.getInternalState(instance) orelse return false;
+    const node_base = node_internal.node_base orelse return false;
+    return node_base.parent_node != null;
 }
 
 /// A window's Location and History: the Window holds each in its own state,
@@ -712,6 +719,19 @@ pub const WrapperCache = struct {
                 // 5. Yet another instance Z was allocated at same address
                 // 6. Cache deinit runs, entry.instance points to Z, not Y
                 log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*} orig_vtable={*} curr_vtable={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable });
+            } else if (treeOwns(entry.instance)) {
+                // A node still in a tree is the tree's to free, whatever
+                // realm's cache wrapped it. Freed here, in hash order, a child
+                // went before its detached root and the root's teardown walk
+                // read the freed child; and a parent document's node wrapped
+                // in a frame's realm went while the parent's tree still held
+                // it. Only the wrapper goes: the root's teardown frees the
+                // node - this cache's, if the root is wrapped here.
+                //
+                // The other order was already safe: a root freed first frees
+                // its children in Node.deinit, which marks each one's cleanup
+                // started, so a child's entry reached after its root is
+                // skipped above as `is_started`.
             } else if (wrappedElsewhere(entry.instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
             } else {
