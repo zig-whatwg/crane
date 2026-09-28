@@ -99,10 +99,9 @@ src/html/script_execution.zig Document.setModule 1
 src/html/script_execution.zig Document.setModuleDisposeFunction 1
 src/html/script_execution.zig Document.setPendingParsingBlockingScript 2
 src/html/script_execution.zig Element.getInternal 2
-src/html/script_execution.zig Event.setIsTrusted 1
 src/html/script_execution.zig HTMLScriptElement.ClassicScript 1
 src/html/script_execution.zig HTMLScriptElement.ModuleScript 1
-src/html/script_execution.zig HTMLScriptElement.ScriptResult 5
+src/html/script_execution.zig HTMLScriptElement.ScriptResult 4
 src/html/script_execution.zig HTMLScriptElement.ScriptType 1
 src/html/script_execution.zig HTMLScriptElement.cacheSourceText 2
 src/html/script_execution.zig HTMLScriptElement.clearForceAsync 1
