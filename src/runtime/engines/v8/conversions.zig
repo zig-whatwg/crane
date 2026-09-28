@@ -35,6 +35,7 @@ const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const DebugAssertions = pointer_tag.DebugAssertions;
 const global_handles = @import("global_handles.zig");
+const value_operations = @import("value_operations.zig");
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -1879,7 +1880,22 @@ pub fn fromV8Value(
 // Zig to JavaScript (Runtime → V8)
 // ============================================================================
 
-/// Convert Zig DOMString to V8 String
+/// A new V8 string of the code units `bytes` encodes. A Zig string from
+/// script is WTF-8: fromV8Value writes a JavaScript string with WriteUtf8
+/// and no REPLACE_INVALID_UTF8, so an unpaired surrogate arrives as its
+/// three-byte form (ED A0..BF xx), and a DOMString keeps it. V8's UTF-8
+/// decoder would make each of those bytes a U+FFFD, so a string holding a
+/// surrogate code point is made from its UTF-16 instead - the decode
+/// value_operations.ownHandle does for the protocol's own copies. Every other
+/// string (ASCII, well-formed UTF-8) keeps String::NewFromUtf8. A new Global
+/// the caller owns; null when V8 refuses it (longer than String::kMaxLength).
+pub fn newStringFromWtf8(isolate: *v8.Isolate, bytes: []const u8) ?*v8.Value {
+    if (bytes.len == 0) return @ptrCast(v8.v8_String_Empty(isolate));
+    if (value_operations.hasSurrogateCodePoint(bytes)) return value_operations.stringFromWtf8(isolate, bytes) catch null;
+    return @ptrCast(v8.v8_String_NewFromUtf8(isolate, bytes.ptr, @intCast(bytes.len)));
+}
+
+/// Convert Zig DOMString to V8 String (its code units kept: newStringFromWtf8).
 pub fn toV8String(
     isolate: *v8.Isolate,
     value: runtime.DOMString,
@@ -1891,21 +1907,11 @@ pub fn toV8String(
         .owned => |s| s,
     };
 
-    if (slice.len == 0) {
-        return v8.v8_String_Empty(isolate) orelse {
-            // Fallback if Empty fails
-            return v8.v8_String_NewFromUtf8(isolate, "".ptr, 0).?;
-        };
-    }
-
-    return v8.v8_String_NewFromUtf8(
-        isolate,
-        slice.ptr,
-        @intCast(slice.len),
-    ) orelse {
+    const string = newStringFromWtf8(isolate, slice) orelse {
         // Fallback to empty string if creation fails
         return v8.v8_String_Empty(isolate).?;
     };
+    return @ptrCast(string);
 }
 
 /// Convert Zig boolean to V8 Boolean
@@ -2104,12 +2110,8 @@ pub fn toV8Value(
             .null => toV8Null(isolate),
             .boolean => |b| @ptrCast(toV8Boolean(isolate, b)),
             .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
-            .string => |s| blk: {
-                if (s.data.len == 0) {
-                    break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError);
-                }
-                break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.StringError);
-            },
+            // WTF-8: its lone surrogates kept (newStringFromWtf8).
+            .string => |s| newStringFromWtf8(isolate, s.data) orelse return ConversionError.StringError,
             .handle => |h| blk: {
                 // SAFETY CHECK: V8 Global handles must be 8-byte aligned.
                 // If the pointer is not aligned, it's likely a Zig pointer that was
@@ -2191,17 +2193,8 @@ pub fn toV8Value(
         const ElemType = type_info.pointer.child;
         // Special case: []const u8 and []u8 are strings, not arrays
         if (ElemType == u8) {
-            // Handle empty strings specially - empty slice may have undefined ptr
-            if (value.len == 0) {
-                const str = v8.v8_String_Empty(isolate) orelse {
-                    return ConversionError.StringError;
-                };
-                return @ptrCast(str);
-            }
-            const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse {
-                return ConversionError.StringError;
-            };
-            return @ptrCast(str);
+            // WTF-8: its lone surrogates kept (newStringFromWtf8).
+            return newStringFromWtf8(isolate, value) orelse ConversionError.StringError;
         }
 
         // Special case: Slice of structs with "key" and "value" fields => WebIDL record type
@@ -2224,11 +2217,7 @@ pub fn toV8Value(
                         if (ValueType == *const anyopaque or ValueType == *anyopaque) {
                             // The value is a pointer to a string slice
                             const str_ptr: *const []const u8 = @ptrCast(@alignCast(entry.value));
-                            const str = str_ptr.*;
-                            if (str.len == 0) {
-                                break :blk @as(*v8.Value, @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError));
-                            }
-                            break :blk @as(*v8.Value, @ptrCast(v8.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse return ConversionError.StringError));
+                            break :blk newStringFromWtf8(isolate, str_ptr.*) orelse return ConversionError.StringError;
                         } else {
                             break :blk try toV8Value(ValueType, isolate, context, entry.value);
                         }
@@ -3332,14 +3321,7 @@ pub fn chunkToV8ValueSafe(
             break :blk @ptrCast(obj);
         },
 
-        .string => |str| blk: {
-            const v8_str = v8.v8_String_NewFromUtf8(
-                isolate,
-                str.ptr,
-                @intCast(str.len),
-            ) orelse return ConversionError.OutOfMemory;
-            break :blk @ptrCast(v8_str);
-        },
+        .string => |str| newStringFromWtf8(isolate, str) orelse return ConversionError.OutOfMemory,
 
         .number_f64 => |num| blk: {
             const v8_num = v8.v8_Number_New(isolate, num);
@@ -3443,12 +3425,8 @@ pub fn toV8(
         },
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice and ptr_info.child == u8) {
-                // []const u8 - convert to string
-                return @ptrCast(v8.v8_String_NewFromUtf8(
-                    isolate,
-                    value.ptr,
-                    @intCast(value.len),
-                ) orelse return ConversionError.OutOfMemory);
+                // []const u8 - convert to string, its lone surrogates kept
+                return newStringFromWtf8(isolate, value) orelse ConversionError.OutOfMemory;
             } else if (ptr_info.child == anyopaque) {
                 // *anyopaque - assume it's already a V8 value pointer
                 return @ptrCast(value);
@@ -3604,9 +3582,7 @@ pub fn createV8Number(isolate: *v8.Isolate, value: f64) ConversionError!*v8.Valu
 
 /// Create V8 string value from slice
 pub fn createV8String(isolate: *v8.Isolate, value: []const u8) ConversionError!*v8.Value {
-    const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse
-        return ConversionError.OutOfMemory;
-    return @ptrCast(str);
+    return newStringFromWtf8(isolate, value) orelse ConversionError.OutOfMemory;
 }
 
 // ============================================================================

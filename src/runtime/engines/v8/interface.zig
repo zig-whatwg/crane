@@ -2619,8 +2619,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                             } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
                                 // USVString is []const u8 - convert to V8 string
-                                if (v8.v8_String_NewFromUtf8(isolate_inner, result.ptr, @intCast(result.len))) |str| {
-                                    break :comptime_convert @ptrCast(str);
+                                if (conv.newStringFromWtf8(isolate_inner, result)) |str| {
+                                    break :comptime_convert str;
                                 } else {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 }

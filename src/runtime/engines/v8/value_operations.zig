@@ -43,7 +43,7 @@ pub fn ownHandle(isolate: *ffi.Isolate, context: *ffi.Context, value: runtime.JS
 
 /// Whether `bytes` holds a surrogate code point in WTF-8's three-byte form,
 /// ED A0..BF xx: what v8_String_NewFromUtf8 cannot keep.
-fn hasSurrogateCodePoint(bytes: []const u8) bool {
+pub fn hasSurrogateCodePoint(bytes: []const u8) bool {
     var from: usize = 0;
     while (std.mem.indexOfScalarPos(u8, bytes, from, 0xED)) |at| {
         if (at + 1 < bytes.len and bytes[at + 1] >= 0xA0 and bytes[at + 1] <= 0xBF) return true;
@@ -53,7 +53,7 @@ fn hasSurrogateCodePoint(bytes: []const u8) bool {
 }
 
 /// A new V8 string of the code units `bytes` encodes as WTF-8. OWNED.
-fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi.Value {
+pub fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi.Value {
     var fallback = std.heap.stackFallback(2048, std.heap.c_allocator);
     const allocator = fallback.get();
     // Never more code units than bytes: each decodes from at least one.
