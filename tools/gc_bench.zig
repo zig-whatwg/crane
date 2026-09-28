@@ -16,6 +16,13 @@
 //!
 //!   zig build gc-bench                  # 10,000 cycles, the criterion
 //!   zig build gc-bench -- 50000 5000    # 50,000 cycles, sample every 5,000
+//!   zig build gc-bench -- 20000 5000 \
+//!     "--body=void (globalThis.probe ??= document.createElement('div')).ownerDocument;"
+//!                                       # any statement per cycle instead of
+//!                                       # createElement (gc_bench_options.zig);
+//!                                       # the counters then read per call. The
+//!                                       # page is about:blank: no body, no
+//!                                       # documentElement.
 //!
 //! ## Reading the output
 //!
@@ -34,6 +41,7 @@ const runtime = @import("runtime");
 const instance_bridge = @import("dom").instance_bridge;
 
 const log = std.log.scoped(.gc_bench);
+const options = @import("gc_bench_options.zig");
 
 pub const std_options: std.Options = .{
     // The browser logs heavily at debug and info; this tool's output is a table and
@@ -317,7 +325,10 @@ pub fn main(init: std.process.Init) !void {
     // how much of it is the engine's heap simply not returning pages, which is normal engine
     // behaviour and not a leak? Whatever the control retains is the floor, and only
     // the excess above it is Crane's to fix.
-    var control = false;
+    // (`--body=<script>` replaces the statement, and the run is then not the
+    // control: gc_bench_options.zig.)
+    const control = options.isControl(args);
+    const body = options.cycleBody(args);
     // `--profile` names the allocation sites holding the most bytes MID-RUN. A
     // leak-checking allocator cannot do this: everything here is freed in bulk at
     // process exit, so nothing is lost - it is retained, which no leak checker
@@ -325,7 +336,6 @@ pub fn main(init: std.process.Init) !void {
     var profile = false;
     for (args[1..]) |a| {
         if (std.mem.eql(u8, a, "--gc")) force_gc = true;
-        if (std.mem.eql(u8, a, "--control")) control = true;
         if (std.mem.eql(u8, a, "--profile")) profile = true;
     }
 
@@ -402,13 +412,6 @@ pub fn main(init: std.process.Init) !void {
         // A fresh script per batch rather than one long-running script: a single
         // 10,000-iteration script keeps one JS stack frame alive throughout, which
         // is itself a root, and would confound "did the state come back".
-        const body = if (control)
-            // Shaped to cost the engine about what a wrapper does - an object with a couple
-            // of properties - while touching no DOM state at all.
-            "void ({ a: i, b: 'x' });"
-        else
-            "void document.createElement('div');";
-
         const source = try std.fmt.allocPrint(
             allocator,
             "for (let i = 0; i < {d}; i++) {{ {s} }}",
@@ -437,7 +440,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    report(samples.items, force_gc, control);
+    report(samples.items, force_gc, control, body);
     reportCounters(samples.items);
 
     if (profile) {
@@ -458,9 +461,9 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void {
+fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body: []const u8) void {
     std.debug.print("\n=== Phase 6: {s}{s} ===\n\n", .{
-        if (was_control) "plain JS object (CONTROL)" else "createElement + discard",
+        if (was_control) "plain JS object (CONTROL)" else if (std.mem.eql(u8, body, options.default_body)) "createElement + discard" else body,
         if (gc_was_forced) ", engine GC forced" else "",
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
