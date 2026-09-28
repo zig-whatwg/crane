@@ -41,7 +41,6 @@ const script_execution = @import("script_execution.zig");
 
 // DOM implementation access for internal state
 const impls = @import("impls");
-const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
 
 // DOM internals for document_element setting
@@ -164,27 +163,28 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
     const script_element = ctx.getDomElement(script_tree_node) orelse return;
 
-    // The embedder's loader, when it has one, fetches a parser-inserted
-    // script's src (the WPT runner does, to keep testharness.js from loading
-    // twice); "prepare the script element" uses what it fetched, EMPTY
-    // included - an empty script is still a script, which runs and fires load.
-    // Without a loader, preparing fetches it. Either way the element goes
-    // through "prepare the script element", which is where a failed fetch
-    // becomes the error event.
-    if (ctx.script_loader_fn != null) {
-        if (getScriptSrcAttribute(script_tree_node)) |src_url| {
-            if (src_url.len > 0) {
-                if (ctx.loadExternalScript(src_url)) |external_content| {
-                    defer ctx.allocator.free(external_content);
-                    HTMLScriptElementImpl.cacheSourceText(script_element, external_content) catch return;
-                }
-            }
-        }
-    }
-
-    _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
+    // The embedder's loader, when it has one, is what "prepare the script
+    // element" fetches a parser-inserted classic script's src with (the WPT
+    // runner has one, to keep testharness.js from loading twice) - at its
+    // fetch step, so only a script it would fetch anyway is loaded. What the
+    // loader returns is used as-is, EMPTY included (an empty script still
+    // runs and fires load); null is a network error, which executing the
+    // element turns into the error event.
+    const loader: ?script_execution.ParserScriptLoader = if (ctx.script_loader_fn != null) .{
+        .context = ctx,
+        .load = &loadForPrepare,
+        .allocator = ctx.allocator,
+    } else null;
+    _ = script_execution.prepareScriptElementWithLoader(ctx.allocator, script_element, loader) catch {};
 
     runPendingParsingBlockingScripts(ctx);
+}
+
+/// `ParserScriptLoader.load` for a ParserScriptContext: its loader, then an
+/// HTTP fetch relative to its base URL.
+fn loadForPrepare(context: ?*anyopaque, src: []const u8) ?[]const u8 {
+    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return null));
+    return ctx.loadExternalScript(src);
 }
 
 /// The script end-tag steps' pending parsing-blocking script handling.
@@ -221,17 +221,6 @@ fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
         if (!script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document)) break;
         ctx.tree_builder.parser_pause_flag = false;
     }
-}
-
-/// Get the src attribute from a script tree node.
-fn getScriptSrcAttribute(tree_node: *TreeNode) ?[]const u8 {
-    const attrs = tree_node.attributes.toSlice();
-    for (attrs) |attr| {
-        if (std.mem.eql(u8, attr.name, "src")) {
-            return attr.value;
-        }
-    }
-    return null;
 }
 
 // =============================================================================

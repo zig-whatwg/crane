@@ -95,6 +95,79 @@ pub const ScriptExecutionError = error{
     OutOfMemory,
 };
 
+/// An embedder's loader for the external classic scripts a parser prepares:
+/// given the src attribute's value, their source (allocated with `allocator`),
+/// or null for a network error. The WPT runner has one, which serves
+/// testharness.js once. A parser sets it around its "prepare the script
+/// element" call (`withParserScriptLoader`), and prepare consults it at its
+/// fetch step - never before: prefetching at the end tag fetched scripts that
+/// prepare then declined to run (html/syntax/speculative-parsing/generated/
+/// document-write/script-src-unsupported-type).
+pub const ParserScriptLoader = struct {
+    context: ?*anyopaque,
+    load: *const fn (context: ?*anyopaque, src: []const u8) ?[]const u8,
+    allocator: std.mem.Allocator,
+};
+
+/// The loader, and the one element it serves: the script the parser is
+/// preparing. Preparing that script can run script - a parser-inserted
+/// inline script executes inside its prepare - which inserts and prepares
+/// other script elements, and those are fetched as any script-inserted script
+/// is: relative to the document base URL, data: URLs included.
+const ScopedParserScriptLoader = struct {
+    element: *runtime.Instance,
+    loader: ParserScriptLoader,
+};
+
+threadlocal var parser_script_loader: ?ScopedParserScriptLoader = null;
+
+/// "Prepare the script element" for a parser whose embedder loads its
+/// external classic scripts with `loader`.
+pub fn prepareScriptElementWithLoader(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    loader: ?ParserScriptLoader,
+) ScriptExecutionError!bool {
+    const saved = parser_script_loader;
+    parser_script_loader = if (loader) |l| .{ .element = script_element, .loader = l } else null;
+    defer parser_script_loader = saved;
+    return prepareScriptElement(allocator, script_element);
+}
+
+/// An external classic script's source, owned by `allocator`: the
+/// embedder's loader for the parser preparing it, when it has one and it
+/// answers, else "fetch a classic script" for `url` - a data: URL, which the
+/// WPT runner's loader resolves as a path (html/semantics/scripting-1/
+/// the-script-element/data-url.html), is fetched. Null body: a network error.
+const FetchedSource = struct {
+    body: ?[]const u8,
+    allocator: std.mem.Allocator,
+
+    fn deinit(self: *FetchedSource) void {
+        if (self.body) |b| self.allocator.free(b);
+        self.body = null;
+    }
+};
+
+fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
+    if (parserScriptLoaderFor(script_element)) |loader| {
+        if (loader.load(loader.context, src)) |body| return .{ .body = body, .allocator = loader.allocator };
+    }
+    var fetch_result = fetchExternalScript(allocator, url);
+    const body = fetch_result.body;
+    fetch_result.body = null;
+    fetch_result.deinit(allocator);
+    return .{ .body = body, .allocator = allocator };
+}
+
+/// The embedder's loader, if the parser is preparing `script_element` with
+/// one.
+fn parserScriptLoaderFor(script_element: *runtime.Instance) ?ParserScriptLoader {
+    const scoped = parser_script_loader orelse return null;
+    if (scoped.element != script_element) return null;
+    return scoped.loader;
+}
+
 /// Prepare the script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
 ///
@@ -322,12 +395,16 @@ pub fn prepareScriptElement(
             return handleScriptScheduling(allocator, script_element, parser_document, script_type);
         }
 
-        // Content the parser's script loader already fetched is used as-is.
+        // Content already cached for the element is used as-is. Otherwise the
+        // embedder's loader for the parser preparing this script, when it has
+        // one, stands in for "fetch a classic script" - here, at the fetch
+        // step, so a script that prepare returns from earlier (a type that is
+        // no JavaScript MIME type, nomodule) is never fetched.
         const cached = if (allowed_by_csp) HTMLScriptElementImpl.getCachedSourceText(script_element) else null;
         if (cached == null and allowed_by_csp) {
-            var fetch_result = fetchExternalScript(allocator, script_url);
-            defer fetch_result.deinit(allocator);
-            if (fetch_result.body) |body| {
+            var fetched = fetchClassicScriptSource(allocator, script_element, src, script_url);
+            defer fetched.deinit();
+            if (fetched.body) |body| {
                 HTMLScriptElementImpl.cacheSourceText(script_element, body) catch
                     return ScriptExecutionError.OutOfMemory;
             }
