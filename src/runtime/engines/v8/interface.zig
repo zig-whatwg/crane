@@ -7562,6 +7562,24 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate, "No current V8 context");
                         return;
                     };
+                    // Ours to release (v8_Isolate_GetCurrentContext allocates a
+                    // Global per call), unless converting an argument makes the
+                    // engine keep it - the rule MethodCallback applies, by the
+                    // same allowlist (typeRetainsContext answers "retains" for
+                    // any type it does not know). getOrCreateWithIsolate below
+                    // keeps its own copy. Nothing released it: one Global
+                    // Context - a pin on the whole page - per `URL.canParse()`,
+                    // `AbortSignal.timeout()`, `Response.json()`.
+                    const params_retain = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(@field(Interface, zig_name))).@"fn";
+                        for (fi.params) |prm| {
+                            const P = prm.type orelse break :blk true;
+                            if (P == *runtime.Instance) continue; // the call vehicle
+                            if (typeRetainsContext(P)) break :blk true;
+                        }
+                        break :blk false;
+                    };
+                    defer if (comptime !params_retain) v8.v8_Context_Dispose(v8_context);
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
