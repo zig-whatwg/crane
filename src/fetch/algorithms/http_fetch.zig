@@ -445,11 +445,17 @@ pub fn httpNetworkOrCacheFetchStart(
     // connection, request's body is non-null, and request's body's source is
     // null, then return a network error." A body with no source was made
     // from a ReadableStream, and cannot be sent twice; only HTTP/2 and later
-    // send one. Every connection here is HTTP/1.x: this libcurl is built
-    // without HTTP/2.
+    // send one. A cleartext connection is always HTTP/1.x here (there is no
+    // h2c), so an http: URL's is refused now; an https: one's connection is
+    // HTTP/2 only if ALPN chooses h2, which the network layer checks before
+    // sending anything (NetworkRequest.require_http2).
+    var require_http2 = false;
     if (request.body) |b| switch (b) {
         .bytes => {},
-        .body => |body| if (body.source == .none) return .{ .response = try internal_response.networkError(allocator) },
+        .body => |body| if (body.source == .none) {
+            if (!std.ascii.startsWithIgnoreCase(request.currentUrl(), "https:")) return .{ .response = try internal_response.networkError(allocator) };
+            require_http2 = true;
+        },
     };
 
     // Step 8.12: Append a request `Origin` header for httpRequest - on the
@@ -458,10 +464,11 @@ pub fn httpNetworkOrCacheFetchStart(
     const origin_value = requestOriginHeader(allocator, request) catch return HttpFetchError.OutOfMemory;
 
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
-    const network_request = buildNetworkRequest(allocator, request, origin_value) catch {
+    var network_request = buildNetworkRequest(allocator, request, origin_value) catch {
         if (origin_value) |v| allocator.free(v);
         return HttpFetchError.OutOfMemory;
     };
+    network_request.require_http2 = require_http2;
     return .{ .network = network_request };
 }
 
@@ -633,7 +640,8 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, origin_v
         .method = request.method,
         .headers = headers,
         .body = body,
-        .http_version = .http_1_1, // Default to HTTP/1.1
+        // HTTP/2 where TLS negotiates it, HTTP/1.1 otherwise.
+        .http_version = .http_2,
         .connect_timeout_ms = 30_000,
         .timeout_ms = 0, // No timeout by default
         .follow_redirects = false, // WHATWG Fetch handles redirects
@@ -773,6 +781,7 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         .method = "OPTIONS",
         .headers = header_slice,
         .body = null,
+        .http_version = .http_2,
         .follow_redirects = false,
         .cert_options = network.defaultCertOptions(),
         .owned_values = owned_values,

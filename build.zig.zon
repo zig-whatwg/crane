@@ -45,6 +45,13 @@
             .hash = "mbedtls-3.6.6-E4NUR4cWAACCHFSwZ5urTBPK4A6EZlm3pSUjfg4c3QAw",
             .lazy = true,
         },
+        // nghttp2 - HTTP/2 for libcurl, compiled from this release tarball
+        // by build.zig (buildNghttp2, lib/ only). Never a system library.
+        .nghttp2 = .{
+            .url = "https://github.com/nghttp2/nghttp2/releases/download/v1.70.0/nghttp2-1.70.0.tar.xz",
+            .hash = "N-V-__8AACay2gDbHrByjNGWvyH8G9Gp30uRgZqobYOF1nhb",
+            .lazy = true,
+        },
         // zlib - HTTP compression support (gzip, deflate)
         .zlib = .{
             .url = "git+https://github.com/allyourcodebase/zlib#d3b5519d3b73616a6bfece0712f080029d2a9244",
