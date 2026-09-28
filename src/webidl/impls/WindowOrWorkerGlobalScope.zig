@@ -554,7 +554,15 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             self.upload = null;
             const request = self.pending_request orelse return self.startFailed();
             self.pending_request = null;
-            const body = fetch.internal.Body.fromBytes(self.allocator, bytes) catch {
+            // A body made from a ReadableStream: its source is null (Fetch
+            // "extract a body"), which is what HTTP-network fetch and
+            // HTTP-redirect fetch ask of it. Its bytes are here already.
+            const body = fetch.internal.Body.fromSource(self.allocator, .none, bytes.len) catch {
+                request.deinit();
+                return self.startFailed();
+            };
+            body.data.appendSlice(self.allocator, bytes) catch {
+                body.deinit();
                 request.deinit();
                 return self.startFailed();
             };
