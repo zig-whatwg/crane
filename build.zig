@@ -126,13 +126,24 @@ fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*st
     return null;
 }
 
+/// The TLS library libcurl uses - chosen here and nowhere else. mbedTLS today.
+/// HTTP/3 (ngtcp2 + nghttp3) needs a QUIC-capable TLS library - BoringSSL or
+/// OpenSSL 3.5+ - so adding it means a new member here, the curl options
+/// derived from this in configureStaticLibcurl, and the ALPN query in
+/// src/fetch/network/curl_backend.zig (`negotiatedHttp2`), which knows each
+/// backend's session type.
+const TlsBackend = enum { mbedtls };
+const tls_backend: TlsBackend = .mbedtls;
+
 /// Configure statically-compiled libcurl for the fetch module
 ///
 /// Compiles libcurl from source using allyourcodebase/curl package.
-/// TLS provided by mbedTLS (cross-platform, no system dependencies).
+/// TLS provided by `tls_backend` (cross-platform, no system dependencies).
 ///
 /// Features enabled:
-/// - HTTP/HTTPS (with mbedTLS)
+/// - HTTP/HTTPS (with `tls_backend`)
+/// - HTTP/2, through nghttp2 built from source (buildNghttp2), with
+///   -Dhttp2 (the default)
 /// - Compression (gzip via zlib)
 ///
 /// Features disabled (minimize binary size):
@@ -140,7 +151,6 @@ fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*st
 /// - libpsl (Public Suffix List - URL module handles this)
 /// - libssh2 (SSH/SCP/SFTP)
 /// - libidn2 (IDN - URL module handles IDNA)
-/// - nghttp2 (HTTP/2 - optional, can enable with -Dhttp2=true)
 /// - brotli, zstd (additional compression)
 /// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
 fn configureStaticLibcurl(
@@ -156,10 +166,10 @@ fn configureStaticLibcurl(
         .optimize = optimize,
         // Static linking
         .linkage = .static,
-        // TLS backend: mbedTLS (cross-platform, no OpenSSL issues)
+        // TLS backend: `tls_backend` (cross-platform, no OpenSSL issues)
         .@"enable-ssl" = true,
         .@"use-openssl" = false,
-        .@"use-mbedtls" = true,
+        .@"use-mbedtls" = tls_backend == .mbedtls,
         .@"use-schannel" = false,
         .@"use-wolfssl" = false,
         .@"use-gnutls" = false,
@@ -175,7 +185,9 @@ fn configureStaticLibcurl(
         .libidn2 = false, // URL module handles IDNA
         .@"apple-idn" = false,
         .@"win32-idn" = false,
-        .nghttp2 = enable_http2, // HTTP/2 optional
+        // Never curl's own: it links a SYSTEM libnghttp2. HTTP/2 comes from
+        // buildNghttp2, below.
+        .nghttp2 = false,
         .ares = false, // Use threaded resolver
         // Disable non-HTTP protocols
         .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
@@ -209,6 +221,24 @@ fn configureStaticLibcurl(
     // full safety checks. Revisit when a curl release fixes it upstream.
     libcurl.root_module.sanitize_c = .off;
 
+    // HTTP/2: nghttp2 built here from its pinned release and linked into
+    // libcurl (curl's `nghttp2` option above stays off).
+    //
+    // This leans on how allyourcodebase/curl (pinned at c59c65cd) builds: it
+    // compiles http2.c and cf-h2-proxy.c unconditionally and gates them on
+    // USE_NGHTTP2 from a cmake-style config header, whose `#cmakedefine`
+    // leaves the macro undefined, not #undef'd, when its option is off - so
+    // defining it here turns them on. Whoever bumps curl re-checks that;
+    // `fetch`'s test "libcurl speaks HTTP/2 when the build asked for it"
+    // fails if HTTP/2 goes missing.
+    if (enable_http2) {
+        if (buildNghttp2(b, target, optimize)) |nghttp2| {
+            libcurl.root_module.addCMacro("USE_NGHTTP2", "1");
+            libcurl.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
+            libcurl.root_module.linkLibrary(nghttp2);
+        }
+    }
+
     // The mbedTLS package compiles the LIBRARY with these two macros
     // (mbedtls-3.6.4/build.zig:31-32) but does not propagate them to anything
     // that includes the installed headers. MBEDTLS_THREADING_C appends a
@@ -230,8 +260,10 @@ fn configureStaticLibcurl(
     // carries no headers, so src/browser/navigation.zig:312 defaults the
     // content type to text/html and parses an empty document as a successful
     // page load.
-    libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
-    libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    if (tls_backend == .mbedtls) {
+        libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
+        libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    }
 
     // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
     // zlib and mbedtls are compiled inside the curl package's own artifacts, so
@@ -262,6 +294,52 @@ fn configureStaticLibcurl(
     }
     // macOS: No additional libraries needed with mbedTLS
 }
+
+/// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
+/// its release tarball (build.zig.zon `nghttp2`, pinned by hash), never a
+/// system library. Only lib/ is built, as upstream's --enable-lib-only does:
+/// lib/CMakeLists.txt's NGHTTP2_SOURCES and definitions.
+fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?*std.Build.Step.Compile {
+    const upstream = b.lazyDependency("nghttp2", .{}) orelse return null;
+    const version_h = b.addConfigHeader(.{
+        .style = .{ .cmake = upstream.path("lib/includes/nghttp2/nghttp2ver.h.in") },
+        .include_path = "nghttp2/nghttp2ver.h",
+    }, .{
+        .PACKAGE_VERSION = "1.70.0",
+        .PACKAGE_VERSION_NUM = 0x014600,
+    });
+    const lib = b.addLibrary(.{
+        .name = "nghttp2",
+        .linkage = .static,
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
+    });
+    lib.root_module.addIncludePath(upstream.path("lib/includes"));
+    lib.root_module.addConfigHeader(version_h);
+    lib.root_module.addCMacro("BUILDING_NGHTTP2", "1");
+    lib.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
+    // What upstream's configure finds on a POSIX system (there is no
+    // config.h: nothing defines HAVE_CONFIG_H).
+    lib.root_module.addCMacro("HAVE_ARPA_INET_H", "1");
+    lib.root_module.addCMacro("HAVE_NETINET_IN_H", "1");
+    lib.root_module.addCMacro("HAVE_CLOCK_GETTIME", "1");
+    lib.root_module.addCMacro("HAVE_DECL_CLOCK_MONOTONIC", "1");
+    lib.root_module.addCSourceFiles(.{ .root = upstream.path("lib"), .files = &nghttp2_sources });
+    lib.installHeadersDirectory(upstream.path("lib/includes/nghttp2"), "nghttp2", .{});
+    lib.installConfigHeader(version_h);
+    return lib;
+}
+
+const nghttp2_sources = [_][]const u8{
+    "nghttp2_pq.c",            "nghttp2_map.c",             "nghttp2_queue.c",
+    "nghttp2_frame.c",         "nghttp2_buf.c",             "nghttp2_stream.c",
+    "nghttp2_outbound_item.c", "nghttp2_session.c",         "nghttp2_submit.c",
+    "nghttp2_helper.c",        "nghttp2_alpn.c",            "nghttp2_hd.c",
+    "nghttp2_hd_huffman.c",    "nghttp2_hd_huffman_data.c", "nghttp2_version.c",
+    "nghttp2_priority_spec.c", "nghttp2_option.c",          "nghttp2_callbacks.c",
+    "nghttp2_mem.c",           "nghttp2_http.c",            "nghttp2_rcbuf.c",
+    "nghttp2_extpri.c",        "nghttp2_ratelim.c",         "nghttp2_time.c",
+    "nghttp2_debug.c",         "sfparse.c",
+};
 
 /// Warns when `-Dsystem-curl` selects a libcurl that cannot do WebSockets.
 ///
@@ -683,12 +761,12 @@ pub fn build(b: *std.Build) void {
         "Use system libcurl instead of static compilation (faster dev builds)",
     ) orelse false;
 
-    // Enable HTTP/2 support via nghttp2
+    // HTTP/2 through the vendored nghttp2 (buildNghttp2)
     const enable_http2 = b.option(
         bool,
         "http2",
-        "Enable HTTP/2 support via nghttp2 (increases binary size)",
-    ) orelse false;
+        "HTTP/2 via the vendored nghttp2 (default on)",
+    ) orelse true;
 
     // ========================================================================
     // DEBUG OPTIONS
@@ -1732,6 +1810,17 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("url_record", url_internal_url_record_mod);
     fetch_mod.addImport("basic_parser", url_basic_parser_mod);
     fetch_mod.addImport("url_serializer", url_serializer_mod);
+    // Main fetch step 12 and the CORS check compare origins (URL "origin").
+    fetch_mod.addImport("origin", url_origin_mod_internal);
+    // The network layer asks the vendored TLS library what ALPN chose, and
+    // tests that HTTP/2 is live when the build asked for it. Its own options
+    // module: one options file imported as a module by two others in the same
+    // compilation is an error ("file exists in modules"), and build_options
+    // already is, through runtime and impls.
+    const curl_options = b.addOptions();
+    curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
+    curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    fetch_mod.addOptions("curl_options", curl_options);
     // A base64 data: URL body is Infra's forgiving-base64 decode.
     fetch_mod.addImport("infra", infra_mod);
 

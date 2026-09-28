@@ -84,6 +84,9 @@ pub const FetchJob = struct {
     /// it was handed over.
     network_request: ?NetworkRequest = null,
     network_start_time: f64 = 0,
+    /// Whether `network_request` is a CORS-preflight fetch's: its answer
+    /// decides whether the request itself goes out.
+    network_request_is_preflight: bool = false,
     /// Set once the job is `.done`.
     response: ?*InternalResponse = null,
 
@@ -203,6 +206,7 @@ pub const FetchJob = struct {
             else => return self.httpFetchFailed(http_fetch.HttpFetchError.NetworkError),
         };
         defer network_response.deinit();
+        if (self.network_request_is_preflight) return self.corsPreflightAnswered(&network_response);
 
         const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, null) catch |err| {
             return self.httpFetchFailed(err);
@@ -225,6 +229,11 @@ pub const FetchJob = struct {
 
         var network_response = head;
         defer network_response.deinit();
+        if (self.network_request_is_preflight) {
+            // A preflight's body is nobody's: letting the pipe go stops it.
+            body.release();
+            return self.corsPreflightAnswered(&network_response);
+        }
 
         const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, body) catch |err| {
             return self.httpFetchFailed(err);
@@ -249,11 +258,42 @@ pub const FetchJob = struct {
         };
         switch (begun) {
             .response => |response| return self.mainFetchFetched(response),
-            .http_fetch => {},
+            .http_fetch => return self.httpNetworkOrCacheFetch(),
+            .http_fetch_with_cors_preflight => {},
         }
 
-        // HTTP fetch, step 4: HTTP-network-or-cache fetch. Main fetch passes
-        // HTTP fetch no options.
+        // HTTP fetch step 4.1, with makeCORSPreflight: a CORS-preflight fetch
+        // first, when the request needs one. Its answer arrives through
+        // `resumeNetwork`/`resumeNetworkHead`, which hand it to
+        // `corsPreflightAnswered`.
+        const needed = http_fetch.corsPreflightNeeded(allocator, self.request) catch return FetchError.OutOfMemory;
+        if (!needed) return self.httpNetworkOrCacheFetch();
+        const preflight = http_fetch.corsPreflightFetchStart(allocator, self.request) catch |err| {
+            return self.httpFetchFailed(err);
+        };
+        self.network_request = preflight;
+        self.network_request_is_preflight = true;
+        self.network_start_time = http_fetch.getCurrentTimeMs();
+        // A CORS-preflight request never carries credentials: its
+        // credentials mode is "same-origin" and its tainting "cors".
+        return .{ .network = .{ .request = &self.network_request.?, .cookies = false } };
+    }
+
+    /// CORS-preflight fetch steps 7-8, once the network answered the
+    /// preflight: a network error, or on to HTTP fetch step 4.3.
+    fn corsPreflightAnswered(self: *FetchJob, network_response: *const NetworkResponse) FetchError!Step {
+        self.network_request_is_preflight = false;
+        const allowed = http_fetch.corsPreflightFetchFinish(self.allocator, self.request, network_response) catch {
+            return FetchError.OutOfMemory;
+        };
+        if (!allowed) return self.httpFetchFailed(http_fetch.HttpFetchError.CorsError);
+        return self.httpNetworkOrCacheFetch();
+    }
+
+    /// HTTP fetch step 4.3: HTTP-network-or-cache fetch, as far as it can go.
+    /// Main fetch passes HTTP fetch no options.
+    fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
+        const allocator = self.allocator;
         const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{}) catch |err| {
             return self.httpFetchFailed(err);
         };

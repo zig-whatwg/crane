@@ -24,6 +24,7 @@ const NetworkResponse = backend.NetworkResponse;
 const NetworkError = backend.NetworkError;
 const HttpVersion = backend.HttpVersion;
 const curl = @import("curl_ffi.zig");
+const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
 const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
@@ -447,14 +448,30 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, ctx.header_list);
         }
 
-        // HTTP version
+        // HTTP version. HTTP/2 is CURL_HTTP_VERSION_2TLS: h2 where ALPN
+        // chooses it, HTTP/1.1 otherwise - CURL_HTTP_VERSION_2_0 would also
+        // offer a cleartext request an h2c Upgrade, which no browser sends.
         const curl_http_version: c_long = switch (request.http_version) {
             .http_1_0 => curl.CURL_HTTP_VERSION_1_0,
             .http_1_1 => curl.CURL_HTTP_VERSION_1_1,
-            .http_2 => curl.CURL_HTTP_VERSION_2_0,
+            .http_2 => curl.CURL_HTTP_VERSION_2TLS,
             .http_3 => curl.CURL_HTTP_VERSION_3,
         };
         _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl_http_version);
+
+        // HTTP-network fetch step 8.3: a body with a null source goes out
+        // only on HTTP/2. Which version a connection speaks is known once
+        // its TLS handshake is done - ALPN - and curl's pre-request callback
+        // runs then, before a byte of the request is sent, for a new
+        // connection and for a reused one alike (a reused connection's
+        // session still carries the ALPN it negotiated, so a reused HTTP/1.1
+        // connection is refused the same way). Refusing there ends the
+        // transfer with CURLE_ABORTED_BY_CALLBACK: a network error, with
+        // nothing sent. Every other request keeps falling back to HTTP/1.1.
+        if (request.require_http2) {
+            _ = curl.easy_setopt(handle, curl.c.CURLOPT_PREREQFUNCTION, requireHttp2BeforeSending);
+            _ = curl.easy_setopt(handle, curl.c.CURLOPT_PREREQDATA, @as(?*anyopaque, @ptrCast(handle)));
+        }
 
         // Connection reuse is handled via global curl share (CURLOPT_SHARE)
         // set in sendImpl(). This allows connections to be pooled and reused
@@ -1153,6 +1170,53 @@ test "the reason-phrase is the status line after its code, whatever it holds" {
     try std.testing.expectEqualStrings("", reasonOfBlock("HTTP/2 200\r\n\r\n"));
     try std.testing.expectEqualStrings(" two  spaces", reasonOfBlock("HTTP/1.1 200  two  spaces\r\n"));
     try std.testing.expectEqualStrings("", reasonOfBlock("garbage"));
+}
+
+/// CURLOPT_PREREQFUNCTION for a request that must go out on HTTP/2 (see
+/// `NetworkRequest.require_http2`): go on only when the connection
+/// negotiated h2. `clientp` is the easy handle.
+fn requireHttp2BeforeSending(clientp: ?*anyopaque, _: [*c]u8, _: [*c]u8, _: c_int, _: c_int) callconv(.c) c_int {
+    const handle: *curl.CURL = @ptrCast(clientp orelse return curl.c.CURL_PREREQFUNC_ABORT);
+    return if (negotiatedHttp2(handle)) curl.c.CURL_PREREQFUNC_OK else curl.c.CURL_PREREQFUNC_ABORT;
+}
+
+/// Whether `handle`'s connection negotiated HTTP/2: ALPN chose "h2" in its
+/// TLS handshake. curl does not report the version before a response
+/// arrives (CURLINFO_HTTP_VERSION reads the response's status line), so this
+/// asks the TLS library's own session, which curl hands out through
+/// CURLINFO_TLS_SSL_PTR - a session type per backend. The backends here are
+/// build.zig's `tls_backend`; any other fails closed, as does a connection
+/// with no TLS (it cannot be HTTP/2: there is no h2c here).
+fn negotiatedHttp2(handle: *curl.CURL) bool {
+    var info: [*c]curl.c.struct_curl_tlssessioninfo = null;
+    if (curl.easy_getinfo(handle, curl.c.CURLINFO_TLS_SSL_PTR, &info) != curl.CURLE_OK) return false;
+    if (info == null) return false;
+    const session = info.*.internals orelse return false;
+    if (comptime curl_options.mbedtls) {
+        if (info.*.backend == curl.c.CURLSSLBACKEND_MBEDTLS) {
+            const alpn = mbedtls.mbedtls_ssl_get_alpn_protocol(session) orelse return false;
+            return std.mem.eql(u8, std.mem.span(alpn), "h2");
+        }
+    }
+    return false;
+}
+
+/// mbedTLS's ALPN query, for `negotiatedHttp2`: the protocol the handshake
+/// chose, or null. `ssl` is the mbedtls_ssl_context curl's mbedTLS backend
+/// hands out as CURLINFO_TLS_SSL_PTR. Declared here rather than @cImported:
+/// the vendored mbedTLS's headers are its package's, not ours.
+const mbedtls = struct {
+    extern fn mbedtls_ssl_get_alpn_protocol(ssl: *const anyopaque) ?[*:0]const u8;
+};
+
+test "libcurl speaks HTTP/2 when the build asked for it" {
+    // build.zig's -Dhttp2 turns on USE_NGHTTP2 in a libcurl whose own
+    // build decides from its config header; a curl bump that changes that
+    // would drop HTTP/2 without a word. This is the word.
+    if (!curl_options.http2) return error.SkipZigTest;
+    const info = curl.c.curl_version_info(curl.c.CURLVERSION_NOW);
+    try std.testing.expect(info != null);
+    try std.testing.expect(info.*.features & curl.c.CURL_VERSION_HTTP2 != 0);
 }
 
 /// The status code on a header block's status line, if it has one.

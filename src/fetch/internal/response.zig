@@ -165,6 +165,63 @@ pub const InternalResponse = struct {
         self.status_message = copy;
     }
 
+    /// Apply this response's filter - its type, from main fetch step 15 - in
+    /// place, for a consumer that is shown only the filtered response: a
+    /// Response object, an XMLHttpRequest. What the filter hides is gone
+    /// after, so this is only for a response nothing reads unfiltered.
+    ///
+    /// Spec: https://fetch.spec.whatwg.org/#concept-filtered-response
+    pub fn applyFilter(self: *Self) void {
+        switch (self.response_type) {
+            // A basic filtered response's header list excludes any headers
+            // whose name is a forbidden response-header name.
+            .basic => self.keepHeaders(.basic),
+            // A CORS filtered response's header list excludes any headers
+            // whose name is not a CORS-safelisted response-header name,
+            // given its CORS-exposed header-name list.
+            .cors => self.keepHeaders(.cors),
+            // An opaque filtered response: type "opaque", URL list empty,
+            // status 0, status message the empty byte sequence, header list
+            // empty, body null.
+            .@"opaque" => {
+                for (self.url_list.items) |u| self.allocator.free(u);
+                self.url_list.clearRetainingCapacity();
+                self.makeOpaque();
+            },
+            // An opaque-redirect filtered response: the same, but its URL
+            // list stays.
+            .opaqueredirect => self.makeOpaque(),
+            else => {},
+        }
+    }
+
+    fn keepHeaders(self: *Self, comptime filter: enum { basic, cors }) void {
+        var i: usize = 0;
+        while (i < self.header_list.entries.items.len) {
+            const name = self.header_list.entries.items[i].name;
+            const keep = switch (filter) {
+                .basic => !validation.isForbiddenResponseHeaderName(name),
+                .cors => validation.isCORSSafelistedResponseHeaderName(name, self.cors_exposed_header_name_list.items),
+            };
+            if (keep) {
+                i += 1;
+                continue;
+            }
+            var removed = self.header_list.entries.orderedRemove(i);
+            removed.deinit(self.allocator);
+        }
+    }
+
+    fn makeOpaque(self: *Self) void {
+        self.status = 0;
+        if (self.status_message.len > 0) self.allocator.free(self.status_message);
+        self.status_message = "";
+        self.header_list.deinit();
+        self.header_list = HeaderList.init(self.allocator);
+        if (self.body) |b| b.deinit();
+        self.body = null;
+    }
+
     // === URL Accessors ===
 
     /// Get the response URL (last in URL list, or null if empty).
@@ -630,4 +687,42 @@ test "FilteredResponse.opaque_redirect preserves URL list" {
     try std.testing.expectEqual(@as(u16, 0), filtered.getStatus());
     // URL list is preserved for opaque-redirect
     try std.testing.expectEqual(@as(usize, 1), filtered.getUrlList().len);
+}
+
+test "applyFilter: basic drops Set-Cookie, cors keeps the safelisted and exposed, opaque keeps nothing" {
+    const allocator = std.testing.allocator;
+
+    const basic = try InternalResponse.init(allocator);
+    defer basic.deinit();
+    basic.response_type = .basic;
+    try basic.header_list.append("Content-Type", "text/plain");
+    try basic.header_list.append("Set-Cookie", "a=b");
+    basic.applyFilter();
+    try std.testing.expect(basic.header_list.contains("Content-Type"));
+    try std.testing.expect(!basic.header_list.contains("Set-Cookie"));
+
+    const cors = try InternalResponse.init(allocator);
+    defer cors.deinit();
+    cors.response_type = .cors;
+    try cors.header_list.append("Content-Type", "text/plain");
+    try cors.header_list.append("X-Secret", "1");
+    try cors.header_list.append("X-Exposed", "2");
+    try cors.cors_exposed_header_name_list.append(allocator, try allocator.dupe(u8, "x-exposed"));
+    cors.applyFilter();
+    try std.testing.expect(cors.header_list.contains("Content-Type"));
+    try std.testing.expect(!cors.header_list.contains("X-Secret"));
+    try std.testing.expect(cors.header_list.contains("X-Exposed"));
+
+    const opaque_response = try InternalResponse.init(allocator);
+    defer opaque_response.deinit();
+    opaque_response.response_type = .@"opaque";
+    try opaque_response.addUrl("http://b.test/x");
+    try opaque_response.setStatusMessage("OK");
+    try opaque_response.header_list.append("Content-Type", "text/plain");
+    opaque_response.applyFilter();
+    try std.testing.expectEqual(@as(u16, 0), opaque_response.status);
+    try std.testing.expectEqualStrings("", opaque_response.status_message);
+    try std.testing.expectEqual(@as(usize, 0), opaque_response.header_list.len());
+    try std.testing.expect(opaque_response.url() == null);
+    try std.testing.expect(opaque_response.body == null);
 }

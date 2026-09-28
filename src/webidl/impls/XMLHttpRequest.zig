@@ -37,6 +37,7 @@ const fetch_mod = @import("fetch");
 const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
+const global_settings = @import("dom").global_settings;
 const infra = @import("infra");
 const encoding = @import("encoding");
 
@@ -624,6 +625,21 @@ fn openSteps(
     if (!was_opened) fireReadyStateChangeEvent(instance);
 }
 
+/// Record this XHR's relevant settings object's origin, serialized, in
+/// `state`: its realm's global object's settings. A realm with no such
+/// global leaves the request's origin "client".
+fn setClientOrigin(instance: *runtime.Instance, state: *XMLHttpRequestState) !void {
+    const record = instance.ctx.getRealm() orelse return;
+    const raw = record.global_object orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const settings = global_settings.of(global) orelse return;
+    const origin = settings.origin(global) catch return;
+    defer global.ctx.allocator.free(origin);
+    // An origin the global does not know yet stays "client".
+    if (origin.len == 0) return;
+    try state.setClientOrigin(origin);
+}
+
 /// "Parse JSON from bytes", as a completion: the response getter returns
 /// null for the exception it throws rather than letting it propagate.
 const JsonParse = struct {
@@ -866,6 +882,9 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     defer if (send_body) |*b| b.deinit();
 
     installEventSink(instance);
+    // The request's client is this's relevant settings object: its origin
+    // is the request's (Fetch "fetch" step 13).
+    setClientOrigin(instance, xhr_state) catch return error.OutOfMemory;
 
     // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
     // and HEAD) gives back null.
