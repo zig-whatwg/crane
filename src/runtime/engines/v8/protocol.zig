@@ -707,6 +707,8 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 
 /// The adapter's counters, every one cumulative or live as its comment says:
 /// - live handles by kind: Globals created minus disposed;
+/// - `global_handle_bytes`: V8's used global handle bytes for the current
+///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
@@ -724,6 +726,10 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
         .{ .name = "live_object_globals", .value = ffi.v8_Debug_LiveObjectGlobals() },
         .{ .name = "live_weak_callback_data", .value = ffi.v8_Debug_LiveWeakCallbackData() },
+        // V8's own count (used_global_handles_size) for the current isolate:
+        // no bookkeeping of ours in it, so it is the cross-check on the
+        // counters above.
+        .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.

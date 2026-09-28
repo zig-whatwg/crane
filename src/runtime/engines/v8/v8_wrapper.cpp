@@ -2563,6 +2563,15 @@ extern "C" int64_t v8_Debug_LiveContextGlobals() {
     return g_live_context_globals.load(std::memory_order_relaxed);
 }
 
+// Every function that returns a new Global<Context> counts it, because
+// v8_Context_Dispose uncounts whichever it is handed. Uncounted creations -
+// v8_FunctionCallbackInfo_GetFunctionCreationContext, taken by every binding
+// getter and method call, among them - made live_context_globals fall by one
+// per call, and by one per worker realm (NewWithGlobalConstructor).
+static inline void countContextGlobal() {
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+}
+
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
@@ -2679,6 +2688,7 @@ void* v8_Isolate_GetData(Isolate* isolate, int slot) {
 Global<Context>* v8_Context_New(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> context = Context::New(isolate);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -2686,6 +2696,7 @@ Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<Objec
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_template = global_template->Get(isolate);
     Local<Context> context = Context::New(isolate, nullptr, local_template);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -2709,6 +2720,7 @@ Global<Context>* v8_Context_NewWithGlobalConstructor(Isolate* isolate, Global<Fu
     Local<FunctionTemplate> local_template = global_constructor->Get(isolate);
     Local<ObjectTemplate> instance_template = local_template->InstanceTemplate();
     Local<Context> context = Context::New(isolate, nullptr, instance_template);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -5336,6 +5348,7 @@ Global<Context>* v8_Object_GetCreationContext(Global<Object>* obj) {
     }
     
     Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -5514,6 +5527,7 @@ Global<Context>* v8_Object_GetPrototypeCreationContext(Global<Object>* obj) {
     }
     
     Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -6355,6 +6369,7 @@ Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const Functi
     
     if (target_value.IsEmpty() || !target_value->IsFunction()) {
         // Fallback: return current context
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
     }
     
@@ -6364,9 +6379,11 @@ Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const Functi
     // This is the context where the function was instantiated (e.g., iframe context)
     MaybeLocal<Context> maybe_ctx = target_func->GetCreationContext();
     if (maybe_ctx.IsEmpty()) {
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
@@ -6500,6 +6517,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
         return nullptr;
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
@@ -9608,6 +9626,7 @@ return nullptr;
     int internal_field_count = global->InternalFieldCount();
     (void)internal_field_count; // Suppress unused variable warning
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9694,6 +9713,7 @@ Global<Context>* v8_Context_NewFromSnapshotAt(Isolate* isolate, size_t context_i
         return nullptr;
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9758,6 +9778,7 @@ Global<Context>* v8_Context_NewFromSnapshotAtWithMicrotaskQueue(
         return nullptr;
     }
 
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9794,6 +9815,7 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         if (context.IsEmpty()) {
             return nullptr;
         }
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, context));
     }
 
@@ -9831,6 +9853,7 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         return nullptr;
     }
 
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9904,6 +9927,7 @@ Global<Context>* v8_Context_NewFromSnapshotDefault(Isolate* isolate) {
     }
     
     fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] SUCCESS: New context created\n");
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -11121,6 +11145,7 @@ extern "C" Global<Context>* v8_Context_GlobalHandle_New(Isolate* isolate, Global
     HandleScope handle_scope(isolate);
     Local<Context> local = context_global->Get(isolate);
     if (local.IsEmpty()) return nullptr;
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, local));
 }
 
