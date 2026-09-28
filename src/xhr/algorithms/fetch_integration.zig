@@ -129,7 +129,10 @@ pub fn processFetchResult(
         }
     }
 
-    // Step 11.9.1: Set this's response to response. The state owns it now.
+    // Step 11.9.1: Set this's response to response - the filtered response
+    // main fetch made (a CORS response shows only its exposed headers). The
+    // state owns it now.
+    response.applyFilter();
     state.setResponse(response);
 
     // Steps 11.7-11.8: the request body is fully transmitted by now.
@@ -231,6 +234,10 @@ pub fn createRequest(
 
     // unsafe-request flag: set.
     request.unsafe_request = true;
+
+    // origin: this's relevant settings object's origin (Fetch "fetch" step
+    // 13 sets request's origin to its client's).
+    if (state.client_origin) |origin| try request.setOrigin(origin);
 
     // body: this's request body. Borrowed - `InternalRequest.deinit` frees only
     // the `.body` arm of the union, never `.bytes`.

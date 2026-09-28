@@ -45,6 +45,48 @@ pub fn isHttpsTest(test_path: []const u8) bool {
     return std.mem.indexOf(u8, std.fs.path.basename(test_path), ".https.") != null;
 }
 
+/// Does this test have to be served over HTTP/2?
+///
+/// `.h2.` in the filename, as `.https.` is for TLS: `foo.h2.any.js` and the
+/// wrappers generated from it (`foo.h2.any.html`, `foo.h2.any.worker.html`).
+/// wptrunner serves these from `wpt serve`'s HTTP/2 listener (its
+/// `ports["h2"]`), and their resources are relative URLs whose handlers
+/// (`*.h2.py`) answer only HTTP/2 - fetched from the plain listener, the test
+/// cannot run at all.
+pub fn isH2Test(test_path: []const u8) bool {
+    return std.mem.indexOf(u8, std.fs.path.basename(test_path), ".h2.") != null;
+}
+
+/// Which of `wpt serve`'s listeners serves a test. `.h2.` is checked first:
+/// the HTTP/2 listener is TLS too.
+pub const Listener = enum {
+    http,
+    https,
+    h2,
+
+    pub fn of(test_path: []const u8) Listener {
+        if (isH2Test(test_path)) return .h2;
+        if (isHttpsTest(test_path)) return .https;
+        return .http;
+    }
+
+    pub fn scheme(self: Listener) []const u8 {
+        return if (self == .http) "http" else "https";
+    }
+};
+
+/// The origin a test's document has, on `wpt serve`'s default ports: the
+/// HTTP/2 listener's (9000), the TLS one's (8443) or the plain one's (8000).
+/// Every place that builds a test's URL starts from this, so the three
+/// cannot drift apart.
+pub fn testOriginFor(test_path: []const u8) []const u8 {
+    return switch (Listener.of(test_path)) {
+        .h2 => "https://" ++ WPT_HOST ++ ":9000",
+        .https => "https://" ++ WPT_HOST ++ ":8443",
+        .http => "http://" ++ WPT_HOST ++ ":8000",
+    };
+}
+
 /// The origin of an absolute URL: scheme, host and port, no trailing slash.
 ///
 /// Same-origin checks for blob URLs and worker scripts compare against this
@@ -70,6 +112,8 @@ pub const WptServer = struct {
     /// Server port (TLS). `wpt serve` binds this alongside the HTTP one; it is
     /// not optional and not separately startable.
     https_port: u16 = 8443,
+    /// Server port (HTTP/2, over TLS) - `ports["h2"]`, bound with the others.
+    h2_port: u16 = 9000,
     /// PID of the server process (from lockfile or spawned)
     pid: ?posix.pid_t = null,
     /// Whether we spawned the server (vs found existing)
@@ -296,10 +340,17 @@ pub const WptServer = struct {
     /// Same-origin checks for blob URLs and worker scripts compare against this,
     /// so it has to track the scheme and port the document actually came from.
     pub fn originFor(self: *WptServer, allocator: Allocator, test_path: []const u8) ![]u8 {
-        return if (isHttpsTest(test_path))
-            std.fmt.allocPrint(allocator, "https://{s}:{d}", .{ WPT_HOST, self.https_port })
-        else
-            std.fmt.allocPrint(allocator, "http://{s}:{d}", .{ WPT_HOST, self.port });
+        const listener = Listener.of(test_path);
+        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}", .{ listener.scheme(), WPT_HOST, self.portOf(listener) });
+    }
+
+    /// This server's port for `listener`.
+    fn portOf(self: *const WptServer, listener: Listener) u16 {
+        return switch (listener) {
+            .http => self.port,
+            .https => self.https_port,
+            .h2 => self.h2_port,
+        };
     }
 
     /// Build a test URL from a test path, context type and variant.
@@ -341,11 +392,11 @@ pub const WptServer = struct {
             suffix = ".worker.html";
         }
 
-        const https = isHttpsTest(test_path);
+        const listener = Listener.of(test_path);
         return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
-            if (https) "https" else "http",
+            listener.scheme(),
             WPT_HOST,
-            if (https) self.https_port else self.port,
+            self.portOf(listener),
             url_path,
             suffix,
             variant,
@@ -627,6 +678,34 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
             "https://web-platform.test:8443/html/dom/idlharness.https.window.html",
             url,
         );
+    }
+}
+
+test "a .h2. test is fetched from the HTTP/2 listener, and every URL builder agrees" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(isH2Test("fetch/api/basic/request-upload.h2.any.js"));
+    try std.testing.expect(isH2Test("fetch/api/basic/request-upload.h2.any.worker.html"));
+    try std.testing.expect(!isH2Test("fetch/h2.test/a.any.js"));
+    try std.testing.expect(!isH2Test("fetch/api/basic/request-upload.any.js"));
+
+    try std.testing.expectEqualStrings("http://web-platform.test:8000", testOriginFor("dom/nodes/Element-matches.html"));
+    try std.testing.expectEqualStrings("https://web-platform.test:8443", testOriginFor("fetch/api/basic/keepalive.https.any.js"));
+    try std.testing.expectEqualStrings("https://web-platform.test:9000", testOriginFor("xhr/status.h2.window.js"));
+    // An h2 test is TLS as well; the HTTP/2 listener wins.
+    try std.testing.expectEqualStrings("https://web-platform.test:9000", testOriginFor("a/b.h2.https.html"));
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+    {
+        const url = try server.buildTestUrl(allocator, "fetch/api/basic/request-upload.h2.any.js", .worker, "");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://web-platform.test:9000/fetch/api/basic/request-upload.h2.any.worker.html", url);
+    }
+    {
+        const origin = try server.originFor(allocator, "xhr/status.h2.window.js");
+        defer allocator.free(origin);
+        try std.testing.expectEqualStrings(testOriginFor("xhr/status.h2.window.js"), origin);
     }
 }
 

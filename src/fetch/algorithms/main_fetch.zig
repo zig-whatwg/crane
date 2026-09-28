@@ -27,6 +27,7 @@ const InternalRequest = internal_request.InternalRequest;
 const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
+const validation = @import("../internal/validation.zig");
 const clock = @import("clock");
 
 /// Bad ports that should be blocked per Fetch spec.
@@ -140,6 +141,9 @@ pub const MainFetchStart = union(enum) {
     response: *InternalResponse,
     /// Step 12's fetch is HTTP fetch.
     http_fetch,
+    /// Step 12's fetch is HTTP fetch with makeCORSPreflight true: a request
+    /// the CORS protocol lets out only once a CORS-preflight fetch agrees.
+    http_fetch_with_cors_preflight,
 };
 
 /// Main fetch steps 1-12, as far as the fetch that produces its response.
@@ -206,23 +210,86 @@ pub fn mainFetchStart(
         params.timing_info.post_redirect_start_time = now;
     }
 
-    // Step 12-13: Service worker interception and scheme fetch
-    // For now, skip service worker and dispatch based on scheme
-
-    // Get scheme from current URL string
+    // Step 12: set response to the result of the steps of the first
+    // matching statement. (No preloaded response candidate reaches here.)
     const url_str = request.currentUrl();
     const scheme = extractScheme(url_str);
+    const same_origin = request.currentUrlIsSameOrigin() catch return MainFetchError.OutOfMemory;
 
-    // HTTP(S) requests go through HTTP fetch
+    // request's current URL's origin is same origin with request's origin
+    // and its response tainting is "basic"; its current URL's scheme is
+    // "data"; or its mode is "navigate" or "websocket":
+    if ((same_origin and request.response_tainting == .basic) or
+        std.ascii.eqlIgnoreCase(scheme, "data") or
+        request.mode == .navigate or request.mode == .websocket)
+    {
+        // 1. Set request's response tainting to "basic".
+        request.response_tainting = .basic;
+        // 2. Return the result of running scheme fetch.
+        return schemeFetch(allocator, scheme, url_str);
+    }
+
+    // request's mode is "same-origin": a network error.
+    if (request.mode == .same_origin) return .{ .response = try internal_response.networkError(allocator) };
+
+    // request's mode is "no-cors":
+    if (request.mode == .no_cors) {
+        // 1. If request's redirect mode is not "follow", then return a
+        //    network error.
+        if (request.redirect_mode != .follow) return .{ .response = try internal_response.networkError(allocator) };
+        // 2. Set request's response tainting to "opaque".
+        request.response_tainting = .@"opaque";
+        // 3. Return the result of running scheme fetch.
+        return schemeFetch(allocator, scheme, url_str);
+    }
+
+    // request's current URL's scheme is not an HTTP(S) scheme: a network
+    // error.
+    if (!scheme_fetch.isHttpScheme(scheme)) return .{ .response = try internal_response.networkError(allocator) };
+
+    // request's use-CORS-preflight flag is set, or its unsafe-request flag
+    // is set and either its method is not a CORS-safelisted method or the
+    // CORS-unsafe request-header names with its header list is not empty:
+    //   1. Set request's response tainting to "cors".
+    //   2. Return the result of running HTTP fetch given fetchParams and
+    //      true. (Steps 3-4 clear the CORS-preflight cache on a network
+    //      error; there is no cache.)
+    // Otherwise:
+    //   1. Set request's response tainting to "cors".
+    //   2. Return the result of running HTTP fetch given fetchParams.
+    request.response_tainting = .cors;
+    if (needsCorsPreflight(allocator, request) catch return MainFetchError.OutOfMemory) return .http_fetch_with_cors_preflight;
+    return .http_fetch;
+}
+
+/// Main fetch step 12's condition for HTTP fetch with makeCORSPreflight.
+fn needsCorsPreflight(allocator: Allocator, request: *const InternalRequest) !bool {
+    if (request.use_cors_preflight) return true;
+    if (!request.unsafe_request) return false;
+    if (!isCorsSafelistedMethod(request.method)) return true;
+    const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
+    defer {
+        for (unsafe_names) |name| allocator.free(name);
+        allocator.free(unsafe_names);
+    }
+    return unsafe_names.len > 0;
+}
+
+/// A CORS-safelisted method: `GET`, `HEAD` or `POST`.
+pub fn isCorsSafelistedMethod(method: []const u8) bool {
+    return std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "POST");
+}
+
+/// Main fetch step 12's "run scheme fetch": HTTP fetch for an HTTP(S) URL
+/// (scheme fetch's "HTTP(S) scheme" branch), the scheme's own steps
+/// otherwise.
+fn schemeFetch(allocator: Allocator, scheme: []const u8, url_str: []const u8) MainFetchError!MainFetchStart {
     if (scheme_fetch.isHttpScheme(scheme)) return .http_fetch;
-
-    // Non-HTTP schemes go through scheme fetch
     const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
         switch (err) {
             error.OutOfMemory => return MainFetchError.OutOfMemory,
         }
     };
-
     return switch (scheme_result) {
         .response => |resp| .{ .response = resp },
         .network_error => .{ .response = try internal_response.networkError(allocator) },
@@ -257,12 +324,24 @@ pub fn mainFetchFinish(
         }
     }
 
-    // Step 15: Response filtering based on tainting
-    if (!isNetworkError(response)) {
+    // Step 14: If response is not a network error and response is not a
+    // filtered response - HTTP fetch's "manual" redirect mode made an
+    // opaque-redirect filtered response, the only one that reaches here -
+    // then:
+    if (!isNetworkError(response) and response.response_type != .opaqueredirect) {
+        // 1. If request's response tainting is "cors", its CORS-exposed
+        //    header-name list: the `Access-Control-Expose-Headers` names, or -
+        //    for a request without credentials that exposes `*` - every
+        //    header name the response has.
+        if (request.response_tainting == .cors) setCorsExposedHeaderNames(request, response) catch {};
+
+        // 2. Response filtering based on tainting. The response is marked
+        //    with its filter; the consumers script sees - a Response object,
+        //    an XMLHttpRequest - apply it (InternalResponse.applyFilter),
+        //    while the rest of the engine reads the response itself, as the
+        //    spec's internal response.
         switch (request.response_tainting) {
             .cors => {
-                // Create CORS filtered response (would filter headers)
-                // For now, just mark the type
                 response.response_type = .cors;
             },
             .basic => {
@@ -280,6 +359,48 @@ pub fn mainFetchFinish(
     // Step 17-18: Process callbacks (handled by caller)
 
     return response;
+}
+
+/// Main fetch step 14.1, 2-3, for `response`, a response to `request`
+/// tainted "cors".
+fn setCorsExposedHeaderNames(request: *const internal_request.InternalRequest, response: *InternalResponse) !void {
+    const allocator = response.allocator;
+    // 1. Let headerNames be the result of extracting header list values given
+    //    `Access-Control-Expose-Headers` and response's header list: its
+    //    #field-name values, comma-separated. Null (no such header) and
+    //    failure (a value that is not a list of tokens) both leave the list
+    //    empty.
+    const combined = (try response.header_list.get(allocator, "Access-Control-Expose-Headers")) orelse return;
+    defer allocator.free(combined);
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer names.deinit(allocator);
+    var wildcard = false;
+    var it = std.mem.splitScalar(u8, combined, ',');
+    while (it.next()) |raw| {
+        const name = std.mem.trim(u8, raw, " \t");
+        if (name.len == 0) continue;
+        if (!validation.isValidHeaderName(name)) return;
+        if (std.mem.eql(u8, name, "*")) wildcard = true;
+        try names.append(allocator, name);
+    }
+    for (response.cors_exposed_header_name_list.items) |old| allocator.free(old);
+    response.cors_exposed_header_name_list.clearRetainingCapacity();
+    // 2. If request's credentials mode is not "include" and headerNames
+    //    contains `*`, then set response's CORS-exposed header-name list to
+    //    all unique header names in response's header list.
+    if (request.credentials_mode != .include and wildcard) {
+        for (response.header_list.entries.items) |header| {
+            var seen = false;
+            for (response.cors_exposed_header_name_list.items) |existing| {
+                if (std.ascii.eqlIgnoreCase(existing, header.name)) seen = true;
+            }
+            if (!seen) try response.cors_exposed_header_name_list.append(allocator, try allocator.dupe(u8, header.name));
+        }
+        return;
+    }
+    // 3. Otherwise, if headerNames is neither null nor failure, then set
+    //    response's CORS-exposed header-name list to headerNames.
+    for (names.items) |name| try response.cors_exposed_header_name_list.append(allocator, try allocator.dupe(u8, name));
 }
 
 /// Extract scheme from URL string.
@@ -447,4 +568,210 @@ test "extractScheme helper" {
     try std.testing.expectEqualStrings("data", extractScheme("data:text/plain,Hello"));
     try std.testing.expectEqualStrings("about", extractScheme("about:blank"));
     try std.testing.expectEqualStrings("", extractScheme("no-colon-here"));
+}
+
+const StepTwelveOutcome = enum { http_fetch, http_fetch_with_cors_preflight, response, network_error };
+
+/// Run main fetch steps 1-12 for a GET of `url` with `origin` (null: the
+/// request's origin stays "client"), and say where step 12 left it.
+fn runStepTwelve(
+    url: []const u8,
+    origin: ?[]const u8,
+    mode: internal_request.RequestMode,
+    redirect_mode: internal_request.RedirectMode,
+) !struct { outcome: StepTwelveOutcome, tainting: internal_request.ResponseTainting } {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, url);
+    defer request.deinit();
+    if (origin) |o| try request.setOrigin(o);
+    request.mode = mode;
+    request.redirect_mode = redirect_mode;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    return switch (try mainFetchStart(allocator, params, false)) {
+        .http_fetch => .{ .outcome = .http_fetch, .tainting = request.response_tainting },
+        .http_fetch_with_cors_preflight => .{ .outcome = .http_fetch_with_cors_preflight, .tainting = request.response_tainting },
+        .response => |response| blk: {
+            defer response.deinit();
+            break :blk .{
+                .outcome = if (isNetworkError(response)) .network_error else .response,
+                .tainting = request.response_tainting,
+            };
+        },
+    };
+}
+
+test "main fetch step 12: same origin is basic, cross-origin cors is cors" {
+    var r = try runStepTwelve("http://a.test:8000/x", "http://a.test:8000", .cors, .follow);
+    try std.testing.expectEqual(.http_fetch, r.outcome);
+    try std.testing.expectEqual(.basic, r.tainting);
+
+    r = try runStepTwelve("http://b.test:8000/x", "http://a.test:8000", .cors, .follow);
+    try std.testing.expectEqual(.http_fetch, r.outcome);
+    try std.testing.expectEqual(.cors, r.tainting);
+
+    // A request whose origin is still "client" - one no settings object
+    // gave an origin - is the client's own: basic, as before this step.
+    r = try runStepTwelve("http://b.test:8000/x", null, .cors, .follow);
+    try std.testing.expectEqual(.http_fetch, r.outcome);
+    try std.testing.expectEqual(.basic, r.tainting);
+}
+
+test "main fetch step 12: same-origin mode, no-cors and non-HTTP cross-origin requests" {
+    // "same-origin" mode to another origin: a network error.
+    var r = try runStepTwelve("http://b.test:8000/x", "http://a.test:8000", .same_origin, .follow);
+    try std.testing.expectEqual(.network_error, r.outcome);
+
+    // "no-cors": opaque, but only with redirect mode "follow".
+    r = try runStepTwelve("http://b.test:8000/x", "http://a.test:8000", .no_cors, .follow);
+    try std.testing.expectEqual(.http_fetch, r.outcome);
+    try std.testing.expectEqual(.@"opaque", r.tainting);
+    r = try runStepTwelve("http://b.test:8000/x", "http://a.test:8000", .no_cors, .manual);
+    try std.testing.expectEqual(.network_error, r.outcome);
+
+    // "data" is basic from any origin; "navigate" and "websocket" too.
+    r = try runStepTwelve("data:,hi", "http://a.test:8000", .cors, .follow);
+    try std.testing.expectEqual(.response, r.outcome);
+    try std.testing.expectEqual(.basic, r.tainting);
+    r = try runStepTwelve("http://b.test:8000/x", "http://a.test:8000", .navigate, .manual);
+    try std.testing.expectEqual(.http_fetch, r.outcome);
+    try std.testing.expectEqual(.basic, r.tainting);
+
+    // Any other scheme, cross-origin in "cors" mode: a network error.
+    // about:blank's origin is opaque, so never the request's.
+    r = try runStepTwelve("about:blank", "http://a.test:8000", .cors, .follow);
+    try std.testing.expectEqual(.network_error, r.outcome);
+    r = try runStepTwelve("about:blank", null, .cors, .follow);
+    try std.testing.expectEqual(.response, r.outcome);
+}
+
+test "main fetch step 14.1: the CORS-exposed header-name list" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+
+    // Listed names, as the header gives them, whitespace trimmed.
+    {
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        try response.header_list.append("Access-Control-Expose-Headers", " X-A ,, x-b");
+        try response.header_list.append("X-A", "1");
+        try setCorsExposedHeaderNames(request, response);
+        try std.testing.expectEqual(2, response.cors_exposed_header_name_list.items.len);
+        try std.testing.expectEqualStrings("X-A", response.cors_exposed_header_name_list.items[0]);
+        try std.testing.expectEqualStrings("x-b", response.cors_exposed_header_name_list.items[1]);
+    }
+    // `*` without credentials: every name the response has, once.
+    {
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        try response.header_list.append("Access-Control-Expose-Headers", "*");
+        try response.header_list.append("X-A", "1");
+        try response.header_list.append("x-a", "2");
+        try setCorsExposedHeaderNames(request, response);
+        try std.testing.expectEqual(2, response.cors_exposed_header_name_list.items.len);
+        try std.testing.expectEqualStrings("Access-Control-Expose-Headers", response.cors_exposed_header_name_list.items[0]);
+        try std.testing.expectEqualStrings("X-A", response.cors_exposed_header_name_list.items[1]);
+    }
+    // `*` with credentials "include" is only the name `*`.
+    {
+        request.credentials_mode = .include;
+        defer request.credentials_mode = .same_origin;
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        try response.header_list.append("Access-Control-Expose-Headers", "*");
+        try response.header_list.append("X-A", "1");
+        try setCorsExposedHeaderNames(request, response);
+        try std.testing.expectEqual(1, response.cors_exposed_header_name_list.items.len);
+        try std.testing.expectEqualStrings("*", response.cors_exposed_header_name_list.items[0]);
+    }
+    // A value that is not a list of tokens is failure: nothing is exposed.
+    {
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        try response.header_list.append("Access-Control-Expose-Headers", "X-A, not a token");
+        try setCorsExposedHeaderNames(request, response);
+        try std.testing.expectEqual(0, response.cors_exposed_header_name_list.items.len);
+    }
+}
+
+test "main fetch step 14: tainting marks the response, and an opaque-redirect one is left alone" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    request.response_tainting = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    const ok = try InternalResponse.init(allocator);
+    defer ok.deinit();
+    ok.status = 200;
+    try ok.header_list.append("Access-Control-Expose-Headers", "X-A");
+    _ = mainFetchFinish(params, false, ok);
+    try std.testing.expectEqual(ResponseType.cors, ok.response_type);
+    try std.testing.expectEqual(1, ok.cors_exposed_header_name_list.items.len);
+
+    const redirect = try InternalResponse.init(allocator);
+    defer redirect.deinit();
+    redirect.status = 302;
+    redirect.response_type = .opaqueredirect;
+    try redirect.header_list.append("Access-Control-Expose-Headers", "X-A");
+    _ = mainFetchFinish(params, false, redirect);
+    try std.testing.expectEqual(ResponseType.opaqueredirect, redirect.response_type);
+    try std.testing.expectEqual(0, redirect.cors_exposed_header_name_list.items.len);
+}
+
+test "main fetch step 12: an unsafe cross-origin request needs a CORS-preflight" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // Not an unsafe request (one the user agent made): no preflight,
+    // whatever its method.
+    try request.setMethod("PUT");
+    try std.testing.expectEqual(.http_fetch, try mainFetchStart(allocator, params, false));
+
+    // An unsafe request: a method that is not CORS-safelisted...
+    request.unsafe_request = true;
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
+
+    // ...but a safelisted method with safelisted headers goes as it is...
+    try request.setMethod("POST");
+    try request.header_list.append("Content-Type", "text/plain");
+    try std.testing.expectEqual(.http_fetch, try mainFetchStart(allocator, params, false));
+
+    // ...until a header is not safelisted.
+    try request.header_list.append("X-Custom", "1");
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
+
+    // The use-CORS-preflight flag asks for one outright.
+    request.unsafe_request = false;
+    request.use_cors_preflight = true;
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
 }

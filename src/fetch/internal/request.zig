@@ -10,6 +10,7 @@ const Allocator = std.mem.Allocator;
 const header_list = @import("header_list.zig");
 const HeaderList = header_list.HeaderList;
 const body_mod = @import("body.zig");
+const origins = @import("origins.zig");
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -295,6 +296,9 @@ pub const InternalRequest = struct {
 
     /// Origin ("client" or actual origin)
     origin: RequestOrigin = .client,
+    /// Whether `origin`'s string is this request's to free (`setOrigin`);
+    /// callers that assign the field directly lend theirs.
+    origin_owned: bool = false,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -413,6 +417,7 @@ pub const InternalRequest = struct {
 
         // A URL referrer is owned - see the field's doc comment.
         if (self.referrer == .url) self.allocator.free(self.referrer.url);
+        if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
 
         // Free URL list entries
         for (self.url_list.items) |url| {
@@ -472,6 +477,68 @@ pub const InternalRequest = struct {
         const copy = try self.allocator.dupe(u8, url);
         if (self.referrer == .url) self.allocator.free(self.referrer.url);
         self.referrer = .{ .url = copy };
+    }
+
+    /// Set request's origin to `serialized` (a serialized origin, "null" for
+    /// an opaque one), copied: Fetch "fetch" step 13, "set request's origin to
+    /// request's client's origin".
+    pub fn setOrigin(self: *Self, serialized: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, serialized);
+        if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
+        self.origin = .{ .origin = copy };
+        self.origin_owned = true;
+    }
+
+    /// Whether request's current URL's origin is same origin with request's
+    /// origin (main fetch step 12's first condition). A request whose origin
+    /// is still "client" was made by the user agent itself, with no client
+    /// to be cross-origin with: same origin.
+    pub fn currentUrlIsSameOrigin(self: *const Self) !bool {
+        const origin = switch (self.origin) {
+            .client => return true,
+            .origin => |o| o,
+        };
+        return origins.sameOrigin(self.allocator, self.currentUrl(), origin);
+    }
+
+    /// Fetch "request's redirect-taint" is "same-origin": no hop of its URL
+    /// list went to an origin neither the previous URL's nor the request's.
+    /// (The same-site/cross-site distinction is not needed by anything that
+    /// reads it here.)
+    pub fn redirectTaintIsSameOrigin(self: *const Self) !bool {
+        const origin: []const u8 = switch (self.origin) {
+            .client => return true,
+            .origin => |o| o,
+        };
+        // 1-2. Let lastURL be null, and taint "same-origin".
+        var last_url: ?[]const u8 = null;
+        // 3. For each url of request's URL list:
+        for (self.url_list.items) |url| {
+            // 3.1. If lastURL is null, then set lastURL to url and continue.
+            const last = last_url orelse {
+                last_url = url;
+                continue;
+            };
+            // 3.3. If url's origin is not same origin with lastURL's origin
+            //      and request's origin is not same origin with lastURL's
+            //      origin, then set taint to "same-site" (or "cross-site").
+            if (!try origins.sameOrigin(self.allocator, url, last) and !try origins.sameOrigin(self.allocator, origin, last)) return false;
+            // 3.4. Set lastURL to url.
+            last_url = url;
+        }
+        return true;
+    }
+
+    /// Fetch "byte-serializing a request origin": "null" when request's
+    /// redirect-taint is not "same-origin", else request's origin,
+    /// serialized. OWNED.
+    pub fn serializeOrigin(self: *const Self, allocator: std.mem.Allocator) ![]u8 {
+        if (!try self.redirectTaintIsSameOrigin()) return allocator.dupe(u8, "null");
+        return switch (self.origin) {
+            // No client: nothing to serialize but an opaque origin.
+            .client => allocator.dupe(u8, "null"),
+            .origin => |o| origins.serializedOriginOf(allocator, o),
+        };
     }
 
     /// Set the request method.
@@ -546,7 +613,8 @@ pub const InternalRequest = struct {
             .destination = self.destination,
             .priority = self.priority,
             .internal_priority = self.internal_priority,
-            .origin = self.origin,
+            // Copied below when it is owned.
+            .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .policy_container = self.policy_container,
             // Copied below when it is an owned URL.
@@ -578,6 +646,8 @@ pub const InternalRequest = struct {
 
         // The referrer, when it is a URL, is owned per request.
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
+        // So is an origin set through `setOrigin`.
+        if (self.origin_owned and self.origin == .origin) try new_request.setOrigin(self.origin.origin);
 
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
@@ -802,4 +872,40 @@ test "Destination.isScriptLike" {
     try std.testing.expect(Destination.serviceworker.isScriptLike());
     try std.testing.expect(!Destination.image.isScriptLike());
     try std.testing.expect(!Destination.document.isScriptLike());
+}
+
+test "a request's origin: owned when set, copied by clone, compared with its current URL" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test:8000/x");
+    defer request.deinit();
+    try std.testing.expect(try request.currentUrlIsSameOrigin()); // "client"
+    try request.setOrigin("http://a.test:8000");
+    try std.testing.expect(try request.currentUrlIsSameOrigin());
+    try request.setOrigin("http://b.test:8000");
+    try std.testing.expect(!try request.currentUrlIsSameOrigin());
+    const cloned = try request.clone();
+    defer cloned.deinit();
+    try std.testing.expect(cloned.origin.origin.ptr != request.origin.origin.ptr);
+    try std.testing.expectEqualStrings("http://b.test:8000", cloned.origin.origin);
+}
+
+test "a request origin serializes as null once a redirect went elsewhere" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/start");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    const plain = try request.serializeOrigin(allocator);
+    defer allocator.free(plain);
+    try std.testing.expectEqualStrings("http://a.test", plain);
+    // a.test -> b.test: the request's own origin is a.test, the hop's
+    // previous URL - so still same-origin taint.
+    try request.addUrl("http://b.test/one");
+    const after_one = try request.serializeOrigin(allocator);
+    defer allocator.free(after_one);
+    try std.testing.expectEqualStrings("http://a.test", after_one);
+    // b.test -> c.test: neither the previous URL's origin nor the request's.
+    try request.addUrl("http://c.test/two");
+    const after_two = try request.serializeOrigin(allocator);
+    defer allocator.free(after_two);
+    try std.testing.expectEqualStrings("null", after_two);
 }

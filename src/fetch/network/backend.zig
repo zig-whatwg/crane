@@ -25,6 +25,8 @@ const Allocator = std.mem.Allocator;
 pub const HttpVersion = enum {
     http_1_0,
     http_1_1,
+    /// HTTP/2 where TLS negotiates it (ALPN), HTTP/1.1 otherwise - what
+    /// browsers do: never an h2c upgrade on a cleartext connection.
     http_2,
     http_3,
 
@@ -123,6 +125,15 @@ pub const NetworkRequest = struct {
     cert_options: CertVerifyOptions = .{},
     /// Enable verbose logging (for debugging)
     verbose: bool = false,
+    /// Send this request only on an HTTP/2 connection, and on any other
+    /// refuse it before a byte of it goes out: HTTP-network fetch step 8.3,
+    /// for a body with a null source (made from a ReadableStream).
+    require_http2: bool = false,
+    /// Header values the request owns, which `headers` points into - those
+    /// fetch adds to the request it sends, such as the `Origin`
+    /// HTTP-network-or-cache fetch appends. `http_fetch.freeNetworkRequest`
+    /// frees each, and the list.
+    owned_values: []const []const u8 = &.{},
 
     pub const Header = struct {
         name: []const u8,
