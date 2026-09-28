@@ -199,6 +199,17 @@ pub const ContextData = struct {
     /// Owned; set with `setDocumentUrl`.
     document_url: ?[]u8 = null,
 
+    /// For a ShadowRealm's realm, the realm that created it: HTML's
+    /// ShadowRealm integration gives a ShadowRealm a synthetic realm settings
+    /// object, whose principal realm - followed through ShadowRealms made
+    /// inside ShadowRealms - supplies the API base URL, the origin and the
+    /// fetch client. Host data, set by the adapter when it registers the
+    /// ShadowRealm's context; null for every other realm. BORROWED: a realm's
+    /// ContextData is never freed while the process runs.
+    ///
+    /// Spec: https://github.com/whatwg/html/pull/9893 ("principal realm")
+    principal_realm: ?*ContextData = null,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)
