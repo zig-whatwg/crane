@@ -251,6 +251,12 @@ pub const WptBrowser = struct {
         const test_url = try self.buildTestUrl(test_path);
         defer self.allocator.free(test_url);
 
+        // Each test file starts with an empty cookie jar, as with a fresh
+        // profile: a run shares one Browser across every file in a shard, and
+        // a file's result must not depend on the cookies the files before it
+        // left behind.
+        self.browser.cookie_jar.clear();
+
         // Navigate to create fresh context
         try self.browser.navigate(test_url, ctx_type);
 
