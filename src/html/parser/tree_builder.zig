@@ -136,6 +136,24 @@ pub const Namespace = enum {
     svg,
 };
 
+/// The namespaces "adjust foreign attributes" gives an attribute. Every other
+/// attribute the parser creates is in no namespace.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#adjust-foreign-attributes
+pub const AttributeNamespace = enum {
+    xlink,
+    xml,
+    xmlns,
+
+    pub fn uri(self: AttributeNamespace) []const u8 {
+        return switch (self) {
+            .xlink => "http://www.w3.org/1999/xlink",
+            .xml => "http://www.w3.org/XML/1998/namespace",
+            .xmlns => "http://www.w3.org/2000/xmlns/",
+        };
+    }
+};
+
 /// A node in the DOM tree being constructed.
 ///
 /// This is a simplified node representation for the parser.
@@ -182,10 +200,14 @@ pub const TreeNode = struct {
         comment,
     };
 
+    /// An attribute as "create an element for a token" appends it: a local
+    /// name (owned), a value (owned), and - for the attributes in the
+    /// "adjust foreign attributes" table - a namespace and a prefix (static).
     pub const Attribute = struct {
         name: []const u8,
         value: []const u8,
-        namespace: ?Namespace,
+        namespace: ?AttributeNamespace,
+        prefix: ?[]const u8 = null,
     };
 
     /// Create a new document node.
@@ -365,8 +387,14 @@ pub const TreeNode = struct {
         self.last_child = child;
     }
 
-    /// Add an attribute.
-    pub fn addAttribute(self: *TreeNode, name: []const u8, value: []const u8, namespace: ?Namespace) !void {
+    /// Add an attribute in no namespace.
+    pub fn addAttribute(self: *TreeNode, name: []const u8, value: []const u8, namespace: ?AttributeNamespace) !void {
+        return self.addNamespacedAttribute(name, value, namespace, null);
+    }
+
+    /// Add an attribute with a namespace and prefix (both static, from the
+    /// "adjust foreign attributes" table), or none.
+    pub fn addNamespacedAttribute(self: *TreeNode, name: []const u8, value: []const u8, namespace: ?AttributeNamespace, prefix: ?[]const u8) !void {
         const name_copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(name_copy);
         const value_copy = try self.allocator.dupe(u8, value);
@@ -376,7 +404,16 @@ pub const TreeNode = struct {
             .name = name_copy,
             .value = value_copy,
             .namespace = namespace,
+            .prefix = prefix,
         });
+    }
+
+    /// The value of the attribute in no namespace named `name`, if any.
+    pub fn getAttribute(self: *const TreeNode, name: []const u8) ?[]const u8 {
+        for (self.attributes.toSlice()) |attr| {
+            if (attr.namespace == null and std.mem.eql(u8, attr.name, name)) return attr.value;
+        }
+        return null;
     }
 
     /// Append text to text content.
@@ -505,6 +542,15 @@ pub const TreeBuilder = struct {
     /// The text node the parser has been appending to without telling the DOM
     /// adapter yet - see `flushPendingText`.
     pending_text: ?*TreeNode = null,
+    /// An attribute was added to an element the adapter already made: a
+    /// second <html> or <body> start tag's attributes, which "in body" adds
+    /// to the existing element. Called with `dom_adapter_context`.
+    dom_adapter_on_attribute_added: ?*const fn (*TreeNode, *const TreeNode.Attribute, ?*anyopaque) void = null,
+
+    /// The fragment parsing algorithm's context element, as a tree node the
+    /// caller owns: the adjusted current node while the stack of open elements
+    /// holds only the root. Null for a document parse.
+    fragment_context: ?*TreeNode = null,
 
     /// Input stream manager for document.write() support.
     ///
@@ -610,6 +656,15 @@ pub const TreeBuilder = struct {
         self.dom_adapter_on_node_created = on_node_created;
         self.dom_adapter_on_child_appended = on_child_appended;
         self.dom_adapter_on_text_content_changed = on_text_content_changed;
+    }
+
+    /// Set the adapter's attribute-added callback (see
+    /// `dom_adapter_on_attribute_added`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterAttributeCallback(
+        self: *TreeBuilder,
+        on_attribute_added: ?*const fn (*TreeNode, *const TreeNode.Attribute, ?*anyopaque) void,
+    ) void {
+        self.dom_adapter_on_attribute_added = on_attribute_added;
     }
 
     /// Check if the parser is currently paused waiting for scripts.
@@ -718,11 +773,23 @@ pub const TreeBuilder = struct {
     }
 
     /// Get the adjusted current node.
-    /// HTML Standard §13.2.6: The adjusted current node is the context
-    /// element if parsing a fragment with only one element in stack.
+    /// HTML Standard §13.2.6: "The adjusted current node is the context
+    /// element if the parser was created as part of the HTML fragment parsing
+    /// algorithm and the stack of open elements has only one element in it
+    /// (fragment case); otherwise, the adjusted current node is the current
+    /// node."
     pub fn adjustedCurrentNode(self: *TreeBuilder) ?*TreeNode {
-        // For now, just return current node (fragment parsing not implemented)
+        if (self.fragment_context) |context| {
+            if (self.open_elements.len == 1) return context;
+        }
         return self.currentNode();
+    }
+
+    /// "There is an adjusted current node and it is not an element in the HTML
+    /// namespace."
+    pub fn adjustedCurrentNodeIsForeign(self: *TreeBuilder) bool {
+        const node = self.adjustedCurrentNode() orelse return false;
+        return node.node_type == .element and node.namespace != .html;
     }
 
     /// Parse the entire document.
@@ -730,6 +797,9 @@ pub const TreeBuilder = struct {
         // Whatever stops the loop, the adapter hears the last run of text.
         defer self.flushPendingText();
         while (true) {
+            // The markup declaration open state asks whether the adjusted
+            // current node is foreign before it opens a CDATA section.
+            self.tokenizer.allow_cdata = self.adjustedCurrentNodeIsForeign();
             const token = try self.tokenizer.nextToken();
             if (token == null) {
                 // The tokenizer signals end of input by returning NULL, not by
@@ -805,6 +875,15 @@ pub const TreeBuilder = struct {
             }
         }
 
+        // "If the adjusted current node is a MathML annotation-xml element and
+        // the token is a start tag whose tag name is "svg"".
+        if (current.namespace == .mathml and current.hasTagName("annotation-xml")) {
+            switch (token) {
+                .start_tag => |tag| if (std.mem.eql(u8, tag.getTagName(), "svg")) return false,
+                else => {},
+            }
+        }
+
         // Check for HTML integration point
         if (self.isHtmlIntegrationPoint(current)) {
             switch (token) {
@@ -836,10 +915,14 @@ pub const TreeBuilder = struct {
     /// Check if node is an HTML integration point.
     fn isHtmlIntegrationPoint(self: *TreeBuilder, node: *TreeNode) bool {
         _ = self;
-        // MathML annotation-xml with text/html or application/xhtml+xml encoding
+        // "A MathML annotation-xml element whose start tag token had an
+        // attribute with the name "encoding" whose value was an ASCII
+        // case-insensitive match for the string "text/html" [or]
+        // "application/xhtml+xml"".
         if (node.namespace == .mathml and node.hasTagName("annotation-xml")) {
-            // Check encoding attribute (simplified - would need to check actual attribute)
-            return true;
+            const encoding = node.getAttribute("encoding") orelse return false;
+            return std.ascii.eqlIgnoreCase(encoding, "text/html") or
+                std.ascii.eqlIgnoreCase(encoding, "application/xhtml+xml");
         }
         // SVG foreignObject, desc, title
         if (node.namespace == .svg) {
@@ -939,60 +1022,27 @@ pub const TreeBuilder = struct {
                     // Reprocess the token according to the current insertion mode
                     try self.processTokenInHtmlContent(token);
                 } else {
-                    // Any other start tag
+                    // Any other start tag: adjust it for the adjusted current
+                    // node's namespace and insert a foreign element in it.
                     const adjusted_current = self.adjustedCurrentNode() orelse {
                         try self.processTokenInHtmlContent(token);
                         return;
                     };
+                    _ = try self.insertForeignElement(tag, adjusted_current.namespace);
 
-                    // Determine namespace for the new element
-                    const element_namespace = adjusted_current.namespace;
-                    var element_name = name;
-
-                    // If in SVG namespace, adjust tag name
-                    if (adjusted_current.namespace == .svg) {
-                        element_name = adjustSvgTagName(name);
-                    }
-
-                    // Create and insert the foreign element
-                    const element = try TreeNode.initElement(self.allocator, element_name, element_namespace);
-
-                    // Copy attributes (with namespace adjustments)
-                    const attrs = tag.attributes.toSlice();
-                    for (attrs) |attr| {
-                        var attr_name = attr.getName();
-                        var attr_namespace: ?Namespace = null;
-
-                        // Adjust foreign attributes
-                        if (adjusted_current.namespace == .mathml) {
-                            const adjusted = adjustMathMLAttribute(attr_name);
-                            attr_name = adjusted.name;
-                        } else if (adjusted_current.namespace == .svg) {
-                            const adjusted = adjustSvgAttribute(attr_name);
-                            attr_name = adjusted.name;
-                        }
-
-                        // Check for namespaced attributes (xlink:, xml:, xmlns:)
-                        const foreign_adjusted = adjustForeignAttribute(attr_name);
-                        attr_name = foreign_adjusted.name;
-                        attr_namespace = foreign_adjusted.namespace;
-
-                        try element.addAttribute(attr_name, attr.getValue(), attr_namespace);
-                    }
-
-                    // Notify DOM adapter of element creation
-                    self.flushPendingText();
-                    if (self.dom_adapter_on_node_created) |callback| {
-                        callback(element, self.dom_adapter_context);
-                    }
-
-                    self.insertAtAppropriatePlace(element);
-                    try self.open_elements.append(element);
-
-                    // If self-closing, pop the element
                     if (tag.self_closing) {
-                        _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
-                        // Acknowledge the self-closing flag
+                        const current = self.currentNode().?;
+                        if (std.mem.eql(u8, name, "script") and current.namespace == .svg) {
+                            // "Acknowledge the token's self-closing flag, and
+                            // then act as described in the steps for a
+                            // "script" end tag below."
+                            self.processSvgScriptEndTag();
+                        } else {
+                            // "Pop the current node off the stack of open
+                            // elements and acknowledge the token's
+                            // self-closing flag."
+                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                        }
                     }
                 }
             },
@@ -1023,44 +1073,32 @@ pub const TreeBuilder = struct {
                     self.currentNode().?.namespace == .svg and
                     self.currentNode().?.hasTagName("script"))
                 {
-                    // SVG script end tag - pop the script element
-                    const script_element = self.open_elements.get(self.open_elements.len - 1);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
-
-                    // Execute SVG script element (via callback)
-                    // HTML Standard: SVG script elements follow a similar execution model
-                    if (self.scripting_enabled) {
-                        if (script_element) |script| {
-                            self.flushPendingText();
-                            if (self.script_execution_callback) |callback| {
-                                self.script_nesting_level += 1;
-                                callback(script, self.script_execution_context);
-                                if (self.script_nesting_level > 0) {
-                                    self.script_nesting_level -= 1;
-                                }
-                            }
-                        }
-                    }
+                    self.processSvgScriptEndTag();
                 } else {
-                    // Any other end tag
-                    var node_index: usize = self.open_elements.len;
-                    while (node_index > 0) {
-                        node_index -= 1;
-                        const node = self.open_elements.get(node_index) orelse break;
-
-                        if (node.namespace == .html) {
-                            // Process according to current insertion mode
-                            try self.processTokenInHtmlContent(token);
-                            return;
-                        }
-
-                        if (node.local_name != null and
-                            std.ascii.eqlIgnoreCase(node.local_name.?, name))
-                        {
-                            // Pop elements up to and including this node
+                    // Any other end tag.
+                    // Step 1: node is the current node.
+                    if (self.open_elements.len == 0) return;
+                    var node_index: usize = self.open_elements.len - 1;
+                    while (true) {
+                        const node = self.open_elements.get(node_index) orelse return;
+                        // Step 3: the topmost element - return (fragment case).
+                        if (node_index == 0) return;
+                        // Step 4: a match, ASCII case-insensitively (an SVG
+                        // name like clipPath against the token's clippath):
+                        // pop up to and including it.
+                        if (node.local_name != null and std.ascii.eqlIgnoreCase(node.local_name.?, name)) {
                             while (self.open_elements.len > node_index) {
                                 _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
                             }
+                            return;
+                        }
+                        // Step 5: the previous entry.
+                        node_index -= 1;
+                        const previous = self.open_elements.get(node_index) orelse return;
+                        // Steps 6-7: an HTML element - process the token by
+                        // the current insertion mode's rules.
+                        if (previous.namespace == .html) {
+                            try self.processTokenInHtmlContent(token);
                             return;
                         }
                     }
@@ -1238,19 +1276,93 @@ pub const TreeBuilder = struct {
         return .{ .name = name };
     }
 
-    /// Adjust foreign attributes (xlink:, xml:, xmlns: namespace handling).
-    fn adjustForeignAttribute(name: []const u8) struct { name: []const u8, namespace: ?Namespace } {
-        // Check for namespaced attributes
-        if (std.mem.startsWith(u8, name, "xlink:")) {
-            return .{ .name = name[6..], .namespace = null }; // XLink namespace
+    /// "Adjust foreign attributes" for one attribute: an attribute whose name
+    /// is in the table becomes namespaced, with the table's prefix and local
+    /// name; any other name is left alone (an "xlink:foo" is an attribute
+    /// with a colon in its name, in no namespace).
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#adjust-foreign-attributes
+    const ForeignAttribute = struct { prefix: ?[]const u8, local_name: []const u8, namespace: ?AttributeNamespace };
+
+    fn adjustForeignAttribute(name: []const u8) ForeignAttribute {
+        const table = [_]struct { name: []const u8, attr: ForeignAttribute }{
+            .{ .name = "xlink:actuate", .attr = .{ .prefix = "xlink", .local_name = "actuate", .namespace = .xlink } },
+            .{ .name = "xlink:arcrole", .attr = .{ .prefix = "xlink", .local_name = "arcrole", .namespace = .xlink } },
+            .{ .name = "xlink:href", .attr = .{ .prefix = "xlink", .local_name = "href", .namespace = .xlink } },
+            .{ .name = "xlink:role", .attr = .{ .prefix = "xlink", .local_name = "role", .namespace = .xlink } },
+            .{ .name = "xlink:show", .attr = .{ .prefix = "xlink", .local_name = "show", .namespace = .xlink } },
+            .{ .name = "xlink:title", .attr = .{ .prefix = "xlink", .local_name = "title", .namespace = .xlink } },
+            .{ .name = "xlink:type", .attr = .{ .prefix = "xlink", .local_name = "type", .namespace = .xlink } },
+            .{ .name = "xml:lang", .attr = .{ .prefix = "xml", .local_name = "lang", .namespace = .xml } },
+            .{ .name = "xml:space", .attr = .{ .prefix = "xml", .local_name = "space", .namespace = .xml } },
+            .{ .name = "xmlns", .attr = .{ .prefix = null, .local_name = "xmlns", .namespace = .xmlns } },
+            .{ .name = "xmlns:xlink", .attr = .{ .prefix = "xmlns", .local_name = "xlink", .namespace = .xmlns } },
+        };
+        for (table) |entry| {
+            if (std.mem.eql(u8, name, entry.name)) return entry.attr;
         }
-        if (std.mem.startsWith(u8, name, "xml:")) {
-            return .{ .name = name[4..], .namespace = null }; // XML namespace
+        return .{ .prefix = null, .local_name = name, .namespace = null };
+    }
+
+    /// "Insert a foreign element" for `tag` in `namespace` (SVG or MathML),
+    /// having adjusted the token as the caller's step says: the SVG tag name
+    /// and attributes for SVG, the MathML attributes for MathML, and the
+    /// foreign attributes for both.
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
+    fn insertForeignElement(self: *TreeBuilder, tag: TagToken, namespace: Namespace) !*TreeNode {
+        const element = try createForeignElement(self.allocator, tag, namespace);
+
+        // "Create an element for the token", then "insert an element at the
+        // adjusted insertion location", then push it.
+        self.flushPendingText();
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(element, self.dom_adapter_context);
         }
-        if (std.mem.eql(u8, name, "xmlns") or std.mem.startsWith(u8, name, "xmlns:")) {
-            return .{ .name = name, .namespace = null }; // XMLNS namespace
+        self.insertAtAppropriatePlace(element);
+        try self.open_elements.append(element);
+        return element;
+    }
+
+    /// "Create an element for the token" for a foreign element: the adjusted
+    /// tag name, and the token's attributes adjusted and appended. Owned by
+    /// the caller until inserted.
+    fn createForeignElement(allocator: Allocator, tag: TagToken, namespace: Namespace) !*TreeNode {
+        const name = tag.getTagName();
+        const element_name = if (namespace == .svg) adjustSvgTagName(name) else name;
+        const element = try TreeNode.initElement(allocator, element_name, namespace);
+        errdefer element.deinit();
+
+        for (tag.attributes.toSlice()) |attr| {
+            var attr_name = attr.getName();
+            switch (namespace) {
+                .mathml => attr_name = adjustMathMLAttribute(attr_name).name,
+                .svg => attr_name = adjustSvgAttribute(attr_name).name,
+                .html => {},
+            }
+            const foreign = adjustForeignAttribute(attr_name);
+            try element.addNamespacedAttribute(foreign.local_name, attr.getValue(), foreign.namespace, foreign.prefix);
         }
-        return .{ .name = name, .namespace = null };
+        return element;
+    }
+
+    /// The "script" end tag steps for an SVG script, which is the current
+    /// node: pop it, and process it with the parser's script nesting level
+    /// raised - the callback runs it.
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
+    /// ("An end tag whose tag name is "script", if the current node is an SVG
+    /// script element")
+    fn processSvgScriptEndTag(self: *TreeBuilder) void {
+        const script_element = self.currentNode() orelse return;
+        _ = self.open_elements.remove(self.open_elements.len - 1) catch return;
+
+        if (!self.scripting_enabled) return;
+        self.flushPendingText();
+        const callback = self.script_execution_callback orelse return;
+        self.script_nesting_level += 1;
+        callback(script_element, self.script_execution_context);
+        self.script_nesting_level -|= 1;
     }
 
     // =========================================================================
@@ -1269,9 +1381,7 @@ pub const TreeBuilder = struct {
             },
             .comment => |comment| {
                 // Insert comment as last child of Document
-                const node = try TreeNode.initComment(self.allocator);
-                try node.appendText(comment.getData());
-                self.document.appendChild(node);
+                try self.insertCommentIn(self.document, comment);
             },
             .doctype => |doctype| {
                 // Handle DOCTYPE
@@ -1401,9 +1511,7 @@ pub const TreeBuilder = struct {
             },
             .comment => |comment| {
                 // Insert comment as last child of Document
-                const node = try TreeNode.initComment(self.allocator);
-                try node.appendText(comment.getData());
-                self.document.appendChild(node);
+                try self.insertCommentIn(self.document, comment);
             },
             .character => |char| {
                 // Ignore whitespace
@@ -2014,6 +2122,17 @@ pub const TreeBuilder = struct {
             try self.reconstructActiveFormattingElements();
             _ = try self.insertHtmlElement(tag);
             _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+        } else if (std.mem.eql(u8, name, "math") or std.mem.eql(u8, name, "svg")) {
+            // "A start tag whose tag name is "math"" / ""svg"": reconstruct
+            // the active formatting elements, adjust the MathML or SVG
+            // attributes and the foreign attributes, and insert a foreign
+            // element in the MathML or SVG namespace. Self-closing: pop it and
+            // acknowledge the flag.
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertForeignElement(tag, if (name[0] == 'm') .mathml else .svg);
+            if (tag.self_closing) {
+                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+            }
         } else {
             // Generic handling for other start tags
             try self.reconstructActiveFormattingElements();
@@ -2047,6 +2166,10 @@ pub const TreeBuilder = struct {
                 // Parse error - insert an HTML element for a "p" start tag with no attributes
                 self.reportError(.invalid_first_character_of_tag_name);
                 const p_element = try TreeNode.initElement(self.allocator, "p", .html);
+                self.flushPendingText();
+                if (self.dom_adapter_on_node_created) |callback| {
+                    callback(p_element, self.dom_adapter_context);
+                }
                 self.insertAtAppropriatePlace(p_element);
                 try self.open_elements.append(p_element);
             }
@@ -3079,11 +3202,7 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 // Insert as last child of html element
                 const html = self.open_elements.get(0);
-                if (html) |h| {
-                    const node = try TreeNode.initComment(self.allocator);
-                    try node.appendText(comment.getData());
-                    h.appendChild(node);
-                }
+                if (html) |h| try self.insertCommentIn(h, comment);
             },
             .doctype => {
                 self.reportError(.missing_doctype_name);
@@ -3242,9 +3361,7 @@ pub const TreeBuilder = struct {
     fn handleAfterAfterBodyMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .comment => |comment| {
-                const node = try TreeNode.initComment(self.allocator);
-                try node.appendText(comment.getData());
-                self.document.appendChild(node);
+                try self.insertCommentIn(self.document, comment);
             },
             .doctype, .eof => {},
             .character => |char| {
@@ -3285,9 +3402,7 @@ pub const TreeBuilder = struct {
     fn handleAfterAfterFramesetMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .comment => |comment| {
-                const node = try TreeNode.initComment(self.allocator);
-                try node.appendText(comment.getData());
-                self.document.appendChild(node);
+                try self.insertCommentIn(self.document, comment);
             },
             .doctype => {
                 try self.handleInBodyMode(token);
@@ -3462,9 +3577,15 @@ pub const TreeBuilder = struct {
 
     /// Insert a comment.
     fn insertComment(self: *TreeBuilder, comment: CommentToken) !void {
+        try self.insertCommentIn(self.currentNode() orelse self.document, comment);
+    }
+
+    /// "Insert a comment" as the last child of `parent` - the document, the
+    /// html element, or the current node - telling the DOM adapter, which
+    /// otherwise never hears of a comment outside the html element.
+    fn insertCommentIn(self: *TreeBuilder, parent: *TreeNode, comment: CommentToken) !void {
         const node = try TreeNode.initComment(self.allocator);
         try node.appendText(comment.getData());
-        const parent = self.currentNode() orelse self.document;
         parent.appendChild(node);
 
         // Notify DOM adapter of comment creation and parent-child relationship
@@ -4176,8 +4297,11 @@ pub const TreeBuilder = struct {
     ///
     /// HTML Standard: For each attribute on the token, check if already present
     /// on the element. If not, add it.
+    /// "For each attribute on the token, check to see if the attribute is
+    /// already present on the [element]. If it is not, add the attribute and
+    /// its corresponding value to that element." The element is in the DOM
+    /// already, so the adapter hears each one it gains.
     fn copyMissingAttributes(self: *TreeBuilder, element: *TreeNode, tag: TagToken) !void {
-        _ = self; // Mark as used
         const token_attrs = tag.attributes.toSlice();
         for (token_attrs) |attr| {
             const attr_name = attr.getName();
@@ -4195,6 +4319,10 @@ pub const TreeBuilder = struct {
             // If not present, add it
             if (!exists) {
                 try element.addAttribute(attr_name, attr.getValue(), null);
+                if (self.dom_adapter_on_attribute_added) |callback| {
+                    const attrs = element.attributes.toSlice();
+                    callback(element, &attrs[attrs.len - 1], self.dom_adapter_context);
+                }
             }
         }
     }

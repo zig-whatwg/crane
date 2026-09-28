@@ -74,6 +74,7 @@ const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 // WebIDL types
 const webidl = @import("webidl");
 const node_document = @import("dom").node_document;
+const parser_script_execution = @import("parser_script_execution.zig");
 
 /// Error type for DOM tree adapter operations
 pub const DomTreeAdapterError = error{
@@ -144,6 +145,13 @@ pub const DomTreeAdapter = struct {
             onChildAppendedCallback,
             onTextContentChangedCallback,
         );
+        tree_builder.setDomAdapterAttributeCallback(onAttributeAddedCallback);
+    }
+
+    fn onAttributeAddedCallback(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context));
+        const element = self.node_map.get(tree_node) orelse return;
+        parser_script_execution.appendParsedAttribute(element, attr.*);
     }
 
     // Static callback wrappers that the tree builder calls
@@ -288,27 +296,6 @@ pub const DomTreeAdapter = struct {
         }
     }
 
-    /// Called when tree builder adds an attribute to an element.
-    ///
-    /// @param tree_node The element TreeNode
-    /// @param name Attribute name
-    /// @param value Attribute value
-    pub fn onAttributeAdded(
-        self: *DomTreeAdapter,
-        tree_node: *TreeNode,
-        name: []const u8,
-        value: []const u8,
-    ) DomTreeAdapterError!void {
-        const dom_node = self.node_map.get(tree_node) orelse return;
-
-        const name_str = runtime.DOMString.initInterned(name);
-        const value_str = runtime.DOMString.initInterned(value);
-
-        Element.call_setAttribute(dom_node, name_str, value_str) catch {
-            return DomTreeAdapterError.DomOperationFailed;
-        };
-    }
-
     /// Get the DOM node for a TreeNode.
     ///
     /// @param tree_node The TreeNode to look up
@@ -398,13 +385,8 @@ pub const DomTreeAdapter = struct {
             HTMLScriptElementImpl.clearForceAsync(element);
         }
 
-        // Add existing attributes
-        const attrs = tree_node.attributes.toSlice();
-        for (attrs) |attr| {
-            const name_str = runtime.DOMString.initInterned(attr.name);
-            const value_str = runtime.DOMString.initInterned(attr.value);
-            Element.call_setAttribute(element, name_str, value_str) catch continue;
-        }
+        // "Append each attribute in the given token to element."
+        for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
 
         return element;
     }

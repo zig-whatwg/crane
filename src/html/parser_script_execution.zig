@@ -341,6 +341,34 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
 }
 
 // =============================================================================
+// Attributes from the parser
+// =============================================================================
+
+/// "Create an element for the token" step: "Append each attribute in the
+/// given token to element" - DOM "append an attribute", with the namespace
+/// and prefix "adjust foreign attributes" gave it, and no validation: an
+/// attribute name the tokenizer produced is one the element holds, whether or
+/// not setAttribute() would accept it (`<div a"b>`), and an `xlink:href` on
+/// SVG is the attribute `href` in the XLink namespace, which setAttribute()
+/// could not make.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
+    dom.element_attributes.append(element, .{
+        .namespace = if (attr.namespace) |ns| ns.uri() else null,
+        .prefix = attr.prefix,
+        .local_name = attr.name,
+        .value = attr.value,
+    }) catch |err| log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
+}
+
+/// The SVG script end-tag step's "process the SVG script element", or the
+/// HTML script callback: which one `tree_node` is.
+pub fn isSvgScript(tree_node: *const TreeNode) bool {
+    return tree_node.namespace == .svg and tree_node.hasTagName("script");
+}
+
+// =============================================================================
 // HTTP Script Fetching (Default Browser Behavior)
 // =============================================================================
 
@@ -371,6 +399,14 @@ fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
     } else {}
 
     return null;
+}
+
+/// Static callback wrapper for an attribute added to an element the adapter
+/// already made. Passed to tree_builder.setDomAdapterAttributeCallback().
+pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const element = adapter.node_map.get(tree_node) orelse return;
+    appendParsedAttribute(element, attr.*);
 }
 
 // =============================================================================
@@ -588,13 +624,7 @@ pub const DomTreeAdapter = struct {
             HTMLScriptElementImpl.clearForceAsync(element);
         }
 
-        // Add attributes
-        const attrs = tree_node.attributes.toSlice();
-        for (attrs) |attr| {
-            const name_str = runtime.DOMString.initInterned(attr.name);
-            const value_str = runtime.DOMString.initInterned(attr.value);
-            interfaces.Element.call_setAttribute(element, name_str, value_str) catch {};
-        }
+        for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 
         return element;
     }

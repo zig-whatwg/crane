@@ -80,6 +80,15 @@ pub const Tokenizer = struct {
     /// Current input character (for reconsume).
     current_char: InputCharacter,
 
+    /// Whether there is an adjusted current node that is not an element in
+    /// the HTML namespace - which the markup declaration open state asks
+    /// before it switches to the CDATA section state. The tree builder owns
+    /// the stack of open elements, so it sets this before asking for each
+    /// token.
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
+    allow_cdata: bool = false,
+
     /// Error callback.
     error_callback: ?ParseErrorCallback,
 
@@ -242,6 +251,15 @@ pub const Tokenizer = struct {
             return false;
         }
         return self.input.matchesAsciiCaseInsensitive(expected);
+    }
+
+    /// Check if input matches string exactly (for static input).
+    fn inputMatchesCaseSensitive(self: *Tokenizer, expected: []const u8) bool {
+        if (self.input_stream_manager != null) {
+            // Not supported for dynamic input - return false
+            return false;
+        }
+        return self.input.matchesCaseSensitive(expected);
     }
 
     /// Consume if input matches string case-insensitively (for static input).
@@ -1567,12 +1585,20 @@ pub const Tokenizer = struct {
             }
         }
 
-        // Check for "[CDATA[" (current_char is '[')
+        // Check for "[CDATA[" (current_char is '[') - a case-sensitive match.
         if (self.current_char.is('[')) {
-            if (self.inputMatchesAsciiCaseInsensitive("CDATA[")) {
+            if (self.inputMatchesCaseSensitive("CDATA[")) {
                 self.inputConsumeN(6);
-                // Note: In a proper implementation, we'd check if we're in foreign content.
-                // For now, always treat as HTML content (bogus comment)
+                // "If there is an adjusted current node and it is not an
+                // element in the HTML namespace, then switch to the CDATA
+                // section state."
+                if (self.allow_cdata) {
+                    self.state = .cdata_section;
+                    return null;
+                }
+                // "Otherwise, this is a cdata-in-html-content parse error.
+                // Create a comment token whose data is the "[CDATA[" string.
+                // Switch to the bogus comment state."
                 self.reportError(.cdata_in_html_content);
                 self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
                 // Append "[CDATA[" to comment

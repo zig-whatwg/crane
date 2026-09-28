@@ -496,11 +496,25 @@ pub fn parseFragment(
     html: []const u8,
     context_element: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
-    // Determine context element tag name for fragment parsing
+    // The context element's local name and namespace. Its HTML-specific
+    // steps below - the tokenizer state, the insertion mode - are for an
+    // element in the HTML namespace; a foreign context (innerHTML on an svg
+    // element) is the parser's adjusted current node instead.
     var context_tag: ?[]const u8 = null;
+    var context_namespace: ParserNamespace = .html;
+    var context_encoding: ?[]const u8 = null;
     if (context_element) |elem| {
         if (ElementImpl.getInternal(elem)) |elem_internal| {
             context_tag = elem_internal.local_name.asSlice();
+            if (elem_internal.namespace_uri) |ns| {
+                const uri = ns.asSlice();
+                if (std.mem.eql(u8, uri, "http://www.w3.org/2000/svg")) {
+                    context_namespace = .svg;
+                } else if (std.mem.eql(u8, uri, "http://www.w3.org/1998/Math/MathML")) {
+                    context_namespace = .mathml;
+                }
+            }
+            if (elem_internal.findAttribute(null, "encoding")) |attr| context_encoding = attr.value;
         }
     }
 
@@ -520,8 +534,26 @@ pub fn parseFragment(
     // Step 9: Set up stack of open elements with just the root element
     tree_builder.open_elements.append(root) catch return error.OutOfMemory;
 
+    // "The adjusted current node is the context element if the parser was
+    // created as part of the HTML fragment parsing algorithm and the stack of
+    // open elements has only one element in it" - the tree builder asks it
+    // for foreign content, so it gets the context's name, namespace and (for
+    // annotation-xml) encoding.
+    const context_node: ?*TreeNode = if (context_tag) |tag| blk: {
+        const node = TreeNode.initElement(allocator, tag, context_namespace) catch return error.OutOfMemory;
+        if (context_encoding) |encoding| node.addAttribute("encoding", encoding, null) catch {
+            node.deinit();
+            return error.OutOfMemory;
+        };
+        break :blk node;
+    } else null;
+    defer if (context_node) |node| node.deinit();
+    tree_builder.fragment_context = context_node;
+
     // Step 4: Set up fragment parsing context
-    if (context_tag) |tag| {
+    if (context_namespace != .html) {
+        tree_builder.insertion_mode = .in_body;
+    } else if (context_tag) |tag| {
         // Step 12: Set initial insertion mode based on context element
         tree_builder.insertion_mode = getFragmentInsertionMode(tag);
 

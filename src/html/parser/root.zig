@@ -49,6 +49,7 @@ pub const InsertionMode = @import("tree_builder.zig").InsertionMode;
 pub const TreeNode = @import("tree_builder.zig").TreeNode;
 pub const QuirksMode = @import("tree_builder.zig").QuirksMode;
 pub const Namespace = @import("tree_builder.zig").Namespace;
+pub const AttributeNamespace = @import("tree_builder.zig").AttributeNamespace;
 pub const FormattingEntry = @import("tree_builder.zig").FormattingEntry;
 pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
 
