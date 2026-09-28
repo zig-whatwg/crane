@@ -2807,6 +2807,44 @@ pub fn V8Interface(comptime Interface: type) type {
             return false;
         }
 
+        /// How many arguments the operation `zig_name` requires: its
+        /// `length`, which codegen writes into `methods` / `static_methods` -
+        /// the fewest required arguments of any overload (WebIDL "the length
+        /// of the shortest argument list in the effective overload set"). 0
+        /// for a function those tables do not name (a later overload, reached
+        /// through forwardToOverload, whose set has already been checked).
+        fn requiredArguments(comptime zig_name: []const u8) usize {
+            comptime {
+                for (.{ "methods", "static_methods" }) |table| {
+                    if (!@hasDecl(Meta, table)) continue;
+                    for (@field(Meta, table)) |entry| {
+                        if (entry.len >= 3 and std.mem.eql(u8, entry[1], zig_name)) return entry[2];
+                    }
+                }
+                return 0;
+            }
+        }
+
+        /// WebIDL "create an operation function" step 3, the overload
+        /// resolution algorithm, for the argument count alone: an operation's
+        /// effective overload set has an entry for each number of arguments
+        /// it can be called with, and none below the fewest it requires, so
+        /// the algorithm throws a TypeError there - before any argument is
+        /// converted. (A missing required DOMString used to convert as "", so
+        /// `localStorage.getItem()` returned null instead of throwing.)
+        /// True when it threw.
+        fn throwIfTooFewArguments(comptime zig_name: []const u8, info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context) bool {
+            const required = comptime requiredArguments(zig_name);
+            if (comptime required == 0) return false;
+            const given: usize = @intCast(@max(info.length(), 0));
+            if (given >= required) return false;
+            var buffer: [256]u8 = undefined;
+            const operation = comptime if (std.mem.startsWith(u8, zig_name, "call_static_")) zig_name["call_static_".len..] else if (std.mem.startsWith(u8, zig_name, "call_")) zig_name["call_".len..] else zig_name;
+            const message = std.fmt.bufPrint(&buffer, "Failed to execute '" ++ operation ++ "' on '" ++ interface_name ++ "': {d} argument{s} required, but only {d} present.", .{ required, if (required == 1) "" else "s", given }) catch "Not enough arguments";
+            conv.throwTypeErrorFromContext(isolate, context, message);
+            return true;
+        }
+
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -3033,6 +3071,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwTypeErrorFromContext(isolate, method_context, "Illegal invocation");
                         return;
                     }
+
+                    // Step 3: too few arguments is a TypeError, in the
+                    // operation's realm, before any is converted.
+                    if (throwIfTooFewArguments(zig_name, info, isolate, method_context)) return;
 
                     // Get the method function at comptime
                     const method_fn = @field(Interface, zig_name);
@@ -7580,6 +7622,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk false;
                     };
                     defer if (comptime !params_retain) v8.v8_Context_Dispose(v8_context);
+
+                    // WebIDL "create an operation function" step 3 (no `this`
+                    // to check for a static operation): too few arguments is
+                    // a TypeError before any is converted.
+                    if (throwIfTooFewArguments(zig_name, info, isolate, v8_context)) return;
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
