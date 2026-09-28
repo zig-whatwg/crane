@@ -241,7 +241,7 @@ pub fn mainFetchStart(
         // 1. Set request's response tainting to "basic".
         request.response_tainting = .basic;
         // 2. Return the result of running scheme fetch.
-        return schemeFetch(allocator, scheme, url_str);
+        return schemeFetch(allocator, request, scheme);
     }
 
     // request's mode is "same-origin": a network error.
@@ -255,7 +255,7 @@ pub fn mainFetchStart(
         // 2. Set request's response tainting to "opaque".
         request.response_tainting = .@"opaque";
         // 3. Return the result of running scheme fetch.
-        return schemeFetch(allocator, scheme, url_str);
+        return schemeFetch(allocator, request, scheme);
     }
 
     // request's current URL's scheme is not an HTTP(S) scheme: a network
@@ -353,9 +353,9 @@ fn splitSerializedOrigin(origin: []const u8) ?OriginParts {
 /// Main fetch step 12's "run scheme fetch": HTTP fetch for an HTTP(S) URL
 /// (scheme fetch's "HTTP(S) scheme" branch), the scheme's own steps
 /// otherwise.
-fn schemeFetch(allocator: Allocator, scheme: []const u8, url_str: []const u8) MainFetchError!MainFetchStart {
+fn schemeFetch(allocator: Allocator, request: *const InternalRequest, scheme: []const u8) MainFetchError!MainFetchStart {
     if (scheme_fetch.isHttpScheme(scheme)) return .http_fetch;
-    const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
+    const scheme_result = scheme_fetch.schemeFetchRequest(allocator, request) catch |err| {
         switch (err) {
             error.OutOfMemory => return MainFetchError.OutOfMemory,
         }

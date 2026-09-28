@@ -698,6 +698,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // may not, so it fetches a clone: nothing script can observe tells the
     // two apart, since the fetch changes only request's current URL.
     const fetched_request = try request.clone();
+    // Scheme fetch "blob" reads the blob URL store through this.
+    fetch_body.installBlobURLResolver();
     // Fetch "populate request from client": the request's client is this
     // global's settings object.
     populateRequestFromClient(instance, fetched_request) catch {

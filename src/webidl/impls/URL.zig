@@ -889,15 +889,38 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
         return error.TypeError;
     };
 
-    // Get origin from context (use "null" origin for file:// or opaque origins)
-    // Per spec, the origin is the serialization of the entry settings object's origin
-    const origin = file_mod.getDocumentOrigin() orelse "null";
+    // FileAPI "generate a new blob URL", steps 3-6: settings is the current
+    // settings object, and the URL (and the entry's origin) carry the ASCII
+    // serialization of its origin - "null" only when it is opaque, or its
+    // global has no settings to ask.
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const origin = currentSettingsOrigin(realm);
+    defer if (origin.owned) |o| origin.allocator.free(o);
 
     // Create the blob URL
-    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin);
+    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value);
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);
+}
+
+/// The current settings object's origin, serialized: `realm`'s global
+/// object's settings (dom.global_settings), or "null" when there are none.
+/// `owned` is what to free, with `allocator`.
+const SettingsOrigin = struct { value: []const u8, owned: ?[]const u8 = null, allocator: std.mem.Allocator };
+
+fn currentSettingsOrigin(realm: runtime.Context) SettingsOrigin {
+    const none: SettingsOrigin = .{ .value = "null", .allocator = realm.allocator };
+    const record = realm.getRealm() orelse return none;
+    const raw = record.global_object orelse return none;
+    const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const settings = @import("dom").global_settings.of(global) orelse return none;
+    const origin = settings.origin(global) catch return none;
+    if (origin.len == 0) {
+        global.ctx.allocator.free(origin);
+        return none;
+    }
+    return .{ .value = origin, .owned = origin, .allocator = global.ctx.allocator };
 }
 
 /// revokeObjectURL static method (Blob URLs)

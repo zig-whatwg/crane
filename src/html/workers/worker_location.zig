@@ -7,6 +7,8 @@
 //! script location, similar to the Location object for windows.
 
 const std = @import("std");
+const basic_parser = @import("basic_parser");
+const url_origin = @import("origin");
 const Allocator = std.mem.Allocator;
 
 /// Worker Location implementation.
@@ -177,6 +179,23 @@ const ParsedUrl = struct {
     origin: []const u8,
 };
 
+/// The serialization of `url`'s origin (URL Standard "origin"): a tuple as
+/// "scheme://host[:port]", an opaque origin - data:, a URL that does not
+/// parse - as "null". OWNED.
+pub fn serializedOriginOf(allocator: Allocator, url: []const u8) ![]u8 {
+    var record = basic_parser.parse(allocator, url, null) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, "null"),
+    };
+    defer record.deinit();
+    var origin = url_origin.getOrigin(allocator, &record) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, "null"),
+    };
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
+}
+
 /// Parse a URL string into components.
 /// This is a simplified parser - production should use src/url/.
 fn parseUrl(allocator: Allocator, url: []const u8) !ParsedUrl {
@@ -259,14 +278,12 @@ fn parseUrl(allocator: Allocator, url: []const u8) !ParsedUrl {
     const hash = try allocator.dupe(u8, hash_slice);
     errdefer allocator.free(hash);
 
-    // Build origin (protocol + "//" + host)
-    const origin = if (protocol_end > 0) blk: {
-        const origin_str = try std.fmt.allocPrint(allocator, "{s}//{s}", .{
-            url[0..protocol_end],
-            authority,
-        });
-        break :blk origin_str;
-    } else try allocator.dupe(u8, "null");
+    // The URL Standard's origin of the worker's URL - a blob: URL's is its
+    // path URL's, data: is opaque - serialized. WorkerGlobalScope's settings
+    // origin, self.origin and location.origin all read it. (This split it
+    // as scheme + "//" + authority, which made a blob: worker's origin
+    // "blob:http://host".)
+    const origin = try serializedOriginOf(allocator, url);
     errdefer allocator.free(origin);
 
     return .{

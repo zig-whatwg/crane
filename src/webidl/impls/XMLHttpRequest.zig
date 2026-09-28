@@ -889,6 +889,8 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // The request's client is this's relevant settings object: its origin
     // is the request's (Fetch "fetch" step 13).
     setClientOrigin(instance, xhr_state) catch return error.OutOfMemory;
+    // Scheme fetch "blob" reads the blob URL store through this.
+    fetch_body.installBlobURLResolver();
 
     // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
     // and HEAD) gives back null.

@@ -181,9 +181,8 @@ pub const WptBrowser = struct {
 
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
-        // Clear the blob resolver and document origin registrations
+        // Clear the blob resolver registration
         workers.clearBlobResolver();
-        file.clearDocumentOrigin();
 
         if (self.ca_bundle_path) |ca| {
             // Drop the borrowed path before freeing it.
@@ -258,13 +257,6 @@ pub const WptBrowser = struct {
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
 
-        // Set the document origin for blob URL operations.
-        // Both URL.createObjectURL (to store blobs with the correct origin)
-        // and Workers (to resolve blob URLs with same-origin validation)
-        // need to know the current document origin.
-        const origin = originOfUrl(test_url) orelse WPT_ORIGIN;
-        file.setDocumentOrigin(origin);
-
         // Load testharness.js
         try self.loadTestHarness(ctx, timeout.explicitTimeout());
 
@@ -325,12 +317,6 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
-
-        // Set the document origin for blob URL operations.
-        // Both URL.createObjectURL (to store blobs with the correct origin)
-        // and Workers (to resolve blob URLs with same-origin validation)
-        // need to know the current document origin.
-        file.setDocumentOrigin(origin);
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute
