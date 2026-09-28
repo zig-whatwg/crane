@@ -12,4 +12,8 @@ pub const NavigationNavigateOptions = struct {
 
     state: ?runtime.JSValue = null,
     history: ?enums.NavigationHistoryBehavior = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"state"};
 };

@@ -30,4 +30,8 @@ pub const RequestInit = struct {
     targetAddressSpace: ?enums.IPAddressSpace = null,
     sharedStorageWritable: ?bool = null,
     privateToken: ?PrivateToken = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"window"};
 };

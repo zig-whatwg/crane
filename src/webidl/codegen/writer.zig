@@ -3200,6 +3200,42 @@ pub fn writeRestrictedMembers(writer: anytype, members: []const types.Dictionary
     try writer.writeAll(" };\n");
 }
 
+/// A dictionary's `any` members, for the dictionary converter:
+///
+///     pub const any_members = .{ "detail" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, so a
+/// member whose value is null is present, with the value null. A member the
+/// IDL types as `any` is a `?runtime.JSValue` whose Zig null means "not
+/// present"; the converter gives a present null `.null` instead - only for
+/// `any`, whose null is a JavaScript value to keep. (`object?` and nullable
+/// unions keep reading a present null as Zig null, which their impls expect.)
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeAnyMembers(writer: anytype, members: []const types.DictionaryMember) !void {
+    var has_any = false;
+    for (members) |member| {
+        if (isAnyMember(member)) has_any = true;
+    }
+    if (!has_any) return;
+    try writer.writeAll("\n    /// `any` members: one present with the value null converts to `.null`,\n");
+    try writer.writeAll("    /// not to \"not present\".\n");
+    try writer.writeAll("    pub const any_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isAnyMember(member)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
+/// Whether a dictionary member's type is `any` (not required: a required
+/// member is never absent).
+fn isAnyMember(member: types.DictionaryMember) bool {
+    const t = member.idlType;
+    return !member.required and t.unionTypes == null and t.generic == null and t.sequence == null and t.record == null and std.mem.eql(u8, t.type, "any");
+}
+
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
 /// type is a promise runs its steps - the brand check, argument conversion and
 /// the operation - with an exception handler, and an exception becomes a

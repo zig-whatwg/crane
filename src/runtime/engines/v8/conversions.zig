@@ -263,6 +263,17 @@ pub fn requireFinite(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// Whether dictionary `T` lists member `name` in `any_members`.
+fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "any_members")) return false;
+        for (T.any_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `restricted_members`.
 fn isRestrictedMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -1605,6 +1616,19 @@ pub fn fromV8Value(
                 // binding applies to arguments. Kept, an object member (a
                 // Headers, a signal) pinned its page.
                 defer if (comptime interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                // WebIDL 3.2.18: a member is present unless it is undefined.
+                // An `any` member present as null is the value null
+                // (`any_members`); converted as an optional, it would read as
+                // not present.
+                if (comptime isAnyMember(T, field.name)) {
+                    if (v8.v8_Value_IsNull(field_v8)) {
+                        // Nothing keeps the handle Get made (the defer above
+                        // releases it only for a copying conversion).
+                        if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                        @field(result, field.name) = runtime.JSValue.jsNull;
+                        continue;
+                    }
+                }
                 // Convert field value
                 @field(result, field.name) = try fromV8Value(
                     field.type,

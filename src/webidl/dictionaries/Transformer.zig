@@ -12,4 +12,8 @@ pub const Transformer = struct {
     cancel: ?callbacks.TransformerCancelCallback = null,
     readableType: ?runtime.JSValue = null,
     writableType: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{ "readableType", "writableType" };
 };

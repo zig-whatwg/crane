@@ -23,4 +23,8 @@ pub const NotificationOptions = struct {
     requireInteraction: ?bool = null,
     data: ?runtime.JSValue = null,
     actions: ?[]const NotificationAction = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"data"};
 };

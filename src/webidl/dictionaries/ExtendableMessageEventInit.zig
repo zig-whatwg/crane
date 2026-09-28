@@ -15,4 +15,8 @@ pub const ExtendableMessageEventInit = struct {
     lastEventId: ?runtime.DOMString = null,
     source: ?runtime.JSValue = null,
     ports: ?[]const *runtime.Instance = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"data"};
 };
