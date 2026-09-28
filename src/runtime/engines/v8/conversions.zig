@@ -3240,22 +3240,25 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
         }
     }
 
-    // Use the CURRENT context for wrapper lookup to ensure identity works
-    // when the same instance is accessed from the same context multiple times.
-    // This is critical for MutationObserver callbacks where addedNodes items
-    // must be === to the original element reference held by JavaScript.
+    // A platform object has one wrapper, made in its relevant realm - the
+    // realm it was created in, `instance.ctx` - whichever realm is current
+    // (engine-protocol.md, "Realms"; the protocol's own operations do the
+    // same through protocol_support.relevantWrapper). Wrapping in the current
+    // realm made a second wrapper, in another realm's wrapper cache, for a
+    // node a frame's script had already seen: `frame.contentDocument.body`
+    // read from the parent was not the frame's own `document.body`.
     //
-    // Note: For cross-realm support (iframe contentWindow, etc.), we use
-    // special handling in Window and Document cases above.
-    const context: *v8.Context = v8.v8_Isolate_GetCurrentContext(isolate) orelse blk: {
-        // Fall back to instance's context if no current context
-        if (instance.ctx.getEngineContext()) |engine_ctx| {
-            break :blk @ptrCast(@alignCast(engine_ctx));
-        } else {
-            return v8.v8_Undefined(isolate) orelse unreachable;
-        }
-    };
-    defer v8.v8_Context_Dispose(context);
+    // The realm's context is BORROWED from its record: the wrapper cache is
+    // looked up, and the object made, in it (V8 enters it for the call). The
+    // current context stands in only when the relevant realm has no engine
+    // realm of this agent behind it - it ended, or it is another agent's -
+    // and that handle, from v8_Isolate_GetCurrentContext, is this call's.
+    // (It used to be released on the other branch too, which disposed the
+    // realm's own context handle.)
+    const relevant = relevantContext(isolate, instance);
+    const current: ?*v8.Context = if (relevant == null) v8.v8_Isolate_GetCurrentContext(isolate) else null;
+    defer if (current) |c| v8.v8_Context_Dispose(c);
+    const context: *v8.Context = relevant orelse current orelse return v8.v8_Undefined(isolate) orelse unreachable;
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(
@@ -3269,6 +3272,17 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
     };
 
     return @ptrCast(v8_obj);
+}
+
+/// `instance`'s relevant realm's context, BORROWED from the realm record -
+/// or null when that realm has no engine realm of `isolate` behind it (it
+/// ended: context_manager nulls a retired realm's engine_ctx; or it belongs
+/// to another agent).
+fn relevantContext(isolate: *v8.Isolate, instance: *runtime.Instance) ?*v8.Context {
+    const realm = instance.ctx;
+    const engine_ctx = realm.engine_ctx orelse return null;
+    if (@import("realm_entry.zig").agentOf(realm) != isolate) return null;
+    return @ptrCast(@alignCast(engine_ctx));
 }
 
 /// Chunk type tag for type-safe chunk conversion
