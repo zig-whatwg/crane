@@ -55,7 +55,7 @@ const v8 = ffi;
 /// @param realm - The realm in which to create the object
 /// @return V8 Object pointer (Global handle), or null on failure
 pub fn createObjectInRealm(realm: *const Realm) ?*v8.Object {
-    const context: *v8.Context = @ptrCast(@alignCast(realm.v8_context orelse return null));
+    const context: *v8.Context = @ptrCast(@alignCast(realm.engine_realm orelse return null));
     return v8.v8_Object_NewInContext(context);
 }
 
@@ -68,7 +68,7 @@ pub fn createObjectInRealm(realm: *const Realm) ?*v8.Object {
 /// @param length - Initial length of the array (default 0)
 /// @return V8 Array pointer (Global handle), or null on failure
 pub fn createArrayInRealm(realm: *const Realm, length: u32) ?*v8.Array {
-    const context: *v8.Context = @ptrCast(@alignCast(realm.v8_context orelse return null));
+    const context: *v8.Context = @ptrCast(@alignCast(realm.engine_realm orelse return null));
     return v8.v8_Array_NewInContext(context, @intCast(length));
 }
 
@@ -85,7 +85,7 @@ pub fn createArrayInRealm(realm: *const Realm, length: u32) ?*v8.Array {
 /// @param message - Error message
 /// @return V8 Value pointer (the TypeError), or null on failure
 pub fn createTypeErrorInRealm(realm: *const Realm, message: []const u8) ?*v8.Value {
-    const context: *v8.Context = @ptrCast(@alignCast(realm.v8_context orelse return null));
+    const context: *v8.Context = @ptrCast(@alignCast(realm.engine_realm orelse return null));
     const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
 
     const msg_str = v8.v8_String_NewFromUtf8(
@@ -105,8 +105,8 @@ pub fn createTypeErrorInRealm(realm: *const Realm, message: []const u8) ?*v8.Val
 /// @param realm - The realm from which the TypeError should originate
 /// @param message - Error message
 pub fn throwTypeErrorFromRealm(realm: *const Realm, message: []const u8) void {
-    const context: *v8.Context = @ptrCast(@alignCast(realm.v8_context orelse return));
-    const isolate: *v8.Isolate = @ptrCast(@alignCast(realm.isolate orelse {
+    const context: *v8.Context = @ptrCast(@alignCast(realm.engine_realm orelse return));
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(realm.agent orelse {
         // Fallback to current isolate if realm doesn't have one
         const current_isolate = v8.v8_Isolate_GetCurrent() orelse return;
         conv.throwTypeErrorFromContext(current_isolate, context, message);
@@ -131,7 +131,7 @@ pub fn throwTypeErrorFromRealm(realm: *const Realm, message: []const u8) void {
 /// @param realm - The realm whose intrinsics should be populated
 /// @return true on success, false on failure
 pub fn populateIntrinsics(realm: *Realm) bool {
-    const context: *v8.Context = @ptrCast(@alignCast(realm.v8_context orelse return false));
+    const context: *v8.Context = @ptrCast(@alignCast(realm.engine_realm orelse return false));
     const isolate = v8.v8_Isolate_GetCurrent() orelse return false;
 
     // Get the global object to access built-in constructors
@@ -259,12 +259,12 @@ fn getObjectProperty(
 
 /// Get a V8 context from an opaque pointer stored in a Realm.
 pub fn getV8Context(realm: *const Realm) ?*v8.Context {
-    return @ptrCast(@alignCast(realm.v8_context));
+    return @ptrCast(@alignCast(realm.engine_realm));
 }
 
 /// Get a V8 isolate from an opaque pointer stored in a Realm.
 pub fn getV8Isolate(realm: *const Realm) ?*v8.Isolate {
-    return @ptrCast(@alignCast(realm.isolate));
+    return @ptrCast(@alignCast(realm.agent));
 }
 
 // ============================================================================

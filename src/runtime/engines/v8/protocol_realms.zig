@@ -409,8 +409,8 @@ fn bindWindowToGlobal(
     // the realm's intrinsics, and "the realm's global object".
     if (realm.realm == null) {
         if (runtime.Realm.init(allocator, .{
-            .v8_context = @ptrCast(context),
-            .isolate = @ptrCast(isolate),
+            .engine_realm = @ptrCast(context),
+            .agent = @ptrCast(isolate),
             .context_type = .window,
             .global_object = @ptrCast(window),
         })) |record| {

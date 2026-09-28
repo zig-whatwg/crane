@@ -30,7 +30,7 @@ fn realm() !runtime.Context {
     _ = ffi.v8_HandleScope_New(i);
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .v8_context = context, .isolate = i });
+    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
     const data = try std.heap.page_allocator.create(runtime.ContextData);
     data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
         .engine_ctx = context,

@@ -137,7 +137,7 @@ pub fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
     const current = ffi.v8_Isolate_GetCurrent();
     // The realm's own agent - a worker realm's is never the page's - as the
     // context manager recorded it; else its Realm's; else the current one.
-    const recorded: ?*ffi.Isolate = if (realm.agent) |agent| @ptrCast(@alignCast(agent)) else if (realm.realm) |r| (if (r.isolate) |i| @ptrCast(@alignCast(i)) else null) else null;
+    const recorded: ?*ffi.Isolate = if (realm.agent) |agent| @ptrCast(@alignCast(agent)) else if (realm.realm) |r| (if (r.agent) |a| @ptrCast(@alignCast(a)) else null) else null;
     const isolate = recorded orelse current orelse return EngineError.OperationFailed;
     const entered = current != isolate;
     if (entered) ffi.v8_Isolate_Enter(isolate);

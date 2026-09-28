@@ -21,6 +21,7 @@ const Allocator = std.mem.Allocator;
 
 // Import environment settings object (circular reference avoided via opaque pointers)
 const EnvironmentSettingsObject = @import("environment_settings.zig").EnvironmentSettingsObject;
+const Agent = @import("engine_types.zig").Agent;
 
 /// JavaScript execution context type
 ///
@@ -332,7 +333,7 @@ pub const Intrinsics = struct {
 /// - Intrinsic objects (TypeError, Object, Array constructors)
 /// - An associated browsing context (for Window realms)
 ///
-/// Values are made in a realm through the Engine table's operations, which
+/// Values are made in a realm through the engine protocol's operations, which
 /// take the realm as a runtime.Context (AGENTS.md, "The engine boundary").
 ///
 /// ## Usage
@@ -340,8 +341,8 @@ pub const Intrinsics = struct {
 /// ```zig
 /// // Create the realm record for an engine context
 /// const realm = try Realm.init(allocator, .{
-///     .v8_context = v8_ctx,
-///     .isolate = isolate,
+///     .engine_realm = context,
+///     .agent = agent,
 ///     .context_type = .window,
 /// });
 /// defer realm.deinit();
@@ -350,13 +351,13 @@ pub const Realm = struct {
     /// Memory allocator for realm-owned resources
     allocator: Allocator,
 
-    /// V8 context handle (opaque pointer to Global<Context>*)
-    /// This is the execution context for this realm.
-    v8_context: ?*anyopaque,
+    /// The engine's handle to this realm's execution context - opaque here,
+    /// the adapter's to read (V8's: a Global<Context>*).
+    engine_realm: ?*anyopaque,
 
-    /// V8 isolate (shared across all realms in same isolate)
-    /// Opaque pointer to v8::Isolate*
-    isolate: ?*anyopaque,
+    /// The agent the realm belongs to (ECMAScript 9.7), shared by every realm
+    /// in it - V8's is an isolate.
+    agent: ?*Agent,
 
     /// Global object handle (opaque pointer to Global<Object>*)
     /// This is the Window or WorkerGlobalScope for this realm.
@@ -381,11 +382,11 @@ pub const Realm = struct {
 
     /// Realm initialization options
     pub const InitOptions = struct {
-        /// V8 context handle (opaque pointer)
-        v8_context: ?*anyopaque = null,
+        /// The engine's handle to the realm's execution context (opaque)
+        engine_realm: ?*anyopaque = null,
 
-        /// V8 isolate (opaque pointer)
-        isolate: ?*anyopaque = null,
+        /// The realm's agent
+        agent: ?*Agent = null,
 
         /// Global object handle (opaque pointer)
         global_object: ?*anyopaque = null,
@@ -408,8 +409,8 @@ pub const Realm = struct {
 
         realm.* = .{
             .allocator = allocator,
-            .v8_context = options.v8_context,
-            .isolate = options.isolate,
+            .engine_realm = options.engine_realm,
+            .agent = options.agent,
             .global_object = options.global_object,
             .intrinsics = Intrinsics.init(),
             .info = switch (options.context_type) {
@@ -445,14 +446,14 @@ pub const Realm = struct {
     // Context and Global Object Access
     // ========================================================================
 
-    /// Get the V8 context for this realm
-    pub fn getV8Context(self: *const Self) ?*anyopaque {
-        return self.v8_context;
+    /// The engine's handle to this realm's execution context
+    pub fn getEngineRealm(self: *const Self) ?*anyopaque {
+        return self.engine_realm;
     }
 
-    /// Get the V8 isolate for this realm
-    pub fn getIsolate(self: *const Self) ?*anyopaque {
-        return self.isolate;
+    /// The realm's agent
+    pub fn getAgent(self: *const Self) ?*Agent {
+        return self.agent;
     }
 
     /// Get the global object (Window, WorkerGlobalScope) for this realm
@@ -591,8 +592,8 @@ test "Realm - init creates realm with default values" {
     defer realm.deinit();
 
     try std.testing.expect(realm.isWindow()); // Default is window
-    try std.testing.expect(realm.v8_context == null);
-    try std.testing.expect(realm.isolate == null);
+    try std.testing.expect(realm.engine_realm == null);
+    try std.testing.expect(realm.agent == null);
     try std.testing.expect(realm.global_object == null);
     try std.testing.expect(!realm.hasIntrinsics());
 }

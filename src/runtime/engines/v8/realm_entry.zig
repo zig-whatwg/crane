@@ -40,7 +40,7 @@ pub fn agentOf(realm: runtime.Context) ?*ffi.Isolate {
     // that agent's context.
     if (realm.agent) |agent| return @ptrCast(@alignCast(agent));
     if (realm.realm) |r| {
-        if (r.isolate) |isolate| return @ptrCast(@alignCast(isolate));
+        if (r.agent) |agent| return @ptrCast(@alignCast(agent));
     }
     return ffi.v8_Isolate_GetCurrent();
 }

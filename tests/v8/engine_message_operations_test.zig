@@ -28,7 +28,7 @@ fn setup() !void {
     _ = ffi.v8_HandleScope_New(i);
     for (&contexts, &realms) |*context, *data| {
         context.* = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .v8_context = context.*, .isolate = i });
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
         const d = try std.heap.page_allocator.create(runtime.ContextData);
         d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
         data.* = d;
