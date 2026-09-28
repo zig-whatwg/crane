@@ -59,7 +59,8 @@ const log = std.log.scoped(.wpt_browser);
 /// Default WPT test origin, used when no test URL is in hand.
 ///
 /// Most tests run here, but a `.https.` test is fetched from
-/// `https://web-platform.test:8443` and must be told so — see `originOfUrl`.
+/// `https://web-platform.test:8443` (an `.h2.` one from :9000) and must be
+/// told so — see `originOfUrl`.
 const WPT_ORIGIN = "http://web-platform.test:8000";
 
 const originOfUrl = wpt_server.originOfUrl;
@@ -823,14 +824,12 @@ pub const WptBrowser = struct {
 
     /// Build test URL from path.
     ///
-    /// Scheme and port follow the `.https.` marker in the filename, the same
-    /// way `wpt_server.buildTestUrl` does - a TLS test fetched over plain HTTP
+    /// Scheme and port follow the `.h2.` and `.https.` markers in the
+    /// filename (`wpt_server.testOriginFor`), the same way
+    /// `wpt_server.buildTestUrl` does - a TLS test fetched over plain HTTP
     /// gets whatever the server chooses to serve on :8000, which is not the
     /// test.
     fn buildTestUrl(self: *WptBrowser, test_path: []const u8) ![]const u8 {
-        return if (wpt_server.isHttpsTest(test_path))
-            try std.fmt.allocPrint(self.allocator, "https://{s}:8443/{s}", .{ wpt_server.WPT_HOST, test_path })
-        else
-            try std.fmt.allocPrint(self.allocator, "http://{s}:8000/{s}", .{ wpt_server.WPT_HOST, test_path });
+        return std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ wpt_server.testOriginFor(test_path), test_path });
     }
 };
