@@ -184,13 +184,13 @@ pub const ContextData = struct {
     /// that is not handled, at its Worker with `error` null. Set by the host
     /// that runs the realm (the worker host installs it); null for a window
     /// realm, whose global object reports its own.
-    report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_interface.zig").ErrorInfo) void = null,
+    report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_types.zig").ErrorInfo) void = null,
 
     /// The agent this realm belongs to (V8: its isolate), set by the adapter
     /// that created the realm. Operations that enter a realm from outside it
     /// - a task fired from the page's loop into a worker's realm - enter its
     /// agent, which for a worker realm is never the page's.
-    agent: ?*@import("engine_interface.zig").Agent = null,
+    agent: ?*@import("engine_types.zig").Agent = null,
 
     /// The URL this realm's settings object records as its document's (a
     /// Window) or its script's (a worker): the API base URL that fetch, XHR,

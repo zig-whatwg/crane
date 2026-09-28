@@ -153,39 +153,39 @@ pub const initInternalStateRegistry = internal_state.initRegistry;
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
 pub const EngineInterface = @import("engine_interface.zig").EngineInterface;
-pub const EngineError = @import("engine_interface.zig").EngineError;
-pub const MainThreadCallback = @import("engine_interface.zig").MainThreadCallback;
-pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfillCallback;
-pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
-pub const ErrorInfo = @import("engine_interface.zig").ErrorInfo;
-pub const ReportExceptionFn = @import("engine_interface.zig").ReportExceptionFn;
-pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
+pub const EngineError = @import("engine_types.zig").EngineError;
+pub const MainThreadCallback = @import("engine_types.zig").MainThreadCallback;
+pub const PromiseFulfillCallback = @import("engine_types.zig").PromiseFulfillCallback;
+pub const PromiseRejectCallback = @import("engine_types.zig").PromiseRejectCallback;
+pub const ErrorInfo = @import("engine_types.zig").ErrorInfo;
+pub const ReportExceptionFn = @import("engine_types.zig").ReportExceptionFn;
+pub const RealmSteps = @import("engine_types.zig").RealmSteps;
 pub const configuredEngine = @import("engine_interface.zig").configuredEngine;
 pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEngine;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
-pub const CallbackThis = @import("engine_interface.zig").CallbackThis;
-pub const WindowTimerHandler = @import("engine_interface.zig").WindowTimerHandler;
-pub const WindowOperations = @import("engine_interface.zig").WindowOperations;
+pub const CallbackThis = @import("engine_types.zig").CallbackThis;
+pub const WindowTimerHandler = @import("engine_types.zig").WindowTimerHandler;
+pub const WindowOperations = @import("engine_types.zig").WindowOperations;
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----
-pub const SimpleExceptionKind = @import("engine_interface.zig").SimpleExceptionKind;
-pub const DictionaryMember = @import("engine_interface.zig").DictionaryMember;
-pub const ArrayBufferViewDescription = @import("engine_interface.zig").ArrayBufferViewDescription;
+pub const SimpleExceptionKind = @import("engine_types.zig").SimpleExceptionKind;
+pub const DictionaryMember = @import("engine_types.zig").DictionaryMember;
+pub const ArrayBufferViewDescription = @import("engine_types.zig").ArrayBufferViewDescription;
 // ---- end lane: runtime-impls ----
 // ---- lane: engine-boundary ----
-pub const SerializedWithTransfer = @import("engine_interface.zig").SerializedWithTransfer;
-pub const TransferableState = @import("engine_interface.zig").TransferableState;
-pub const TransferableCheck = @import("engine_interface.zig").TransferableCheck;
-pub const Agent = @import("engine_interface.zig").Agent;
-pub const WorkerRealmOptions = @import("engine_interface.zig").WorkerRealmOptions;
-pub const WorkerRealm = @import("engine_interface.zig").WorkerRealm;
-pub const BuiltinSteps = @import("engine_interface.zig").BuiltinSteps;
-pub const BuiltinFunction = @import("engine_interface.zig").BuiltinFunction;
-pub const StringConversion = @import("engine_interface.zig").StringConversion;
-pub const StringRecordEntry = @import("engine_interface.zig").StringRecordEntry;
+pub const SerializedWithTransfer = @import("engine_types.zig").SerializedWithTransfer;
+pub const TransferableState = @import("engine_types.zig").TransferableState;
+pub const TransferableCheck = @import("engine_types.zig").TransferableCheck;
+pub const Agent = @import("engine_types.zig").Agent;
+pub const WorkerRealmOptions = @import("engine_types.zig").WorkerRealmOptions;
+pub const WorkerRealm = @import("engine_types.zig").WorkerRealm;
+pub const BuiltinSteps = @import("engine_types.zig").BuiltinSteps;
+pub const BuiltinFunction = @import("engine_types.zig").BuiltinFunction;
+pub const StringConversion = @import("engine_types.zig").StringConversion;
+pub const StringRecordEntry = @import("engine_types.zig").StringRecordEntry;
 // ---- end lane: engine-boundary ----
-pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
+pub const ForEachCallback = @import("engine_types.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers

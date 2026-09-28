@@ -33,7 +33,7 @@
 
 const std = @import("std");
 const EngineInterface = @import("engine_interface.zig").EngineInterface;
-const EngineError = @import("engine_interface.zig").EngineError;
+const EngineError = @import("engine_types.zig").EngineError;
 
 /// Engine-agnostic callback wrapper
 ///
