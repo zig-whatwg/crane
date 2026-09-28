@@ -289,19 +289,7 @@ pub const Tokenizer = struct {
     /// Get the next token from the tokenizer.
     pub fn nextToken(self: *Tokenizer) !?Token {
         // If we have queued tokens, return one using O(1) head index
-        const queue_len = self.token_queue.len;
-        if (self.token_queue_head < queue_len) {
-            const slice = self.token_queue.toSlice();
-            const token = slice[self.token_queue_head];
-            self.token_queue_head += 1;
-
-            // Compact the queue when head reaches halfway to avoid unbounded growth
-            // This amortizes the cost: O(1) per dequeue on average
-            if (self.token_queue_head >= 8 and self.token_queue_head >= queue_len / 2) {
-                try self.compactTokenQueue();
-            }
-            return token;
-        }
+        if (self.token_queue_head < self.token_queue.len) return try self.dequeueToken();
 
         // Process states until we emit a token
         while (true) {
@@ -319,11 +307,32 @@ pub const Tokenizer = struct {
                 return token;
             }
 
+            // A state that emitted nothing may still have queued tokens - a
+            // character reference flushed as its characters ("flush code
+            // points consumed as a character reference"). They were emitted
+            // then, before anything a later state emits: return them now, or
+            // the text after "a && b" would overtake its two "&"s.
+            if (self.token_queue_head < self.token_queue.len) return try self.dequeueToken();
+
             // Check for EOF after processing
             if (self.current_char.isEof() and self.state == .data) {
                 return null;
             }
         }
+    }
+
+    /// The token at the head of the queue, which must not be empty.
+    fn dequeueToken(self: *Tokenizer) !Token {
+        const queue_len = self.token_queue.len;
+        const token = self.token_queue.toSlice()[self.token_queue_head];
+        self.token_queue_head += 1;
+
+        // Compact the queue when head reaches halfway to avoid unbounded growth
+        // This amortizes the cost: O(1) per dequeue on average
+        if (self.token_queue_head >= 8 and self.token_queue_head >= queue_len / 2) {
+            try self.compactTokenQueue();
+        }
+        return token;
     }
 
     /// Compact the token queue by removing already-consumed tokens.
