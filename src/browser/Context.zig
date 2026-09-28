@@ -1072,7 +1072,7 @@ pub const Context = struct {
         // `NavigationFailed`. The WPT runner prints whatever comes back here,
         // and one catch-all name made a DNS failure, a refused connection, a
         // TLS error and a missing file read identically in the journal.
-        var result = try navigation.fetchUrl(self.allocator, self.url, .{});
+        var result = try navigation.fetchUrl(self.allocator, self.url, .{ .cookie_jar = self.cookie_jar });
         defer result.deinit();
 
         // Step 2: Check if HTML content
