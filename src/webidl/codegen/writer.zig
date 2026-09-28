@@ -357,6 +357,15 @@ pub fn setterPrefix(attr: types.Attribute) []const u8 {
     return if (attr.static) "set_static_" else "set_";
 }
 
+/// Whether `op` is a regular operation - a method of the interface prototype.
+/// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
+/// operation" - a special one (getter, setter, deleter, stringifier) declared
+/// with an identifier is both. Storage's `deleter undefined
+/// removeItem(DOMString key)` is `Storage.prototype.removeItem`.
+fn isRegularOperation(op: types.Operation) bool {
+    return op.name != null;
+}
+
 pub fn writeMetadata(
     writer: anytype,
     interface_name: []const u8,
@@ -603,13 +612,9 @@ pub fn writeMetadata(
             // Skip static methods - they go in static_methods
             if (op.static) continue;
 
-            // Include regular operations AND named special operations (like getter item())
-            // Named special operations should be exposed as methods per WebIDL spec
-            const should_include = op.special == null or
-                op.special.? == .getter or
-                op.special.? == .setter;
-
-            if (should_include) {
+            // Every named operation is a regular one, special or not
+            // (isRegularOperation): getter item(), deleter removeItem().
+            if (isRegularOperation(op)) {
                 // WebIDL's `length`: the fewest required arguments of any
                 // overload - "the length of the shortest argument list in the
                 // effective overload set". For a single operation that is its
@@ -746,12 +751,8 @@ pub fn writeMetadata(
     try writer.writeAll("        pub const own_methods = .{\n");
     for (own_operations) |op| {
         if (op.name) |name| {
-            // Include regular operations AND named special operations
-            const should_include = op.special == null or
-                op.special.? == .getter or
-                op.special.? == .setter;
-
-            if (should_include) {
+            // Every named operation is a regular one (isRegularOperation).
+            if (isRegularOperation(op)) {
                 try writer.print("            \"{s}\",\n", .{name});
             }
         }
@@ -790,11 +791,7 @@ pub fn writeMetadata(
     // Inherited methods = all_operations - own_operations
     for (all_operations) |all_op| {
         if (all_op.name) |all_name| {
-            const should_include = all_op.special == null or
-                all_op.special.? == .getter or
-                all_op.special.? == .setter;
-
-            if (should_include) {
+            if (isRegularOperation(all_op)) {
                 // Check if this method is NOT in own_operations
                 var is_own = false;
                 for (own_operations) |own_op| {
