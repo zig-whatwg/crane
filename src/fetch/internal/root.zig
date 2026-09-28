@@ -44,6 +44,7 @@ pub const canDelete = guards.canDelete;
 pub const canGet = guards.canGet;
 
 pub const origins = @import("origins.zig");
+pub const mime = @import("mime.zig");
 pub const user_agent = @import("user_agent.zig");
 
 pub const body = @import("body.zig");
@@ -129,6 +130,7 @@ pub const cloneResponseBodyOrThrow = body_cloning.cloneResponseBodyOrThrow;
 
 test {
     _ = origins;
+    _ = mime;
     _ = user_agent;
     _ = header_list;
     _ = validation;

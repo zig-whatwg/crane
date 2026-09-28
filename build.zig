@@ -1812,6 +1812,8 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("url_serializer", url_serializer_mod);
     // Main fetch step 12 and the CORS check compare origins (URL "origin").
     fetch_mod.addImport("origin", url_origin_mod_internal);
+    // Main fetch step 19: a JavaScript MIME type essence match (MIME Sniffing).
+    fetch_mod.addImport("mimesniff", mimesniff_mod);
     // The network layer asks the vendored TLS library what ALPN chose, and
     // tests that HTTP/2 is live when the build asked for it. Its own options
     // module: one options file imported as a module by two others in the same

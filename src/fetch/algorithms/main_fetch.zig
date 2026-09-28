@@ -29,6 +29,7 @@ const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
 const validation = @import("../internal/validation.zig");
 const referrer_policy = @import("referrer_policy");
+const mime_blocking = @import("mime_blocking.zig");
 const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 
@@ -373,14 +374,21 @@ fn schemeFetch(allocator: Allocator, request: *const InternalRequest, scheme: []
 pub fn mainFetchFinish(
     params: *FetchParams,
     recursive: bool,
-    response: *InternalResponse,
+    fetched: *InternalResponse,
 ) *InternalResponse {
     const request = params.request;
 
-    // Step 14: If recursive, return early
+    // Step 13: If recursive is true, then return response.
     if (recursive) {
-        return response;
+        return fetched;
     }
+
+    // Step 19 (ahead of 14: it only ever makes response a network error,
+    // which step 14 leaves alone): if response is not a network error and
+    // it should be blocked - as mixed content or by CSP (neither exists
+    // here yet), due to its MIME type, or due to nosniff - then response is
+    // a network error.
+    const response = blockedByMime(request, fetched);
 
     // Step 20: a response to HEAD or CONNECT, or with a null body status, has
     // a null body, "and disregard any enqueuing toward it" - a body still
@@ -429,6 +437,21 @@ pub fn mainFetchFinish(
     // Step 17-18: Process callbacks (handled by caller)
 
     return response;
+}
+
+/// Main fetch step 19's MIME checks for `response` to `request`: the
+/// response itself, or - when "should response to request be blocked due to
+/// its MIME type" or "... due to nosniff" says blocked - a network error in
+/// its place (`response` let go).
+fn blockedByMime(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
+    if (isNetworkError(response)) return response;
+    const allocator = response.allocator;
+    const blocked = (mime_blocking.blockedDueToMimeType(allocator, request.destination, &response.header_list) catch false) or
+        (mime_blocking.blockedDueToNosniff(allocator, request.destination, &response.header_list) catch false);
+    if (!blocked) return response;
+    const network_error = internal_response.networkError(allocator) catch return response;
+    response.deinit();
+    return network_error;
 }
 
 /// Main fetch step 14.1, 2-3, for `response`, a response to `request`
@@ -883,4 +906,52 @@ test "splitSerializedOrigin: scheme, host and a non-default port" {
     try std.testing.expectEqualStrings("[::1]", b.host);
     try std.testing.expectEqual(@as(?u16, null), b.port);
     try std.testing.expect(splitSerializedOrigin("null") == null);
+}
+
+test "main fetch step 19: a script with an image type, or a nosniff one without a JavaScript type, is a network error" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://a.test/s.js");
+    defer request.deinit();
+    request.destination = .script;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    const image = try InternalResponse.init(allocator);
+    image.status = 200;
+    try image.header_list.append("Content-Type", "image/png");
+    const blocked = mainFetchFinish(params, false, image);
+    defer blocked.deinit();
+    try std.testing.expect(isNetworkError(blocked));
+
+    const plain = try InternalResponse.init(allocator);
+    plain.status = 200;
+    try plain.header_list.append("Content-Type", "text/plain");
+    try plain.header_list.append("X-Content-Type-Options", "nosniff");
+    const nosniffed = mainFetchFinish(params, false, plain);
+    defer nosniffed.deinit();
+    try std.testing.expect(isNetworkError(nosniffed));
+
+    const js = try InternalResponse.init(allocator);
+    js.status = 200;
+    try js.header_list.append("Content-Type", "text/javascript");
+    try js.header_list.append("X-Content-Type-Options", "nosniff");
+    const allowed = mainFetchFinish(params, false, js);
+    defer allowed.deinit();
+    try std.testing.expect(allowed == js);
+
+    // A request with no destination is not checked at all.
+    request.destination = .empty;
+    const csv = try InternalResponse.init(allocator);
+    csv.status = 200;
+    try csv.header_list.append("Content-Type", "text/csv");
+    const kept = mainFetchFinish(params, false, csv);
+    defer kept.deinit();
+    try std.testing.expect(kept == csv);
 }
