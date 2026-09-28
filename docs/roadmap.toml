@@ -162,6 +162,14 @@ progress = [
   name = "XHR and navigation fetch through the same path"
   status = "doing"
 
+  [[infra.items]]
+  name = "HTTP/2 over ALPN, with nghttp2 built by build.zig (never a system library: it would break the static aarch64-ios link)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "HTTP/3 through Alt-Svc: ngtcp2 + nghttp3 built by build.zig, on a QUIC-capable TLS backend (ngtcp2 cannot use mbedTLS - BoringSSL or OpenSSL 3.5+, chosen by measurement); WPT tests it only through webtransport/, so fetch over HTTP/3 needs crane tests; then WebTransport"
+  status = "todo"
+
 [[infra]]
 id = "origins"
 title = "Origins and cross-origin security"
