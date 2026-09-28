@@ -11,6 +11,11 @@ const header_list = @import("header_list.zig");
 const HeaderList = header_list.HeaderList;
 const body_mod = @import("body.zig");
 const origins = @import("origins.zig");
+const cookiestore = @import("cookiestore");
+
+/// The user agent's cookie jar (src/cookiestore). Reached through fetch by
+/// modules that take a request's client but not cookiestore itself.
+pub const CookieJar = cookiestore.CookieJar;
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -299,6 +304,14 @@ pub const InternalRequest = struct {
     /// Whether `origin`'s string is this request's to free (`setOrigin`);
     /// callers that assign the field directly lend theirs.
     origin_owned: bool = false,
+
+    /// The user agent's cookie jar, as the request's client reaches it
+    /// ("populate request from client"; BORROWED - the Browser outlives
+    /// every fetch). HTTP-network-or-cache fetch sends its cookies and
+    /// HTTP-network fetch stores a response's Set-Cookie in it, when the
+    /// request includes credentials. Null: a request the user agent makes
+    /// for itself, which neither sends nor keeps cookies.
+    cookie_jar: ?*CookieJar = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -616,6 +629,7 @@ pub const InternalRequest = struct {
             // Copied below when it is owned.
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
+            .cookie_jar = self.cookie_jar,
             .policy_container = self.policy_container,
             // Copied below when it is an owned URL.
             .referrer = if (self.referrer == .url) .client else self.referrer,

@@ -75,6 +75,10 @@ pub const InternalState = struct {
     /// Worker script URL
     url: []const u8 = "",
 
+    /// The user agent's cookie jar, from the worker's creator
+    /// (worker_host.ScopeSettings; BORROWED).
+    cookie_jar: ?*@import("cookiestore").CookieJar = null,
+
     /// Worker type (classic or module)
     worker_type: WorkerType = .classic,
 
@@ -146,6 +150,7 @@ pub fn init(
     errdefer EventTargetImpl.deinit(instance);
     if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
+        if (instance.getState(State).own._internal) |internal| internal.cookie_jar = settings.cookie_jar;
     }
     return instance;
 }
@@ -156,7 +161,14 @@ fn installSettings() void {
         .origin = &settingsOrigin,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
+        .cookie_jar = &settingsCookieJar,
     });
+}
+
+/// The user agent's cookie jar, as the worker's creator handed it over.
+fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
+    const internal = instance.getState(State).own._internal orelse return null;
+    return internal.cookie_jar;
 }
 
 // ============================================================================

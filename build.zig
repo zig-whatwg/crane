@@ -1191,6 +1191,8 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("clock", clock_mod);
     dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);
+    // The user agent's cookie jar, which a settings object hands out.
+    dom_mod.addImport("cookiestore", cookiestore_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
@@ -1814,6 +1816,8 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("origin", url_origin_mod_internal);
     // Main fetch step 19: a JavaScript MIME type essence match (MIME Sniffing).
     fetch_mod.addImport("mimesniff", mimesniff_mod);
+    // HTTP-network-or-cache fetch sends and stores cookies in the jar.
+    fetch_mod.addImport("cookiestore", cookiestore_mod);
     // The network layer asks the vendored TLS library what ALPN chose, and
     // tests that HTTP/2 is live when the build asked for it. Its own options
     // module: one options file imported as a module by two others in the same
@@ -1955,6 +1959,8 @@ pub fn build(b: *std.Build) void {
     // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
     html_core_mod.addImport("origin", url_origin_mod_internal);
     html_core_mod.addImport("basic_parser", url_basic_parser_mod);
+    // A browsing context reaches the user agent's cookie jar.
+    html_core_mod.addImport("cookiestore", cookiestore_mod);
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.
@@ -2005,6 +2011,9 @@ pub fn build(b: *std.Build) void {
     // Add html_core and csp to dom for document_internals
     dom_mod.addImport("html_core", html_core_mod);
     dom_mod.addImport("csp", csp_mod);
+    // A settings object is a request's client: global_settings.requestClient
+    // hands fetch what "populate request from client" reads.
+    dom_mod.addImport("fetch", fetch_mod);
 
     // Add html to impls for script execution algorithms
     // Note: This creates html ↔ impls mutual dependency. Zig handles this because
@@ -2034,6 +2043,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("interfaces", interfaces_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
+    // The Browser owns the user agent's cookie jar.
+    browser_mod.addImport("cookiestore", cookiestore_mod);
     browser_mod.addImport("impls", impls_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);

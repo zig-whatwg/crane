@@ -1,7 +1,8 @@
 //! What the WindowOrWorkerGlobalScope mixin reads through "this's relevant
 //! settings object": a global's origin, whether it is a secure context and
 //! cross-origin isolated, and the objects it hands out once per global
-//! (IndexedDB's factory, CacheStorage, Performance).
+//! (IndexedDB's factory, CacheStorage, Performance), the cookie jar it
+//! reaches, and - `requestClient` - all of that as a fetch request's client.
 //!
 //! HTML gives every global an environment settings object, and each kind of
 //! global - a Window, a WorkerGlobalScope - defines how its settings answer.
@@ -16,6 +17,8 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const cookiestore = @import("cookiestore");
+const fetch = @import("fetch");
 
 /// One kind of global's answers. Each getter is handed a global `owns`
 /// accepted.
@@ -35,7 +38,53 @@ pub const Settings = struct {
     caches: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The global's Performance; null where this kind of global has none yet.
     performance: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// The user agent's cookie jar, as the global's settings object reaches
+    /// it - null where there is none (a global no Browser made).
+    cookie_jar: ?*const fn (global: *runtime.Instance) ?*cookiestore.CookieJar = null,
 };
+
+/// The cookie jar `global`'s settings object reaches, if any.
+pub fn cookieJarOf(global: *runtime.Instance) ?*cookiestore.CookieJar {
+    const settings = of(global) orelse return null;
+    const get = settings.cookie_jar orelse return null;
+    return get(global);
+}
+
+/// `global`'s settings object as a request's client: what
+/// `fetch.internal.populateRequestFromClient` reads. `deinit` frees the
+/// origin it owns; the rest is borrowed from the global.
+pub const Client = struct {
+    request: fetch.internal.RequestClient = .{},
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Client) void {
+        if (self.request.origin) |origin| self.allocator.free(origin);
+        self.request.origin = null;
+    }
+};
+
+/// Read `global`'s settings object as a request's client. A global no kind
+/// owns is a client that knows nothing: the request keeps "client" for its
+/// origin and referrer, has no traversable and no cookie jar.
+pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
+    const allocator = global.ctx.allocator;
+    var client: Client = .{ .allocator = allocator };
+    const settings = of(global) orelse return client;
+    // The origin, serialized; one the global does not know yet is left
+    // unset.
+    if (settings.origin(global)) |origin| {
+        if (origin.len == 0) allocator.free(origin) else client.request.origin = origin;
+    } else |err| {
+        if (err == error.OutOfMemory) return error.OutOfMemory;
+    }
+    // The referrer source: the realm's document URL - a worker realm's is
+    // its creation URL.
+    client.request.referrer_source = global.ctx.documentUrl();
+    // A Window stands in for its navigable's traversable.
+    if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
+    client.request.cookie_jar = cookieJarOf(global);
+    return client;
+}
 
 /// A Window and a WorkerGlobalScope - with room to spare for the next kind.
 const capacity = 4;

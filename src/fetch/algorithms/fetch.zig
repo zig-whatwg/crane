@@ -53,7 +53,8 @@ pub fn fetch(
 
 /// Perform HTTP-network fetch's request now, blocking until it is answered.
 fn sendBlocking(allocator: Allocator, needed: FetchJob.NetworkStep) NetworkError!NetworkResponse {
-    const backend_impl = LibcurlBackend.initWithOptions(allocator, .{ .enable_cookies = needed.cookies }) catch {
+    // curl's cookie engine stays off: fetch sends and stores cookies itself.
+    const backend_impl = LibcurlBackend.initWithOptions(allocator, .{ .enable_cookies = false }) catch {
         // A backend that cannot be made is a network error, not a lack of
         // memory the caller could act on.
         return NetworkError.Unknown;

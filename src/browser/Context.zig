@@ -22,6 +22,7 @@ const interfaces = @import("interfaces");
 const fetch = @import("fetch");
 
 const storage_mod = @import("storage/Storage.zig");
+const cookiestore = @import("cookiestore");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
 const impls = @import("impls");
@@ -702,6 +703,9 @@ pub const Context = struct {
     realm: ?runtime.Context = null,
     /// Storage subsystem (shared across navigations)
     storage: *Storage,
+    /// The Browser's cookie jar (BORROWED): the page's top-level browsing
+    /// context gets it as its Window is made.
+    cookie_jar: ?*cookiestore.CookieJar,
     /// Current URL
     url: []const u8,
     /// Context type
@@ -736,6 +740,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         agent: anytype,
         storage: *Storage,
+        cookie_jar: ?*cookiestore.CookieJar,
         url: []const u8,
         event_loop: anytype,
         context_type: ContextType,
@@ -754,6 +759,7 @@ pub const Context = struct {
             .allocator = allocator,
             .agent = @ptrCast(agent),
             .storage = storage,
+            .cookie_jar = cookie_jar,
             .url = url_copy,
             .context_type = context_type,
             .initialized = false,
@@ -813,6 +819,9 @@ pub const Context = struct {
         // [[GetOwnProperty]] read.
         if (impls.Window.getInternal(window)) |internal| {
             internal.browsing_context.setActiveWindow(@ptrCast(window));
+            // The page's top-level browsing context has the Browser's
+            // cookie jar; its frames reach it through it.
+            internal.browsing_context.cookie_jar = self.cookie_jar;
         }
         // The global the Window is bound to, for cross-realm access.
         switch (global_this) {

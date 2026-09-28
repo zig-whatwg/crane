@@ -584,6 +584,10 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
         return;
     };
     internal.host = host;
+    // The worker shares its creator's cookie jar - the user agent's - which
+    // its global scope's settings hand out (a nested worker's creator is a
+    // worker, whose settings have it the same way).
+    host.cookie_jar = creatorCookieJar(ctx);
 
     // Create the WorkerContext
     dedicated_worker.startWithContext() catch |err| {
@@ -1214,4 +1218,12 @@ fn postMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, trans
             }
         }
     }
+}
+
+/// The cookie jar of the global whose realm is `realm`: the worker's
+/// creator's settings object's.
+fn creatorCookieJar(realm: runtime.Context) ?*@import("cookiestore").CookieJar {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    return @import("dom").global_settings.cookieJarOf(global);
 }

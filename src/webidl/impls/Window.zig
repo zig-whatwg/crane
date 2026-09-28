@@ -416,6 +416,7 @@ pub fn init(
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
         .performance = &settingsPerformance,
+        .cookie_jar = &settingsCookieJar,
     });
 
     // Chain to parent class (EventTarget) to initialize EventTarget internal state
@@ -447,6 +448,13 @@ fn isWindow(global: *runtime.Instance) bool {
 fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+/// The user agent's cookie jar, which a window reaches through its browsing
+/// context (a frame's is its top-level context's).
+fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
+    const internal = getInternal(instance) orelse return null;
+    return internal.browsing_context.cookieJar();
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {

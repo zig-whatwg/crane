@@ -24,6 +24,8 @@
 //!   its settings (its script's URL is its API base URL).
 
 const std = @import("std");
+/// The user agent's cookie jar (src/cookiestore's, reached through fetch).
+const CookieJar = @import("fetch").internal.CookieJar;
 const log = std.log.scoped(.worker_host);
 const Allocator = std.mem.Allocator;
 
@@ -279,6 +281,9 @@ pub const ScopeSettings = struct {
     url: []const u8,
     worker_type: WorkerType,
     name: []const u8,
+    /// The user agent's cookie jar: the creating global's, which the
+    /// worker's settings object hands out in turn.
+    cookie_jar: ?*CookieJar = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -289,6 +294,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .url = wctx.script_url,
         .worker_type = wctx.worker_type,
         .name = if (wctx.dedicated_worker) |dw| dw.getName() else "",
+        .cookie_jar = wctx.cookie_jar,
     };
 }
 
@@ -525,6 +531,10 @@ pub const WorkerHost = struct {
     /// as its own ("run a worker" step 9 - HTML takes the response's URL) and
     /// the one importScripts() resolves against. Owned.
     script_url: []const u8,
+    /// The user agent's cookie jar, from the global that created this
+    /// worker (BORROWED: the Browser outlives its workers). The worker's
+    /// global scope takes it through `scopeSettings`.
+    cookie_jar: ?*CookieJar = null,
 
     /// Worker type (classic or module)
     worker_type: WorkerType,

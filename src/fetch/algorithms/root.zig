@@ -37,6 +37,7 @@ pub const http_fetch = @import("http_fetch.zig");
 pub const fetch_algorithm = @import("fetch.zig");
 pub const fetch_job = @import("fetch_job.zig");
 pub const async_fetch = @import("async_fetch.zig");
+pub const cookies = @import("cookies.zig");
 
 // Re-export main types and functions
 pub const DataUrlResult = data_url.DataUrlResult;

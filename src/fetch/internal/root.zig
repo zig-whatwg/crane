@@ -68,6 +68,11 @@ pub const clampAndCoarsenConnectionTimingInfo = fetch_timing.clampAndCoarsenConn
 
 pub const request = @import("request.zig");
 pub const InternalRequest = request.InternalRequest;
+pub const CookieJar = request.CookieJar;
+
+pub const request_client = @import("request_client.zig");
+pub const RequestClient = request_client.RequestClient;
+pub const populateRequestFromClient = request_client.populateRequestFromClient;
 pub const ServiceWorkersMode = request.ServiceWorkersMode;
 pub const Initiator = request.Initiator;
 pub const Destination = request.Destination;
@@ -140,6 +145,7 @@ test {
     _ = body_pipe;
     _ = fetch_timing;
     _ = request;
+    _ = request_client;
     _ = response;
     _ = fetch_controller;
     _ = fetch_params;

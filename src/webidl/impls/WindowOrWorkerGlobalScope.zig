@@ -759,48 +759,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 /// Fetch "populate request from client", for a request whose client is
 /// `global`'s settings object.
 fn populateRequestFromClient(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
-    // 1. If request's traversable for user prompts is "client": a Window's
-    //    navigable's traversable, or "no-traversable". The Window stands in
-    //    for its traversable: only whether there is one is ever read
-    //    (HTTP-network-or-cache fetch step 14).
-    if (request.traversable_for_user_prompts == .client) {
-        request.traversable_for_user_prompts = if (std.mem.eql(u8, global.vtable.name, "Window"))
-            .{ .traversable = @ptrCast(global) }
-        else
-            .no_traversable;
-    }
-    // 2. If request's origin is "client": the client's origin.
-    if (request.origin == .client) try setClientOrigin(global, request);
-    // Referrer Policy "determine request's referrer", step 3's "client" case,
-    // resolved here where the client is known; main fetch step 9 takes it
-    // from there as a URL referrer, which is the same referrerSource.
-    if (request.referrer == .client) try setClientReferrer(global, request);
-}
-
-/// A "client" referrer's source: a Window's document's URL, or a worker's
-/// creation URL - both are the realm's document URL - and no referrer at
-/// all for a client whose origin is opaque.
-fn setClientReferrer(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
-    if (request.origin == .origin and std.mem.eql(u8, request.origin.origin, "null")) {
-        request.setReferrer(.no_referrer);
-        return;
-    }
-    // TODO: an iframe srcdoc document's referrer source is its container
-    // document's URL; "about:srcdoc" here strips to no referrer.
-    const url = global.ctx.documentUrl() orelse return;
-    if (url.len == 0) return;
-    try request.setReferrerUrl(url);
-}
-
-/// Set `request`'s origin to `global`'s settings object's origin,
-/// serialized. A global with no settings leaves it "client".
-fn setClientOrigin(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
-    const settings = global_settings.of(global) orelse return;
-    const origin = settings.origin(global) catch return;
-    defer global.ctx.allocator.free(origin);
-    // An origin the global does not know yet stays "client".
-    if (origin.len == 0) return;
-    try request.setOrigin(origin);
+    var client = try global_settings.requestClient(global);
+    defer client.deinit();
+    try @import("fetch").internal.populateRequestFromClient(request, client.request);
 }
 
 fn rejectWithTypeError(realm: runtime.Context, capability: *engine.PromiseCapability, message: []const u8) void {

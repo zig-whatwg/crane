@@ -110,6 +110,28 @@ pub fn parseSetCookieHeader(
         try parseAttribute(allocator, &cookie, attr, request_host, request_path, is_secure_origin);
     }
 
+    // RFC 6265bis §5.7 (storage model), the domain: a cookie with a Domain
+    // attribute is stored for that domain only if the request host
+    // domain-matches it - otherwise the cookie is ignored entirely - and a
+    // public suffix only as the request host itself, host-only. With none,
+    // the cookie is host-only, for the canonicalized request host: its
+    // domain is RECORDED, so it matches that host alone (`CookieJar`
+    // compares a host-only cookie's domain exactly).
+    if (cookie.domain) |domain| {
+        if (!std.ascii.eqlIgnoreCase(domain, request_host)) {
+            if (!try domain_matching.isRegistrableDomainSuffixOrEqual(allocator, request_host, domain)) {
+                return ParseError.InvalidDomain;
+            }
+        } else if (try domain_matching.isPublicSuffix(allocator, domain)) {
+            cookie.host_only = true;
+        }
+    } else {
+        const host = try std.ascii.allocLowerString(allocator, request_host);
+        defer allocator.free(host);
+        try cookie.setDomain(host);
+        cookie.host_only = true;
+    }
+
     // Apply defaults
     if (std.mem.eql(u8, cookie.path, "/") and request_path.len > 1) {
         const default_path = domain_matching.getDefaultPath(request_path);
@@ -130,6 +152,7 @@ fn parseAttribute(
     request_path: []const u8,
     is_secure_origin: bool,
 ) !void {
+    _ = request_host;
     _ = request_path;
     _ = is_secure_origin;
 
@@ -171,17 +194,18 @@ fn parseAttribute(
             }
         } else |_| {}
     } else if (std.mem.eql(u8, attr_lower, "domain")) {
-        // Normalize domain
+        // RFC 6265bis §5.6.3: a leading dot is ignored, the value
+        // lowercased, and an empty one ignored. The last Domain attribute
+        // is the cookie's; parseSetCookieHeader checks it against the
+        // request host once every attribute is read.
         var domain = attr_value;
         if (domain.len > 0 and domain[0] == '.') {
             domain = domain[1..];
         }
         if (domain.len > 0) {
-            // Validate domain is a suffix of request host
-            if (domain_matching.isRegistrableDomainSuffixOrEqual(allocator, request_host, domain) catch false) {
-                try cookie.setDomain(domain);
-            }
-            // Else ignore invalid domain
+            const lower = try std.ascii.allocLowerString(allocator, domain);
+            defer allocator.free(lower);
+            try cookie.setDomain(lower);
         }
     } else if (std.mem.eql(u8, attr_lower, "path")) {
         if (attr_value.len > 0 and attr_value[0] == '/') {
@@ -366,4 +390,49 @@ test "parseSetCookieHeader - max-age" {
     defer cookie.deinit();
 
     try std.testing.expect(cookie.expiry_time != null);
+}
+
+test "parseSetCookieHeader - a host-only cookie records its host, and matches no other" {
+    const allocator = std.testing.allocator;
+
+    var cookie = try parseSetCookieHeader(allocator, "id=abc", "www.example.com", "/", false);
+    defer cookie.deinit();
+    try std.testing.expect(cookie.host_only);
+    try std.testing.expectEqualStrings("www.example.com", cookie.domain.?);
+
+    var jar = CookieJar.init(allocator);
+    defer jar.deinit();
+    try jar.store(cookie);
+    for ([_][]const u8{ "example.com", "sub.www.example.com", "other.test" }) |host| {
+        const header = try generateCookieHeader(allocator, &jar, .{ .host = host, .is_http = true });
+        defer allocator.free(header);
+        try std.testing.expectEqualStrings("", header);
+    }
+    const header = try generateCookieHeader(allocator, &jar, .{ .host = "WWW.example.com", .is_http = true });
+    defer allocator.free(header);
+    try std.testing.expectEqualStrings("id=abc", header);
+}
+
+test "parseSetCookieHeader - a Domain the request host does not domain-match drops the cookie" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(ParseError.InvalidDomain, parseSetCookieHeader(allocator, "id=abc; Domain=other.test", "www.example.com", "/", false));
+    // A leading dot is ignored, and the cookie is a domain cookie.
+    var cookie = try parseSetCookieHeader(allocator, "id=abc; Domain=.Example.com", "www.example.com", "/", false);
+    defer cookie.deinit();
+    try std.testing.expect(!cookie.host_only);
+    try std.testing.expectEqualStrings("example.com", cookie.domain.?);
+}
+
+test "processSetCookieHeaders - a host-only and a domain cookie of one name are two cookies" {
+    const allocator = std.testing.allocator;
+    var jar = CookieJar.init(allocator);
+    defer jar.deinit();
+    try processSetCookieHeaders(allocator, &jar, &.{ "id=host", "id=domain; Domain=example.com" }, "example.com", "/", false);
+    try std.testing.expectEqual(2, jar.count());
+    // Max-Age=0 removes the host-only one alone.
+    try processSetCookieHeaders(allocator, &jar, &.{"id=; Max-Age=0"}, "example.com", "/", false);
+    try std.testing.expectEqual(1, jar.count());
+    const header = try generateCookieHeader(allocator, &jar, .{ .host = "sub.example.com", .is_http = true });
+    defer allocator.free(header);
+    try std.testing.expectEqualStrings("id=domain", header);
 }

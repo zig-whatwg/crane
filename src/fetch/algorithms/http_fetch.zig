@@ -33,6 +33,7 @@ const NetworkError = network.NetworkError;
 const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
+const cookies = @import("cookies.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -557,6 +558,18 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     // 8.19. If httpRequest's header list contains `Range`, then append
     //       (`Accept-Encoding`, `identity`).
     if (list.contains("Range")) try addHeader(allocator, added, "Accept-Encoding", "identity");
+    // 8.21. If includeCredentials is true, then:
+    if (httpNetworkFetchUsesCookies(request)) {
+        // 8.21.1. Append a request `Cookie` header for httpRequest.
+        if (try cookies.requestCookieHeader(allocator, request)) |value| {
+            added.append(allocator, .{ .name = "Cookie", .value = value }) catch |err| {
+                allocator.free(value);
+                return err;
+            };
+        }
+        // TODO: 8.21.2, the `Authorization` header from an authentication
+        //       entry or the URL's credentials.
+    }
 }
 
 fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), name: []const u8, value: []const u8) !void {
@@ -613,13 +626,11 @@ fn requestOriginHeader(allocator: Allocator, request: *InternalRequest) !?[]u8 {
     return serialized;
 }
 
-/// Whether HTTP-network fetch sends and stores cookies for `request`:
-/// HTTP-network-or-cache fetch's includeCredentials - credentials mode
-/// "include", or "same-origin" while the response tainting is "basic" (a
-/// cross-origin request in "cors" mode sends its cookies only when it asks
-/// to). Cookie handling itself is libcurl's, through CurlCookieManager - it
-/// sends the matching cookies (Fetch spec §4.9 step 5) and stores the
-/// `Set-Cookie` ones (step 11).
+/// HTTP-network-or-cache fetch's includeCredentials for `request`:
+/// credentials mode "include", or "same-origin" while the response tainting
+/// is "basic" (a cross-origin request in "cors" mode sends its cookies only
+/// when it asks to). When it is true, step 8.21 sends the request's cookies
+/// and HTTP-network fetch step 16 stores the response's (cookies.zig).
 pub fn httpNetworkFetchUsesCookies(request: *const InternalRequest) bool {
     return switch (request.credentials_mode) {
         .include => true,
@@ -684,6 +695,15 @@ pub fn httpNetworkFetchFinish(
     // Copy headers
     for (network_response.headers) |header| {
         response.header_list.append(header.name, header.value) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+    }
+
+    // Step 16: If includeCredentials is true, then the user agent should
+    // parse and store response `Set-Cookie` headers given request and
+    // response. Every response HTTP-network fetch returns, a redirect's too.
+    if (httpNetworkFetchUsesCookies(request)) {
+        cookies.storeResponseCookies(allocator, request, &response.header_list) catch {
             return HttpFetchError.OutOfMemory;
         };
     }
@@ -1537,6 +1557,62 @@ test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, 
     }
     try std.testing.expect(referer_at.? < origin_at.?);
     try std.testing.expect(!request.header_list.contains("Referer"));
+}
+
+test "HTTP-network-or-cache fetch step 8.21: includeCredentials sends the jar's cookies, last" {
+    const allocator = std.testing.allocator;
+    var jar = @import("cookiestore").CookieJar.init(allocator);
+    defer jar.deinit();
+    try @import("cookiestore").http_integration.processSetCookieHeaders(allocator, &jar, &.{"sid=1; Path=/"}, "a.test", "/", false);
+
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    request.cookie_jar = &jar;
+    request.credentials_mode = .include;
+
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer {
+        for (added.items) |h| allocator.free(h.value);
+        added.deinit(allocator);
+    }
+    try httpRequestHeaders(allocator, request, &added);
+    const last = added.items[added.items.len - 1];
+    try std.testing.expectEqualStrings("Cookie", last.name);
+    try std.testing.expectEqualStrings("sid=1", last.value);
+
+    // includeCredentials false: no Cookie.
+    for (added.items) |h| allocator.free(h.value);
+    added.clearRetainingCapacity();
+    request.credentials_mode = .omit;
+    try httpRequestHeaders(allocator, request, &added);
+    for (added.items) |h| try std.testing.expect(!std.ascii.eqlIgnoreCase(h.name, "Cookie"));
+}
+
+test "HTTP-network fetch step 16: includeCredentials stores the response's Set-Cookie" {
+    const allocator = std.testing.allocator;
+    var jar = @import("cookiestore").CookieJar.init(allocator);
+    defer jar.deinit();
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    request.cookie_jar = &jar;
+    const controller = try @import("../internal/fetch_controller.zig").FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = @import("../internal/fetch_timing.zig").FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    var headers = [_]NetworkResponse.Header{.{ .name = "Set-Cookie", .value = "sid=1; Path=/" }};
+    const answer = preflightAnswer(200, &headers);
+    request.credentials_mode = .omit;
+    const ignored = try httpNetworkFetchFinish(allocator, params, &answer, 0, null);
+    ignored.deinit();
+    try std.testing.expectEqual(0, jar.count());
+
+    request.credentials_mode = .same_origin;
+    const stored = try httpNetworkFetchFinish(allocator, params, &answer, 0, null);
+    stored.deinit();
+    try std.testing.expectEqual(1, jar.count());
 }
 
 test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Length, and the cache headers" {

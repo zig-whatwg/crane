@@ -99,10 +99,11 @@ pub const FetchJob = struct {
         done,
     };
 
+    /// Cookies are not the network's business: HTTP-network-or-cache fetch
+    /// has put them in `request` already, and HTTP-network fetch stores the
+    /// answer's (algorithms/cookies.zig).
     pub const NetworkStep = struct {
         request: *const NetworkRequest,
-        /// See `http_fetch.httpNetworkFetchUsesCookies`.
-        cookies: bool,
     };
 
     /// A job fetching `request`. With `owns_request`, the job frees it.
@@ -261,7 +262,7 @@ pub const FetchJob = struct {
         self.network_start_time = http_fetch.getCurrentTimeMs();
         // A CORS-preflight request never carries credentials: its
         // credentials mode is "same-origin" and its tainting "cors".
-        return .{ .network = .{ .request = &self.network_request.?, .cookies = false } };
+        return .{ .network = .{ .request = &self.network_request.? } };
     }
 
     /// CORS-preflight fetch steps 7-8, once the network answered the
@@ -287,10 +288,7 @@ pub const FetchJob = struct {
             .network => |request| {
                 self.network_request = request;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
-                return .{ .network = .{
-                    .request = &self.network_request.?,
-                    .cookies = http_fetch.httpNetworkFetchUsesCookies(self.request),
-                } };
+                return .{ .network = .{ .request = &self.network_request.? } };
             },
         }
     }

@@ -263,6 +263,11 @@ pub const Cookie = struct {
             other.domain == null;
         if (!domain_match) return false;
 
+        // So must the host-only flag: a host-only cookie and a Domain cookie
+        // for the same name, domain and path are two cookies (RFC 6265bis
+        // §5.7, storage model step 23).
+        if (self.host_only != other.host_only) return false;
+
         // Path must match
         if (!std.mem.eql(u8, self.path, other.path)) return false;
 
