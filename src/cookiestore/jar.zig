@@ -12,6 +12,16 @@ const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
 const domain_matching = @import("domain_matching.zig");
 const clock = @import("clock");
+const ChangeType = @import("change_observer.zig").ChangeType;
+
+/// Who hears about the store's cookie changes (Cookie Store "process cookie
+/// changes"): a cookie inserted or replaced is `changed`, one removed -
+/// expired, evicted, or replaced by an expired one - is `deleted`. The
+/// cookie is borrowed for the call.
+pub const ChangeHook = struct {
+    callback: *const fn (context: ?*anyopaque, change_type: ChangeType, cookie: *const Cookie) void,
+    context: ?*anyopaque = null,
+};
 
 /// Maximum cookies per domain (per RFC 6265bis recommendations)
 pub const MAX_COOKIES_PER_DOMAIN: usize = 50;
@@ -62,6 +72,9 @@ pub const CookieJar = struct {
     /// Allocator for the jar
     allocator: std.mem.Allocator,
 
+    /// Told of every change (see `ChangeHook`); null for none.
+    on_change: ?ChangeHook = null,
+
     const Self = @This();
 
     /// Create a new cookie jar
@@ -70,6 +83,11 @@ pub const CookieJar = struct {
             .cookies = .empty,
             .allocator = allocator,
         };
+    }
+
+    fn notify(self: *const Self, change_type: ChangeType, cookie: *const Cookie) void {
+        const hook = self.on_change orelse return;
+        hook.callback(hook.context, change_type, cookie);
     }
 
     /// Free all resources
@@ -89,13 +107,24 @@ pub const CookieJar = struct {
     /// (http_integration.storeCookie) decides whether a cookie may be stored
     /// and calls this.
     pub fn store(self: *Self, cookie: Cookie) !void {
-        var owned_cookie = try cookie.clone(self.allocator);
-        errdefer owned_cookie.deinit();
-        if (self.findIdentity(cookie)) |index| {
-            owned_cookie.creation_time = self.cookies.items[index].creation_time;
-            self.removeAt(index);
+        const old = self.findIdentity(cookie);
+        if (cookie.isExpired()) {
+            // Inserted and at once collected: the change is the old
+            // cookie's removal, if there was one.
+            if (old) |index| {
+                self.removeAt(index);
+                self.notify(.deleted, &cookie);
+            }
+        } else {
+            var owned_cookie = try cookie.clone(self.allocator);
+            errdefer owned_cookie.deinit();
+            if (old) |index| {
+                owned_cookie.creation_time = self.cookies.items[index].creation_time;
+                self.removeAt(index);
+            }
+            try self.cookies.append(self.allocator, owned_cookie);
+            self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
         }
-        try self.cookies.append(self.allocator, owned_cookie);
         self.garbageCollect(cookie.domain orelse "");
     }
 
@@ -112,6 +141,14 @@ pub const CookieJar = struct {
     pub fn removeAt(self: *Self, index: usize) void {
         var removed = self.cookies.orderedRemove(index);
         removed.deinit();
+    }
+
+    /// Remove the cookie at `index` from the store - expired or evicted -
+    /// telling the change hook it is `deleted`.
+    fn collectAt(self: *Self, index: usize) void {
+        var removed = self.cookies.orderedRemove(index);
+        defer removed.deinit();
+        self.notify(.deleted, &removed);
     }
 
     /// Retrieve cookies matching the given options
@@ -186,7 +223,7 @@ pub const CookieJar = struct {
         var i: usize = 0;
         while (i < self.cookies.items.len) {
             if (self.cookies.items[i].isExpired()) {
-                self.removeAt(i);
+                self.collectAt(i);
             } else {
                 i += 1;
             }
@@ -202,8 +239,9 @@ pub const CookieJar = struct {
     }
 
     /// Whether `cookie` matches the retrieve options (layered cookies
-    /// "Retrieve Cookies" step 2).
-    fn cookieMatches(cookie: *const Cookie, options: RetrieveOptions) bool {
+    /// "Retrieve Cookies" step 2) - also what makes a change observable for
+    /// a URL (Cookie Store "observable changes").
+    pub fn cookieMatches(cookie: *const Cookie, options: RetrieveOptions) bool {
         // Name filter
         if (options.name) |name| {
             if (!std.mem.eql(u8, cookie.name, name)) {
@@ -299,7 +337,7 @@ pub const CookieJar = struct {
                 }
             }
             if (host_count <= MAX_COOKIES_PER_DOMAIN) return;
-            self.removeAt(victim.?);
+            self.collectAt(victim.?);
         }
     }
 
@@ -311,7 +349,7 @@ pub const CookieJar = struct {
             for (self.cookies.items, 0..) |cookie, index| {
                 if (cookie.last_access_time < self.cookies.items[oldest].last_access_time) oldest = index;
             }
-            self.removeAt(oldest);
+            self.collectAt(oldest);
         }
     }
 };
@@ -686,4 +724,59 @@ test "CookieJar - sorting" {
     try std.testing.expectEqual(@as(usize, 2), cookies.items.len);
     try std.testing.expectEqualStrings("long", cookies.items[0].name);
     try std.testing.expectEqualStrings("short", cookies.items[1].name);
+}
+
+const HookLog = struct {
+    changed: usize = 0,
+    deleted: usize = 0,
+    last_name: [16]u8 = undefined,
+    last_len: usize = 0,
+
+    fn record(context: ?*anyopaque, change_type: ChangeType, cookie: *const Cookie) void {
+        const self: *HookLog = @ptrCast(@alignCast(context.?));
+        switch (change_type) {
+            .changed => self.changed += 1,
+            .deleted => self.deleted += 1,
+        }
+        self.last_len = @min(cookie.name.len, self.last_name.len);
+        @memcpy(self.last_name[0..self.last_len], cookie.name[0..self.last_len]);
+    }
+};
+
+test "CookieJar - the change hook hears inserts, replacements and removals, once each" {
+    const allocator = std.testing.allocator;
+    var jar = CookieJar.init(allocator);
+    defer jar.deinit();
+    var log: HookLog = .{};
+    jar.on_change = .{ .callback = &HookLog.record, .context = &log };
+
+    var cookie = try Cookie.init(allocator, "a", "1");
+    defer cookie.deinit();
+    try cookie.setDomain("example.com");
+    try jar.store(cookie);
+    try std.testing.expectEqual(@as(usize, 1), log.changed);
+
+    // A replacement is one `changed`, never a delete plus an add.
+    try jar.store(cookie);
+    try std.testing.expectEqual(@as(usize, 2), log.changed);
+    try std.testing.expectEqual(@as(usize, 0), log.deleted);
+
+    // An expired cookie replacing it is its deletion.
+    cookie.expiry_time = 0;
+    try jar.store(cookie);
+    try std.testing.expectEqual(@as(usize, 1), log.deleted);
+    try std.testing.expectEqualStrings("a", log.last_name[0..log.last_len]);
+    try std.testing.expectEqual(@as(usize, 0), jar.count());
+
+    // An expired cookie with nothing to replace changes nothing.
+    try jar.store(cookie);
+    try std.testing.expectEqual(@as(usize, 1), log.deleted);
+    try std.testing.expectEqual(@as(usize, 2), log.changed);
+
+    // One that expires in the store is deleted when the store collects it.
+    cookie.expiry_time = null;
+    try jar.store(cookie);
+    jar.cookies.items[0].expiry_time = 1;
+    jar.removeExpired();
+    try std.testing.expectEqual(@as(usize, 2), log.deleted);
 }

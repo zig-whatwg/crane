@@ -21,6 +21,11 @@ const JSValue = runtime.JSValue;
 ///
 /// https://cookiestore.spec.whatwg.org/#create-a-cookielistitem
 pub fn listItem(realm: runtime.Context, item: CookieListItem) engine.Error!engine.Owned {
+    // A member that is not present is not converted: a deleted cookie's
+    // item has no `value` (Cookie Store "prepare lists from changes").
+    if (!item.has_value) return engine.createDictionaryObject(realm, &.{
+        .{ .name = "name", .value = JSValue.fromStringRef(item.name) },
+    });
     return engine.createDictionaryObject(realm, &.{
         .{ .name = "name", .value = JSValue.fromStringRef(item.name) },
         .{ .name = "value", .value = JSValue.fromStringRef(item.value) },

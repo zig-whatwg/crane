@@ -14,6 +14,10 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const cookiestore = @import("cookiestore");
+const engine = @import("engine");
+const webidl = @import("webidl");
+const EventTargetImpl = @import("EventTarget.zig");
+const log = std.log.scoped(.cookie_store);
 
 // The Promise-returning operations make their promises and values through
 // the engine protocol (cookie_values.zig).
@@ -42,10 +46,12 @@ pub const ImplError = error{
 pub const InternalState = struct {
     /// Whether this store is in a secure context
     is_secure_context: bool,
-    /// The onchange event handler
-    onchange_handler: ?*const anyopaque,
-    /// Change observer for event dispatch
+    /// The jar's changes since this store last fired `change` - every one,
+    /// from any API; which are observable for its URL is decided when it
+    /// fires (`fireChangeEvent`).
     change_observer: CookieChangeObserver,
+    /// A task to fire `change` is queued (`scheduleChangeEvent`).
+    change_task_queued: bool = false,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
@@ -53,7 +59,6 @@ pub const InternalState = struct {
         const internal = try allocator.create(InternalState);
         internal.* = InternalState{
             .is_secure_context = is_secure_context,
-            .onchange_handler = null,
             .change_observer = CookieChangeObserver.init(allocator),
             .allocator = allocator,
         };
@@ -98,7 +103,9 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // A CookieStore is an EventTarget: its EventTarget state first.
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
 
     // Initialize internal state with default values
     const internal = try InternalState.init(allocator, true);
@@ -106,17 +113,22 @@ pub fn init(
     // Store internal state pointer in state
     const state = instance.getState(StateType);
     state.own._internal = internal;
+    listenToJar(instance);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // It hears the jar no more; a queued change task finds it gone.
+    unlistenToJar(instance);
     // Clean up internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
+        state.own._internal = null;
     }
+    EventTargetImpl.deinit(instance);
 }
 
 /// Helper to get internal state from instance
@@ -125,18 +137,206 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Getter for onchange
+/// Getter for onchange (HTML § 8.1.8.1, the event handler IDL attribute).
 pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    // Return null event handler - event dispatch happens via change observer
-    return null;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "change");
 }
 
-/// Setter for onchange
+/// Setter for onchange: the handler joins the event listener list, where
+/// dispatch finds it in the order it was activated.
 pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    if (getInternalState(instance)) |internal| {
-        internal.onchange_handler = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "change", value);
+}
+
+// ============================================================================
+// Process cookie changes
+//
+// Cookie Store "process cookie changes": whenever the user agent's cookie
+// store changes - through fetch, a navigation, document.cookie, a WebSocket
+// handshake or this API - every Window's CookieStore whose creation URL
+// observes the change gets a `change` event, queued as a global task. Here
+// each live CookieStore registers with its jar (`listenToJar`); the jar's
+// change hook (`jarChanged`) records the change with every store on that
+// jar and queues each one's task; the task (`fireChangeEvent`) keeps the
+// changes observable for the store's URL and fires them.
+// ============================================================================
+
+/// A CookieStore that hears its jar: the instance, its slab generation when
+/// it registered (an address is not an identity), and the jar.
+const Listening = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    jar: *CookieJar,
+};
+
+/// Every CookieStore on this thread that hears a jar. The jar never points
+/// at a store - its hook is `jarChanged`, with the jar as context - so a
+/// store and the jar can end in either order.
+threadlocal var listening: std.ArrayListUnmanaged(Listening) = .empty;
+
+/// Register `instance` with the jar its relevant settings object reaches,
+/// and give that jar the hook. A store with no jar hears nothing.
+fn listenToJar(instance: *runtime.Instance) void {
+    const client = clientOf(instance) orelse return;
+    listening.append(std.heap.page_allocator, .{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .jar = client.jar,
+    }) catch {
+        log.warn("a CookieStore will fire no change events: out of memory", .{});
+        return;
+    };
+    client.jar.on_change = .{ .callback = &jarChanged, .context = client.jar };
+}
+
+fn unlistenToJar(instance: *runtime.Instance) void {
+    var i: usize = 0;
+    while (i < listening.items.len) {
+        if (listening.items[i].instance == instance) {
+            _ = listening.swapRemove(i);
+        } else {
+            i += 1;
+        }
     }
+}
+
+/// Whether `instance`, as it was at `generation`, still hears a jar.
+fn stillListening(instance: *runtime.Instance, generation: u64) bool {
+    for (listening.items) |entry| {
+        if (entry.instance == instance and entry.generation == generation) return true;
+    }
+    return false;
+}
+
+/// The jar's change hook: `cookie` (borrowed) was inserted or removed.
+/// HttpOnly cookies are never observable to script.
+fn jarChanged(context: ?*anyopaque, change_type: cookiestore.CookieChangeType, cookie: *const Cookie) void {
+    if (cookie.http_only) return;
+    const jar: *CookieJar = @ptrCast(@alignCast(context.?));
+    // By index: a store's task can run here and now (a realm with no loop),
+    // and its script can make or end a CookieStore.
+    var i: usize = 0;
+    while (i < listening.items.len) : (i += 1) {
+        const entry = listening.items[i];
+        if (entry.jar != jar) continue;
+        if (runtime.SlabAllocator.generationOf(entry.instance) != entry.generation) continue;
+        const internal = getInternalState(entry.instance) orelse continue;
+        internal.change_observer.recordChange(change_type, cookie.*) catch continue;
+        scheduleChangeEvent(entry.instance, internal);
+    }
+}
+
+/// Step 1.4: queue a global task on the DOM manipulation task source to
+/// fire `change` - one task for however many changes arrive before it runs.
+fn scheduleChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
+    if (internal.change_task_queued) return;
+    const task = internal.allocator.create(ChangeTask) catch return;
+    task.* = .{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .allocator = internal.allocator,
+    };
+    internal.change_task_queued = true;
+    if (instance.ctx.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = ChangeTask.run, .context = task, .drop = ChangeTask.drop });
+        return;
+    }
+    if (instance.ctx.getOptionalTimer()) |timer| {
+        if (timer.setTimeout(0, ChangeTask.run, task) != 0) return;
+    }
+    // No loop to queue on (a realm built for tests): now.
+    ChangeTask.run(task);
+}
+
+/// The task, and what it needs to find its store again.
+const ChangeTask = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        const instance = self.instance;
+        const alive = stillListening(instance, self.generation);
+        self.allocator.destroy(self);
+        if (!alive) return;
+        // Entered from the event loop, not from script: the realm's task.
+        engine.runTaskInRealm(instance.ctx, steps, instance) catch {};
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(data.?));
+        const internal = getInternalState(instance) orelse return;
+        internal.change_task_queued = false;
+        fireChangeEvent(instance, internal);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        self.allocator.destroy(self);
+    }
+};
+
+/// "Fire a change event named `change` with changes at" the store: the
+/// recorded changes observable for its creation URL (those the URL's
+/// cookie-list for a "non-HTTP" API would hold), prepared as lists - a
+/// deleted cookie's item has no value - in a CookieChangeEvent, trusted.
+fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
+    const allocator = internal.allocator;
+    const observer = &internal.change_observer;
+    defer {
+        for (observer.pending_changes.items) |*change| change.deinit();
+        observer.pending_changes.clearRetainingCapacity();
+    }
+    const client = clientOf(instance) orelse return;
+    const url = cookiestore.RequestUrl.of(client.url) orelse return;
+    const options: cookiestore.RetrieveOptions = .{
+        .host = url.host,
+        .path = url.path,
+        .is_secure = url.secure,
+        // TODO: the same-site mode, as for document.cookie.
+        .same_site = .strict_or_less,
+    };
+
+    // "Prepare lists from changes": borrowed from the recorded changes,
+    // which outlive the event's construction (it copies them).
+    var changed: std.ArrayListUnmanaged(dictionaries.CookieListItem) = .empty;
+    defer changed.deinit(allocator);
+    var deleted: std.ArrayListUnmanaged(dictionaries.CookieListItem) = .empty;
+    defer deleted.deinit(allocator);
+    for (observer.pending_changes.items) |*change| {
+        if (!CookieJar.cookieMatches(&change.cookie, options)) continue;
+        const list = if (change.change_type == .changed) &changed else &deleted;
+        list.append(allocator, .{
+            .name = change.cookie.name,
+            .value = if (change.change_type == .changed) change.cookie.value else null,
+        }) catch return;
+    }
+    if (changed.items.len == 0 and deleted.items.len == 0) return;
+
+    // Steps 1-6: a CookieChangeEvent of type `change`, neither bubbling nor
+    // cancelable, with the lists.
+    const type_string = runtime.DOMString.initInterned("change");
+    const event = interfaces.CookieChangeEvent.call_constructor(
+        instance.ctx,
+        type_string,
+        webidl.Opt(dictionaries.CookieChangeEventInit).passed(.{
+            .base = .{},
+            .changed = changed.items,
+            .deleted = deleted.items,
+        }),
+    ) catch |err| {
+        log.debug("change event not made: {s}", .{@errorName(err)});
+        return;
+    };
+    // Step 7: dispatch it - fired by the user agent, so trusted. EventTarget
+    // is an ancestor, so its impl.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = EventTargetImpl.dispatchTrusted(instance, event) catch |err| {
+        log.debug("change event not dispatched: {s}", .{@errorName(err)});
+    };
+    // An event no script saw is freed; a wrapped one belongs to its wrapper.
+    event.releaseIfUnwrapped(generation);
 }
 
 // ============================================================================
@@ -275,7 +475,9 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
         return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
 
     // Step 6.1: set a cookie with url, name, value, and the defaults.
-    cookiestore.setCookieObserved(internal.allocator, client.jar, &internal.change_observer, url.host, .{
+    // The jar's change hook records the change for every store (this one
+    // included), so nothing is recorded here.
+    cookiestore.setCookie(internal.allocator, client.jar, url.host, .{
         .name = name,
         .value = value,
     }) catch |err| return switch (err) {
@@ -304,7 +506,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
         return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
 
     // Step 6.1: delete a cookie with url, name, null, "/" and true.
-    cookiestore.deleteCookieObserved(internal.allocator, client.jar, &internal.change_observer, url.host, .{
+    cookiestore.deleteCookie(internal.allocator, client.jar, url.host, .{
         .name = name,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
@@ -329,12 +531,15 @@ pub fn createForOrigin(
     ctx: runtime.Context,
     is_secure_context: bool,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // A CookieStore is an EventTarget: its EventTarget state first.
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
 
     const internal = try InternalState.init(allocator, is_secure_context);
 
     const state = instance.getState(StateType);
     state.own._internal = internal;
+    listenToJar(instance);
 
     return instance;
 }

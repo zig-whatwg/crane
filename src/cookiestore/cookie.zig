@@ -305,6 +305,11 @@ pub const CookieListItem = struct {
     /// Cookie value (USVString)
     value: []const u8,
 
+    /// Whether the dictionary has a `value` member. A deleted cookie's item
+    /// has none (Cookie Store "prepare lists from changes": its value is
+    /// undefined); `value` is then empty and not converted.
+    has_value: bool = true,
+
     /// Allocator used for owned memory
     allocator: ?std.mem.Allocator = null,
 
@@ -351,6 +356,7 @@ pub const CookieListItem = struct {
         return Self{
             .name = try allocator.dupe(u8, self.name),
             .value = try allocator.dupe(u8, self.value),
+            .has_value = self.has_value,
             .allocator = allocator,
         };
     }
