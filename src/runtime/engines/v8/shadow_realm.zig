@@ -155,12 +155,17 @@ fn shadowRealmContextCallback(
         return null;
     }
 
-    // Register the ShadowRealm context in the context manager
-    // This enables dynamic import to work correctly with ShadowRealm contexts
+    // Register the ShadowRealm context in the context manager - its realm, to
+    // the host - and record the realm that created it: the ShadowRealm's
+    // synthetic realm settings object's principal realm (host data,
+    // runtime.ContextData.principal_realm), which its import()s resolve and
+    // fetch against.
     if (callback_data) |data| {
-        _ = context_manager.getOrCreate(context, data.allocator) catch |err| {
+        if (context_manager.getOrCreate(context, data.allocator)) |shadow| {
+            shadow.principal_realm = if (initiator_context) |ctx| context_manager.get(ctx) else null;
+        } else |err| {
             std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
-        };
+        }
     }
 
     // Track the ShadowRealm for lifetime management

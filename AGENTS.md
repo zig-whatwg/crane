@@ -844,6 +844,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A realm switch inside a task is runInRealm, not prepareToRunScript](docs/lessons/architecture-a-realm-switch-is-runinrealm-not-preparetorunscript.md) - `JsScope` translates to `runInRealm`/`runTaskInRealm`; `prepareToRunScript` is for running script, and around event dispatch it silently moves microtask checkpoints.
 - [A realm's end can reach its own end](docs/lessons/architecture-a-realm-s-end-can-reach-its-own-end.md) - Any teardown that frees wrapped objects can be re-entered by one of them: carry the re-entrancy guard over when replacing a teardown path, and bisect a sweep prefix before reading the crashing file.
 - [Only "clean up after running script" checkpoints](docs/lessons/architecture-only-clean-up-after-running-script-checkpoints.md) - A checkpoint needs the spec's condition (an empty execution context stack), not a call site; one after every script is one inside some other script.
+- [A per-agent hook serves every realm kind in the agent](docs/lessons/architecture-a-per-agent-hook-serves-every-realm-kind-in-the-agent.md) - Before installing a hook per agent, list every kind of realm the agent can hold (Window, frame, ShadowRealm, worklet) and give each one a path through it, or a deliberate rejection.
 
 ### Spec Compliance
 
@@ -869,6 +870,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A state that queues tokens has emitted them](docs/lessons/spec-compliance-a-state-that-queues-tokens-has-emitted-them.md) - A token queued is a token emitted: the queue drains before the next state runs and before end of file, or order and text are lost.
 - [Read ahead, consume only what matched](docs/lessons/spec-compliance-read-ahead-consume-only-what-matched.md) - Match by looking ahead, not by consuming and restoring; restoring for one caller loses text for every other.
 - [A state that consumes nothing cannot be dispatched like one that does](docs/lessons/spec-compliance-a-state-that-consumes-nothing-cannot-be-dispatched-like-one-that-does.md) - Check each state's first step: one that does not consume must not be reached through a loop that consumes for it.
+- [A referrer is a record, not a resource name](docs/lessons/spec-compliance-a-referrer-is-a-record-not-a-resource-name.md) - Carry the spec's record across the engine boundary; reconstructing a referrer from the string the engine holds works only until the string and the record disagree, and for inline scripts they always did.
 
 ### Codegen
 
