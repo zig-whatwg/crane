@@ -162,3 +162,17 @@ test "a detached tree whose nodes were all wrapped ends cleanly with its realm" 
     try browser.navigate("about:blank", .window);
     try browser.navigate("about:blank", .window);
 }
+
+test "Browsers in sequence each hold the network for their life, and the next finds it working" {
+    const allocator = std.testing.allocator;
+    // A Browser takes a reference on curl's process-wide state and gives it
+    // back as it ends - the last one shutting the connection pool down. The
+    // next Browser must find a working network, not one torn down under it.
+    for (0..2) |_| {
+        const browser = try Browser.init(allocator, .{});
+        defer browser.deinit();
+        // A fetch that reaches curl: a refused connection is a network
+        // error, not a crash.
+        try std.testing.expectError(error.NetworkError, browser_mod.navigation.fetchUrl(allocator, "http://127.0.0.1:9/", .{}));
+    }
+}

@@ -164,6 +164,14 @@ pub fn globalCleanup() void {
     }
 }
 
+/// How many holders the global state has - `globalInit` calls not yet
+/// matched by `globalCleanup`. A Browser is one for its life.
+pub fn globalReferences() usize {
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
+    return global_init_count;
+}
+
 /// Get the global share handle for connection pooling.
 /// Returns null if globalInit() hasn't been called.
 pub fn getGlobalShare() ?*curl.CURLSH {

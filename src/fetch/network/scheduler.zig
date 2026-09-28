@@ -379,3 +379,16 @@ pub fn threadScheduler() *NetworkScheduler {
 pub fn existingThreadScheduler() ?*NetworkScheduler {
     return if (thread_scheduler) |*scheduler| scheduler else null;
 }
+
+/// End this thread's scheduler, if it has one and nothing is left in it: its
+/// multi handle closes, and curl shuts down the connections that handle
+/// keeps. The next `threadScheduler()` makes a new one. With a transfer
+/// still in it this does nothing - whoever started the transfer would be
+/// left holding a freed job.
+pub fn endIdleThreadScheduler() void {
+    if (thread_scheduler) |*scheduler| {
+        if (scheduler.jobs.items.len != 0) return;
+        scheduler.deinit();
+        thread_scheduler = null;
+    }
+}

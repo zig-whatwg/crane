@@ -200,6 +200,11 @@ pub const Browser = struct {
     /// Note: The snapshot contains V8 builtins only. WebIDL interfaces are registered
     /// at runtime on each context creation.
     pub fn init(allocator: std.mem.Allocator, config: BrowserConfig) !*Browser {
+        // The network's process-wide state - curl, and the connection pool
+        // every fetch shares - held for this Browser's life (`deinit`).
+        try @import("fetch").network.globalInit();
+        errdefer @import("fetch").network.globalCleanup();
+
         // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
@@ -347,6 +352,15 @@ pub const Browser = struct {
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
+
+        // The network ends with the last Browser, once nothing that could
+        // hold a transfer is left: the thread's scheduler closes, and so does
+        // the connection pool, where curl shuts each connection down - an
+        // HTTP/2 one with a GOAWAY. A connection only closed by the process
+        // exiting ends with a bare FIN, and WPT's h2 server (:9000) spins a
+        // thread forever on each of those.
+        @import("fetch").network.scheduler.endIdleThreadScheduler();
+        @import("fetch").network.globalCleanup();
 
         self.initialized = false;
         self.allocator.destroy(self);
