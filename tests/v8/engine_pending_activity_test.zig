@@ -19,7 +19,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const engine = &v8.engine.v8_engine_interface;
 const WrapperCache = v8.WrapperCache;
 
 var isolate_once: ?*ffi.Isolate = null;
@@ -63,7 +62,7 @@ fn setup() !void {
     const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = engine, .engine_ctx = context });
+    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
     data.agent = @ptrCast(isolate);
     const cache = try std.heap.page_allocator.create(WrapperCache);
     cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
@@ -124,13 +123,13 @@ test "a wrapper nothing holds is weak, and a full GC frees its instance" {
 test "a kept wrapper survives a full GC; released, it is collected and its deinit runs" {
     try setup();
     const worker = try wrapped();
-    engine.keepPlatformObjectAlive.?(worker.instance);
+    v8.worker_realm.keepPlatformObjectAlive(worker.instance);
     try std.testing.expect(isStrong(worker));
     collect();
     try std.testing.expect(!wasFreed(worker));
     try std.testing.expect(isCached(worker));
 
-    engine.releasePlatformObject.?(worker.instance);
+    v8.worker_realm.releasePlatformObject(worker.instance);
     try std.testing.expect(!isStrong(worker));
     collect();
     try std.testing.expect(wasFreed(worker));
@@ -139,15 +138,15 @@ test "a kept wrapper survives a full GC; released, it is collected and its deini
 test "releasing twice, or what was never kept, changes nothing" {
     try setup();
     const never_kept = try wrapped();
-    engine.releasePlatformObject.?(never_kept.instance);
-    engine.releasePlatformObject.?(never_kept.instance);
+    v8.worker_realm.releasePlatformObject(never_kept.instance);
+    v8.worker_realm.releasePlatformObject(never_kept.instance);
     try std.testing.expect(!isStrong(never_kept));
 
     const kept = try wrapped();
-    engine.keepPlatformObjectAlive.?(kept.instance);
-    engine.keepPlatformObjectAlive.?(kept.instance);
-    engine.releasePlatformObject.?(kept.instance);
-    engine.releasePlatformObject.?(kept.instance);
+    v8.worker_realm.keepPlatformObjectAlive(kept.instance);
+    v8.worker_realm.keepPlatformObjectAlive(kept.instance);
+    v8.worker_realm.releasePlatformObject(kept.instance);
+    v8.worker_realm.releasePlatformObject(kept.instance);
     try std.testing.expect(!isStrong(kept));
     collect();
     try std.testing.expect(wasFreed(never_kept));
@@ -160,8 +159,8 @@ test "releasing pending activity leaves a wrapper held for another reason" {
     // separate reasons: ending one leaves the other.
     const both = try wrapped();
     v8.wrapper_cache_mod.holdStrong(both.instance);
-    engine.keepPlatformObjectAlive.?(both.instance);
-    engine.releasePlatformObject.?(both.instance);
+    v8.worker_realm.keepPlatformObjectAlive(both.instance);
+    v8.worker_realm.releasePlatformObject(both.instance);
     try std.testing.expect(isStrong(both));
     collect();
     try std.testing.expect(!wasFreed(both));
@@ -172,19 +171,19 @@ test "a hold placed before the wrapper exists is taken by the wrapper when it is
     try setup();
     // A timeout signal's timer is armed before the binding wraps the signal.
     const early = try unwrapped();
-    engine.keepPlatformObjectAlive.?(early.instance);
+    v8.worker_realm.keepPlatformObjectAlive(early.instance);
     try wrap(early);
     try std.testing.expect(isStrong(early));
     collect();
     try std.testing.expect(!wasFreed(early));
-    engine.releasePlatformObject.?(early.instance);
+    v8.worker_realm.releasePlatformObject(early.instance);
     collect();
     try std.testing.expect(wasFreed(early));
 
     // Released before it was wrapped: nothing is left to take.
     const brief = try unwrapped();
-    engine.keepPlatformObjectAlive.?(brief.instance);
-    engine.releasePlatformObject.?(brief.instance);
+    v8.worker_realm.keepPlatformObjectAlive(brief.instance);
+    v8.worker_realm.releasePlatformObject(brief.instance);
     try wrap(brief);
     try std.testing.expect(!isStrong(brief));
     collect();
@@ -194,7 +193,7 @@ test "a hold placed before the wrapper exists is taken by the wrapper when it is
 test "a hold recorded for a freed instance is not inherited by its slot's next occupant" {
     try setup();
     const first = try unwrapped();
-    engine.keepPlatformObjectAlive.?(first.instance);
+    v8.worker_realm.keepPlatformObjectAlive(first.instance);
     // The instance goes without ever being wrapped, and its slot is reissued.
     runtime.SlabAllocator.get().free(first.instance);
     const second = try unwrapped();

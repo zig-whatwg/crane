@@ -1,10 +1,10 @@
 //! Values an impl makes for script, and microtasks it queues - the V8 side of
-//! the runtime-impls lane's Engine operations (AGENTS.md, "The engine
-//! boundary"): createResolvedPromise, createRejectedPromise,
-//! createSimpleException, createDictionaryObject and queueMicrotask.
+//! these engine protocol operations: createResolvedPromise,
+//! createRejectedPromise, createSimpleException, createDictionaryObject and
+//! queueMicrotask.
 //!
 //! Each takes the realm as a runtime.Context and hands back only what its
-//! declaration in src/runtime/engine_interface.zig says: an OWNED persistent
+//! declaration in src/runtime/engine_protocol.zig says: an OWNED persistent
 //! handle (`.handle`, needs_disposal) the caller releases with releaseValue or
 //! returns to the binding. Every V8 handle made along the way is released
 //! here - "every `v8_*` return is owned" is this file's rule, not the

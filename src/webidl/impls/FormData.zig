@@ -202,24 +202,13 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         }
     }
 
-    // Get the engine interface to create JS array
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidState;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidState;
-    };
-
-    // Create JS array through engine abstraction
-    const createStringArray = engine.createStringArray orelse {
-        return error.InvalidState;
-    };
-
-    const js_array = createStringArray(engine_ctx, string_values.items) catch {
-        return error.InvalidState;
-    };
-
-    return runtime.JSValue.fromHandle(js_array);
+    // The strings as a new Array of the realm (R12), OWNED by the binding
+    // once returned.
+    const js_values = try internal.allocator.alloc(runtime.JSValue, string_values.items.len);
+    defer internal.allocator.free(js_values);
+    for (string_values.items, js_values) |text, *value| value.* = runtime.JSValue.fromStringRef(text);
+    const array = @import("engine").createSequenceOfValues(instance.ctx, js_values) catch return error.InvalidState;
+    return array.take();
 }
 
 /// Operation: has

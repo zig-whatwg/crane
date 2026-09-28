@@ -1786,14 +1786,14 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
         return runtime.JSValue{
             .handle = .{
                 .ptr = sheets,
-                .needs_disposal = false, // Already tracked by ObservableArrayExotic
+                .needs_disposal = false, // Engine-owned: engine.createObservableArray
                 .handle_scope = .global,
             },
         };
     }
 
     // Create new ObservableArray exotic object
-    const observable_array = runtime.ObservableArrayExotic.create(instance.ctx) catch {
+    const observable_array = engine.createObservableArray(instance.ctx) catch {
         // If we can't create the ObservableArray (e.g., no V8 context), return undefined
         // This gracefully degrades for testing scenarios without full V8 setup
         return runtime.JSValue.jsUndefined;

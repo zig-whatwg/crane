@@ -378,35 +378,3 @@ pub fn onImportMetaUrl(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash
     len.* = url.len;
     return url.ptr;
 }
-
-// ============================================================================
-// The legacy entry points' bridge
-//
-// TODO(protocol): removed when Browser creates its agent with
-// engine.createAgent (navigation lane resume). Until then the page's agent
-// is a bare isolate, with no HostHooks installed: script_execution's shim
-// takes import() from engine.zig's legacy handler, and import.meta from V8's
-// import.meta callback, and hands them to the same host code the hooks run.
-// These two turn what those entry points hold into the protocol's types.
-// ============================================================================
-
-/// TRANSITIONAL. The protocol's request for an import() the legacy handler
-/// took: its Global<Context> and Global<Promise::Resolver> - the pair
-/// onDynamicImport builds, consumed by the same v8_DynamicImport_* calls -
-/// OWNED by the request from here, until finishDynamicImport releases them.
-/// TODO(protocol): removed when Browser creates its agent with
-/// engine.createAgent (navigation lane resume).
-pub fn adoptLegacyImport(context: *anyopaque, resolver: *anyopaque, realm: Context) Error!*engine.ImportRequest {
-    const request = registry_allocator.create(ImportRequest) catch return error.OutOfMemory;
-    request.* = .{ .context = @ptrCast(@alignCast(context)), .resolver = resolver, .realm = realm };
-    return @ptrCast(request);
-}
-
-/// TRANSITIONAL. The host_defined of the record whose module `module` is
-/// (V8's import.meta callback names a module only by itself), or null.
-/// TODO(protocol): removed when Browser creates its agent with
-/// engine.createAgent (navigation lane resume).
-pub fn hostDefinedOf(module: *ffi.Module, identity_hash: c_int) ?*anyopaque {
-    const record = find(module, identity_hash) orelse return null;
-    return record.host_defined;
-}

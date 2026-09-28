@@ -6,9 +6,9 @@
 //! V8 is one implementation, statically linked on desktop and server; on iOS
 //! the system JavaScriptCore is linked dynamically instead. V8 types and calls
 //! belong in src/runtime/engines/v8/ (and its tests, tests/v8/) and nowhere
-//! else. Everything else reaches the engine through runtime's engine-neutral
-//! surface - runtime.Instance, runtime.JSValue, runtime.Context and the Engine
-//! table in src/runtime/engine_interface.zig.
+//! else. Everything else reaches the engine through the engine protocol,
+//! `@import("engine")` (src/runtime/engine_protocol.zig), and runtime's
+//! engine-neutral types - runtime.Instance, runtime.JSValue, runtime.Context.
 //!
 //! What is counted, per file and per name:
 //!   * every `@import` whose path names V8 - `@import("v8")`,
@@ -294,8 +294,8 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
 const header =
     \\# V8 references outside the V8 adapter (src/runtime/engines/v8/): path name count.
     \\# A ratchet - `zig build lint-engine`, part of `zig build test`, fails if any
-    \\# count rises or a new pair appears. After moving calls behind the Engine table
-    \\# (src/runtime/engine_interface.zig), lower it with
+    \\# count rises or a new pair appears. After moving calls onto the engine protocol
+    \\# (src/runtime/engine_protocol.zig), lower it with
     \\# `zig build lint-engine -- --update`. Never raise it by hand.
     \\
 ;
@@ -419,10 +419,10 @@ pub fn main(init: std.process.Init) !void {
         try out.print(
             \\
             \\V8 belongs in src/runtime/engines/v8/ only (AGENTS.md, "The engine boundary").
-            \\Reach the engine through runtime.Instance / runtime.JSValue / runtime.Context
-            \\and the Engine table in src/runtime/engine_interface.zig; an operation it lacks
-            \\is added there, named after the spec concept, with a V8 implementation and an
-            \\explicit NotSupported entry for the other engines.
+            \\Reach the engine through the engine protocol, @import("engine")
+            \\(src/runtime/engine_protocol.zig); an operation it lacks is added there,
+            \\named after the spec concept, with a V8 implementation and an explicit
+            \\NotSupported entry for the other engines.
             \\
         , .{});
         try out.flush();
@@ -469,7 +469,7 @@ test "the adapter, its tests and the WPT checkout are exempt; everything else is
     try testing.expect(!inScope("tests/wpt/tools/x.zig"));
     try testing.expect(!inScope("tools/lint_engine_boundary.zig"));
     try testing.expect(inScope("src/webidl/impls/Worker.zig"));
-    try testing.expect(inScope("src/runtime/engine_interface.zig"));
+    try testing.expect(inScope("src/runtime/engine_types.zig"));
     try testing.expect(inScope("src/runtime/engines/jsc/binding.zig"));
     try testing.expect(inScope("tests/wpt_runner/main.zig"));
     try testing.expect(inScope("tools/snapshot_generator.zig"));

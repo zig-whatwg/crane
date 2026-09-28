@@ -23,9 +23,8 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const isolate_templates = @import("isolate_templates.zig");
 const template_registry = @import("template_registry.zig");
-/// worker_realm.zig's agent operations, through the Engine table (see
-/// protocol.zig).
-const table = @import("engine.zig").v8_engine_interface;
+/// worker_realm.zig's agent operations.
+const worker_realm = @import("worker_realm.zig");
 
 const Context = engine.Context;
 const Agent = engine.Agent;
@@ -46,13 +45,9 @@ var engine_snapshot: ?[]const u8 = null;
 /// freezes its flags when the platform starts and cannot start again after
 /// it stops - and the snapshot agents may be made from.
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
-    if (ffi.v8_Platform_IsInitialized()) {
-        // A host already started it (the runtime flags then too): only the
-        // configured engine is recorded again.
-        snapshot_loader.registerConfiguredEngine();
-    } else {
-        snapshot_loader.initializePlatformForRuntime();
-    }
+    // A host that already started the platform set the runtime flags then
+    // too.
+    if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -101,6 +96,17 @@ const AgentRecord = struct {
     host: ?*anyopaque,
     /// AgentOptions.allocator: the agent's own state.
     allocator: std.mem.Allocator,
+    /// The agent is its thread's host agent: the one whose end takes down
+    /// what the adapter keeps per thread as well as per isolate (`endAgent`).
+    /// Recorded when the agent is made - made with no isolate entered on the
+    /// thread, as a Browser makes its page agent; a worker's is made by its
+    /// owner's script, with the owner's isolate entered - and never
+    /// re-derived. Which isolate is entered when an agent ENDS depends on who
+    /// ends it: a Browser that ends its workers after its page realm has
+    /// exited the page isolate has none entered, and a worker's end read as
+    /// the host's took the thread's context manager and templates down under
+    /// the page.
+    host_agent: bool,
 };
 
 var agents_lock: std.Io.Mutex = .init;
@@ -108,19 +114,11 @@ var agents_lock: std.Io.Mutex = .init;
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
 
 /// The hooks of the agent whose isolate this is; null for an isolate
-/// createAgent did not make (the Browser's own, today).
+/// createAgent did not make (a test's own).
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     std.Io.Threaded.mutexLock(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     return agents.get(isolate);
-}
-
-/// Whether `isolate` is an agent whose host supplied loadImportedModule: its
-/// import() is the protocol's, which the adapter's older per-realm
-/// registration must leave in place.
-pub fn hasModuleHooks(isolate: *ffi.Isolate) bool {
-    const record = recordOf(isolate) orelse return false;
-    return record.hooks.loadImportedModule != null;
 }
 
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
@@ -128,6 +126,8 @@ pub fn hasModuleHooks(isolate: *ffi.Isolate) bool {
 /// was given - with [[CanBlock]] as the options say and the host's hooks
 /// installed. The isolate is not entered.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
+    // Before the new isolate exists: whether another is entered above it.
+    const host_agent = ffi.v8_Isolate_GetCurrent() == null;
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {
             if (engine_snapshot) |blob| {
@@ -137,7 +137,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         }
         // The engine is started by initializeEngine; a host that has not
         // called it gets the platform here, as worker_realm's agents do.
-        const agent = table.createAgent.?() catch |err| return support.protocolError(err);
+        const agent = worker_realm.createAgent() catch |err| return support.protocolError(err);
         break :blk @ptrCast(@alignCast(agent));
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
@@ -148,7 +148,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -197,16 +197,19 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// checkpoint between. The isolate is left not entered, as disposal requires.
 ///
 /// The adapter also keeps state per THREAD (the context manager, ShadowRealm
-/// support). The thread's host agent - the one no other isolate is entered
-/// above when it ends, as a Browser's page agent is once its realms have
-/// ended - takes that down too (isolate_lifecycle.cleanupAll). An agent that
-/// ends while another isolate is entered on the thread (a test's second
-/// agent, one made inside another's script) releases only its own isolate's.
+/// support). The thread's host agent - made with no other isolate entered, as
+/// a Browser's page agent is (`AgentRecord.host_agent`) - takes that down too
+/// (isolate_lifecycle.cleanupAll). Any other agent - a worker's, a test's
+/// second one, one made inside another's script - releases only its own
+/// isolate's, whatever is entered when it ends. An isolate createAgent did not
+/// make is not the host's: the thread's state outlives it rather than going
+/// under whoever still uses it.
 pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
-    const allocator = if (recordOf(isolate)) |record| record.allocator else std.heap.c_allocator;
+    const record = recordOf(isolate);
+    const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
+    const host_agent = if (record) |r| r.host_agent else false;
     forgetAgent(agent);
-    const host_agent = if (ffi.v8_Isolate_GetCurrent()) |current| current == isolate else true;
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     if (host_agent) {

@@ -326,6 +326,10 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 
     // Step 12: Set request to a new request (copy of base with modifications)
     // For now, we'll modify base_request in place and create the final instance
+    // - whose unsafe-request flag is set: script made it, so main fetch
+    // step 12 asks a CORS-preflight fetch for a cross-origin request with a
+    // method or headers that are not CORS-safelisted.
+    base_request.unsafe_request = true;
 
     // Step 13: If init is not empty
     // Step 10: If init["window"] exists and is non-null, then throw a

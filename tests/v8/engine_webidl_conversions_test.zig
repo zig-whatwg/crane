@@ -13,7 +13,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const engine = &v8.engine.v8_engine_interface;
 const allocator = std.testing.allocator;
 
 var isolate_once: ?*ffi.Isolate = null;
@@ -28,7 +27,7 @@ fn realm() !runtime.Context {
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = engine, .engine_ctx = context });
+    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
     data.agent = @ptrCast(i);
     isolate_once = i;
     context_once = context;
@@ -86,15 +85,15 @@ test "ToString of objects, numbers and strings" {
     const ctx = try realm();
     const object = try Made.of("({ toString() { return 'custom'; } })");
     defer object.deinit();
-    const text = try engine.convertToDOMString.?(ctx, object.value(), allocator);
+    const text = try v8.webidl_conversions.convertToDOMString(ctx, object.value(), allocator);
     defer allocator.free(text);
     try std.testing.expectEqualStrings("custom", text);
 
-    const number = try engine.convertToDOMString.?(ctx, .{ .number = 1.5 }, allocator);
+    const number = try v8.webidl_conversions.convertToDOMString(ctx, .{ .number = 1.5 }, allocator);
     defer allocator.free(number);
     try std.testing.expectEqualStrings("1.5", number);
 
-    const already = try engine.convertToDOMString.?(ctx, runtime.JSValue.fromStringRef("as is"), allocator);
+    const already = try v8.webidl_conversions.convertToDOMString(ctx, runtime.JSValue.fromStringRef("as is"), allocator);
     defer allocator.free(already);
     try std.testing.expectEqualStrings("as is", already);
 }
@@ -103,15 +102,15 @@ test "a Symbol is a TypeError with nothing thrown" {
     const ctx = try realm();
     const symbol = try Made.of("Symbol('s')");
     defer symbol.deinit();
-    try std.testing.expectError(error.TypeError, engine.convertToDOMString.?(ctx, symbol.value(), allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToUSVString.?(ctx, symbol.value(), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToDOMString(ctx, symbol.value(), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToUSVString(ctx, symbol.value(), allocator));
 }
 
 test "a lone surrogate becomes U+FFFD in a USVString" {
     const ctx = try realm();
     const lone = try Made.of("'a\\uD800b'");
     defer lone.deinit();
-    const usv = try engine.convertToUSVString.?(ctx, lone.value(), allocator);
+    const usv = try v8.webidl_conversions.convertToUSVString(ctx, lone.value(), allocator);
     defer allocator.free(usv);
     try std.testing.expectEqualStrings("a\u{FFFD}b", usv);
 }
@@ -125,7 +124,7 @@ fn stringLength(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     // `.handle` tagged `.local` whose pointer is the argument's Global).
     var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, argument) catch return;
     defer value.deinit(allocator);
-    const result: f64 = if (engine.convertToDOMString.?(data_once.?, value, allocator)) |text| blk: {
+    const result: f64 = if (v8.webidl_conversions.convertToDOMString(data_once.?, value, allocator)) |text| blk: {
         defer allocator.free(text);
         break :blk @floatFromInt(text.len);
     } else |err| switch (err) {
@@ -173,7 +172,7 @@ test "an iterable converts to its strings, each by ToString" {
     const ctx = try realm();
     const array = try Made.of("['a', 2, { toString() { return 'c'; } }]");
     defer array.deinit();
-    const strings = (try engine.convertToSequenceOfDOMStrings.?(ctx, array.value(), allocator)).?;
+    const strings = (try v8.webidl_conversions.convertToSequenceOfDOMStrings(ctx, array.value(), allocator)).?;
     defer freeStrings(strings);
     try std.testing.expectEqual(@as(usize, 3), strings.len);
     try std.testing.expectEqualStrings("a", strings[0]);
@@ -182,7 +181,7 @@ test "an iterable converts to its strings, each by ToString" {
 
     const set = try Made.of("new Set(['x', 'y'])");
     defer set.deinit();
-    const from_set = (try engine.convertToSequenceOfDOMStrings.?(ctx, set.value(), allocator)).?;
+    const from_set = (try v8.webidl_conversions.convertToSequenceOfDOMStrings(ctx, set.value(), allocator)).?;
     defer freeStrings(from_set);
     try std.testing.expectEqual(@as(usize, 2), from_set.len);
 }
@@ -191,12 +190,12 @@ test "an object with no @@iterator is not a sequence (null), and a non-object is
     const ctx = try realm();
     const plain = try Made.of("({ length: 1, 0: 'a' })");
     defer plain.deinit();
-    try std.testing.expectEqual(@as(?[][]u8, null), try engine.convertToSequenceOfDOMStrings.?(ctx, plain.value(), allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfDOMStrings.?(ctx, .{ .number = 1 }, allocator));
+    try std.testing.expectEqual(@as(?[][]u8, null), try v8.webidl_conversions.convertToSequenceOfDOMStrings(ctx, plain.value(), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfDOMStrings(ctx, .{ .number = 1 }, allocator));
     // A String object IS iterable: its characters.
     const boxed = try Made.of("new String('ab')");
     defer boxed.deinit();
-    const chars = (try engine.convertToSequenceOfDOMStrings.?(ctx, boxed.value(), allocator)).?;
+    const chars = (try v8.webidl_conversions.convertToSequenceOfDOMStrings(ctx, boxed.value(), allocator)).?;
     defer freeStrings(chars);
     try std.testing.expectEqual(@as(usize, 2), chars.len);
 }
@@ -223,7 +222,7 @@ test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]]
         \\})()
     );
     defer object.deinit();
-    const record = try engine.convertToRecordOfStrings.?(ctx, object.value(), .usv_string, .usv_string, allocator);
+    const record = try v8.webidl_conversions.convertToRecordOfStrings(ctx, object.value(), .usv_string, .usv_string, allocator);
     defer freeRecord(record);
     try std.testing.expectEqual(@as(usize, 4), record.len);
     try std.testing.expectEqualStrings("1", record[0].key);
@@ -237,7 +236,7 @@ test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]]
 
     const empty = try Made.of("({})");
     defer empty.deinit();
-    const none = try engine.convertToRecordOfStrings.?(ctx, empty.value(), .dom_string, .dom_string, allocator);
+    const none = try v8.webidl_conversions.convertToRecordOfStrings(ctx, empty.value(), .dom_string, .dom_string, allocator);
     defer freeRecord(none);
     try std.testing.expectEqual(@as(usize, 0), none.len);
 }
@@ -246,7 +245,7 @@ test "USVString keys that collide after U+FFFD replacement are one entry, set in
     const ctx = try realm();
     const object = try Made.of("({ '\\uD83D': 'first', z: 'z', '\\uFFFD': 'second', v: 'a\\uD800b' })");
     defer object.deinit();
-    const usv = try engine.convertToRecordOfStrings.?(ctx, object.value(), .usv_string, .usv_string, allocator);
+    const usv = try v8.webidl_conversions.convertToRecordOfStrings(ctx, object.value(), .usv_string, .usv_string, allocator);
     defer freeRecord(usv);
     try std.testing.expectEqual(@as(usize, 3), usv.len);
     try std.testing.expectEqualStrings("\u{FFFD}", usv[0].key);
@@ -256,7 +255,7 @@ test "USVString keys that collide after U+FFFD replacement are one entry, set in
     try std.testing.expectEqualStrings("a\u{FFFD}b", usv[2].value);
 
     // As DOMStrings, the lone surrogate stays: two keys.
-    const dom = try engine.convertToRecordOfStrings.?(ctx, object.value(), .dom_string, .dom_string, allocator);
+    const dom = try v8.webidl_conversions.convertToRecordOfStrings(ctx, object.value(), .dom_string, .dom_string, allocator);
     defer freeRecord(dom);
     try std.testing.expectEqual(@as(usize, 4), dom.len);
     try std.testing.expect(!std.mem.eql(u8, dom[0].key, dom[2].key));
@@ -264,19 +263,19 @@ test "USVString keys that collide after U+FFFD replacement are one entry, set in
 
 test "a non-object, and an enumerable Symbol-keyed property, are TypeErrors" {
     const ctx = try realm();
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, .{ .number = 1 }, .usv_string, .usv_string, allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, runtime.JSValue.fromStringRef("a=b"), .usv_string, .usv_string, allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, runtime.JSValue.jsNull, .usv_string, .usv_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, .{ .number = 1 }, .usv_string, .usv_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, runtime.JSValue.fromStringRef("a=b"), .usv_string, .usv_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, runtime.JSValue.jsNull, .usv_string, .usv_string, allocator));
     const symbol = try Made.of("Symbol('s')");
     defer symbol.deinit();
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, symbol.value(), .usv_string, .usv_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, symbol.value(), .usv_string, .usv_string, allocator));
     const keyed = try Made.of("({ a: '1', [Symbol('k')]: '2' })");
     defer keyed.deinit();
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, keyed.value(), .usv_string, .usv_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, keyed.value(), .usv_string, .usv_string, allocator));
     // A Symbol VALUE does not convert to a string either.
     const valued = try Made.of("({ a: Symbol('v') })");
     defer valued.deinit();
-    try std.testing.expectError(error.TypeError, engine.convertToRecordOfStrings.?(ctx, valued.value(), .dom_string, .dom_string, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, valued.value(), .dom_string, .dom_string, allocator));
 }
 
 /// A native that converts its argument to a record<USVString, USVString> as
@@ -287,7 +286,7 @@ fn recordSize(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     defer ffi.v8_Global_Dispose(argument);
     var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, argument) catch return;
     defer value.deinit(allocator);
-    const result: f64 = if (engine.convertToRecordOfStrings.?(data_once.?, value, .usv_string, .usv_string, allocator)) |record| blk: {
+    const result: f64 = if (v8.webidl_conversions.convertToRecordOfStrings(data_once.?, value, .usv_string, .usv_string, allocator)) |record| blk: {
         defer freeRecord(record);
         break :blk @floatFromInt(record.len);
     } else |err| switch (err) {
@@ -347,19 +346,19 @@ test "an ArrayBuffer's bytes, and a view's own window of its buffer" {
     const ctx = try realm();
     const buffer = try Made.of("globalThis.b = new Uint8Array([1, 2, 3, 4, 5]).buffer; b");
     defer buffer.deinit();
-    const all = (try engine.getCopyOfBufferSourceBytes.?(ctx, buffer.value(), allocator)).?;
+    const all = (try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, buffer.value(), allocator)).?;
     defer allocator.free(all);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5 }, all);
 
     const view = try Made.of("new Uint8Array(b, 1, 3)");
     defer view.deinit();
-    const window = (try engine.getCopyOfBufferSourceBytes.?(ctx, view.value(), allocator)).?;
+    const window = (try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, view.value(), allocator)).?;
     defer allocator.free(window);
     try std.testing.expectEqualSlices(u8, &.{ 2, 3, 4 }, window);
 
     const data_view = try Made.of("new DataView(b, 3)");
     defer data_view.deinit();
-    const tail = (try engine.getCopyOfBufferSourceBytes.?(ctx, data_view.value(), allocator)).?;
+    const tail = (try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, data_view.value(), allocator)).?;
     defer allocator.free(tail);
     try std.testing.expectEqualSlices(u8, &.{ 4, 5 }, tail);
 }
@@ -368,12 +367,12 @@ test "a detached buffer holds no bytes, and neither does a view of one" {
     const ctx = try realm();
     const detached = try Made.of("globalThis.d = new ArrayBuffer(8); globalThis.dv = new Uint8Array(d); d.transfer(); d");
     defer detached.deinit();
-    const none = (try engine.getCopyOfBufferSourceBytes.?(ctx, detached.value(), allocator)).?;
+    const none = (try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, detached.value(), allocator)).?;
     defer allocator.free(none);
     try std.testing.expectEqual(@as(usize, 0), none.len);
     const view = try Made.of("dv");
     defer view.deinit();
-    const view_none = (try engine.getCopyOfBufferSourceBytes.?(ctx, view.value(), allocator)).?;
+    const view_none = (try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, view.value(), allocator)).?;
     defer allocator.free(view_none);
     try std.testing.expectEqual(@as(usize, 0), view_none.len);
 }
@@ -382,18 +381,18 @@ test "a SharedArrayBuffer is not a BufferSource, and a view of one is a TypeErro
     const ctx = try realm();
     const shared = try Made.of("globalThis.sab = new SharedArrayBuffer(4); sab");
     defer shared.deinit();
-    try std.testing.expectEqual(@as(?[]u8, null), try engine.getCopyOfBufferSourceBytes.?(ctx, shared.value(), allocator));
+    try std.testing.expectEqual(@as(?[]u8, null), try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, shared.value(), allocator));
     const view = try Made.of("new Uint8Array(sab)");
     defer view.deinit();
-    try std.testing.expectError(error.TypeError, engine.getCopyOfBufferSourceBytes.?(ctx, view.value(), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, view.value(), allocator));
 }
 
 test "anything else is not a BufferSource" {
     const ctx = try realm();
     const object = try Made.of("({})");
     defer object.deinit();
-    try std.testing.expectEqual(@as(?[]u8, null), try engine.getCopyOfBufferSourceBytes.?(ctx, object.value(), allocator));
-    try std.testing.expectEqual(@as(?[]u8, null), try engine.getCopyOfBufferSourceBytes.?(ctx, .{ .number = 3 }, allocator));
+    try std.testing.expectEqual(@as(?[]u8, null), try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, object.value(), allocator));
+    try std.testing.expectEqual(@as(?[]u8, null), try v8.webidl_conversions.getCopyOfBufferSourceBytes(ctx, .{ .number = 3 }, allocator));
 }
 
 // ----------------------------------------------------------------------------
@@ -415,22 +414,22 @@ test "a platform object converts to its Instance; nothing else does" {
     ffi.v8_Object_SetAlignedPointerInInternalField(object, 0, @ptrCast(&mock_blob));
     ffi.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
 
-    try std.testing.expectEqual(@as(?*runtime.Instance, &mock_blob), engine.convertToPlatformObject.?(ctx, asValue(@ptrCast(object))));
+    try std.testing.expectEqual(@as(?*runtime.Instance, &mock_blob), v8.webidl_conversions.convertToPlatformObject(ctx, asValue(@ptrCast(object))));
     const plain = try Made.of("({})");
     defer plain.deinit();
-    try std.testing.expectEqual(@as(?*runtime.Instance, null), engine.convertToPlatformObject.?(ctx, plain.value()));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), v8.webidl_conversions.convertToPlatformObject(ctx, plain.value()));
     const function = try Made.of("(function () {})");
     defer function.deinit();
-    try std.testing.expectEqual(@as(?*runtime.Instance, null), engine.convertToPlatformObject.?(ctx, function.value()));
-    try std.testing.expectEqual(@as(?*runtime.Instance, null), engine.convertToPlatformObject.?(ctx, .{ .number = 1 }));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), v8.webidl_conversions.convertToPlatformObject(ctx, function.value()));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), v8.webidl_conversions.convertToPlatformObject(ctx, .{ .number = 1 }));
 }
 
 test "a sequence of values becomes an Array of the realm" {
     const ctx = try realm();
     const object = try Made.of("globalThis.o = {}; o");
     defer object.deinit();
-    const array = try engine.createSequenceOfValues.?(ctx, &.{ .{ .number = 7 }, runtime.JSValue.fromStringRef("s"), object.value() });
-    defer engine.releaseValue.?(array);
+    const array = try v8.webidl_conversions.createSequenceOfValues(ctx, &.{ .{ .number = 7 }, runtime.JSValue.fromStringRef("s"), object.value() });
+    defer v8.engine.v8ReleaseValue(array);
     try std.testing.expect(array.handle.needs_disposal);
     try setGlobal("arr", array.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("Array.isArray(arr) && arr.length === 3 && arr[0] === 7 && arr[1] === 's' && arr[2] === o ? 1 : 0"));

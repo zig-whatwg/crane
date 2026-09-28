@@ -1,11 +1,5 @@
 # V8 references outside the V8 adapter (src/runtime/engines/v8/): path name count.
 # A ratchet - `zig build lint-engine`, part of `zig build test`, fails if any
-# count rises or a new pair appears. After moving calls behind the Engine table
-# (src/runtime/engine_interface.zig), lower it with
+# count rises or a new pair appears. After moving calls onto the engine protocol
+# (src/runtime/engine_protocol.zig), lower it with
 # `zig build lint-engine -- --update`. Never raise it by hand.
-src/html/script_execution.zig @import("v8") 3
-src/html/script_execution.zig @import("v8").engine 2
-src/html/script_execution.zig @import("v8").ffi 4
-src/html/script_execution.zig v8_Isolate_GetCurrent 1
-src/html/script_execution.zig v8_engine 9
-src/runtime/realm.zig v8_context 6

@@ -173,11 +173,9 @@ pub const BrowserAdapter = struct {
         _ = context_type; // URL determines context type
 
         // Build the URL from the test path. Scheme and port follow the
-        // `.https.` marker in the filename; see wpt_server.isHttpsTest.
-        const test_url = if (wpt_server.isHttpsTest(test_path))
-            try std.fmt.allocPrint(self.allocator, "https://{s}:8443/{s}", .{ wpt_server.WPT_HOST, test_path })
-        else
-            try std.fmt.allocPrint(self.allocator, "http://{s}:8000/{s}", .{ wpt_server.WPT_HOST, test_path });
+        // `.h2.` and `.https.` markers in the filename; see
+        // wpt_server.testOriginFor.
+        const test_url = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ wpt_server.testOriginFor(test_path), test_path });
         defer self.allocator.free(test_url);
 
         const timeout_ms = timeout.toMillis();

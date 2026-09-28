@@ -205,6 +205,10 @@ pub const XMLHttpRequestState = struct {
     /// at. See `event_support.EventSink`.
     event_sink: ?EventSink,
 
+    /// This XHR's relevant settings object's origin, serialized, once
+    /// send() has asked for it: the request's origin. Owned.
+    client_origin: ?[]const u8,
+
     /// Initialize state
     ///
     /// Spec: Constructor steps set initial values
@@ -242,11 +246,21 @@ pub const XMLHttpRequestState = struct {
             .allocator = allocator,
             .base_url = null,
             .event_sink = null,
+            .client_origin = null,
         };
+    }
+
+    /// Set the origin of this XHR's relevant settings object - what send()'s
+    /// request takes as its origin (Fetch "fetch" step 13) - copied.
+    pub fn setClientOrigin(self: *XMLHttpRequestState, origin: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, origin);
+        if (self.client_origin) |old| self.allocator.free(old);
+        self.client_origin = copy;
     }
 
     /// Clean up state
     pub fn deinit(self: *XMLHttpRequestState) void {
+        if (self.client_origin) |o| self.allocator.free(o);
         // Free request state
         if (self.request_method) |m| self.allocator.free(m);
         if (self.request_url) |u| self.allocator.free(u);

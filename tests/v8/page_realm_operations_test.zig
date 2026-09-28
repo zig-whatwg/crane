@@ -1,6 +1,7 @@
-//! The Engine table's page-realm operations, as V8 implements them
+//! Page-realm operations as V8 implements them
 //! (src/runtime/engines/v8/page_realm.zig): invokeCallbackFunction and
-//! installWindowOperations.
+//! installWindowOperations - and, from "protocol:" on, the engine protocol's
+//! operations bound to V8.
 //!
 //! The realm is registered with the context manager, as every Window realm
 //! is: the window's natives find the realm they were called in through it.
@@ -12,8 +13,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
-
-const engine = &v8.engine.v8_engine_interface;
 
 /// One isolate, context and realm for the whole file; V8 is never torn down
 /// here (see engine_realm_operations_test.zig).
@@ -83,8 +82,24 @@ const Reports = struct {
         self.had_value = info.error_value != null;
         if (self.run_inside) |source| {
             var ignored: Reports = .{};
-            engine.runClassicScript.?(realm_once.?, source, null, Reports.report, &ignored) catch {};
+            protocol.runClassicScript(realm_once.?, .{ .utf8 = source }, "", null, ignored.reporter()) catch {};
         }
+    }
+
+    /// The protocol's reporter, into `report`.
+    fn reporter(self: *Reports) protocol.Reporter {
+        return .{ .report = fromProtocol, .host = self };
+    }
+
+    fn fromProtocol(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const converted: runtime.ErrorInfo = .{
+            .message = info.message,
+            .filename = info.filename,
+            .lineno = info.lineno,
+            .colno = info.colno,
+            .error_value = if (info.error_value == .undefined) null else info.error_value,
+        };
+        report(host, &converted);
     }
 
     fn messageText(self: *const Reports) []const u8 {
@@ -92,9 +107,14 @@ const Reports = struct {
     }
 };
 
+/// Run `source` as a classic script (the protocol's runClassicScript), what
+/// it throws reported into the Reports returned.
 fn run(source: []const u8) !Reports {
     var reports: Reports = .{};
-    try engine.runClassicScript.?(try realm(), source, null, Reports.report, &reports);
+    protocol.runClassicScript(try realm(), .{ .utf8 = source }, "", null, reports.reporter()) catch |err| switch (err) {
+        error.ExceptionReported => {},
+        else => return err,
+    };
     return reports;
 }
 
@@ -109,7 +129,7 @@ test "a callback is invoked with its arguments and the realm's global as this" {
     defer ffi.v8_Value_Dispose(cb);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .global_this, &.{ .{ .number = 2 }, .{ .number = 3 } }, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .global_this, &.{ .{ .number = 2 }, .{ .number = 3 } }, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 5), try scriptInt("globalThis.sum"));
     try std.testing.expectEqual(@as(i32, 1), try scriptInt("globalThis.thisIsGlobal"));
     try std.testing.expectEqual(@as(usize, 0), reports.count);
@@ -122,9 +142,9 @@ test "a callback's this is undefined, or the value given" {
     defer ffi.v8_Value_Dispose(cb);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, -1), try scriptInt("globalThis.seenThis"));
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .{ .value = .{ .number = 7 } }, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .{ .value = .{ .number = 7 } }, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 7), try scriptInt("globalThis.seenThis"));
 }
 
@@ -136,7 +156,7 @@ test "more arguments than fit inline all arrive" {
 
     var reports: Reports = .{};
     const args = [_]runtime.JSValue{ .{ .number = 1 }, .{ .number = 2 }, .{ .number = 3 }, .{ .number = 4 }, .{ .number = 5 }, .{ .number = 6 } };
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &args, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &args, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 6), try scriptInt("globalThis.argCount"));
     try std.testing.expectEqual(@as(i32, 6), try scriptInt("globalThis.last"));
 }
@@ -150,7 +170,7 @@ test "what a callback throws is reported, after the microtasks it queued" {
     // WebIDL: "clean up after running script" (the checkpoint) precedes the
     // report, so the report sees the microtask's effect.
     var reports: Reports = .{ .run_inside = "globalThis.order += 'r';" };
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(usize, 1), reports.count);
     try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "nope") != null);
     try std.testing.expect(reports.had_value);
@@ -163,10 +183,10 @@ test "a callback that is not callable is not called" {
     defer ffi.v8_Value_Dispose(object);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(object), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(object), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
     // A value that is no engine handle at all is a caller's mistake.
-    try std.testing.expectError(error.TypeError, engine.invokeCallbackFunction.?(ctx, .{ .number = 1 }, .undefined, &.{}, Reports.report, &reports));
+    try std.testing.expectError(error.TypeError, v8.page_realm.invokeCallbackFunction(ctx, .{ .number = 1 }, .undefined, &.{}, Reports.report, &reports));
 }
 
 // ============================================================================
@@ -203,18 +223,18 @@ fn testInitializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, 
     switch (handler) {
         .function => |h| {
             seen.function_handlers += 1;
-            engine.releaseValue.?(h);
+            v8.engine.v8ReleaseValue(h);
         },
         .string => |h| {
             const string: *ffi.String = @ptrCast(@alignCast(h.handle.ptr));
             const len: usize = @intCast(ffi.v8_String_Utf8Length(string));
             seen.string_len = @min(len, seen.string_source.len);
             _ = ffi.v8_String_WriteUtf8(string, &seen.string_source, @intCast(seen.string_len));
-            engine.releaseValue.?(h);
+            v8.engine.v8ReleaseValue(h);
         },
     }
     // Every argument is the host's to release.
-    for (arguments) |argument| engine.releaseValue.?(argument);
+    for (arguments) |argument| v8.engine.v8ReleaseValue(argument);
     return 41 + @as(i32, @intCast(seen.timers));
 }
 
@@ -226,7 +246,7 @@ fn testClearTimer(r: runtime.Context, id: i32) void {
 fn testRequestAnimationFrame(r: runtime.Context, callback: runtime.JSValue) u32 {
     seen.realm = r;
     seen.frames += 1;
-    engine.releaseValue.?(callback);
+    v8.engine.v8ReleaseValue(callback);
     return 9;
 }
 
@@ -247,7 +267,7 @@ const test_operations = runtime.WindowOperations{
 
 fn installed() !runtime.Context {
     const ctx = try realm();
-    try engine.installWindowOperations.?(ctx, &test_operations);
+    try v8.page_realm.installWindowOperations(ctx, &test_operations);
     seen = .{};
     return ctx;
 }
@@ -1263,6 +1283,33 @@ test "protocol: an agent ended while another isolate is entered leaves that isol
     try std.testing.expect(v8.context_manager.get(context_once.?) != null);
 }
 
+test "protocol: an agent made inside another's realm is not the host agent, even when it ends with no isolate entered" {
+    const base = try realm();
+    const no_hooks: protocol.HostHooks = .{};
+    // Made while this file's isolate is entered: as a worker's agent is made,
+    // by its owner's script.
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
+    {
+        const in_agent = try AgentRealm.make(agent);
+        defer in_agent.end();
+    }
+    // Ended with NO isolate entered: as a Browser ends its workers once its
+    // page realm has exited the page isolate. What is entered at the end says
+    // nothing about whose agent this is; it is still not the thread's host,
+    // so only its own isolate's state goes - the context manager keeps this
+    // file's realm, and its templates still work.
+    {
+        ffi.v8_Isolate_Exit(isolate_once.?);
+        defer ffi.v8_Isolate_Enter(isolate_once.?);
+        try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
+        protocol.destroyAgent(agent);
+        try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
+    }
+    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+    try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
+}
+
 test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" {
     _ = try realm();
     const no_hooks: protocol.HostHooks = .{};
@@ -1531,8 +1578,8 @@ const ImportHost = struct {
 
 test "protocol: import() reaches the agent's host with its referrer, and finishes with the namespace" {
     // The agent's realm is registered (AgentRealm.make) after createAgent
-    // installed the protocol's import() - and must not replace it
-    // (engine.setDynamicImportHandler).
+    // installed the protocol's import() - and must not replace it (a realm's
+    // registration used to install the legacy import() handler).
     _ = try realm();
     var host: ImportHost = .{};
     const hooks: protocol.HostHooks = .{ .loadImportedModule = ImportHost.load, .importMetaUrl = ImportHost.metaUrl };
@@ -1601,104 +1648,6 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.performMicrotaskCheckpoint(r.agent.?);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
-
-// ----------------------------------------------------------------------------
-// The legacy import() bridge (TODO(protocol): removed when Browser creates its
-// agent with engine.createAgent - navigation lane resume)
-// ----------------------------------------------------------------------------
-
-/// An import() as engine.zig's legacy handler takes one - a Global<Context>
-/// and a Global<Promise::Resolver> it owns - adopted as the protocol's request
-/// and finished; the promise's state and result afterwards.
-const LegacyImport = struct {
-    state: c_int,
-    /// The result's `default`, when it is a namespace; else the number.
-    value: ?i32,
-
-    fn run(r: runtime.Context, outcome: protocol.DynamicImportOutcome) !LegacyImport {
-        const context = ffi.v8_Isolate_GetCurrentContext(isolate_once.?) orelse return error.NoContext;
-        const resolver = ffi.v8_PromiseResolver_New(context) orelse return error.NoResolver;
-        const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.NoPromise;
-        defer ffi.v8_Promise_Dispose(promise);
-        // The request owns the pair from here; finishing it releases both.
-        const request = try v8.protocol_modules.adoptLegacyImport(@ptrCast(context), @ptrCast(resolver), r);
-        protocol.finishDynamicImport(request, outcome);
-        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
-
-        const state = ffi.v8_Promise_State(promise);
-        const result = ffi.v8_Promise_Result(promise) orelse return .{ .state = state, .value = null };
-        defer ffi.v8_Value_Dispose(result);
-        const as_value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(result), .needs_disposal = false } };
-        if (protocol.typeOf(r, as_value) == .object) {
-            const default = try protocol.getProperty(r, as_value, "default");
-            defer default.release();
-            return .{ .state = state, .value = @intFromFloat(try protocol.convertToUnrestrictedDouble(r, default.value)) };
-        }
-        return .{ .state = state, .value = @intFromFloat(try protocol.convertToUnrestrictedDouble(r, as_value)) };
-    }
-};
-
-test "legacy bridge: an import() the legacy handler took is finished through the protocol, and its handles go with it" {
-    const base = try realm();
-    const record = try parsed(try protocol.parseModule(base, "export default 7;", "https://example.test/legacy.js", null));
-    defer protocol.releaseModuleRecord(record);
-    try std.testing.expect(try protocol.linkModule(base, record, Graph.none, null) == null);
-
-    // FinishLoadingImportedModule with the module: ContinueDynamicImport
-    // resolves with its namespace once evaluation settles.
-    const fulfilled = try LegacyImport.run(base, .{ .module = record });
-    try std.testing.expectEqual(@as(c_int, 1), fulfilled.state);
-    try std.testing.expectEqual(@as(?i32, 7), fulfilled.value);
-
-    // With a failure: rejected with that very value.
-    const rejected = try LegacyImport.run(base, .{ .failure = runtime.JSValue.fromNumber(3) });
-    try std.testing.expectEqual(@as(c_int, 2), rejected.state);
-    try std.testing.expectEqual(@as(?i32, 3), rejected.value);
-
-    // The adopted Global pair is released when the request finishes: the
-    // live global-handle bytes stay flat over many imports.
-    const round = struct {
-        fn run(r: runtime.Context, m: *protocol.ModuleRecord) !void {
-            _ = try LegacyImport.run(r, .{ .module = m });
-            _ = try LegacyImport.run(r, .{ .failure = runtime.JSValue.fromNumber(1) });
-        }
-    }.run;
-    try round(base, record);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
-    for (0..32) |_| try round(base, record);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
-}
-
-/// A module script as a legacy import.meta callback's host finds it.
-const MetaScript = struct { url: []const u8 };
-
-/// V8's import.meta callback, as script_execution's shim installs it: the
-/// module's record found by the module, its host_defined the host's script.
-fn legacyImportMetaUrl(identity_hash: c_int, module: *ffi.Module, len: *usize) callconv(.c) ?[*]const u8 {
-    const host_defined = v8.protocol_modules.hostDefinedOf(module, identity_hash) orelse return null;
-    const script: *const MetaScript = @ptrCast(@alignCast(host_defined));
-    len.* = script.url.len;
-    return script.url.ptr;
-}
-
-test "legacy bridge: import.meta finds the host's module script through the record's host_defined" {
-    const base = try realm();
-    ffi.v8_Isolate_SetImportMetaUrlCallback(isolate_once.?, &legacyImportMetaUrl);
-    var script: MetaScript = .{ .url = "https://example.test/dir/meta.js" };
-    const record = try parsed(try protocol.parseModule(base, "globalThis.metaUrl = import.meta.url;", "https://example.test/dir/meta.js", &script));
-    defer protocol.releaseModuleRecord(record);
-    try std.testing.expect(try protocol.linkModule(base, record, Graph.none, null) == null);
-    const scope = try protocol.prepareToRunScript(base);
-    const evaluation = try protocol.evaluateModule(base, record);
-    protocol.cleanUpAfterRunningScript(scope);
-    try std.testing.expect(evaluation == .completed);
-    try expectEval(base, "globalThis.metaUrl", "https://example.test/dir/meta.js");
-    try expectEval(base, "delete globalThis.metaUrl", "true");
-}
-
-// ============================================================================
-// A DOMException's stack
-// ============================================================================
 
 test "constructing a DOMException leaves no handle behind, as constructing an Event does" {
     _ = try realm();

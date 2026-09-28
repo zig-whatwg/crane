@@ -87,6 +87,19 @@ fn firstUsableSnapshot(
     return null;
 }
 
+/// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
+/// and "notify about rejected promises" (html/rejected_promises.zig), and
+/// HostLoadImportedModule and HostGetImportMetaProperties - import() in a
+/// Window realm loads through the document's module map
+/// (html/script_execution.zig).
+const window_agent_hooks: engine.HostHooks = blk: {
+    const html = @import("html");
+    var hooks = html.rejected_promises.hooks;
+    hooks.loadImportedModule = html.script_execution.module_hooks.loadImportedModule;
+    hooks.importMetaUrl = html.script_execution.module_hooks.importMetaUrl;
+    break :blk hooks;
+};
+
 /// The engine, started with the snapshot of the first candidate it takes
 /// (engine.initializeEngine refuses a blob this build cannot restore).
 const EngineStart = struct {
@@ -198,14 +211,11 @@ pub const Browser = struct {
         // HTML "obtain a similar-origin window agent": [[CanBlock]] false -
         // Atomics.wait() throws a TypeError rather than freezing the page's
         // one thread, as Blink's main thread does; a dedicated worker's agent
-        // keeps it - and the host's hooks: HostPromiseRejectionTracker and
-        // "notify about rejected promises" (html/rejected_promises.zig).
-        // The agent is set up by the engine (its per-isolate state, ShadowRealm
-        // support) and entered by each realm and operation that runs in it.
+        // keeps it - and the host's hooks (window_agent_hooks).
         const agent = engine.createAgent(.{
             .can_block = false,
             .from_snapshot = from_snapshot,
-            .hooks = &@import("html").rejected_promises.hooks,
+            .hooks = &window_agent_hooks,
             .allocator = allocator,
         }) catch return error.V8InitFailed;
 
@@ -221,9 +231,6 @@ pub const Browser = struct {
         snapshot_bytes: ?[]u8,
     ) !*Browser {
         errdefer engine.destroyAgent(agent);
-
-        // import() in a Window realm loads through the document's module map.
-        @import("html").script_execution.installDynamicImport(@ptrCast(@alignCast(agent)));
 
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
@@ -275,6 +282,16 @@ pub const Browser = struct {
     /// This destroys the V8 isolate and all associated contexts.
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
+        // The workers on this loop end first. A worker's end is a timer on
+        // this loop, armed when its Worker object lets go; the page's
+        // teardown below would arm it, and event_loop.deinit would drop it
+        // unfired, leaving the worker's realm, isolate and host to the
+        // process. Here, BEFORE the page's teardown and not inside it, the
+        // page realm still has the page isolate entered - as it does when
+        // those timers fire - so each worker's agent ends as a worker's.
+        if (self.event_loop) |event_loop| {
+            if (event_loop.timerInterface()) |timers| @import("html").worker_host.endWorkersOn(timers);
+        }
         // Destroy current context if any
         if (self.current_context) |ctx| {
             ctx.deinit();
@@ -305,7 +322,6 @@ pub const Browser = struct {
             // Release the rejection tracker's promise handles while the
             // agent that owns them still exists.
             @import("html").rejected_promises.releaseTracked();
-            @import("html").script_execution.uninstallDynamicImport(@ptrCast(@alignCast(agent)));
 
             // The end of the agent (engine.destroyAgent): its hooks forgotten,
             // the engine's per-isolate and per-thread state torn down in

@@ -2,8 +2,8 @@
 //!
 //! Implements the observable array exotic object per WebIDL specification.
 //! It is a Proxy with native traps, which is engine machinery, so it lives in
-//! the adapter; runtime code reaches it through the Engine table's
-//! `createObservableArray` (src/runtime/observable_array_exotic.zig).
+//! the adapter; host code reaches it through the engine protocol's
+//! `createObservableArray`.
 //! This creates a JavaScript Proxy that wraps an array-like backing store
 //! with change observation callbacks.
 //!

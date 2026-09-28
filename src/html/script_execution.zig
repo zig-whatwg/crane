@@ -1138,6 +1138,71 @@ fn moduleEnvironmentForWindow(window: *runtime.Instance, document: *runtime.Inst
     };
 }
 
+/// The principal realm of `realm` (HTML's ShadowRealm integration): `realm`
+/// itself, unless it is a ShadowRealm's - then the realm that created it,
+/// followed through ShadowRealms made inside ShadowRealms. Its settings
+/// supply a ShadowRealm's API base URL, origin and fetch client.
+///
+/// Spec: https://github.com/whatwg/html/pull/9893 ("principal realm")
+fn principalRealm(realm: runtime.Context) runtime.Context {
+    var principal = realm;
+    while (principal.principal_realm) |creator| principal = creator;
+    return principal;
+}
+
+/// The module loading environment for an import() in `realm`, whose
+/// principal realm's global is `window`: the Window's document's - or, for a
+/// ShadowRealm, its synthetic realm settings object's: a module map of its
+/// own (`shadow_realm_map`, which the caller keeps for as long as it uses the
+/// environment), no import map, and module records made in the ShadowRealm,
+/// while URLs parse against the principal Window.
+fn importEnvironment(
+    realm: runtime.Context,
+    window: *runtime.Instance,
+    document: *runtime.Instance,
+    shadow_realm_map: *ShadowRealmModuleMap,
+) ?module_script.Environment {
+    var env = moduleEnvironmentForWindow(window, document) orelse return null;
+    if (principalRealm(realm) == realm) return env;
+    shadow_realm_map.* = .{ .document = document, .realm = realm };
+    env.map = shadow_realm_map.moduleMap();
+    env.resolveImportFn = null;
+    env.realm_override = realm;
+    return env;
+}
+
+/// A ShadowRealm's module map. Its entries live in the principal document's
+/// module map, under keys that name the ShadowRealm's realm: the document
+/// frees them with its own module scripts (a ShadowRealm cannot outlive its
+/// principal Window's document in any way that could still import), and no
+/// two realms share a module record.
+const ShadowRealmModuleMap = struct {
+    document: *runtime.Instance,
+    realm: runtime.Context,
+
+    fn moduleMap(self: *ShadowRealmModuleMap) module_script.ModuleMap {
+        return .{ .context = self, .getFn = &get, .putFn = &put };
+    }
+
+    fn realmKey(self: *const ShadowRealmModuleMap, key: []const u8) ?[]u8 {
+        return std.fmt.allocPrint(std.heap.c_allocator, "shadowrealm:{x}:{s}", .{ @intFromPtr(self.realm), key }) catch null;
+    }
+
+    fn get(context: *anyopaque, key: []const u8) ?*anyopaque {
+        const self: *ShadowRealmModuleMap = @ptrCast(@alignCast(context));
+        const realm_key = self.realmKey(key) orelse return null;
+        defer std.heap.c_allocator.free(realm_key);
+        return documentModuleMapGet(self.document, realm_key);
+    }
+
+    fn put(context: *anyopaque, key: []const u8, value: *anyopaque) bool {
+        const self: *ShadowRealmModuleMap = @ptrCast(@alignCast(context));
+        const realm_key = self.realmKey(key) orelse return false;
+        defer std.heap.c_allocator.free(realm_key);
+        return documentModuleMapPut(self.document, realm_key, value);
+    }
+};
+
 /// The Window whose realm `realm` is - its settings object's global object -
 /// or null for a realm whose global is not a Window.
 fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
@@ -1221,10 +1286,14 @@ fn loadImportedModule(
 /// HostLoadImportedModule from step 7 on, for the request of an import() in
 /// `realm`: every path finishes `request` (engine.finishDynamicImport).
 fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, request: *engine.ImportRequest) void {
-    const window = windowOfRealm(realm) orelse return finishImportWithTypeError(realm, request, "import() is not supported here");
+    // The settings object's global: a Window - for a ShadowRealm, its
+    // principal realm's (its synthetic realm settings object's API base URL
+    // and fetch client are that realm's).
+    const window = windowOfRealm(principalRealm(realm)) orelse return finishImportWithTypeError(realm, request, "import() is not supported here");
     const document = interfaces.Window.get_document(window) catch
         return finishImportWithTypeError(realm, request, "import() has no document to load for");
-    const env = moduleEnvironmentForWindow(window, document) orelse
+    var shadow_realm_map: ShadowRealmModuleMap = undefined;
+    const env = importEnvironment(realm, window, document, &shadow_realm_map) orelse
         return finishImportWithTypeError(realm, request, "import() has no document to load for");
 
     // Steps 7.1.4-7.1.5 (for the one request an import() makes): an
@@ -1255,6 +1324,7 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
     const task = std.heap.c_allocator.create(DynamicImportTask) catch
         return finishImportWithTypeError(realm, request, "Out of memory");
     task.* = .{
+        .realm = realm,
         .window = window,
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = std.heap.c_allocator.dupe(u8, url) catch {
@@ -1276,7 +1346,11 @@ fn finishImportWithTypeError(realm: runtime.Context, request: *engine.ImportRequ
 }
 
 const DynamicImportTask = struct {
-    /// The importing Window, as (address, slab generation).
+    /// The realm import() was called in: the module records are made, and
+    /// the task runs, in it.
+    realm: runtime.Context,
+    /// The importing Window - the principal realm's, for a ShadowRealm - as
+    /// (address, slab generation).
     window: *runtime.Instance,
     generation: u64,
     /// Owned (c_allocator).
@@ -1298,7 +1372,7 @@ fn runDynamicImport(data: ?*anyopaque) void {
     if (runtime.SlabAllocator.generationOf(task.window) != task.generation)
         return finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
 
-    engine.runTaskInRealm(task.window.ctx, dynamicImportSteps, task) catch
+    engine.runTaskInRealm(task.realm, dynamicImportSteps, task) catch
         finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
 }
 
@@ -1307,10 +1381,11 @@ fn runDynamicImport(data: ?*anyopaque) void {
 /// (evaluate, and settle with the namespace or the reason) is the engine's.
 fn dynamicImportSteps(data: ?*anyopaque) void {
     const task: *DynamicImportTask = @ptrCast(@alignCast(data.?));
-    const realm = task.window.ctx;
+    const realm = task.realm;
     const document = interfaces.Window.get_document(task.window) catch
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
-    const env = moduleEnvironmentForWindow(task.window, document) orelse
+    var shadow_realm_map: ShadowRealmModuleMap = undefined;
+    const env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
 
     // A null graph is a failed fetch: TypeError.
@@ -1323,77 +1398,6 @@ fn dynamicImportSteps(data: ?*anyopaque) void {
     const record = graph.record orelse
         return finishImportWithTypeError(realm, task.request, "Failed to load dynamically imported module");
     finishImport(task.request, .{ .module = record });
-}
-
-// -----------------------------------------------------------------------------
-// The legacy entry points' shim.
-//
-// TODO(protocol): removed when Browser creates its agent with
-// engine.createAgent (navigation lane resume), installing `module_hooks` -
-// and with it go installDynamicImport / uninstallDynamicImport,
-// onLegacyDynamicImport, onLegacyImportMetaUrl and dynamic_import_isolate;
-// protocol_modules.zig's adoptLegacyImport and hostDefinedOf, and the v8
-// root's protocol_modules re-export and installLegacyImportMetaUrl; engine.zig's setDynamicImportHandler guard, with
-// context_manager's two setDynamicImportHandler calls.
-//
-// Until then the page's agent is a bare isolate with no HostHooks: import()
-// arrives through engine.zig's legacy handler, and import.meta through V8's
-// import.meta callback. Both forward into the same host code the hooks run.
-// -----------------------------------------------------------------------------
-
-/// The isolate the shim serves. Worker isolates run their own threads and
-/// their own handler (context_manager's), so it declines anything else.
-var dynamic_import_isolate: ?*@import("v8").ffi.Isolate = null;
-
-/// Route import() and import.meta in `isolate`'s Window realms through the
-/// module loader. TODO(protocol): the shim above.
-pub fn installDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
-    const v8_engine = @import("v8");
-    dynamic_import_isolate = isolate;
-    v8_engine.engine.embedder_dynamic_import = &onLegacyDynamicImport;
-    v8_engine.installLegacyImportMetaUrl(isolate, &onLegacyImportMetaUrl);
-}
-
-/// TODO(protocol): the shim above.
-pub fn uninstallDynamicImport(isolate: *@import("v8").ffi.Isolate) void {
-    if (dynamic_import_isolate != isolate) return;
-    @import("v8").engine.embedder_dynamic_import = null;
-    dynamic_import_isolate = null;
-}
-
-/// engine.zig's legacy import() handler, into loadImport. The referrer is
-/// V8's resource name for the calling script - the script's URL, a module's
-/// base URL, the document's URL for an inline script - or none (an event
-/// handler), which is the document's base URL as it is now.
-/// TODO(protocol): the shim above.
-fn onLegacyDynamicImport(
-    context_ptr: *anyopaque,
-    referrer: []const u8,
-    specifier: []const u8,
-    type_attribute: ?[]const u8,
-    resolver: @import("v8").engine.DynamicImportResolver,
-) bool {
-    const v8_engine = @import("v8");
-    if (v8_engine.ffi.v8_Isolate_GetCurrent() != dynamic_import_isolate) return false;
-    const realm = v8_engine.context_manager.get(@ptrCast(@alignCast(context_ptr))) orelse return false;
-    // A Window realm's import() only: a worker's or a ShadowRealm's is
-    // context_manager's handler's.
-    if (windowOfRealm(realm) == null) return false;
-    // The protocol's request owns the promise's handles from here.
-    const request = v8_engine.protocol_modules.adoptLegacyImport(resolver.context, resolver.resolver, realm) catch return false;
-    loadImport(realm, if (referrer.len > 0) .{ .url = referrer } else .document, specifier, type_attribute, request);
-    return true;
-}
-
-/// V8's import.meta callback, into module_script.importMetaUrl.
-/// TODO(protocol): the shim above.
-fn onLegacyImportMetaUrl(identity_hash: c_int, module: *@import("v8").ffi.Module, len: *usize) callconv(.c) ?[*]const u8 {
-    const v8_engine = @import("v8");
-    const host_defined = v8_engine.protocol_modules.hostDefinedOf(module, identity_hash) orelse return null;
-    if (module_script.scriptOf(host_defined) == null) return null;
-    const url = module_script.importMetaUrl(null, host_defined);
-    len.* = url.len;
-    return url.ptr;
 }
 
 // =============================================================================

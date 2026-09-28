@@ -106,10 +106,6 @@ pub const ContextEntry = struct {
     /// of it can reach this entry again; the entry is retired, never freed,
     /// so the flag stays readable for the manager's lifetime.
     destroying: bool = false,
-
-    // NOTE: Module caching field was removed because V8's HostImportModuleDynamically
-    // callback doesn't provide the target realm context for ShadowRealm imports.
-    // See detailed comment in handleDynamicImport.
 };
 
 /// Thread-local context manager state
@@ -571,7 +567,6 @@ pub fn getOrCreateWithExternalEventLoop(
         .colored = false,
         .show_timestamp = false,
         .show_labels = false,
-        .engine = &v8_engine.v8_engine_interface,
         .engine_ctx = @ptrCast(v8_ctx),
         .timer = timer,
         .event_loop = event_loop,
@@ -610,19 +605,6 @@ pub fn getOrCreateWithExternalEventLoop(
 
     // Store pointer in map - entry won't move even if HashMap rehashes
     try state.contexts.put(key, entry);
-
-    // Register dynamic import handler for this isolate (if not already registered)
-    // This enables import() expressions in JavaScript per HTML spec HostImportModuleDynamically
-    // Note: The handler is set per-isolate, so multiple contexts share the same handler.
-    // The handler uses the context passed from V8 (the context where import() was called),
-    // not the context we're storing here.
-    const isolate = v8.v8_Isolate_GetCurrent();
-    if (isolate) |iso| {
-        v8_engine.setDynamicImportHandler(iso, .{
-            .callback = handleDynamicImport,
-            .context = @ptrCast(v8_ctx),
-        });
-    }
 
     return &entry.runtime_ctx;
 }
@@ -666,8 +648,8 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
     // This is required for cross-realm support
     if (entry.realm == null) {
         const realm = try runtime.Realm.init(allocator, .{
-            .v8_context = @ptrCast(v8_ctx),
-            .isolate = @ptrCast(isolate),
+            .engine_realm = @ptrCast(v8_ctx),
+            .agent = @ptrCast(isolate),
             .context_type = .window,
             .global_object = window_instance, // Set directly since we have the Window
         });
@@ -747,7 +729,6 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .colored = false, // V8 callbacks shouldn't use colored output
         .show_timestamp = false,
         .show_labels = false,
-        .engine = &v8_engine.v8_engine_interface, // V8 engine interface for Promises etc.
         .engine_ctx = @ptrCast(entry_ctx), // Store V8 context as engine context
         .timer = timer_interface,
         .event_loop = event_loop_interface,
@@ -776,8 +757,8 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     var realm: ?*runtime.Realm = null;
     if (isolate) |iso| {
         realm = try runtime.Realm.init(allocator, .{
-            .v8_context = @ptrCast(entry_ctx),
-            .isolate = @ptrCast(iso),
+            .engine_realm = @ptrCast(entry_ctx),
+            .agent = @ptrCast(iso),
             .context_type = .window, // Main context is a window
             .global_object = null, // Set by bindWindowToContext() after Window creation
         });
@@ -788,15 +769,6 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
         // Set realm on runtime context so impl code can access via instance.ctx.realm
         ctx_data.setRealm(realm.?);
-    }
-
-    // Register dynamic import handler for this isolate
-    // This enables import() expressions in JavaScript per HTML spec HostImportModuleDynamically
-    if (isolate) |iso| {
-        v8_engine.setDynamicImportHandler(iso, .{
-            .callback = handleDynamicImport,
-            .context = @ptrCast(entry_ctx),
-        });
     }
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
@@ -1153,9 +1125,6 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
                 realm.deinit();
             }
 
-            // NOTE: Module cache cleanup removed - caching disabled
-            // (see handleDynamicImport comment)
-
             // NOTE: no `ctx_data.deinit()` here - deinit()'s drain does it, once
             // no Instance can still be pointing at this ContextData.
         }
@@ -1199,382 +1168,6 @@ pub fn clearWrapperCaches() void {
             cache_ptr.clear();
         }
     }
-}
-
-// ============================================================================
-// Dynamic Import Handler
-// ============================================================================
-
-/// Handle dynamic import() expressions from JavaScript
-///
-/// This callback is invoked by V8 when JavaScript uses import().
-/// It implements the HostImportModuleDynamically abstract operation from HTML spec.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostimportmoduledynamically
-///
-/// Note: Module fetching is handled via std.net for now. A full implementation
-/// would integrate with the Fetch API but that requires circular dependency resolution.
-fn handleDynamicImport(
-    ctx: ?*anyopaque,
-    referrer: []const u8,
-    specifier: []const u8,
-    resolver: v8_engine.DynamicImportResolver,
-) void {
-    std.log.debug("[DYN_IMPORT] handleDynamicImport called, specifier={s}, referrer={s}", .{ specifier, referrer });
-
-    const v8_ctx: *v8.Context = @ptrCast(@alignCast(ctx orelse {
-        std.log.err("[DYN_IMPORT] No context available", .{});
-        resolver.reject("No context available for dynamic import");
-        return;
-    }));
-
-    // Get isolate from context
-    const isolate = v8.v8_Isolate_GetCurrent() orelse {
-        resolver.reject("No V8 isolate available");
-        return;
-    };
-
-    // Try to get runtime context for allocator
-    const state = manager_state orelse {
-        resolver.reject("Context manager not initialized");
-        return;
-    };
-
-    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse {
-        std.log.err("[DYN_IMPORT] Invalid V8 context - GetRawAddress returned null", .{});
-        resolver.reject("Invalid V8 context");
-        return;
-    };
-    const key = @intFromPtr(raw_addr);
-    std.log.debug("[DYN_IMPORT] Looking up context with key=0x{x}", .{key});
-
-    const entry = state.contexts.get(key) orelse {
-        std.log.err("[DYN_IMPORT] No runtime context for key=0x{x}, registered contexts: {d}", .{ key, state.contexts.count() });
-        resolver.reject("No runtime context for this V8 context");
-        return;
-    };
-    std.log.debug("[DYN_IMPORT] Found context entry, document_url={s}", .{entry.runtime_ctx.documentUrl() orelse "(null)"});
-
-    const allocator = entry.runtime_ctx.allocator;
-
-    // Resolve the specifier to a URL using document URL as fallback
-    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer, entry.runtime_ctx.documentUrl()) catch {
-        resolver.reject("Failed to resolve module specifier");
-        return;
-    };
-    defer if (resolved_url.ptr != specifier.ptr) allocator.free(resolved_url);
-
-    // Module caching is DISABLED for now.
-    //
-    // V8's HostImportModuleDynamically callback receives the calling context,
-    // not the target context for ShadowRealm imports. This means:
-    // - ShadowRealm.prototype.importValue() passes the main window context
-    // - All ShadowRealms would share the same module cache (incorrect)
-    //
-    // Per TC39 ShadowRealm spec, each realm should have independent module
-    // instances. Without access to the target realm's context, we cannot
-    // properly cache modules per-realm.
-    //
-    // TODO: Implement proper per-realm module caching when V8 provides
-    // access to the target realm context in the callback.
-    //
-    // For now, each import() creates a fresh module, ensuring realm isolation
-    // at the cost of performance (no caching between multiple imports of the
-    // same module within the same realm).
-
-    // Determine how to fetch the module based on URL scheme
-    var source: []const u8 = undefined;
-    var source_needs_free = false;
-
-    if (std.mem.startsWith(u8, resolved_url, "data:")) {
-        // Data URL - extract content directly from the URL
-        // Format: data:[<mediatype>][;base64],<data>
-        const data_content = parseDataUrl(allocator, resolved_url) catch |err| {
-            std.log.err("[DYN_IMPORT] Failed to parse data URL: {}", .{err});
-            resolver.reject("Failed to parse data URL");
-            return;
-        };
-        source = data_content;
-        source_needs_free = true;
-    } else if (std.mem.startsWith(u8, resolved_url, "http://") or
-        std.mem.startsWith(u8, resolved_url, "https://"))
-    {
-        // HTTP/HTTPS URL - use fetch to retrieve the module
-        const response = fetch.fetchSimple(allocator, resolved_url) catch {
-            resolver.reject("Failed to fetch module");
-            return;
-        };
-        defer response.deinit();
-
-        // Check for successful response
-        if (response.status < 200 or response.status >= 300) {
-            resolver.reject("HTTP request for module failed");
-            return;
-        }
-
-        // Extract body
-        if (response.body) |resp_body| {
-            if (resp_body.data.items.len > 0) {
-                source = allocator.dupe(u8, resp_body.data.items) catch {
-                    resolver.reject("Failed to allocate module source");
-                    return;
-                };
-                source_needs_free = true;
-            } else {
-                resolver.reject("Module response body is empty");
-                return;
-            }
-        } else {
-            resolver.reject("No body in module response");
-            return;
-        }
-    } else {
-        // File URL or local path - read from filesystem
-        var file_path: []const u8 = resolved_url;
-        if (std.mem.startsWith(u8, resolved_url, "file://")) {
-            file_path = resolved_url[7..]; // Strip "file://"
-        }
-
-        // Read the file
-        const io = host.io();
-        const file = host.cwd().openFile(io, file_path, .{}) catch {
-            resolver.reject("Failed to open module file");
-            return;
-        };
-        defer file.close(io);
-
-        var file_reader = file.reader(io, &.{});
-        source = file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch { // 10MB max
-            resolver.reject("Failed to read module file");
-            return;
-        };
-        source_needs_free = true;
-    }
-    defer if (source_needs_free) allocator.free(source);
-
-    // Compile the module
-    const source_str = v8.v8_String_NewFromUtf8(
-        isolate,
-        source.ptr,
-        @intCast(source.len),
-    ) orelse {
-        resolver.reject("Failed to create source string");
-        return;
-    };
-
-    const url_str = v8.v8_String_NewFromUtf8(
-        isolate,
-        resolved_url.ptr,
-        @intCast(resolved_url.len),
-    ) orelse {
-        resolver.reject("Failed to create URL string");
-        return;
-    };
-
-    const module = v8.v8_Module_Compile(v8_ctx, source_str, url_str) orelse {
-        resolver.reject("Failed to compile module");
-        return;
-    };
-
-    // Instantiate the module
-    if (!v8.v8_Module_Instantiate(v8_ctx, module)) {
-        v8.v8_Module_Dispose(module);
-        resolver.reject("Failed to instantiate module");
-        return;
-    }
-
-    // Evaluate the module
-    const eval_result = v8.v8_Module_Evaluate(v8_ctx, module);
-    if (eval_result == null) {
-        v8.v8_Module_Dispose(module);
-        resolver.reject("Failed to evaluate module");
-        return;
-    }
-
-    // Get module namespace and resolve the promise
-    const namespace = v8.v8_Module_GetModuleNamespace(module) orelse {
-        v8.v8_Module_Dispose(module);
-        resolver.reject("Failed to get module namespace");
-        return;
-    };
-
-    // Module caching disabled - see comment at start of function
-    resolver.resolve(namespace);
-}
-
-// NOTE: Module caching (cacheModule function) was removed because V8's
-// HostImportModuleDynamically callback doesn't provide the target realm
-// context for ShadowRealm imports. See detailed comment in handleDynamicImport.
-
-/// Resolve a module specifier to a URL
-fn resolveModuleSpecifier(
-    allocator: std.mem.Allocator,
-    specifier: []const u8,
-    referrer: []const u8,
-    document_url: ?[]const u8,
-) ![]const u8 {
-    // Absolute URL
-    if (std.mem.indexOf(u8, specifier, "://") != null) {
-        return specifier;
-    }
-
-    // Determine the effective base URL
-    // Prefer referrer if it has a scheme, otherwise fall back to document_url
-    const effective_base: ?[]const u8 = blk: {
-        if (std.mem.indexOf(u8, referrer, "://") != null) {
-            break :blk referrer;
-        }
-        if (document_url) |doc_url| {
-            if (std.mem.indexOf(u8, doc_url, "://") != null) {
-                break :blk doc_url;
-            }
-        }
-        break :blk null;
-    };
-
-    // Root-relative URL
-    if (specifier.len > 0 and specifier[0] == '/') {
-        // Extract origin from effective base
-        if (effective_base) |base| {
-            if (std.mem.indexOf(u8, base, "://")) |scheme_end| {
-                const after_scheme = scheme_end + 3;
-                const origin_end = if (std.mem.indexOfPos(u8, base, after_scheme, "/")) |slash|
-                    slash
-                else
-                    base.len;
-
-                const result = try allocator.alloc(u8, origin_end + specifier.len);
-                @memcpy(result[0..origin_end], base[0..origin_end]);
-                @memcpy(result[origin_end..], specifier);
-                return result;
-            }
-        }
-        return specifier;
-    }
-
-    // Relative URL (./xxx or ../xxx)
-    if (specifier.len >= 2 and specifier[0] == '.') {
-        // Use referrer if it looks like a path, otherwise use effective_base
-        const base_for_relative = if (referrer.len > 0 and std.mem.indexOf(u8, referrer, "://") != null)
-            referrer
-        else if (effective_base) |base|
-            base
-        else
-            referrer;
-
-        // Find the base path (everything up to and including the last /)
-        var base_path_end: usize = 0;
-        if (std.mem.lastIndexOf(u8, base_for_relative, "/")) |last_slash| {
-            base_path_end = last_slash + 1;
-        }
-
-        if (base_path_end > 0) {
-            const result = try allocator.alloc(u8, base_path_end + specifier.len);
-            @memcpy(result[0..base_path_end], base_for_relative[0..base_path_end]);
-            @memcpy(result[base_path_end..], specifier);
-            return result;
-        }
-    }
-
-    // Bare specifier - would need import map resolution
-    // For now, return as-is (will likely fail)
-    return specifier;
-}
-
-/// Parse a data URL and return the decoded content
-///
-/// Supports both URL-encoded and base64-encoded data URLs:
-/// - data:text/javascript;charset=utf-8,<URL-encoded data>
-/// - data:text/javascript;base64,<base64 data>
-///
-/// Spec: https://datatracker.ietf.org/doc/html/rfc2397
-fn parseDataUrl(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
-    // Find the comma that separates metadata from data
-    const comma_pos = std.mem.indexOf(u8, url, ",") orelse return error.InvalidDataUrl;
-    const metadata = url[5..comma_pos]; // Skip "data:"
-    const encoded_data = url[comma_pos + 1 ..];
-
-    // Check if base64 encoded
-    const is_base64 = std.mem.indexOf(u8, metadata, ";base64") != null;
-
-    if (is_base64) {
-        // Base64 decode
-        const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(encoded_data) catch return error.InvalidBase64;
-        const decoded = try allocator.alloc(u8, decoded_len);
-        errdefer allocator.free(decoded);
-
-        std.base64.standard.Decoder.decode(decoded, encoded_data) catch return error.InvalidBase64;
-        return decoded;
-    } else {
-        // URL decode (percent-encoded)
-        return try urlDecode(allocator, encoded_data);
-    }
-}
-
-/// Decode a URL-encoded (percent-encoded) string
-fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
-    // Count the actual size needed
-    var decoded_len: usize = 0;
-    var i: usize = 0;
-    while (i < encoded.len) {
-        if (encoded[i] == '%' and i + 2 < encoded.len) {
-            i += 3;
-        } else if (encoded[i] == '+') {
-            i += 1;
-        } else {
-            i += 1;
-        }
-        decoded_len += 1;
-    }
-
-    const result = try allocator.alloc(u8, decoded_len);
-    errdefer allocator.free(result);
-
-    i = 0;
-    var j: usize = 0;
-    while (i < encoded.len) {
-        if (encoded[i] == '%' and i + 2 < encoded.len) {
-            // Decode percent-encoded character
-            const high = hexCharToValue(encoded[i + 1]) orelse {
-                result[j] = encoded[i];
-                i += 1;
-                j += 1;
-                continue;
-            };
-            const low = hexCharToValue(encoded[i + 2]) orelse {
-                result[j] = encoded[i];
-                i += 1;
-                j += 1;
-                continue;
-            };
-            result[j] = (high << 4) | low;
-            i += 3;
-            j += 1;
-        } else if (encoded[i] == '+') {
-            // Plus sign represents space in query strings
-            result[j] = ' ';
-            i += 1;
-            j += 1;
-        } else {
-            result[j] = encoded[i];
-            i += 1;
-            j += 1;
-        }
-    }
-
-    // Resize if needed (shouldn't happen with correct counting)
-    if (j != decoded_len) {
-        return allocator.realloc(result, j) catch result[0..j];
-    }
-    return result;
-}
-
-/// Convert a hex character to its numeric value
-fn hexCharToValue(c: u8) ?u8 {
-    if (c >= '0' and c <= '9') return c - '0';
-    if (c >= 'a' and c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' and c <= 'F') return c - 'A' + 10;
-    return null;
 }
 
 // ============================================================================

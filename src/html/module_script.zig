@@ -187,18 +187,24 @@ pub fn disposeEntry(value: *anyopaque) void {
 /// Everything the loader needs from the document it loads for.
 pub const Environment = struct {
     allocator: std.mem.Allocator,
-    /// Any instance of the document's realm: the ctx for URL parsing, and
-    /// the realm the module scripts' records are made in.
+    /// Any instance of the document's realm: the ctx for URL parsing, and -
+    /// unless `realm_override` names another - the realm the module scripts'
+    /// records are made in.
     context_instance: *runtime.Instance,
     map: ModuleMap,
     /// The document's import map lookup: the mapped URL for `specifier`
     /// (borrowed), or null when the import map does not mention it. Called
     /// with `map.context`, the document.
     resolveImportFn: ?*const fn (context: *anyopaque, specifier: []const u8, base_url: []const u8) ?[]const u8 = null,
+    /// The realm the records are made in, when it is not the document's: a
+    /// ShadowRealm's, whose synthetic realm settings object has a module map
+    /// of its own and parses URLs against its principal realm's settings
+    /// (`context_instance`). A ShadowRealm has no platform object to name it.
+    realm_override: ?runtime.Context = null,
 
     /// The settings object's realm: every record and value is made in it.
     pub fn realm(self: *const Environment) runtime.Context {
-        return self.context_instance.ctx;
+        return self.realm_override orelse self.context_instance.ctx;
     }
 };
 

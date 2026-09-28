@@ -126,13 +126,24 @@ fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*st
     return null;
 }
 
+/// The TLS library libcurl uses - chosen here and nowhere else. mbedTLS today.
+/// HTTP/3 (ngtcp2 + nghttp3) needs a QUIC-capable TLS library - BoringSSL or
+/// OpenSSL 3.5+ - so adding it means a new member here, the curl options
+/// derived from this in configureStaticLibcurl, and the ALPN query in
+/// src/fetch/network/curl_backend.zig (`negotiatedHttp2`), which knows each
+/// backend's session type.
+const TlsBackend = enum { mbedtls };
+const tls_backend: TlsBackend = .mbedtls;
+
 /// Configure statically-compiled libcurl for the fetch module
 ///
 /// Compiles libcurl from source using allyourcodebase/curl package.
-/// TLS provided by mbedTLS (cross-platform, no system dependencies).
+/// TLS provided by `tls_backend` (cross-platform, no system dependencies).
 ///
 /// Features enabled:
-/// - HTTP/HTTPS (with mbedTLS)
+/// - HTTP/HTTPS (with `tls_backend`)
+/// - HTTP/2, through nghttp2 built from source (buildNghttp2), with
+///   -Dhttp2 (the default)
 /// - Compression (gzip via zlib)
 ///
 /// Features disabled (minimize binary size):
@@ -140,7 +151,6 @@ fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*st
 /// - libpsl (Public Suffix List - URL module handles this)
 /// - libssh2 (SSH/SCP/SFTP)
 /// - libidn2 (IDN - URL module handles IDNA)
-/// - nghttp2 (HTTP/2 - optional, can enable with -Dhttp2=true)
 /// - brotli, zstd (additional compression)
 /// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
 fn configureStaticLibcurl(
@@ -156,10 +166,10 @@ fn configureStaticLibcurl(
         .optimize = optimize,
         // Static linking
         .linkage = .static,
-        // TLS backend: mbedTLS (cross-platform, no OpenSSL issues)
+        // TLS backend: `tls_backend` (cross-platform, no OpenSSL issues)
         .@"enable-ssl" = true,
         .@"use-openssl" = false,
-        .@"use-mbedtls" = true,
+        .@"use-mbedtls" = tls_backend == .mbedtls,
         .@"use-schannel" = false,
         .@"use-wolfssl" = false,
         .@"use-gnutls" = false,
@@ -175,7 +185,9 @@ fn configureStaticLibcurl(
         .libidn2 = false, // URL module handles IDNA
         .@"apple-idn" = false,
         .@"win32-idn" = false,
-        .nghttp2 = enable_http2, // HTTP/2 optional
+        // Never curl's own: it links a SYSTEM libnghttp2. HTTP/2 comes from
+        // buildNghttp2, below.
+        .nghttp2 = false,
         .ares = false, // Use threaded resolver
         // Disable non-HTTP protocols
         .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
@@ -209,6 +221,24 @@ fn configureStaticLibcurl(
     // full safety checks. Revisit when a curl release fixes it upstream.
     libcurl.root_module.sanitize_c = .off;
 
+    // HTTP/2: nghttp2 built here from its pinned release and linked into
+    // libcurl (curl's `nghttp2` option above stays off).
+    //
+    // This leans on how allyourcodebase/curl (pinned at c59c65cd) builds: it
+    // compiles http2.c and cf-h2-proxy.c unconditionally and gates them on
+    // USE_NGHTTP2 from a cmake-style config header, whose `#cmakedefine`
+    // leaves the macro undefined, not #undef'd, when its option is off - so
+    // defining it here turns them on. Whoever bumps curl re-checks that;
+    // `fetch`'s test "libcurl speaks HTTP/2 when the build asked for it"
+    // fails if HTTP/2 goes missing.
+    if (enable_http2) {
+        if (buildNghttp2(b, target, optimize)) |nghttp2| {
+            libcurl.root_module.addCMacro("USE_NGHTTP2", "1");
+            libcurl.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
+            libcurl.root_module.linkLibrary(nghttp2);
+        }
+    }
+
     // The mbedTLS package compiles the LIBRARY with these two macros
     // (mbedtls-3.6.4/build.zig:31-32) but does not propagate them to anything
     // that includes the installed headers. MBEDTLS_THREADING_C appends a
@@ -230,8 +260,10 @@ fn configureStaticLibcurl(
     // carries no headers, so src/browser/navigation.zig:312 defaults the
     // content type to text/html and parses an empty document as a successful
     // page load.
-    libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
-    libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    if (tls_backend == .mbedtls) {
+        libcurl.root_module.addCMacro("MBEDTLS_THREADING_C", "");
+        libcurl.root_module.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    }
 
     // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
     // zlib and mbedtls are compiled inside the curl package's own artifacts, so
@@ -262,6 +294,52 @@ fn configureStaticLibcurl(
     }
     // macOS: No additional libraries needed with mbedTLS
 }
+
+/// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
+/// its release tarball (build.zig.zon `nghttp2`, pinned by hash), never a
+/// system library. Only lib/ is built, as upstream's --enable-lib-only does:
+/// lib/CMakeLists.txt's NGHTTP2_SOURCES and definitions.
+fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?*std.Build.Step.Compile {
+    const upstream = b.lazyDependency("nghttp2", .{}) orelse return null;
+    const version_h = b.addConfigHeader(.{
+        .style = .{ .cmake = upstream.path("lib/includes/nghttp2/nghttp2ver.h.in") },
+        .include_path = "nghttp2/nghttp2ver.h",
+    }, .{
+        .PACKAGE_VERSION = "1.70.0",
+        .PACKAGE_VERSION_NUM = 0x014600,
+    });
+    const lib = b.addLibrary(.{
+        .name = "nghttp2",
+        .linkage = .static,
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
+    });
+    lib.root_module.addIncludePath(upstream.path("lib/includes"));
+    lib.root_module.addConfigHeader(version_h);
+    lib.root_module.addCMacro("BUILDING_NGHTTP2", "1");
+    lib.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
+    // What upstream's configure finds on a POSIX system (there is no
+    // config.h: nothing defines HAVE_CONFIG_H).
+    lib.root_module.addCMacro("HAVE_ARPA_INET_H", "1");
+    lib.root_module.addCMacro("HAVE_NETINET_IN_H", "1");
+    lib.root_module.addCMacro("HAVE_CLOCK_GETTIME", "1");
+    lib.root_module.addCMacro("HAVE_DECL_CLOCK_MONOTONIC", "1");
+    lib.root_module.addCSourceFiles(.{ .root = upstream.path("lib"), .files = &nghttp2_sources });
+    lib.installHeadersDirectory(upstream.path("lib/includes/nghttp2"), "nghttp2", .{});
+    lib.installConfigHeader(version_h);
+    return lib;
+}
+
+const nghttp2_sources = [_][]const u8{
+    "nghttp2_pq.c",            "nghttp2_map.c",             "nghttp2_queue.c",
+    "nghttp2_frame.c",         "nghttp2_buf.c",             "nghttp2_stream.c",
+    "nghttp2_outbound_item.c", "nghttp2_session.c",         "nghttp2_submit.c",
+    "nghttp2_helper.c",        "nghttp2_alpn.c",            "nghttp2_hd.c",
+    "nghttp2_hd_huffman.c",    "nghttp2_hd_huffman_data.c", "nghttp2_version.c",
+    "nghttp2_priority_spec.c", "nghttp2_option.c",          "nghttp2_callbacks.c",
+    "nghttp2_mem.c",           "nghttp2_http.c",            "nghttp2_rcbuf.c",
+    "nghttp2_extpri.c",        "nghttp2_ratelim.c",         "nghttp2_time.c",
+    "nghttp2_debug.c",         "sfparse.c",
+};
 
 /// Warns when `-Dsystem-curl` selects a libcurl that cannot do WebSockets.
 ///
@@ -433,6 +511,28 @@ fn addModuleTestWithV8(
 /// their own, for a test compile whose graph holds no other binding - one
 /// file belongs to one module per compile, so two bindings of the facade
 /// cannot meet in one.
+/// A runtime module for a compile with no V8 in it, bound to the engine
+/// protocol over `adapter_root`: runtime_mod's imports except v8 and engine,
+/// and the facade the adapter makes (which imports this runtime).
+fn runtimeTier(
+    builder: *std.Build,
+    target: std.Build.ResolvedTarget,
+    runtime_mod: *std.Build.Module,
+    adapter_root: std.Build.LazyPath,
+) struct { runtime: *std.Build.Module, engine: *std.Build.Module } {
+    const tier = builder.createModule(.{
+        .root_source_file = runtime_mod.root_source_file,
+        .target = target,
+    });
+    for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
+        if (std.mem.eql(u8, import_name, "v8") or std.mem.eql(u8, import_name, "engine")) continue;
+        tier.addImport(import_name, dep);
+    }
+    const facade = engineProtocolBinding(builder, target, tier, adapter_root);
+    tier.addImport("engine", facade);
+    return .{ .runtime = tier, .engine = facade };
+}
+
 fn engineProtocolBinding(
     builder: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -683,12 +783,12 @@ pub fn build(b: *std.Build) void {
         "Use system libcurl instead of static compilation (faster dev builds)",
     ) orelse false;
 
-    // Enable HTTP/2 support via nghttp2
+    // HTTP/2 through the vendored nghttp2 (buildNghttp2)
     const enable_http2 = b.option(
         bool,
         "http2",
-        "Enable HTTP/2 support via nghttp2 (increases binary size)",
-    ) orelse false;
+        "HTTP/2 via the vendored nghttp2 (default on)",
+    ) orelse true;
 
     // ========================================================================
     // DEBUG OPTIONS
@@ -1062,6 +1162,12 @@ pub fn build(b: *std.Build) void {
     engine_impl_mod.addImport("engine", engine_mod);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
+    // The runtime reaches the engine the way everything else does: an
+    // unwrapped instance asks engine.hasWrapper, [PutForwards] and
+    // [Replaceable] setters use its Set and DefineOwnProperty. The facade
+    // imports runtime, so this is a cycle - the same shape as facade and
+    // adapter.
+    runtime_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
@@ -1732,6 +1838,17 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("url_record", url_internal_url_record_mod);
     fetch_mod.addImport("basic_parser", url_basic_parser_mod);
     fetch_mod.addImport("url_serializer", url_serializer_mod);
+    // Main fetch step 12 and the CORS check compare origins (URL "origin").
+    fetch_mod.addImport("origin", url_origin_mod_internal);
+    // The network layer asks the vendored TLS library what ALPN chose, and
+    // tests that HTTP/2 is live when the build asked for it. Its own options
+    // module: one options file imported as a module by two others in the same
+    // compilation is an error ("file exists in modules"), and build_options
+    // already is, through runtime and impls.
+    const curl_options = b.addOptions();
+    curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
+    curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    fetch_mod.addOptions("curl_options", curl_options);
     // A base64 data: URL body is Infra's forgiving-base64 decode.
     fetch_mod.addImport("infra", infra_mod);
 
@@ -2543,29 +2660,32 @@ pub fn build(b: *std.Build) void {
         // boundary leaves it. (runtime itself imports no v8 any more: its last
         // use, realm.zig's populateIntrinsics, moved into the adapter's
         // createWindowRealm.)
-        const runtime_tier_mod = b.createModule(.{
-            .root_source_file = runtime_mod.root_source_file,
-            .target = target,
-        });
-        for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
-            if (!std.mem.eql(u8, import_name, "v8")) runtime_tier_mod.addImport(import_name, dep);
-        }
+        //
+        // The runtime imports "engine" too, so a tier is a copy of runtime_mod
+        // bound to its own facade: every import of runtime_mod except v8 and
+        // engine, plus the facade the tier's adapter makes. A copy that kept
+        // runtime_mod's engine would reach the V8-bound facade a second way,
+        // and the facade's file cannot be in two modules of one compile.
+        const test_adapter_tier = runtimeTier(b, target, runtime_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        const runtime_tier_mod = test_adapter_tier.runtime;
+        const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
         // tier's test adapter. And each other adapter with no engine behind
         // it - the JavaScriptCore and QuickJS protocol roots, which nothing
         // else compiles while -Dengine=jsc|quickjs is not buildable - gets the
-        // protocol's tests in a compile of its own: compiling the facade
-        // against an adapter is what checks it against the protocol.
-        const test_adapter_engine_mod = engineProtocolBinding(b, target, runtime_tier_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        // protocol's tests in a compile of its own, with a runtime tier of its
+        // own: compiling the facade against an adapter is what checks it
+        // against the protocol.
         for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
+            const adapter_tier = runtimeTier(b, target, runtime_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter})));
             const conformance = b.addTest(.{
                 .name = b.fmt("engine_protocol_{s}", .{adapter}),
                 .root_module = b.createModule(.{
                     .root_source_file = b.path("tests/runtime/engine_protocol_test.zig"),
                     .target = target,
                     .imports = &.{
-                        .{ .name = "runtime", .module = runtime_tier_mod },
-                        .{ .name = "engine", .module = engineProtocolBinding(b, target, runtime_tier_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter}))) },
+                        .{ .name = "runtime", .module = adapter_tier.runtime },
+                        .{ .name = "engine", .module = adapter_tier.engine },
                     },
                 }),
             });
