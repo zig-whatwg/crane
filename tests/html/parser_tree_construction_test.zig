@@ -91,3 +91,44 @@ test "an ampersand at the end of the input is text, not lost" {
         \\
     );
 }
+
+test "a named character reference in text consumes exactly the name it matched" {
+    // "Consume the maximum number of characters possible, where the consumed
+    // characters are one of the identifiers in the named character references
+    // table." A name that matches nothing consumes nothing: the ambiguous
+    // ampersand state emits its characters. After a shorter match ("not" of
+    // "notit;"), the rest is the return state's. The tokenizer consumed the
+    // whole run of name characters and dropped what it did not match: "x &c y"
+    // read "x & y", "AT&T" read "AT&".
+    try expectBody("<p>x &c y</p><p>AT&T</p><p>&notit;</p>",
+        \\<p>
+        \\  "x &c y"
+        \\<p>
+        \\  "AT&T"
+        \\<p>
+        \\  "¬it;"
+        \\
+    );
+}
+
+test "a named character reference emits every code point it stands for" {
+    // &NotEqualTilde; is U+2242 U+0338: the second code point was dropped.
+    try expectBody("<p>&NotEqualTilde;&amp;</p>",
+        \\<p>
+        \\  "≂̸&"
+        \\
+    );
+}
+
+test "in an attribute value, a legacy name followed by an alphanumeric or = is left as written" {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, "<p title=\"&notit; &not;x &amp=1 &c\">");
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    try builder.parse();
+
+    const body = builder.document.first_child.?.last_child.?;
+    const p = body.first_child.?;
+    try testing.expectEqualStrings("&notit; ¬x &amp=1 &c", p.attributes.toSlice()[0].value);
+}
