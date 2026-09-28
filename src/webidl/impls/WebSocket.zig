@@ -418,6 +418,7 @@ fn pump(instance: *runtime.Instance) bool {
         connection.startConnect(.{
             .protocols = internal.requested_protocols,
             .origin = origin,
+            .cookie_jar = clientCookieJar(instance),
         }) catch |err| {
             log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
         };
@@ -543,6 +544,13 @@ fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
     const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
     // "null" is an opaque origin, and a header saying so is still the one to send.
     return origin;
+}
+
+/// The user agent's cookie jar, as this's relevant settings object reaches
+/// it: the handshake's request is its client's, credentials included.
+fn clientCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
+    const global_instance = relevantGlobal(instance) orelse return null;
+    return @import("dom").global_settings.cookieJarOf(global_instance);
 }
 
 // =============================================================================

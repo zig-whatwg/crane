@@ -1921,6 +1921,8 @@ pub fn build(b: *std.Build) void {
     });
     // WebSocket needs fetch for curl backend
     websocket_mod.addImport("fetch", fetch_mod);
+    // The opening handshake's cookies come from and go to the jar.
+    websocket_mod.addImport("cookiestore", cookiestore_mod);
 
     // Add websocket to impls for WebSocket interface implementation
     impls_mod.addImport("websocket", websocket_mod);
