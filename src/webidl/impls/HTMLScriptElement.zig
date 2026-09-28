@@ -842,8 +842,8 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
 
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-    // Only an HTML script element has script element state; an SVG script
-    // shares the name and not the processing model.
+    // Only an HTML script element: an SVG script's steps are
+    // SVGScriptElement's.
     if (getInternal(instance) == null) return;
 
     // Prepare step 1 short-circuits on already started, and the parser owns its
@@ -880,8 +880,8 @@ fn scriptChildrenChangedCallback(parent: *NodeBase) void {
 
     const instance_ptr = instance_bridge.getInstance(parent) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-    // Only an HTML script element has script element state; an SVG script
-    // shares the name and not the processing model.
+    // Only an HTML script element: an SVG script's steps are
+    // SVGScriptElement's.
     if (getInternal(instance) == null) return;
 
     // Prepare step 1 returns for an already-started script; checking it here

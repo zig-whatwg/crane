@@ -580,9 +580,9 @@ fn createElementNode(
 ) ParseError!*runtime.Instance {
     const local_name = tree_node.local_name orelse return error.InvalidStateError;
 
-    // Check if this is a script element
+    // Check if this is a script element: HTML's, or an SVG script.
     const is_script = std.mem.eql(u8, local_name, "script") and
-        tree_node.namespace == .html;
+        (tree_node.namespace == .html or tree_node.namespace == .svg);
 
     // Create the element with the interface its local name and namespace call
     // for - HTML "create an element for a token" looks the element interface
@@ -598,7 +598,7 @@ fn createElementNode(
     const element = if (tree_node.namespace == .html)
         parser_script_execution.createHTMLElement(allocator, ctx, local_name) catch return error.OutOfMemory
     else
-        interfaces.Element.init(allocator, ctx) catch return error.OutOfMemory;
+        parser_script_execution.createForeignElement(allocator, ctx, tree_node.namespace, local_name) catch return error.OutOfMemory;
     // Whatever interface it got, an element that never made it into the tree
     // is released through its own vtable.
     errdefer NodeImpl.deinitNodeByType(element);

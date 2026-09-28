@@ -234,6 +234,19 @@ test "a script inside svg is not script data: its markup is parsed" {
     );
 }
 
+test "an ampersand in an SVG script's source stays where it was" {
+    // An SVG script's source is data, not script data, so "x && y" in one
+    // goes through the character reference state - the crane/script-svg
+    // failure ("Unexpected identifier 'document'") the tokenizer fix below
+    // is for.
+    try expectBody("<svg><script>x && y</script></svg>",
+        \\<svg svg>
+        \\  <svg script>
+        \\    "x && y"
+        \\
+    );
+}
+
 const ScriptRecorder = struct {
     var names: [8]u8 = undefined;
     var count: usize = 0;

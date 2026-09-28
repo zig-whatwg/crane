@@ -351,7 +351,7 @@ pub const DomTreeAdapter = struct {
         const element = if (is_html_namespace)
             DocumentImpl.createHTMLElement(self.allocator, self.ctx, local_name) catch return DomTreeAdapterError.OutOfMemory
         else
-            Element.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory;
+            parser_script_execution.createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name) catch return DomTreeAdapterError.OutOfMemory;
 
         // Set node type
         NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch {
@@ -376,10 +376,8 @@ pub const DomTreeAdapter = struct {
             return DomTreeAdapterError.DomOperationFailed;
         };
 
-        // For script elements, mark as parser-inserted
-        // Check tag name since element is now created via factory
-        const is_script = std.mem.eql(u8, local_name, "script") and is_html_namespace;
-        if (is_script) dom.script_elements.markParserInserted(element, self.document);
+        // A script element - HTML's, or an SVG script - is parser-inserted.
+        if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
 
         // "Append each attribute in the given token to element."
         for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);

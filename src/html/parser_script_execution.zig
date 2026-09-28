@@ -35,6 +35,7 @@ const html_core = @import("html_core");
 const TreeBuilder = html_core.parser.TreeBuilder;
 const TreeNode = html_core.parser.TreeNode;
 const Tokenizer = html_core.parser.Tokenizer;
+const Namespace = html_core.parser.Namespace;
 
 // Script execution
 const script_execution = @import("script_execution.zig");
@@ -157,11 +158,18 @@ pub const ParserScriptContext = struct {
 /// true, and abort the processing of any nested invocations of the tokenizer;
 /// otherwise run the pending parsing-blocking script" - see
 /// `runPendingParsingBlockingScripts`.
+/// And, for an SVG script (the "in foreign content" end tag): "process the SVG
+/// script element".
 pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) void {
     const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return));
     if (!ctx.scripting_enabled) return;
 
     const script_element = ctx.getDomElement(script_tree_node) orelse return;
+
+    if (isSvgScript(script_tree_node)) {
+        script_execution.processSvgScriptElement(ctx.allocator, script_element);
+        return;
+    }
 
     // The embedder's loader, when it has one, is what "prepare the script
     // element" fetches a parser-inserted classic script's src with (the WPT
@@ -275,34 +283,6 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
 }
 
 // =============================================================================
-// Attributes from the parser
-// =============================================================================
-
-/// "Create an element for the token" step: "Append each attribute in the
-/// given token to element" - DOM "append an attribute", with the namespace
-/// and prefix "adjust foreign attributes" gave it, and no validation: an
-/// attribute name the tokenizer produced is one the element holds, whether or
-/// not setAttribute() would accept it (`<div a"b>`), and an `xlink:href` on
-/// SVG is the attribute `href` in the XLink namespace, which setAttribute()
-/// could not make.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
-pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
-    dom.element_attributes.append(element, .{
-        .namespace = if (attr.namespace) |ns| ns.uri() else null,
-        .prefix = attr.prefix,
-        .local_name = attr.name,
-        .value = attr.value,
-    }) catch |err| log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
-}
-
-/// The SVG script end-tag step's "process the SVG script element", or the
-/// HTML script callback: which one `tree_node` is.
-pub fn isSvgScript(tree_node: *const TreeNode) bool {
-    return tree_node.namespace == .svg and tree_node.hasTagName("script");
-}
-
-// =============================================================================
 // HTTP Script Fetching (Default Browser Behavior)
 // =============================================================================
 
@@ -335,12 +315,32 @@ fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Static callback wrapper for an attribute added to an element the adapter
-/// already made. Passed to tree_builder.setDomAdapterAttributeCallback().
-pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
-    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    const element = adapter.node_map.get(tree_node) orelse return;
-    appendParsedAttribute(element, attr.*);
+// =============================================================================
+// Attributes from the parser
+// =============================================================================
+
+/// "Create an element for the token" step: "Append each attribute in the
+/// given token to element" - DOM "append an attribute", with the namespace
+/// and prefix "adjust foreign attributes" gave it, and no validation: an
+/// attribute name the tokenizer produced is one the element holds, whether or
+/// not setAttribute() would accept it (`<div a"b>`), and an `xlink:href` on
+/// SVG is the attribute `href` in the XLink namespace, which setAttribute()
+/// could not make.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
+    dom.element_attributes.append(element, .{
+        .namespace = if (attr.namespace) |ns| ns.uri() else null,
+        .prefix = attr.prefix,
+        .local_name = attr.name,
+        .value = attr.value,
+    }) catch |err| log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
+}
+
+/// The SVG script end-tag step's "process the SVG script element", or the
+/// HTML script callback: which one `tree_node` is.
+pub fn isSvgScript(tree_node: *const TreeNode) bool {
+    return tree_node.namespace == .svg and tree_node.hasTagName("script");
 }
 
 // =============================================================================
@@ -366,6 +366,14 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     adapter.onTextContentChanged(tree_node) catch {};
+}
+
+/// Static callback wrapper for an attribute added to an element the adapter
+/// already made. Passed to tree_builder.setDomAdapterAttributeCallback().
+pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const element = adapter.node_map.get(tree_node) orelse return;
+    appendParsedAttribute(element, attr.*);
 }
 
 // =============================================================================
@@ -526,7 +534,7 @@ pub const DomTreeAdapter = struct {
         const element = if (is_html)
             try createHTMLElement(self.allocator, self.ctx, local_name)
         else
-            try interfaces.Element.init(self.allocator, self.ctx);
+            try createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name);
 
         // Set up the element (local name, namespace, attributes)
         const NodeImpl = impls.Node;
@@ -551,9 +559,10 @@ pub const DomTreeAdapter = struct {
         // Set owner document
         node_document.set(element, self.document) catch {};
 
-        // For script elements, mark as parser-inserted
-        const is_script = std.mem.eql(u8, local_name, "script") and is_html;
-        if (is_script) dom.script_elements.markParserInserted(element, self.document);
+        // A script element - HTML's, or an SVG script, whose insertion and
+        // children-changed steps wait for its end tag too - is
+        // parser-inserted.
+        if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
 
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 
@@ -629,6 +638,25 @@ pub fn createHTMLElement(
     return switch (html_core.element_interface.forLocalName(local_name)) {
         inline else => |which| @field(interfaces, @tagName(which)).init(allocator, ctx),
     };
+}
+
+/// Create an element the parser met in foreign content - in the SVG or MathML
+/// namespace - with the interface its local name and namespace call for.
+///
+/// Deviation, stated: of the SVG element interfaces only SVGScriptElement is
+/// made (its `type`, and the script element state it keeps); every other
+/// foreign element is a plain Element (TODO: the rest of SVG's interfaces,
+/// SVGElement for the unknown ones, and MathMLElement).
+pub fn createForeignElement(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    namespace: Namespace,
+    local_name: []const u8,
+) !*runtime.Instance {
+    if (namespace == .svg and std.mem.eql(u8, local_name, "script")) {
+        return interfaces.SVGScriptElement.init(allocator, ctx);
+    }
+    return interfaces.Element.init(allocator, ctx);
 }
 
 // =============================================================================

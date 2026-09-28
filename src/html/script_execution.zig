@@ -250,7 +250,7 @@ pub fn prepareScriptElement(
 
     // Step 18: If scripting is disabled for el, then return
     if (node_document) |doc| {
-        if (!doc_state.isScriptingEnabled(doc)) {
+        if (!scriptingEnabled(doc)) {
             return false;
         }
     }
@@ -967,17 +967,15 @@ pub fn executeScriptElement(
     switch (script_type) {
         .classic => {
             // Step 6.1: Let oldCurrentScript be document's currentScript
-            const old_current_script = doc_state.getCurrentScript(node_document);
-
             // Step 6.2: If el's root is not a shadow root, set currentScript to el
             // (We'll assume no shadow roots for now)
-            doc_state.setCurrentScript(node_document, script_element);
+            const old_current_script = swapCurrentScript(node_document, script_element);
 
             // Step 6.3: Run the classic script given by el's result.
             runClassicScript(script_element, node_document, from_external);
 
             // Step 6.4: Set currentScript back to oldCurrentScript
-            doc_state.setCurrentScript(node_document, old_current_script);
+            _ = swapCurrentScript(node_document, old_current_script);
         },
         .module => {
             // Step 6 "module": document's currentScript is null while a module
@@ -1168,6 +1166,192 @@ fn disposeModuleMapEntry(value: *anyopaque) void {
         if (@as(*anyopaque, @ptrCast(record)) == value) return record.destroy();
     }
     module_script.disposeEntry(value);
+}
+
+// =============================================================================
+// SVG script elements
+// =============================================================================
+
+const xlink_namespace = "http://www.w3.org/1999/xlink";
+const script_elements = @import("dom").script_elements;
+
+/// `element`'s script element state - parser-inserted, already started - if
+/// it is an SVG script element (SVGScriptElement keeps it; the hook reaches
+/// it).
+fn svgScriptState(element: *runtime.Instance) ?*script_elements.ScriptFlags {
+    return script_elements.svgFlags(element);
+}
+
+/// Whether `element` is an SVG script element.
+pub fn isSvgScriptElement(element: *runtime.Instance) bool {
+    return svgScriptState(element) != null;
+}
+
+/// An SVG script became connected, or its children changed while connected:
+/// HTML's post-connection and children-changed steps, which prepare a script
+/// that is not parser-inserted.
+pub fn svgScriptInsertionOrChildrenChanged(allocator: std.mem.Allocator, element: *runtime.Instance) void {
+    const state = svgScriptState(element) orelse return;
+    if (state.parser_inserted or state.already_started) return;
+    if (!isConnected(element)) return;
+    prepareSvgScriptElement(allocator, element, false);
+}
+
+/// "Process the SVG script element according to the SVG rules" - the parser's
+/// end-tag step for an SVG script.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
+/// ("An end tag whose tag name is "script", if the current node is an SVG
+/// script element")
+pub fn processSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance) void {
+    prepareSvgScriptElement(allocator, element, true);
+}
+
+/// "Prepare the script element" for an SVG script.
+///
+/// SVG 2 §15.2: "A script element is equivalent to the script element in
+/// HTML", so this is HTML's algorithm with SVG's differences - Blink runs its
+/// SVGScriptElement through the same ScriptLoader as HTMLScriptElement. Its URL
+/// is its `href`, or the deprecated `xlink:href`, never `src`; and it has no
+/// async or defer. So an external script the parser meets is fetched and run
+/// at its end tag, as a parser-blocking HTML script is; one inserted by script
+/// is fetched at insertion and run from a task, as a force-async HTML script
+/// is.
+///
+/// Deviation, stated: type="module" is not supported for SVG.
+fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool) void {
+    const state = svgScriptState(element) orelse return;
+    // Step 1.
+    if (state.already_started) return;
+    // Steps 2-3: the parser document is let go of; step 14 restores it.
+    const parser_inserted = state.parser_inserted or from_parser_end_tag;
+    state.parser_inserted = false;
+
+    const href = getAttributeNS(element, null, "href") orelse getAttributeNS(element, xlink_namespace, "href");
+
+    // Step 5: child text content. Step 6: no href and no source - return
+    // before "already started", so text added later runs it.
+    const source = getChildTextContent(allocator, element) catch return;
+    defer if (source.len > 0) allocator.free(source);
+    if (href == null and source.len == 0) return;
+
+    // Step 7.
+    if (!isConnected(element)) return;
+
+    // Steps 8-13: the type. A JavaScript MIME type, or none, is classic.
+    if (determineScriptType(element) != .classic) return;
+
+    // Step 14.
+    if (parser_inserted) state.parser_inserted = true;
+    // Step 15.
+    state.already_started = true;
+
+    // Step 18.
+    const document = getNodeDocument(element) orelse return;
+    if (!scriptingEnabled(document)) return;
+
+    if (href) |raw| {
+        // Step 33.3: an empty URL queues an element task to fire error at the
+        // element - and fetches nothing: resolved, "" is the document's own
+        // URL, which ran the page as script (execution-timing/137).
+        if (raw.len == 0) return queueErrorEventTask(element);
+        // Step 33.5: the URL, relative to the document base URL. Step 33.6:
+        // failure queues the error event too.
+        const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+        defer allocator.free(base_url);
+        const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
+        defer element.ctx.allocator.free(url);
+
+        var fetched = fetchExternalScript(allocator, url);
+        defer fetched.deinit(allocator);
+        if (from_parser_end_tag) {
+            // A parser-blocking script, whose result is in hand: run it now.
+            const body = fetched.body orelse return fireErrorEvent(allocator, element);
+            runSvgScriptSource(document, element, body, url, url);
+            fireLoadEvent(allocator, element);
+        } else {
+            // A script-inserted one runs from a task, as step 35's force-async
+            // HTML scripts do.
+            queueSvgScriptRun(element, fetched.body, url);
+        }
+        return;
+    }
+
+    // Step 36.3: an inline script runs immediately, with the document base URL
+    // (step 34.1) as its base URL and the document's URL as its resource name.
+    const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+    defer allocator.free(base_url);
+    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url);
+}
+
+/// A script-inserted external SVG script's run, queued: the element as
+/// (address, slab generation), the fetched source (owned), and its URL.
+const QueuedSvgScript = struct {
+    element: *runtime.Instance,
+    generation: u64,
+    /// Null for a failed fetch: the task fires error.
+    source: ?[]u8,
+    url: []u8,
+
+    fn destroy(self: *QueuedSvgScript) void {
+        if (self.source) |b| std.heap.c_allocator.free(b);
+        std.heap.c_allocator.free(self.url);
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
+fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8) void {
+    const loop = element.ctx.getOptionalEventLoop() orelse return;
+    const task = std.heap.c_allocator.create(QueuedSvgScript) catch return;
+    task.* = .{
+        .element = element,
+        .generation = runtime.SlabAllocator.generationOf(element),
+        .source = if (body) |b| std.heap.c_allocator.dupe(u8, b) catch null else null,
+        .url = std.heap.c_allocator.dupe(u8, url) catch {
+            std.heap.c_allocator.destroy(task);
+            return;
+        },
+    };
+    loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
+}
+
+fn dropQueuedSvgScript(data: ?*anyopaque) void {
+    const task: *QueuedSvgScript = @ptrCast(@alignCast(data orelse return));
+    task.destroy();
+}
+
+fn runQueuedSvgScript(data: ?*anyopaque) void {
+    const task: *QueuedSvgScript = @ptrCast(@alignCast(data orelse return));
+    defer task.destroy();
+    // The element was collected and its slot reissued: nobody is left to run.
+    if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
+    const document = getNodeDocument(task.element) orelse return;
+    const allocator = task.element.ctx.allocator;
+    const source = task.source orelse return fireErrorEvent(allocator, task.element);
+    runSvgScriptSource(document, task.element, source, task.url, task.url);
+    fireLoadEvent(allocator, task.element);
+}
+
+/// Set `document`'s currentScript to `script`, returning what it was.
+fn swapCurrentScript(document: *runtime.Instance, script: ?*runtime.Instance) ?*runtime.Instance {
+    const old = doc_state.getCurrentScript(document);
+    doc_state.setCurrentScript(document, script);
+    return old;
+}
+
+/// "Scripting is enabled" for `document`.
+fn scriptingEnabled(document: *runtime.Instance) bool {
+    return doc_state.isScriptingEnabled(document);
+}
+
+/// Run `source` as a classic script for an SVG script element, with `url` as
+/// its resource name and `base_url` as its base URL: currentScript is the
+/// element while it runs (it is an HTMLOrSVGScriptElement), and clean-up's
+/// microtask checkpoint follows, as for an HTML script.
+fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8) void {
+    const old_current_script = swapCurrentScript(document, element);
+    defer _ = swapCurrentScript(document, old_current_script);
+    runClassicScriptText(element, document, source, url, base_url, false);
 }
 
 // =============================================================================
@@ -1695,16 +1879,19 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
-    if (ElementImpl.getInternal(element)) |internal| {
-        return internal.findAttribute(null, name) != null;
-    }
-    return false;
+    return getAttributeNS(element, null, name) != null;
 }
 
-/// Generic attribute getter
+/// Generic attribute getter, for an attribute in no namespace.
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
+    return getAttributeNS(element, null, name);
+}
+
+/// The value of `element`'s attribute with this namespace and local name.
+/// Borrowed from the element's attribute list: valid until it changes.
+fn getAttributeNS(element: *runtime.Instance, namespace: ?[]const u8, name: []const u8) ?[]const u8 {
     if (ElementImpl.getInternal(element)) |internal| {
-        if (internal.findAttribute(null, name)) |attr| {
+        if (internal.findAttribute(namespace, name)) |attr| {
             return attr.value;
         }
     }

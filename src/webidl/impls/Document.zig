@@ -2315,15 +2315,22 @@ const html_namespace = "http://www.w3.org/1999/xhtml";
 /// to prefix, local name set to localName ... and node document set to
 /// document".
 ///
-/// Deviation: only the HTML namespace has element interfaces here - an SVG or
-/// MathML element is a plain Element (TODO).
+/// Deviation: of the other namespaces' element interfaces only the SVG
+/// script's, SVGScriptElement, is made - every other SVG or MathML element is
+/// a plain Element (TODO).
 fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8, prefix: ?[]const u8) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ElementImpl = @import("Element.zig");
     const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
+    const is_svg_script = if (namespace) |ns|
+        std.mem.eql(u8, ns, svg_namespace) and std.mem.eql(u8, local_name, "script")
+    else
+        false;
 
     const element = if (is_html)
         try createHTMLElement(internal.allocator, instance.ctx, local_name)
+    else if (is_svg_script)
+        try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
     else
         try interfaces.Element.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(element);
