@@ -56,12 +56,6 @@ pub const StreamClient = struct {
     end: *const fn (context: ?*anyopaque, result: NetworkError!void) void,
 };
 
-pub const StartOptions = struct {
-    /// Send and store cookies for this transfer - HTTP-network fetch does,
-    /// unless the request's credentials mode is "omit".
-    cookies: bool = true,
-};
-
 pub const NetworkScheduler = struct {
     allocator: Allocator,
     /// Made on the first `start`.
@@ -116,11 +110,10 @@ pub const NetworkScheduler = struct {
         self: *NetworkScheduler,
         allocator: Allocator,
         request: *const NetworkRequest,
-        options: StartOptions,
         on_complete: Completion,
         context: ?*anyopaque,
     ) NetworkError!*Job {
-        return self.startJob(allocator, request, options, .{ .complete = .{ .callback = on_complete, .context = context } });
+        return self.startJob(allocator, request, .{ .complete = .{ .callback = on_complete, .context = context } });
     }
 
     /// Start a transfer for `request` whose response `client` hears as it
@@ -129,17 +122,15 @@ pub const NetworkScheduler = struct {
         self: *NetworkScheduler,
         allocator: Allocator,
         request: *const NetworkRequest,
-        options: StartOptions,
         client: StreamClient,
     ) NetworkError!*Job {
-        return self.startJob(allocator, request, options, .{ .stream = client });
+        return self.startJob(allocator, request, .{ .stream = client });
     }
 
     fn startJob(
         self: *NetworkScheduler,
         allocator: Allocator,
         request: *const NetworkRequest,
-        options: StartOptions,
         client: @FieldType(Job, "client"),
     ) NetworkError!*Job {
         if (curl_backend.getGlobalShare() == null) curl_backend.globalInit() catch return NetworkError.Unknown;
@@ -149,7 +140,7 @@ pub const NetworkScheduler = struct {
             break :blk m;
         };
 
-        const transfer = try Transfer.create(allocator, request, .{ .own_cookies = options.cookies });
+        const transfer = try Transfer.create(allocator, request, .{});
         errdefer transfer.destroy();
 
         const job = allocator.create(Job) catch return NetworkError.OutOfMemory;

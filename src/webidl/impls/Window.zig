@@ -1288,7 +1288,6 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         CookieStore.State,
         &CookieStore.vtable,
         instance.ctx,
-        internal.origin,
         internal.is_secure_context,
     ) catch {
         return error.OutOfMemory;

@@ -30,7 +30,6 @@ const network = @import("../network/root.zig");
 const NetworkRequest = network.NetworkRequest;
 const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
-const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const cookies = @import("cookies.zig");
@@ -54,13 +53,9 @@ pub const HttpFetchResult = struct {
     response: *InternalResponse,
 };
 
-/// Options for HTTP fetch.
-pub const HttpFetchOptions = struct {
-    /// Cookie manager for credentials handling (optional)
-    /// If null, LibcurlBackend creates its own cookie manager.
-    /// Cookies are handled automatically by libcurl when attached.
-    cookie_manager: ?*CurlCookieManager = null,
-};
+/// Options for HTTP fetch. Main fetch passes none; cookies are the
+/// request's jar's (`InternalRequest.cookie_jar`).
+pub const HttpFetchOptions = struct {};
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
 pub const HttpFetchNext = union(enum) {

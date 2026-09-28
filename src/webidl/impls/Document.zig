@@ -194,11 +194,6 @@ pub const InternalState = struct {
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
     style_sheets: ?*runtime.Instance,
 
-    // === Cookie storage (simplified in-memory storage for WPT tests) ===
-    /// Simple cookie jar storing name -> value mappings
-    /// In a real browser, this would be backed by a proper cookie store
-    cookies: std.StringHashMap([]const u8),
-
     // === Script execution state (HTML Standard §4.12.1.1) ===
 
     /// Pending parsing-blocking script
@@ -384,8 +379,6 @@ pub const InternalState = struct {
             // StyleSheetList
             .style_sheets = null,
             // Event handlers
-            // Cookie storage
-            .cookies = std.StringHashMap([]const u8).init(allocator),
             // Script execution state
             .pending_parsing_blocking_script = null,
             .scripts_to_execute_asap = .empty,
@@ -468,16 +461,6 @@ pub const InternalState = struct {
         self.bg_color.deinit(self.allocator);
 
         // Event handlers
-
-        // Cookies - free values
-        {
-            var cookie_it = self.cookies.iterator();
-            while (cookie_it.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-                self.allocator.free(entry.value_ptr.*);
-            }
-            self.cookies.deinit();
-        }
 
         // Write buffer (for document.write() in after-parsing mode)
         self.write_buffer.deinit(self.allocator);

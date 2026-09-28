@@ -318,22 +318,17 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
 // Public API for integration
 // ============================================================================
 
-/// Create a new CookieStore for a given origin
-/// This is used by Window and ServiceWorkerGlobalScope to create their
-/// cookieStore attribute.
-///
-/// `origin_host` is not read: every operation reads the store's relevant
-/// settings object - its jar, creation URL and origin - when it runs.
-/// (Window passed its serialized origin here as a host.)
+/// Create a new CookieStore. This is used by Window and
+/// ServiceWorkerGlobalScope to create their cookieStore attribute. The
+/// store keeps no origin: every operation reads its relevant settings
+/// object - its jar, creation URL and origin - when it runs.
 pub fn createForOrigin(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
-    origin_host: []const u8,
     is_secure_context: bool,
 ) !*runtime.Instance {
-    _ = origin_host;
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
 
     const internal = try InternalState.init(allocator, is_secure_context);

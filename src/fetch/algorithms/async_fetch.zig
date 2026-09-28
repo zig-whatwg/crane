@@ -210,9 +210,6 @@ pub const AsyncFetch = struct {
                     self.transfer = self.scheduler.startStreaming(
                         self.allocator,
                         needed.request,
-                        // curl's cookie engine stays off: fetch sends and
-                        // stores cookies itself.
-                        .{ .cookies = false },
                         .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd },
                     ) catch |err| {
                         // Not sent at all: that is the network's answer.

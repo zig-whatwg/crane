@@ -7,7 +7,8 @@
 //!
 //! - `internal`: Internal data structures (header list, request/response internals)
 //! - `referrer_policy`: W3C Referrer Policy implementation
-//! - `cookies`: RFC 6265bis cookie handling
+//! - `algorithms.cookies`: Fetch §3.1's `Cookie` and `Set-Cookie` steps, over
+//!   the user agent's jar (src/cookiestore)
 //! - `cors`: CORS check and validation algorithms
 //!
 //! ## Usage
@@ -24,10 +25,6 @@
 //!
 //! // Use referrer policy
 //! const policy = fetch.referrer_policy.ReferrerPolicy.parse("strict-origin");
-//!
-//! // Use cookie store
-//! var store = fetch.cookies.CookieStore.init(allocator);
-//! defer store.deinit();
 //!
 //! // Use CORS check
 //! const result = fetch.cors.corsCheck("https://example.com", .omit, response_headers);
@@ -47,11 +44,6 @@ pub const Header = internal.Header;
 
 // Re-export referrer policy types
 pub const ReferrerPolicy = referrer_policy.ReferrerPolicy;
-
-// Re-export cookie types (from unified curl-based implementation)
-pub const CurlCookieManager = network.curl_cookies.CurlCookieManager;
-pub const Cookie = network.curl_cookies.Cookie;
-pub const CookieStore = network.cookie_store.CookieStore;
 
 // Re-export CORS types
 pub const CredentialsMode = cors.CredentialsMode;
