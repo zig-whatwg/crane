@@ -19,14 +19,18 @@ pub const MAX_COOKIES_PER_DOMAIN: usize = 50;
 /// Maximum total cookies in the jar
 pub const MAX_TOTAL_COOKIES: usize = 3000;
 
-/// SameSite context for cookie retrieval
-pub const SameSiteContext = enum {
-    /// Same-site request (first-party)
-    same_site,
-    /// Cross-site request with safe HTTP method (GET)
-    cross_site_safe,
-    /// Cross-site request with unsafe method (POST, etc.)
-    cross_site_unsafe,
+/// The same-site mode a retrieval runs in (layered cookies "Retrieve
+/// Cookies" sameSite; Fetch "determine the same-site mode"): which
+/// SameSite cookies it may return.
+pub const SameSiteMode = enum {
+    /// Every cookie: Strict, Lax, unset and None.
+    strict_or_less,
+    /// All but SameSite=Strict.
+    lax_or_less,
+    /// Neither Strict nor Lax: unset and None.
+    unset_or_less,
+    /// SameSite=None only.
+    none,
 };
 
 /// Options for retrieving cookies
@@ -35,12 +39,13 @@ pub const RetrieveOptions = struct {
     host: []const u8,
     /// The request URL's path
     path: []const u8 = "/",
-    /// Whether this is an HTTP request (affects HttpOnly visibility)
+    /// httpOnlyAllowed: an HTTP request, not a "non-HTTP" API such as
+    /// document.cookie - only it sees HttpOnly cookies.
     is_http: bool = false,
-    /// Whether the connection is secure (HTTPS)
+    /// isSecure: the request URL's scheme is secure (https, wss).
     is_secure: bool = false,
-    /// SameSite context for the request
-    same_site_context: SameSiteContext = .same_site,
+    /// The same-site mode of the retrieval.
+    same_site: SameSiteMode = .strict_or_less,
     /// Partition key for CHIPS (null for unpartitioned access)
     partition_key: ?PartitionKey = null,
     /// Filter by cookie name (null for all)
@@ -48,6 +53,8 @@ pub const RetrieveOptions = struct {
 };
 
 /// Cookie Jar - manages a collection of cookies
+///
+/// Single-threaded: the owner decides who may reach it.
 pub const CookieJar = struct {
     /// All cookies stored by a composite key
     cookies: std.ArrayListUnmanaged(Cookie),
@@ -74,36 +81,42 @@ pub const CookieJar = struct {
     }
 
     /// Store a cookie, replacing any existing cookie with the same identity
-    /// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.4
+    /// (and keeping its creation-time), then garbage collect the cookie's
+    /// host - which drops the cookie at once if it has already expired, so
+    /// storing an expired cookie deletes the one it replaces.
+    ///
+    /// No policy is applied: layered cookies "Store a Cookie"
+    /// (http_integration.storeCookie) decides whether a cookie may be stored
+    /// and calls this.
     pub fn store(self: *Self, cookie: Cookie) !void {
-        // First, remove any existing cookie with the same identity
-        var i: usize = 0;
-        while (i < self.cookies.items.len) {
-            if (self.cookies.items[i].hasSameIdentity(cookie)) {
-                var removed = self.cookies.orderedRemove(i);
-                removed.deinit();
-                // Don't increment i since we removed an element
-            } else {
-                i += 1;
-            }
+        var owned_cookie = try cookie.clone(self.allocator);
+        errdefer owned_cookie.deinit();
+        if (self.findIdentity(cookie)) |index| {
+            owned_cookie.creation_time = self.cookies.items[index].creation_time;
+            self.removeAt(index);
         }
-
-        // If the new cookie is already expired, don't store it
-        // (this effectively deletes the old cookie)
-        if (cookie.isExpired()) {
-            return;
-        }
-
-        // Check limits and evict if necessary
-        try self.evictIfNeeded(cookie.domain orelse "");
-
-        // Clone and store the cookie
-        const owned_cookie = try cookie.clone(self.allocator);
         try self.cookies.append(self.allocator, owned_cookie);
+        self.garbageCollect(cookie.domain orelse "");
+    }
+
+    /// The index of the cookie with `cookie`'s identity - its name, host
+    /// (host-equal), host-only flag, path and partition key - if any.
+    pub fn findIdentity(self: *const Self, cookie: Cookie) ?usize {
+        for (self.cookies.items, 0..) |existing, index| {
+            if (existing.hasSameIdentity(cookie)) return index;
+        }
+        return null;
+    }
+
+    /// Remove and free the cookie at `index`.
+    pub fn removeAt(self: *Self, index: usize) void {
+        var removed = self.cookies.orderedRemove(index);
+        removed.deinit();
     }
 
     /// Retrieve cookies matching the given options
-    /// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.6
+    /// (layered cookies "Retrieve Cookies"), sorted, their last-access-time
+    /// updated. The list and its cookies are the caller's.
     pub fn retrieve(self: *Self, options: RetrieveOptions) !std.ArrayListUnmanaged(Cookie) {
         var result: std.ArrayListUnmanaged(Cookie) = .empty;
         errdefer {
@@ -111,27 +124,25 @@ pub const CookieJar = struct {
             result.deinit(self.allocator);
         }
 
-        // Clean up expired cookies first
+        // An expired cookie is no longer in the store.
         self.removeExpired();
 
+        // 2. The cookies that meet the conditions.
         for (self.cookies.items) |*cookie| {
-            if (self.cookieMatches(cookie, options)) {
-                // Update last access time
+            if (cookieMatches(cookie, options)) {
+                // 4. Set the last-access-time of each cookie to now.
                 cookie.touch();
-
-                // Clone for return
                 const cloned = try cookie.clone(self.allocator);
                 try result.append(self.allocator, cloned);
             }
         }
 
-        // Sort cookies per RFC 6265bis Section 5.6
-        self.sortCookies(result.items);
+        // 3. Sort them.
+        sortCookies(result.items);
 
         return result;
     }
 
-    /// Delete cookies matching the given criteria
     pub fn delete(self: *Self, name: []const u8, domain: ?[]const u8, path: []const u8) usize {
         var deleted: usize = 0;
         var i: usize = 0;
@@ -147,8 +158,7 @@ pub const CookieJar = struct {
             const path_match = std.mem.eql(u8, cookie.path, path);
 
             if (name_match and domain_match and path_match) {
-                var removed = self.cookies.orderedRemove(i);
-                removed.deinit();
+                self.removeAt(i);
                 deleted += 1;
             } else {
                 i += 1;
@@ -171,23 +181,29 @@ pub const CookieJar = struct {
         return self.cookies.items.len;
     }
 
-    /// Remove all expired cookies
+    /// Remove all expired cookies (layered cookies "Remove Expired Cookies").
     pub fn removeExpired(self: *Self) void {
         var i: usize = 0;
         while (i < self.cookies.items.len) {
             if (self.cookies.items[i].isExpired()) {
-                var removed = self.cookies.orderedRemove(i);
-                removed.deinit();
+                self.removeAt(i);
             } else {
                 i += 1;
             }
         }
     }
 
-    /// Check if a cookie matches the retrieve options
-    fn cookieMatches(self: *Self, cookie: *const Cookie, options: RetrieveOptions) bool {
-        _ = self;
+    /// Layered cookies "Garbage Collect Cookies" given `host`: the expired
+    /// cookies, then the host's excess, then the store's.
+    pub fn garbageCollect(self: *Self, host: []const u8) void {
+        self.removeExpired();
+        self.removeExcessForHost(host);
+        self.removeGlobalExcess();
+    }
 
+    /// Whether `cookie` matches the retrieve options (layered cookies
+    /// "Retrieve Cookies" step 2).
+    fn cookieMatches(cookie: *const Cookie, options: RetrieveOptions) bool {
         // Name filter
         if (options.name) |name| {
             if (!std.mem.eql(u8, cookie.name, name)) {
@@ -195,57 +211,39 @@ pub const CookieJar = struct {
             }
         }
 
-        // Domain matching
+        // A host-only cookie's host is host-equal to host; any other's is
+        // one host Domain-Matches.
+        const domain = cookie.domain orelse return false;
         if (cookie.host_only) {
-            // Host-only cookies require exact match
-            if (!std.ascii.eqlIgnoreCase(options.host, cookie.domain orelse options.host)) {
-                return false;
-            }
+            if (!std.ascii.eqlIgnoreCase(options.host, domain)) return false;
         } else {
-            // Domain cookies use domain-matching
-            if (cookie.domain) |domain| {
-                if (!domain_matching.domainMatches(options.host, domain)) {
-                    return false;
-                }
-            }
+            if (!domain_matching.domainMatches(options.host, domain)) return false;
         }
 
-        // Path matching
+        // path Path-Matches cookie's path.
         if (!domain_matching.pathMatches(options.path, cookie.path)) {
             return false;
         }
 
-        // Secure attribute: only send secure cookies over HTTPS
+        // A secure cookie goes only where isSecure.
         if (cookie.secure and !options.is_secure) {
             return false;
         }
 
-        // HttpOnly: only visible to HTTP requests, not JavaScript
+        // An HttpOnly cookie only where httpOnlyAllowed.
         if (cookie.http_only and !options.is_http) {
             return false;
         }
 
-        // SameSite filtering
-        switch (cookie.same_site) {
-            .strict => {
-                // Strict cookies only sent in same-site context
-                if (options.same_site_context != .same_site) {
-                    return false;
-                }
-            },
-            .lax => {
-                // Lax cookies sent in same-site or safe cross-site
-                if (options.same_site_context == .cross_site_unsafe) {
-                    return false;
-                }
-            },
-            .none => {
-                // None cookies require Secure attribute
-                if (!cookie.secure) {
-                    return false;
-                }
-            },
-        }
+        // SameSite: strict for "strict-or-less", lax for that or
+        // "lax-or-less", unset for those or "unset-or-less", none always.
+        const allowed = switch (cookie.same_site) {
+            .strict => options.same_site == .strict_or_less,
+            .lax => options.same_site == .strict_or_less or options.same_site == .lax_or_less,
+            .unset => options.same_site != .none,
+            .none => true,
+        };
+        if (!allowed) return false;
 
         // Partitioned cookie isolation (CHIPS)
         if (cookie.partition_key) |pk| {
@@ -262,126 +260,58 @@ pub const CookieJar = struct {
         return true;
     }
 
-    /// Sort cookies per RFC 6265bis Section 5.6:
-    /// 1. Longer paths come first
-    /// 2. Earlier creation-time comes first (for same path length)
-    fn sortCookies(_: *Self, cookies: []Cookie) void {
+    /// "Retrieve Cookies" step 3: cookies whose path's size is greater
+    /// first, then earlier creation-time first. A path's size is its
+    /// number of segments - its "/"s, serialized.
+    fn sortCookies(cookies: []Cookie) void {
         std.mem.sort(Cookie, cookies, {}, struct {
             fn lessThan(_: void, a: Cookie, b: Cookie) bool {
-                // First by path length (longer first)
-                if (a.path.len != b.path.len) {
-                    return a.path.len > b.path.len;
-                }
-                // Then by creation time (earlier first)
+                const a_size = std.mem.count(u8, a.path, "/");
+                const b_size = std.mem.count(u8, b.path, "/");
+                if (a_size != b_size) return a_size > b_size;
                 return a.creation_time < b.creation_time;
             }
         }.lessThan);
     }
 
-    /// Evict cookies if limits are exceeded
-    fn evictIfNeeded(self: *Self, domain: []const u8) !void {
-        // Count cookies for this domain
-        var domain_count: usize = 0;
-        for (self.cookies.items) |cookie| {
-            if (cookie.domain) |d| {
-                if (std.ascii.eqlIgnoreCase(d, domain)) {
-                    domain_count += 1;
-                }
-            }
-        }
-
-        // Evict from domain if over limit
-        if (domain_count >= MAX_COOKIES_PER_DOMAIN) {
-            self.evictFromDomain(domain, 1);
-        }
-
-        // Evict globally if over total limit
-        if (self.cookies.items.len >= MAX_TOTAL_COOKIES) {
-            self.evictOldest(1);
-        }
-    }
-
-    /// Evict cookies from a specific domain
-    /// Priority: expired > oldest last-accessed > earliest expiring
-    fn evictFromDomain(self: *Self, domain: []const u8, evict_count: usize) void {
-        var evicted: usize = 0;
-
-        // First pass: remove expired
-        var i: usize = 0;
-        while (i < self.cookies.items.len and evicted < evict_count) {
-            const cookie = &self.cookies.items[i];
-            const matches_domain = if (cookie.domain) |d|
-                std.ascii.eqlIgnoreCase(d, domain)
-            else
-                false;
-
-            if (matches_domain and cookie.isExpired()) {
-                var removed = self.cookies.orderedRemove(i);
-                removed.deinit();
-                evicted += 1;
-            } else {
-                i += 1;
-            }
-        }
-
-        // Second pass: remove oldest last-accessed
-        while (evicted < evict_count) {
-            var oldest_idx: ?usize = null;
-            var oldest_time: i64 = std.math.maxInt(i64);
-
-            for (self.cookies.items, 0..) |cookie, idx| {
-                const matches_domain = if (cookie.domain) |d|
-                    std.ascii.eqlIgnoreCase(d, domain)
+    /// Layered cookies "Remove Excess Cookies for a Host": while the host
+    /// has more than the per-host limit, drop its least recently accessed
+    /// cookie - a non-secure one while there is one.
+    fn removeExcessForHost(self: *Self, host: []const u8) void {
+        while (true) {
+            var host_count: usize = 0;
+            var victim: ?usize = null;
+            var victim_secure = true;
+            var victim_time: i64 = std.math.maxInt(i64);
+            for (self.cookies.items, 0..) |cookie, index| {
+                const domain = cookie.domain orelse continue;
+                if (!std.ascii.eqlIgnoreCase(domain, host)) continue;
+                host_count += 1;
+                // Insecure before secure; within each, earliest access.
+                const better = if (cookie.secure != victim_secure)
+                    !cookie.secure
                 else
-                    false;
-
-                if (matches_domain and cookie.last_access_time < oldest_time) {
-                    oldest_time = cookie.last_access_time;
-                    oldest_idx = idx;
+                    cookie.last_access_time < victim_time;
+                if (victim == null or better) {
+                    victim = index;
+                    victim_secure = cookie.secure;
+                    victim_time = cookie.last_access_time;
                 }
             }
-
-            if (oldest_idx) |idx| {
-                var removed = self.cookies.orderedRemove(idx);
-                removed.deinit();
-                evicted += 1;
-            } else {
-                break;
-            }
+            if (host_count <= MAX_COOKIES_PER_DOMAIN) return;
+            self.removeAt(victim.?);
         }
     }
 
-    /// Evict the oldest cookies globally
-    fn evictOldest(self: *Self, evict_count: usize) void {
-        var evicted: usize = 0;
-
-        // First pass: remove expired
-        var i: usize = 0;
-        while (i < self.cookies.items.len and evicted < evict_count) {
-            if (self.cookies.items[i].isExpired()) {
-                var removed = self.cookies.orderedRemove(i);
-                removed.deinit();
-                evicted += 1;
-            } else {
-                i += 1;
+    /// Layered cookies "Remove Global Excess Cookies": while the store has
+    /// more than its limit, drop the least recently accessed cookie.
+    fn removeGlobalExcess(self: *Self) void {
+        while (self.cookies.items.len > MAX_TOTAL_COOKIES) {
+            var oldest: usize = 0;
+            for (self.cookies.items, 0..) |cookie, index| {
+                if (cookie.last_access_time < self.cookies.items[oldest].last_access_time) oldest = index;
             }
-        }
-
-        // Second pass: remove oldest last-accessed
-        while (evicted < evict_count and self.cookies.items.len > 0) {
-            var oldest_idx: usize = 0;
-            var oldest_time: i64 = std.math.maxInt(i64);
-
-            for (self.cookies.items, 0..) |cookie, idx| {
-                if (cookie.last_access_time < oldest_time) {
-                    oldest_time = cookie.last_access_time;
-                    oldest_idx = idx;
-                }
-            }
-
-            var removed = self.cookies.orderedRemove(oldest_idx);
-            removed.deinit();
-            evicted += 1;
+            self.removeAt(oldest);
         }
     }
 };
@@ -622,7 +552,7 @@ test "CookieJar - SameSite filtering" {
     var same_site = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .same_site,
+        .same_site = .strict_or_less,
     });
     defer {
         for (same_site.items) |*c| c.deinit();
@@ -630,11 +560,11 @@ test "CookieJar - SameSite filtering" {
     }
     try std.testing.expectEqual(@as(usize, 2), same_site.items.len);
 
-    // Cross-site safe should only get lax
+    // "lax-or-less" should only get lax
     var cross_safe = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .cross_site_safe,
+        .same_site = .lax_or_less,
     });
     defer {
         for (cross_safe.items) |*c| c.deinit();
@@ -643,17 +573,40 @@ test "CookieJar - SameSite filtering" {
     try std.testing.expectEqual(@as(usize, 1), cross_safe.items.len);
     try std.testing.expectEqualStrings("lax", cross_safe.items[0].name);
 
-    // Cross-site unsafe should get neither
+    // "unset-or-less" should get neither
     var cross_unsafe = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .cross_site_unsafe,
+        .same_site = .unset_or_less,
     });
     defer {
         for (cross_unsafe.items) |*c| c.deinit();
         cross_unsafe.deinit(allocator);
     }
     try std.testing.expectEqual(@as(usize, 0), cross_unsafe.items.len);
+
+    // A cookie with no SameSite ("unset") goes in "unset-or-less" too, and
+    // a SameSite=None one in every mode.
+    var unset_cookie = try Cookie.init(allocator, "unset", "3");
+    defer unset_cookie.deinit();
+    try unset_cookie.setDomain("example.com");
+    unset_cookie.same_site = .unset;
+    try jar.store(unset_cookie);
+    var none_cookie = try Cookie.init(allocator, "none", "4");
+    defer none_cookie.deinit();
+    try none_cookie.setDomain("example.com");
+    none_cookie.same_site = .none;
+    none_cookie.secure = true;
+    try jar.store(none_cookie);
+    const Case = struct { mode: SameSiteMode, count: usize };
+    for ([_]Case{ .{ .mode = .strict_or_less, .count = 4 }, .{ .mode = .lax_or_less, .count = 3 }, .{ .mode = .unset_or_less, .count = 2 }, .{ .mode = .none, .count = 1 } }) |case| {
+        var got = try jar.retrieve(.{ .host = "example.com", .is_http = true, .is_secure = true, .same_site = case.mode });
+        defer {
+            for (got.items) |*c| c.deinit();
+            got.deinit(allocator);
+        }
+        try std.testing.expectEqual(case.count, got.items.len);
+    }
 }
 
 test "CookieJar - delete" {

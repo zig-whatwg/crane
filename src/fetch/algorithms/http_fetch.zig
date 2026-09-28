@@ -1563,7 +1563,7 @@ test "HTTP-network-or-cache fetch step 8.21: includeCredentials sends the jar's 
     const allocator = std.testing.allocator;
     var jar = @import("cookiestore").CookieJar.init(allocator);
     defer jar.deinit();
-    try @import("cookiestore").http_integration.processSetCookieHeaders(allocator, &jar, &.{"sid=1; Path=/"}, "a.test", "/", false);
+    try @import("cookiestore").http_integration.processSetCookieHeaders(allocator, &jar, &.{"sid=1; Path=/"}, "/", .{ .is_secure = false, .host = "a.test", .http_only_allowed = true });
 
     const request = try InternalRequest.init(allocator, "http://a.test/x");
     defer request.deinit();

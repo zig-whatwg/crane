@@ -22,7 +22,7 @@ pub fn requestCookieHeader(allocator: Allocator, request: *const InternalRequest
     // 1. If the user agent is configured to disable cookies for request,
     //    then it should return.
     const jar = request.cookie_jar orelse return null;
-    const url = UrlParts.of(request.currentUrl()) orelse return null;
+    const url = RequestUrl.of(request.currentUrl()) orelse return null;
     // 2. Let sameSite be the result of determining the same-site mode for
     //    request.
     const same_site = sameSiteMode(request);
@@ -37,7 +37,7 @@ pub fn requestCookieHeader(allocator: Allocator, request: *const InternalRequest
         .path = url.path,
         .is_http = true,
         .is_secure = url.secure,
-        .same_site_context = same_site,
+        .same_site = same_site,
     });
     if (value.len == 0) {
         allocator.free(value);
@@ -53,87 +53,43 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
     // 1. If the user agent is configured to disable cookies for request,
     //    then it should return.
     const jar = request.cookie_jar orelse return;
-    const url = UrlParts.of(request.currentUrl()) orelse return;
-    // 2. allowNonHostOnlyCookieForPublicSuffix is false. 3. isSecure.
+    const url = RequestUrl.of(request.currentUrl()) orelse return;
+    // 2. allowNonHostOnlyCookieForPublicSuffix is false.
+    // 3. isSecure: request's current URL's scheme is "https".
     // 4. httpOnlyAllowed is true.
-    // 5. sameSiteStrictOrLaxAllowed: the same-site mode is "strict-or-less".
-    // TODO: pass it on once the jar's parse and store takes it; today every
-    //       SameSite cookie is stored, as in "strict-or-less".
+    // 5. sameSiteStrictOrLaxAllowed: the same-site mode is
+    //    "strict-or-less".
+    const options: cookiestore.StoreOptions = .{
+        .is_secure = url.secure,
+        .host = url.host,
+        .http_only_allowed = true,
+        .same_site_strict_or_lax_allowed = sameSiteMode(request) == .strict_or_less,
+    };
     // 6. For each header of response's header list whose name is
     //    `Set-Cookie` (each processed on its own - they never combine):
-    //    parse and store a cookie given its value, isSecure, and request's
-    //    current URL's host and path. 6.3: garbage collect cookies for the
-    //    host - the jar removes expired cookies as it goes.
-    var values: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer values.deinit(allocator);
+    //    6.2. parse and store a cookie given its value, isSecure, and
+    //         request's current URL's host and path;
+    //    6.3. garbage collect cookies for the host - the jar does, as it
+    //         stores.
     for (headers.iterator()) |header| {
-        if (std.ascii.eqlIgnoreCase(header.name, "Set-Cookie")) try values.append(allocator, header.value);
+        if (!std.ascii.eqlIgnoreCase(header.name, "Set-Cookie")) continue;
+        _ = try cookiestore.http_integration.parseAndStoreCookie(allocator, jar, header.value, url.path, options);
     }
-    if (values.items.len == 0) return;
-    try cookiestore.http_integration.processSetCookieHeaders(allocator, jar, values.items, url.host, url.path, url.secure);
 }
 
-/// Fetch "determine the same-site mode" for `request`, as the jar's
-/// retrieval context: "strict-or-less" sends every cookie, "lax-or-less"
-/// all but SameSite=Strict ones, "unset-or-less" neither Strict nor Lax.
+/// Fetch "determine the same-site mode" for `request`.
 ///
 /// TODO: steps 2, 4 and 5 compare sites - a top-level navigation's
 /// initiator, the client's "has cross-site ancestor", a cross-site redirect
 /// taint - and there is no "same site" (the registrable-domain comparison)
 /// in fetch yet; until there is, every request is "strict-or-less".
-fn sameSiteMode(request: *const InternalRequest) cookiestore.SameSiteContext {
+fn sameSiteMode(request: *const InternalRequest) cookiestore.SameSiteMode {
     _ = request;
     // 6. Return "strict-or-less".
-    return .same_site;
+    return .strict_or_less;
 }
 
-/// The parts of a request's current URL the cookie store is keyed on. The
-/// URL is a serialized one from the request's URL list, so it is already
-/// canonical: an http(s) URL is "scheme://[userinfo@]host[:port]/path..."
-/// with a lowercase host, and userinfo's own `@` and `/` percent-encoded.
-const UrlParts = struct {
-    host: []const u8,
-    path: []const u8,
-    secure: bool,
-
-    fn of(url: []const u8) ?UrlParts {
-        const secure = std.ascii.startsWithIgnoreCase(url, "https://");
-        if (!secure and !std.ascii.startsWithIgnoreCase(url, "http://")) return null;
-        const after_scheme = url[(std.mem.indexOf(u8, url, "://") orelse return null) + 3 ..];
-        const authority_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
-        var authority = after_scheme[0..authority_end];
-        if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
-        // An IPv6 host keeps its brackets, as the host serializer writes it.
-        const host_end = if (authority.len > 0 and authority[0] == '[')
-            (std.mem.indexOfScalar(u8, authority, ']') orelse return null) + 1
-        else
-            std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
-        const rest = after_scheme[authority_end..];
-        const path_end = std.mem.indexOfAny(u8, rest, "?#") orelse rest.len;
-        return .{
-            .host = authority[0..host_end],
-            .path = if (path_end == 0) "/" else rest[0..path_end],
-            .secure = secure,
-        };
-    }
-};
-
-test "a cookie's URL parts: host without port or userinfo, path without query" {
-    const Case = struct { url: []const u8, host: []const u8, path: []const u8, secure: bool };
-    const cases = [_]Case{
-        .{ .url = "http://example.com/a/b?q#f", .host = "example.com", .path = "/a/b", .secure = false },
-        .{ .url = "https://u:p@example.com:8443/", .host = "example.com", .path = "/", .secure = true },
-        .{ .url = "http://[::1]:8000/x", .host = "[::1]", .path = "/x", .secure = false },
-        .{ .url = "http://127.0.0.1?q", .host = "127.0.0.1", .path = "/", .secure = false },
-    };
-    for (cases) |case| {
-        const parts = UrlParts.of(case.url).?;
-        try std.testing.expectEqualStrings(case.host, parts.host);
-        try std.testing.expectEqualStrings(case.path, parts.path);
-        try std.testing.expectEqual(case.secure, parts.secure);
-    }
-    try std.testing.expect(UrlParts.of("data:text/plain,x") == null);
-}
+const RequestUrl = cookiestore.RequestUrl;
 
 test "Set-Cookie on a response goes in the jar, and comes back as Cookie for that host alone" {
     const allocator = std.testing.allocator;

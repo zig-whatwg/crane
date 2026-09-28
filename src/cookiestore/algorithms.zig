@@ -18,7 +18,6 @@ const CookieListItem = @import("cookie.zig").CookieListItem;
 const CookieChangeObserver = @import("change_observer.zig").CookieChangeObserver;
 const CookieJar = @import("jar.zig").CookieJar;
 const RetrieveOptions = @import("jar.zig").RetrieveOptions;
-const SameSiteContext = @import("jar.zig").SameSiteContext;
 const validation = @import("validation.zig");
 const domain_matching = @import("domain_matching.zig");
 
@@ -114,7 +113,7 @@ pub fn queryCookies(
         .path = url_path,
         .is_http = false, // CookieStore API is non-HTTP
         .is_secure = true, // Assume secure context (required by spec)
-        .same_site_context = .same_site,
+        .same_site = .strict_or_less,
         .name = normalized_name,
     });
     defer {
