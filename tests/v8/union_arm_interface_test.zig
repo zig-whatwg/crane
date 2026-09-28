@@ -146,7 +146,6 @@ const js = @import("impls").Response.streams_js;
 fn initTestingRealm(data: *runtime.ContextData) !void {
     const i = try isolate();
     data.* = try runtime.ContextData.init(std.testing.allocator, .{
-        .engine = &v8.engine.v8_engine_interface,
         .engine_ctx = context_once.?,
     });
     data.agent = @ptrCast(i);

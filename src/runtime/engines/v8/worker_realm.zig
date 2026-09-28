@@ -221,8 +221,8 @@ pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOpti
 /// frees the record.
 pub fn recordRealm(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context, global_scope: *runtime.Instance) EngineError!void {
     const record = runtime.Realm.init(realm.allocator, .{
-        .v8_context = @ptrCast(context),
-        .isolate = @ptrCast(isolate),
+        .engine_realm = @ptrCast(context),
+        .agent = @ptrCast(isolate),
         .context_type = .dedicated_worker,
         .global_object = @ptrCast(global_scope),
     }) catch return EngineError.OutOfMemory;

@@ -1,6 +1,6 @@
 # Engine protocol recipes
 
-How to move code off V8 (and off the runtime Engine table) onto the engine
+How to move code off V8 onto the engine
 protocol, `@import("engine")` (src/runtime/engine_protocol.zig). One recipe
 per intent - what the code was trying to do - with the V8 pattern it replaces,
 the protocol call, who owns what, the pitfalls, and a before/after. The
@@ -125,8 +125,9 @@ need V8.)
 
 ## 1. Table-era operations: `ctx.getEngine().op.?(...)` -> `engine.op(...)`
 
-The Engine table (`runtime.EngineInterface`, src/runtime/engine_interface.zig)
-takes `engine_ctx: *anyopaque` and untyped values in its oldest entries; the
+The Engine table (`runtime.EngineInterface`, now deleted - this section maps
+its operations for code that still reads like it) took `engine_ctx:
+*anyopaque` and untyped values in its oldest entries; the
 protocol takes `realm: Context` first and `JSValue` / `Owned`. Replace
 
 ```zig

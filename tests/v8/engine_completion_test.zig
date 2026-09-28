@@ -13,8 +13,6 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 const protocol = @import("engine");
 
-const table = &v8.engine.v8_engine_interface;
-
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
@@ -28,7 +26,7 @@ fn realm() !runtime.Context {
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = table, .engine_ctx = context });
+    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
     data.agent = @ptrCast(i);
     isolate_once = i;
     context_once = context;

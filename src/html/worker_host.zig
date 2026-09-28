@@ -357,6 +357,70 @@ fn forScope(ctx: runtime.Context) ?*WorkerHost {
     return null;
 }
 
+/// Every worker host on this thread whose memory has not gone (`free`):
+/// what `endWorkersOn` looks through. `live_contexts` is not enough: a worker
+/// leaves it with its realm, and its agent goes one timer later.
+threadlocal var hosts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
+
+fn removeHost(wctx: *WorkerHost) void {
+    for (hosts.items, 0..) |host, i| {
+        if (host == wctx) {
+            _ = hosts.swapRemove(i);
+            return;
+        }
+    }
+}
+
+/// The end of the event loop whose timers are `timers`: its owner, the
+/// Browser, is ending, and nothing armed on the loop will fire again. Every
+/// worker on it ends now - HTML "terminate a worker" for one still running,
+/// then what "run a worker" does once the worker's event loop has exited:
+/// the realm goes, then the agent.
+///
+/// A worker's steps are timers on its owner's loop, and so is its end
+/// (`scheduleTeardown`). A Browser that ended with a worker still running
+/// let the Worker object go in its page's teardown, which armed the end, and
+/// then dropped the loop with the end unfired: the worker's realm, its agent
+/// and this host - every classic script the realm ran - stayed until the
+/// process did. That was every worker test run alone, and the last file of
+/// each sweep process.
+///
+/// WHERE this is called matters. The owner calls it BEFORE its page's
+/// teardown, while the page realm is alive and entered - the conditions the
+/// timer path runs these steps in. Not from inside the page's teardown (the
+/// rule `scheduleTeardown` keeps), and not after it: the page realm exits the
+/// page isolate when it ends, and a worker agent ended with no isolate
+/// entered was read as the thread's host agent, taking the thread's context
+/// manager and templates down under the page (protocol_agents.endAgent now
+/// records which agent is the host when it is made). The Worker objects then
+/// let go in the page's teardown and find their hosts disposed, so `destroy`
+/// frees them.
+pub fn endWorkersOn(timers: runtime.TimerInterface) void {
+    while (nextToEnd(timers)) |host| host.endWithLoop();
+    // The loop is ending: nothing is armed on it again through this thread's
+    // hook. A worker made on this thread later sets its own loop first.
+    if (current_worker_timer_interface) |current| {
+        if (current.ctx == timers.ctx) current_worker_timer_interface = null;
+    }
+}
+
+/// A worker on the loop `timers` that has not ended: one with a teardown step
+/// armed there, or, when that is the loop this thread's workers arm their
+/// steps on, any.
+fn nextToEnd(timers: runtime.TimerInterface) ?*WorkerHost {
+    const thread_loop = if (current_worker_timer_interface) |current| current.ctx == timers.ctx else false;
+    for (hosts.items) |host| {
+        if (host.phase == .disposed) continue;
+        // Its script on the stack would be torn down under it. The owner
+        // ending its loop is not running a task, so none is; if one were,
+        // the worker stays, as it did before.
+        if (host.entered > 0 or engine.hasRunningScript(host.agent)) continue;
+        const armed_here = if (host.teardown_timer) |armed| armed.timer.ctx == timers.ctx else false;
+        if (armed_here or thread_loop) return host;
+    }
+    return null;
+}
+
 /// Worker agents disposed on this thread so far. A worker that ends and
 /// never gets here keeps its whole heap for the life of the process.
 threadlocal var disposed_isolates: usize = 0;
@@ -637,6 +701,7 @@ pub const WorkerHost = struct {
             .allocator = allocator,
         };
         live_contexts.append(std.heap.page_allocator, self) catch {};
+        hosts.append(std.heap.page_allocator, self) catch {};
         return self;
     }
 
@@ -783,7 +848,8 @@ pub const WorkerHost = struct {
     /// Arm the next teardown step. Every step runs from a timer on the page's
     /// loop, never from the call that ended the worker: that call may be the
     /// worker's own script (close()), a Worker collected inside a page GC's
-    /// weak callbacks, or the page's own teardown. With no loop to run it on,
+    /// weak callbacks, or the page's own teardown. A loop that is ending runs
+    /// the steps itself first (`endWorkersOn`). With no loop to run them on,
     /// the realm and agent stay until the process ends, as they always did.
     fn scheduleTeardown(self: *Self) void {
         if (self.teardown_timer != null or self.phase == .realm_gone or self.phase == .disposed) return;
@@ -892,10 +958,36 @@ pub const WorkerHost = struct {
     fn disposeAgentCallback(context_ptr: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
         self.teardown_timer = null;
+        self.disposeAgent();
+    }
+
+    /// The agent's end; then this host's memory, if the owner has let go.
+    fn disposeAgent(self: *Self) void {
         engine.destroyAgent(self.agent);
         self.phase = .disposed;
         disposed_isolates += 1;
         if (self.owner_released) self.free();
+    }
+
+    /// This worker's end, now rather than from timers: the loop they would
+    /// run on is ending (`endWorkersOn`). Each step leaves the next phase, so
+    /// the worker ends disposed - and freed, if its owner has let it go.
+    ///
+    /// The fetch settle timers `disposeAgentLater` lets run first are dropped
+    /// with the loop, unfired: each keeps its resolver, a handle of this
+    /// agent, and nothing releases it once the agent is gone.
+    fn endWithLoop(self: *Self) void {
+        // HTML "terminate a worker": what the worker posted is not delivered.
+        if (self.phase == .running) self.terminate();
+        disarm(&self.teardown_timer);
+        if (self.phase == .closing) {
+            self.teardownRealm();
+            // An owner waiting for the worker's last messages (after close())
+            // hears nothing more: the loop that would deliver them is ending.
+            // Its Worker object's hold goes when the Worker does.
+            disarm(&self.release_owner_timer);
+        }
+        if (self.phase == .realm_gone) self.disposeAgent();
     }
 
     /// The owner is done with the worker: the Worker object is going away, or
@@ -934,6 +1026,7 @@ pub const WorkerHost = struct {
 
     fn free(self: *Self) void {
         removeLive(self);
+        removeHost(self);
         disarm(&self.teardown_timer);
         disarm(&self.platform_pump);
         disarm(&self.message_dispatch);

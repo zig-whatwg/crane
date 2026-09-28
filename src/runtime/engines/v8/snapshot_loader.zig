@@ -115,14 +115,6 @@ pub fn initializePlatformForSnapshots() void {
 
     // Now initialize the platform
     ffi.v8_Platform_Initialize();
-    registerConfiguredEngine();
-}
-
-/// Register this adapter's Engine table as the build's configured engine
-/// (runtime.configuredEngine), which code with no realm yet reaches the
-/// engine through. Both platform initializers call it.
-pub fn registerConfiguredEngine() void {
-    @import("runtime").setConfiguredEngine(&@import("engine.zig").v8_engine_interface);
 }
 
 /// Initialize the V8 platform for RUNNING, including loading a snapshot.
@@ -137,7 +129,6 @@ pub fn registerConfiguredEngine() void {
 pub fn initializePlatformForRuntime() void {
     ffi.v8_SetFlagsFromString(RUNTIME_V8_FLAGS);
     ffi.v8_Platform_Initialize();
-    registerConfiguredEngine();
 }
 
 /// Result of V8 initialization
