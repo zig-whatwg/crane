@@ -7,7 +7,6 @@
 //!
 //! Before this module, cleanup responsibilities were scattered:
 //! - template_registry.clear() in Browser.deinit()
-//! - engine.clearDynamicImportHandler() in template_registry.clear()
 //! - namespace.clearGlobalContext() in template_registry.clear()
 //!
 //! When developers add new V8-dependent state, they might forget cleanup code.
