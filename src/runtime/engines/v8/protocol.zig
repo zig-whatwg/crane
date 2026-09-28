@@ -150,9 +150,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     return protocol_agents.createAgent(options);
 }
 
-/// The agent's hooks are forgotten before its isolate is disposed.
+/// The agent ends (its hooks forgotten, the adapter's per-isolate modules
+/// torn down, its garbage collected) before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
-    protocol_agents.forgetAgent(agent);
+    protocol_agents.endAgent(agent);
     table.destroyAgent.?(agent);
 }
 
@@ -172,6 +173,10 @@ pub fn runEngineTasks(agent: *Agent) bool {
 /// LowMemoryNotification: a full, synchronous collection.
 pub fn requestGarbageCollection(agent: *Agent) void {
     ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
+}
+
+pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
+    protocol_agents.notifyMemoryPressure(agent, level);
 }
 
 // ============================================================================
@@ -254,12 +259,12 @@ pub fn runTaskInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaqu
     return v8_engine.v8RunTaskInRealm(realm, steps, data) catch |err| protocolError(err);
 }
 
-pub fn performMicrotaskCheckpoint(realm: Context) Error!void {
-    return v8_engine.v8PerformMicrotaskCheckpoint(realm) catch |err| protocolError(err);
+pub fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    protocol_agents.performMicrotaskCheckpoint(agent);
 }
 
-pub fn queueMicrotask(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    return value_construction.queueMicrotask(realm, steps, data) catch |err| protocolError(err);
+pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    return protocol_agents.queueMicrotask(agent, steps, data);
 }
 
 pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Allocator) Error!engine.ErrorInfo {

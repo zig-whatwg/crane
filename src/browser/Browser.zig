@@ -48,7 +48,6 @@
 
 const std = @import("std");
 const log = std.log.scoped(.browser);
-const v8 = @import("v8");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const impls = @import("impls");
@@ -60,13 +59,72 @@ const storage_mod = @import("storage/Storage.zig");
 const clock = @import("clock");
 const host = @import("host");
 const Storage = storage_mod.Storage;
+/// The page agent's event loop - the host's (HTML 8.1.7).
+const EventLoop = @import("event_loop.zig").EventLoop;
 
-/// Default snapshot file paths to check (in order of priority)
+/// Where a snapshot is looked for, first to last. The build's own output
+/// comes first: a `whatwg_snapshot.bin` in the current directory - one that
+/// was tracked in git from January to September 2026 - won over it, and
+/// every run from the repository root restored that stale snapshot against
+/// the running build's callback table. A candidate the engine refuses (no
+/// build stamp, not a valid blob, another build's external references) is
+/// skipped, not taken because it exists.
 const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
-    "whatwg_snapshot.bin", // Current directory (highest priority)
-    "zig-out/bin/whatwg_snapshot.bin", // Zig build output
+    "zig-out/bin/whatwg_snapshot.bin", // Zig build output (highest priority)
+    "whatwg_snapshot.bin", // Current directory
     "../whatwg_snapshot.bin", // Parent directory (for tests run from subdirs)
 };
+
+/// The first of `candidates` that `usable` accepts, in order, or null.
+fn firstUsableSnapshot(
+    context: anytype,
+    candidates: []const []const u8,
+    comptime usable: fn (@TypeOf(context), []const u8) bool,
+) ?[]const u8 {
+    for (candidates) |path| {
+        if (usable(context, path)) return path;
+    }
+    return null;
+}
+
+/// The engine, started with the snapshot of the first candidate it takes
+/// (engine.initializeEngine refuses a blob this build cannot restore).
+const EngineStart = struct {
+    allocator: std.mem.Allocator,
+    /// The accepted snapshot's bytes, OWNED by `allocator` and lent to the
+    /// engine until deinitializeEngine: V8 deserializes from them lazily.
+    snapshot: ?[]u8 = null,
+
+    /// Start the engine with the snapshot at `path`, if it reads and the
+    /// engine takes it.
+    fn offer(self: *EngineStart, path: []const u8) bool {
+        const bytes = readSnapshot(self.allocator, path) orelse return false;
+        engine.initializeEngine(.{ .snapshot = bytes }) catch {
+            self.allocator.free(bytes);
+            return false;
+        };
+        self.snapshot = bytes;
+        return true;
+    }
+};
+
+/// The file's bytes, or null when it cannot be read. OWNED by `allocator`.
+fn readSnapshot(allocator: std.mem.Allocator, path: []const u8) ?[]u8 {
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch return null;
+    defer file.close(io);
+    const stat = file.stat(io) catch return null;
+    const bytes = allocator.alloc(u8, stat.size) catch return null;
+    const read = file.readPositionalAll(io, bytes, 0) catch {
+        allocator.free(bytes);
+        return null;
+    };
+    if (read != stat.size) {
+        allocator.free(bytes);
+        return null;
+    }
+    return bytes;
+}
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
@@ -88,8 +146,9 @@ pub const BrowserConfig = struct {
 /// Browser instance managing a single V8 isolate
 pub const Browser = struct {
     allocator: std.mem.Allocator,
-    /// V8 isolate - lives for the entire browser lifetime
-    isolate: ?*v8.ffi.Isolate,
+    /// The page's agent (engine.createAgent) - lives for the entire browser
+    /// lifetime.
+    agent: ?*engine.Agent,
     /// Current browsing context (V8 context + DOM)
     current_context: ?*Context,
     /// Persistent storage subsystem
@@ -99,9 +158,12 @@ pub const Browser = struct {
     /// Whether the browser has been initialized
     initialized: bool,
     /// V8 event loop with timer support
-    event_loop: ?*v8.V8EventLoop,
+    event_loop: ?*EventLoop,
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
+    /// The snapshot the engine made the agent from (EngineStart.snapshot):
+    /// freed after the agent is destroyed and the engine has forgotten it.
+    snapshot_bytes: ?[]u8 = null,
 
     /// Initialize a new Browser instance
     ///
@@ -116,127 +178,61 @@ pub const Browser = struct {
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // Initialize the V8 platform. Flags MUST be set before platform init.
-        //
-        // The RUNTIME set, not the snapshot set: `--predictable` and `--hash-seed=0`
-        // are generation-time determinism knobs, and applying them here turned off
-        // V8's own parallelism, pinned Math.random() to a fixed sequence and removed
-        // hash-flooding protection in every browser this code has ever started.
-        // Loading does not need them - the snapshot reports itself rehashable.
-        v8.initializePlatformForRuntime();
-
-        // Determine snapshot path to use
-        const snapshot_path = resolveSnapshotPath(config.snapshot_path);
-        const use_snapshot = snapshot_path != null;
-
-        // Create V8 isolate (from snapshot if available)
-        var isolate: *v8.ffi.Isolate = undefined;
-        var used_snapshot = false;
-
-        if (use_snapshot) {
-            // Register external references for snapshot loading
-            // These MUST match the order used when creating the snapshot
-            registerSnapshotExternalReferences();
-
-            // Try to initialize from snapshot
-            const init_result = v8.snapshot_loader.initializeV8(allocator, .{
-                .snapshot_path = snapshot_path,
-                .log_performance = config.log_performance,
-            }) catch |err| {
-                if (config.log_performance) {
-                    std.log.warn("Snapshot initialization failed: {}, falling back to fresh isolate", .{err});
-                }
-                // Fall through to create fresh isolate
-                isolate = v8.ffi.v8_Isolate_New() orelse {
-                    runtime.deinitializeRuntime();
-                    return error.V8InitFailed;
-                };
-                v8.ffi.v8_Isolate_Enter(isolate);
-                used_snapshot = false;
-                // Continue execution below
-                return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
-            };
-
-            isolate = init_result.isolate;
-            used_snapshot = init_result.used_snapshot;
-
-            // Note: v8_Isolate_Enter is already called by snapshot_loader.initializeV8
-            // when it creates the isolate
-
-            if (config.log_performance) {
-                if (used_snapshot) {
-                    std.log.info("Browser initialized from snapshot in {d}ms", .{init_result.startup_time_ms});
-                } else {
-                    std.log.info("Browser initialized without snapshot in {d}ms", .{init_result.startup_time_ms});
-                }
-            }
-        } else {
-            // No snapshot - create fresh isolate
-            isolate = v8.ffi.v8_Isolate_New() orelse {
-                runtime.deinitializeRuntime();
-                return error.V8InitFailed;
-            };
-            v8.ffi.v8_Isolate_Enter(isolate);
+        // The engine and the snapshot its agents are made from: the first
+        // candidate the engine takes, or none (engine.initializeEngine). On
+        // V8 it sets the RUNTIME flags, not the snapshot generator's:
+        // `--predictable` and `--hash-seed=0` are generation-time determinism
+        // knobs, and applying them here turned off V8's own parallelism,
+        // pinned Math.random() to a fixed sequence and removed hash-flooding
+        // protection in every browser this code has ever started.
+        var start: EngineStart = .{ .allocator = allocator };
+        startEngine(&start, config.snapshot_path);
+        errdefer if (start.snapshot) |bytes| allocator.free(bytes);
+        if (start.snapshot == null) engine.initializeEngine(.{}) catch return error.V8InitFailed;
+        errdefer engine.deinitializeEngine();
+        const from_snapshot = start.snapshot != null;
+        if (config.log_performance) {
+            std.log.info("Browser starting {s} a snapshot", .{if (from_snapshot) "from" else "without"});
         }
 
-        return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
+        // HTML "obtain a similar-origin window agent": [[CanBlock]] false -
+        // Atomics.wait() throws a TypeError rather than freezing the page's
+        // one thread, as Blink's main thread does; a dedicated worker's agent
+        // keeps it - and the host's hooks: HostPromiseRejectionTracker and
+        // "notify about rejected promises" (html/rejected_promises.zig).
+        // The agent is set up by the engine (its per-isolate state, ShadowRealm
+        // support) and entered by each realm and operation that runs in it.
+        const agent = engine.createAgent(.{
+            .can_block = false,
+            .from_snapshot = from_snapshot,
+            .hooks = &@import("html").rejected_promises.hooks,
+            .allocator = allocator,
+        }) catch return error.V8InitFailed;
+
+        return initBrowserWithAgent(allocator, agent, from_snapshot, config, start.snapshot);
     }
 
-    /// Complete browser initialization with an already-created isolate
-    fn initBrowserWithIsolate(
+    /// Complete browser initialization with its agent.
+    fn initBrowserWithAgent(
         allocator: std.mem.Allocator,
-        isolate: *v8.ffi.Isolate,
+        agent: *engine.Agent,
         used_snapshot: bool,
         config: BrowserConfig,
+        snapshot_bytes: ?[]u8,
     ) !*Browser {
-        errdefer {
-            v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_Isolate_Dispose(isolate);
-        }
-
-        // This isolate hosts similar-origin window agents, and HTML's "obtain a
-        // similar-origin window agent" creates each with [[CanBlock]] false, so
-        // Atomics.wait() throws a TypeError here. V8's default lets it block, which would
-        // freeze the page's only thread. Blink turns it off on the main thread
-        // too; dedicated workers keep the default, their [[CanBlock]] is true.
-        v8.ffi.v8_Isolate_SetAllowAtomicsWait(isolate, false);
-
-        // Register V8 lifecycle cleanup handlers
-        v8.registerBuiltinHandlers() catch |err| {
-            log.warn("Failed to register lifecycle handlers: {}", .{err});
-        };
-
-        // Initialize isolate-scoped allocator for template caching
-        // This allows FunctionTemplates to be cached at the isolate level.
-        v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
-            // Already initialized is OK (e.g., from snapshot loading)
-            if (err != error.AllocatorAlreadyInitialized) {
-                log.warn("Failed to init isolate allocator: {}", .{err});
-            }
-        };
-
-        // Initialize ShadowRealm support (TC39 Stage 3 proposal)
-        // This registers the HostCreateShadowRealmContextCallback with V8 so that
-        // JavaScript `new ShadowRealm()` creates properly isolated execution contexts.
-        v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
-            log.warn("Failed to initialize ShadowRealm support: {}", .{err});
-        };
-
-        // HostPromiseRejectionTracker and "notify about rejected promises":
-        // the unhandledrejection / rejectionhandled events (HTML 8.1.4.7).
-        @import("html").rejected_promises.install(isolate);
+        errdefer engine.destroyAgent(agent);
 
         // import() in a Window realm loads through the document's module map.
-        @import("html").script_execution.installDynamicImport(isolate);
+        @import("html").script_execution.installDynamicImport(@ptrCast(@alignCast(agent)));
 
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
         errdefer storage.deinit();
 
-        // Create V8 event loop with timer support
-        const event_loop = try allocator.create(v8.V8EventLoop);
+        // The agent's event loop, with its timers (the host's).
+        const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try v8.V8EventLoop.init(isolate, allocator);
+        event_loop.* = try EventLoop.init(agent, allocator);
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);
@@ -244,13 +240,14 @@ pub const Browser = struct {
 
         browser.* = Browser{
             .allocator = allocator,
-            .isolate = isolate,
+            .agent = agent,
             .current_context = null,
             .storage = storage,
             .config = config,
             .initialized = true,
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
+            .snapshot_bytes = snapshot_bytes,
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -261,44 +258,16 @@ pub const Browser = struct {
         return browser;
     }
 
-    /// Resolve snapshot path from config or auto-detect
-    fn resolveSnapshotPath(config_path: ?[]const u8) ?[]const u8 {
-        // If explicitly set in config, use that
+    /// Start the engine with the configured snapshot, or the first of
+    /// DEFAULT_SNAPSHOT_PATHS the engine takes; an empty configured path
+    /// means none. `start.snapshot` is null when no snapshot was taken, and
+    /// the engine is not started then.
+    fn startEngine(start: *EngineStart, config_path: ?[]const u8) void {
         if (config_path) |path| {
-            // Empty string means explicitly disabled
-            if (path.len == 0) return null;
-            // Check if the file exists
-            if (host.cwd().access(host.io(), path, .{})) |_| {
-                return path;
-            } else |_| {
-                return null;
-            }
+            if (path.len > 0) _ = start.offer(path);
+            return;
         }
-
-        // Auto-detect: check default paths
-        for (DEFAULT_SNAPSHOT_PATHS) |path| {
-            if (host.cwd().access(host.io(), path, .{})) |_| {
-                return path;
-            } else |_| {
-                continue;
-            }
-        }
-
-        return null;
-    }
-
-    /// Register external references required for snapshot loading
-    ///
-    /// NOTE: With the minimal snapshot approach, the snapshot only contains V8 builtins,
-    /// NOT WebIDL interfaces. Therefore, no external references are needed for loading.
-    /// WebIDL interfaces are registered at runtime on fresh contexts.
-    fn registerSnapshotExternalReferences() void {
-        // Register external references required for snapshot loading.
-        // This must be called before initializeV8() when using snapshots.
-        // The snapshot_loader's registerExternalReferences() registers
-        // C++ and Zig callbacks that V8 needs to properly deserialize
-        // the snapshot's function pointers.
-        v8.snapshot_loader.registerExternalReferences();
+        _ = firstUsableSnapshot(start, &DEFAULT_SNAPSHOT_PATHS, EngineStart.offer);
     }
 
     /// Deinitialize the browser and release all resources
@@ -327,52 +296,31 @@ pub const Browser = struct {
             self.allocator.destroy(event_loop);
         }
 
-        // Use the isolate lifecycle manager for centralized cleanup
-        // This ensures all V8-dependent modules are cleaned up in the correct order
-        // See src/runtime/engines/v8/isolate_lifecycle.zig for the full list
-
-        if (self.isolate) |isolate| {
-            // IMPORTANT: Clean up orphaned DOM nodes BEFORE cleaning up V8 resources!
-            // DOM node internal states may use the isolate's allocator, which gets
-            // freed by cleanupAll(). We must clean them up while allocators are valid.
+        if (self.agent) |agent| {
+            // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
+            // DOM node internal states may use the agent's allocator, which
+            // its end frees. We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
 
             // Release the rejection tracker's promise handles while the
-            // isolate that owns them still exists.
-            @import("html").rejected_promises.uninstall(isolate);
-            @import("html").script_execution.uninstallDynamicImport(isolate);
+            // agent that owns them still exists.
+            @import("html").rejected_promises.releaseTracked();
+            @import("html").script_execution.uninstallDynamicImport(@ptrCast(@alignCast(agent)));
 
-            // Central cleanup - calls all registered handlers in priority order
-            // This includes: isolate_templates, template_registry, context_manager, etc.
-            // IMPORTANT: context_manager.deinit() calls disposeByInitiator() for each
-            // context being destroyed, which cleans up ShadowRealms created by that context.
-            v8.cleanupAll(isolate, self.allocator);
+            // The end of the agent (engine.destroyAgent): its hooks forgotten,
+            // the engine's per-isolate and per-thread state torn down in
+            // order, its garbage collected, its isolate disposed.
+            engine.destroyAgent(agent);
 
             // Every Window is gone now, so the browsing contexts their
             // containers retired while a Window might still read them
             // (BrowsingContext.discard) can finally be freed.
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
 
-            // Final ShadowRealm cleanup - dispose any remaining tracked contexts
-            // (safety net) and free the callback data structure.
-            // This must happen AFTER cleanupAll() because individual context cleanup
-            // handles ShadowRealm disposal per-context.
-            v8.deinitializeShadowRealmSupport();
-
-            // Force V8 garbage collection before isolate disposal
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-            // Dispose isolate
-            v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_Isolate_Dispose(isolate);
-
-            // Clean up snapshot data that was allocated during V8 initialization.
-            // This must be done AFTER the isolate is disposed because V8 keeps a
-            // reference to the snapshot data for lazy deserialization.
-            v8.snapshot_loader.cleanupSnapshotData();
+            // The snapshot outlives the isolate - V8 deserializes from it
+            // lazily - and the engine forgets it before it is freed.
+            engine.deinitializeEngine();
+            if (self.snapshot_bytes) |bytes| self.allocator.free(bytes);
         }
 
         // Cleanup WebIDL runtime
@@ -413,7 +361,7 @@ pub const Browser = struct {
         context_type: context_mod.ContextType,
         options: NavigateOptions,
     ) !void {
-        const isolate = self.isolate orelse return error.NotInitialized;
+        const agent = self.agent orelse return error.NotInitialized;
 
         // Destroy current context if any
         if (self.current_context) |old_ctx| {
@@ -431,17 +379,12 @@ pub const Browser = struct {
                 _ = event_loop.drainCloseCallbacks();
             }
 
-            // Aggressive GC to clean up disposed context objects
-            // Per Chrome's WindowProxy lifecycle, we call ContextDisposedNotification
-            // which tells V8 a context was disposed and helps GC. Then we force GC
-            // multiple times to ensure all weak handles and garbage are collected.
-            // This is critical for sequential test execution to prevent heap growth.
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-            // Third GC pass for any objects revived during weak callbacks
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            // The page was let go: what it held is garbage now, and the
+            // engine collects it before the next page's realm is made
+            // (engine.notifyMemoryPressure .critical - on V8, three full
+            // collections with checkpoints between). This is critical for
+            // sequential test execution to prevent heap growth.
+            engine.notifyMemoryPressure(agent, .critical);
         }
 
         // The URL to navigate to is the parsed URL, serialized: a space in a
@@ -455,7 +398,7 @@ pub const Browser = struct {
         // Pass used_snapshot flag so Context knows whether to skip initializeBindings
         const ctx = try Context.init(
             self.allocator,
-            isolate,
+            agent,
             self.storage,
             serialized orelse url,
             self.event_loop,
@@ -566,12 +509,12 @@ pub const Browser = struct {
 
     /// Check if browser is initialized
     pub fn isInitialized(self: *Browser) bool {
-        return self.initialized and self.isolate != null;
+        return self.initialized and self.agent != null;
     }
 
-    /// Get the V8 isolate (for advanced usage)
-    pub fn getIsolate(self: *Browser) ?*v8.ffi.Isolate {
-        return self.isolate;
+    /// The page's agent (for advanced usage: engine operations that take one).
+    pub fn getAgent(self: *Browser) ?*engine.Agent {
+        return self.agent;
     }
 
     /// The current page's realm (for advanced usage)
@@ -595,6 +538,25 @@ pub const Browser = struct {
     }
 };
 
+test "the build's own snapshot is looked for first, and a refused candidate is skipped" {
+    try std.testing.expectEqualStrings("zig-out/bin/whatwg_snapshot.bin", DEFAULT_SNAPSHOT_PATHS[0]);
+    const Only = struct {
+        fn accepts(accepted: []const u8, path: []const u8) bool {
+            return std.mem.eql(u8, accepted, path);
+        }
+    };
+    // The build output is refused here, so the next candidate is taken.
+    try std.testing.expectEqualStrings(
+        "whatwg_snapshot.bin",
+        firstUsableSnapshot(@as([]const u8, "whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
+    );
+    try std.testing.expectEqualStrings(
+        "zig-out/bin/whatwg_snapshot.bin",
+        firstUsableSnapshot(@as([]const u8, "zig-out/bin/whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
+    );
+    try std.testing.expect(firstUsableSnapshot(@as([]const u8, "nowhere.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts) == null);
+}
+
 test "Browser - basic lifecycle" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -611,5 +573,5 @@ test "Browser - basic lifecycle" {
     defer browser.deinit();
 
     try testing.expect(browser.isInitialized());
-    try testing.expect(browser.getIsolate() != null);
+    try testing.expect(browser.getAgent() != null);
 }

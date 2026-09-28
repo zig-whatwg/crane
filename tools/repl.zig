@@ -167,7 +167,7 @@ const Repl = struct {
             var iterations: u32 = 0;
             const max_iterations: u32 = 10000; // Prevent infinite loops
             while (self.evaluatesTo("globalThis.__repl_state__", "pending") and iterations < max_iterations) : (iterations += 1) {
-                engine.performMicrotaskCheckpoint(realm) catch {};
+                if (realm.agent) |agent| engine.performMicrotaskCheckpoint(agent) catch {};
                 // Small delay to prevent busy-waiting
                 if (iterations > 100) {
                     // Swallow cancellation so the poll loop stays infallible.

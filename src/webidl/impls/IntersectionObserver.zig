@@ -462,7 +462,10 @@ fn intersectionMicrotask(data: ?*anyopaque) void {
 fn scheduleIntersectionUpdate(instance: *runtime.Instance, internal: *InternalState) !void {
     const ctx = try internal.allocator.create(IntersectionMicrotaskContext);
     ctx.* = .{ .allocator = internal.allocator, .observer = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
-    engine.queueMicrotask(internal.ctx, intersectionMicrotask, ctx) catch |err| {
+    // The surrounding agent's microtask queue; a realm with no engine behind
+    // it has none.
+    const queued: engine.Error!void = if (internal.ctx.agent) |agent| engine.queueMicrotask(agent, intersectionMicrotask, ctx) else error.NotSupported;
+    queued catch |err| {
         internal.allocator.destroy(ctx);
         if (err == error.OutOfMemory) return error.OutOfMemory;
         // No engine behind the realm, so no microtask queue: compute now.

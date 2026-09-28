@@ -671,7 +671,7 @@ pub const WorkerHost = struct {
     /// checkpoint, the tasks the engine has posted for its agent, and whatever
     /// the worker posted leaving for the page. Call with the agent entered.
     fn endTask(self: *Self) void {
-        if (self.realm) |realm| engine.performMicrotaskCheckpoint(realm) catch {};
+        if (self.realm != null) engine.performMicrotaskCheckpoint(self.agent) catch {};
         _ = engine.runEngineTasks(self.agent);
         DedicatedWorker.flushPendingMessages();
         scheduleMessageDispatch(self);
@@ -1136,7 +1136,7 @@ pub const WorkerHost = struct {
     fn runSetupScript(self: *Self, source: []const u8) !void {
         const realm = self.realm orelse return error.NoRealm;
         try engine.runClassicScript(realm, .{ .utf8 = source }, "", null, self.reporter());
-        try engine.performMicrotaskCheckpoint(realm);
+        try engine.performMicrotaskCheckpoint(self.agent);
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -1175,7 +1175,7 @@ pub const WorkerHost = struct {
         defer current_worker_context = prev_context;
         try engine.runClassicScript(realm, .{ .utf8 = source }, url, script, self.reporter());
         if (!checkpoint_after) return;
-        try engine.performMicrotaskCheckpoint(realm);
+        try engine.performMicrotaskCheckpoint(self.agent);
     }
 
     /// A classic script whose base URL is `url` (copied), kept until the
@@ -1826,8 +1826,8 @@ fn compileAndRunModuleCallback(
 /// Run microtask checkpoint
 fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
     const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
-    const realm = self.realm orelse return;
-    engine.performMicrotaskCheckpoint(realm) catch {};
+    if (self.realm == null) return;
+    engine.performMicrotaskCheckpoint(self.agent) catch {};
 }
 
 /// Dispose engine context

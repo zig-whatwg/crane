@@ -40,8 +40,8 @@ const result = try b.evaluateScript("document.title");
 | `evaluateScript(script)` | Execute JavaScript |
 | `runEventLoop(timeout_ms)` | Run event loop until timeout |
 | `getCurrentUrl()` | Get current page URL |
-| `getIsolate()` | Get V8 isolate (advanced) |
-| `getV8Context()` | Get V8 context (advanced) |
+| `getAgent()` | The page's agent (advanced: engine operations that take one) |
+| `getRealm()` | The current page's realm (advanced) |
 | `getStorage()` | Get storage subsystem |
 
 ### BrowserConfig
@@ -80,6 +80,6 @@ The old `browser_context.zig` is deprecated. Migration:
 |-----|-----|
 | `BrowserContext.init()` | `Browser.init()` then `navigate()` |
 | `BrowserContext.executeScript()` | `Browser.evaluateScript()` |
-| Direct context access | Use `Browser.getV8Context()` |
+| Direct realm access | Use `Browser.getRealm()` |
 
 See `tests/wpt_runner/browser_context.zig` for the deprecation notice.

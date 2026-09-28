@@ -178,7 +178,8 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
         return error.OutOfMemory;
     };
     task.* = .{ .callback = function, .realm = instance.ctx, .allocator = instance.ctx.allocator };
-    engine.queueMicrotask(instance.ctx, Microtask.run, task) catch |err| {
+    const queued: engine.Error!void = if (instance.ctx.agent) |agent| engine.queueMicrotask(agent, Microtask.run, task) else error.NotSupported;
+    queued catch |err| {
         task.deinit();
         return err;
     };

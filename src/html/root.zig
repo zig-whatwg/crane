@@ -179,19 +179,6 @@ pub const DOMHighResTimeStamp = window.DOMHighResTimeStamp;
 // Navigation & History (§7.2-7.4)
 pub const navigation = @import("navigation/root.zig");
 
-// Re-export commonly used navigation types
-pub const History = navigation.History;
-pub const Location = navigation.Location;
-pub const SessionHistoryEntry = navigation.SessionHistoryEntry;
-pub const Navigable = navigation.Navigable;
-pub const TraversableNavigable = navigation.TraversableNavigable;
-pub const PopStateEvent = navigation.PopStateEvent;
-pub const HashChangeEvent = navigation.HashChangeEvent;
-pub const PageTransitionEvent = navigation.PageTransitionEvent;
-pub const BeforeUnloadEvent = navigation.BeforeUnloadEvent;
-pub const NavigationType = navigation.NavigationType;
-pub const ScrollRestorationMode = navigation.ScrollRestorationMode;
-
 // Module Graph and Async Fetching (§8.1.6)
 pub const module_graph = @import("module_graph.zig");
 

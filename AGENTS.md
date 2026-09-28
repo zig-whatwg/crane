@@ -840,6 +840,9 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Registering a realm put the legacy import() callback back](docs/lessons/architecture-a-realm-registration-put-the-old-import-callback-back.md) - A per-isolate callback set from per-realm code is overwritten per realm; guard it where it is set.
 - [Entering a realm must enter its agent](docs/lessons/architecture-entering-a-realm-must-enter-its-agent.md) - A realm's agent is recorded on it; "the current one" is only right for realms of the current agent.
 - [A per-isolate leak is a per-realm leak for workers](docs/lessons/architecture-a-per-isolate-leak-is-a-per-realm-leak-for-workers.md) - Test handle flatness per realm kind: a worker realm pays every per-isolate cost a Window agent pays once, so measure with global handle bytes and native contexts, not the live counters.
+- [A legacy entry point reads what its protocol hook must be given](docs/lessons/architecture-a-legacy-entry-point-reads-what-its-protocol-hook-must-be-given.md) - The old path's inputs are the new path's preconditions - diff them before the switch, and name the files that will show it.
+- [A realm switch inside a task is runInRealm, not prepareToRunScript](docs/lessons/architecture-a-realm-switch-is-runinrealm-not-preparetorunscript.md) - `JsScope` translates to `runInRealm`/`runTaskInRealm`; `prepareToRunScript` is for running script, and around event dispatch it silently moves microtask checkpoints.
+- [A realm's end can reach its own end](docs/lessons/architecture-a-realm-s-end-can-reach-its-own-end.md) - Any teardown that frees wrapped objects can be re-entered by one of them: carry the re-entrancy guard over when replacing a teardown path, and bisect a sweep prefix before reading the crashing file.
 
 ### Spec Compliance
 
@@ -861,6 +864,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - ["Child text content" means Text children only](docs/lessons/spec-compliance-child-text-content-means-text-children-only.md) - Read the Infra/DOM definition of each text accessor; "child text content", "descendant text content" and textContent are three different things.
 - [A pending exception is not an abrupt completion](docs/lessons/spec-compliance-a-pending-exception-is-not-an-abrupt-completion.md) - Wherever the spec reads a completion instead of writing "?", run the step under engine.completionOf.
 - [A repeating timer keeps the id script holds](docs/lessons/spec-compliance-a-repeating-timer-keeps-the-id-script-holds.md) - Whatever script holds must outlive the scheduler's handles; a reschedule updates the value, never the key.
+- [An honest accessor exposes what a lenient check hid](docs/lessons/spec-compliance-an-honest-accessor-exposes-what-a-lenient-check-hid.md) - A security check that suddenly fails correct pages was usually passing everything before; test it with a pair that must pass and a pair that must fail.
 
 ### Codegen
 
