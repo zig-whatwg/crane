@@ -1620,23 +1620,21 @@ pub fn fromV8Value(
                 // An `any` member present as null is the value null
                 // (`any_members`); converted as an optional, it would read as
                 // not present.
-                if (comptime isAnyMember(T, field.name)) {
-                    if (v8.v8_Value_IsNull(field_v8)) {
-                        // Nothing keeps the handle Get made (the defer above
-                        // releases it only for a copying conversion).
-                        if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
-                        @field(result, field.name) = runtime.JSValue.jsNull;
-                        continue;
-                    }
+                if (comptime isAnyMember(T, field.name) and v8.v8_Value_IsNull(field_v8)) {
+                    // Nothing keeps the handle Get made (the defer above
+                    // releases it only for a copying conversion).
+                    if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                    @field(result, field.name) = runtime.JSValue.jsNull;
+                } else {
+                    // Convert field value
+                    @field(result, field.name) = try fromV8Value(
+                        field.type,
+                        allocator,
+                        isolate,
+                        context,
+                        field_v8,
+                    );
                 }
-                // Convert field value
-                @field(result, field.name) = try fromV8Value(
-                    field.type,
-                    allocator,
-                    isolate,
-                    context,
-                    field_v8,
-                );
                 // A restricted `double` or `float` member: NaN and the
                 // infinities are a TypeError, as part of this member's
                 // conversion - before the next member is read.
