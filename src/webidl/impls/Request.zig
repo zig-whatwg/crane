@@ -396,6 +396,22 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         base_request.method = try ctx.allocator.dupe(u8, normalized);
     }
 
+    // Step 15: If init["referrerPolicy"] exists, then set request's
+    // referrer policy to it.
+    if (init_opts.referrerPolicy) |policy| {
+        base_request.referrer_policy = switch (policy) {
+            .__ => .empty,
+            ._no_referrer_ => .no_referrer,
+            ._no_referrer_when_downgrade_ => .no_referrer_when_downgrade,
+            ._same_origin_ => .same_origin,
+            ._origin_ => .origin,
+            ._strict_origin_ => .strict_origin,
+            ._origin_when_cross_origin_ => .origin_when_cross_origin,
+            ._strict_origin_when_cross_origin_ => .strict_origin_when_cross_origin,
+            ._unsafe_url_ => .unsafe_url,
+        };
+    }
+
     // Step 16-18: Handle mode
     const mode = init_opts.mode orelse fallback_mode;
     if (mode) |m| {

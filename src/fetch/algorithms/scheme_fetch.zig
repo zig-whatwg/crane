@@ -101,7 +101,10 @@ fn aboutFetch(allocator: Allocator, url: []const u8) SchemeFetchError!SchemeFetc
         };
         errdefer response.deinit();
 
+        // "a new response whose status message is `OK`, header list is
+        // « (`Content-Type`, `text/html;charset=utf-8`) »".
         response.status = 200;
+        response.setStatusMessage("OK") catch return SchemeFetchError.OutOfMemory;
         response.header_list.append("Content-Type", "text/html;charset=utf-8") catch {
             return SchemeFetchError.OutOfMemory;
         };
@@ -154,7 +157,10 @@ fn dataFetch(allocator: Allocator, url: []const u8) SchemeFetchError!SchemeFetch
     };
     errdefer response.deinit();
 
+    // "Return a new response whose status message is `OK`, header list is
+    // « (`Content-Type`, mimeType) », and body is dataURLStruct's body."
     response.status = 200;
+    response.setStatusMessage("OK") catch return SchemeFetchError.OutOfMemory;
     response.header_list.append("Content-Type", data_result.?.mime_type) catch {
         return SchemeFetchError.OutOfMemory;
     };
@@ -322,4 +328,13 @@ test "isFetchScheme" {
     try std.testing.expect(isFetchScheme("file"));
     try std.testing.expect(!isFetchScheme("ftp"));
     try std.testing.expect(!isFetchScheme("ws"));
+}
+
+test "scheme fetch: a data: URL's response says OK" {
+    const allocator = std.testing.allocator;
+    const result = try schemeFetch(allocator, "data", "data:,hi");
+    const response = result.response;
+    defer response.deinit();
+    try std.testing.expectEqual(@as(u16, 200), response.status);
+    try std.testing.expectEqualStrings("OK", response.status_message);
 }

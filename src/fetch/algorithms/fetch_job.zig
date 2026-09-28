@@ -160,8 +160,6 @@ pub const FetchJob = struct {
     /// 13. If response is null, main fetch
     /// 14. Return response
     pub fn start(self: *FetchJob) FetchError!Step {
-        const allocator = self.allocator;
-
         // Record start time
         self.timing_info.start_time = http_fetch.getCurrentTimeMs();
 
@@ -171,26 +169,13 @@ pub const FetchJob = struct {
             self.params.process_response = callback;
         }
 
-        // Step 13: Dispatch based on URL scheme
-        const url_str = self.request.currentUrl();
-        const url_scheme = extractScheme(url_str);
-
-        if (scheme_fetch.isLocalScheme(url_scheme)) {
-            // Handle local schemes (about, blob, data) directly
-            const result = scheme_fetch.schemeFetch(allocator, url_scheme, url_str) catch {
-                return FetchError.OutOfMemory;
-            };
-            return self.finish(switch (result) {
-                .response => |r| r,
-                .network_error => try networkError(allocator),
-            });
-        }
-        if (scheme_fetch.isHttpScheme(url_scheme)) {
-            // HTTP(S) requests go through main fetch -> HTTP fetch
-            return self.mainFetch();
-        }
-        // Unsupported scheme
-        return self.finish(try networkError(allocator));
+        // Step 13: main fetch - for every scheme. Its step 12 decides
+        // between scheme fetch (data:, about:, blob:, with the tainting and
+        // filtering that come with it) and HTTP fetch, and turns any other
+        // scheme into a network error; step 20 gives HEAD a null body. A
+        // local scheme used to skip it, so a data: response came back
+        // unfiltered - type "default", not "basic".
+        return self.mainFetch();
     }
 
     /// Carry on from the network's answer to the request the last `.network`

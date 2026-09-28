@@ -473,26 +473,16 @@ pub fn httpNetworkOrCacheFetchStart(
         },
     };
 
-    // Steps 8.11-8.12 add headers to httpRequest - here, to the request
+    // Steps 8.7-8.19 add headers to httpRequest - here, to the request
     // sent, not to request itself: httpRequest is its clone, and a redirect's
     // main fetch adds its own.
-    var added: [2]NetworkRequest.Header = undefined;
-    var added_len: usize = 0;
-    errdefer for (added[0..added_len]) |header| allocator.free(header.value);
-    // 8.11. If httpRequest's referrer is a URL, append (`Referer`, it
-    //       serialized).
-    if (request.referrer == .url) {
-        added[added_len] = .{ .name = "Referer", .value = allocator.dupe(u8, request.referrer.url) catch return HttpFetchError.OutOfMemory };
-        added_len += 1;
-    }
-    // 8.12. Append a request `Origin` header for httpRequest.
-    if (requestOriginHeader(allocator, request) catch return HttpFetchError.OutOfMemory) |origin_value| {
-        added[added_len] = .{ .name = "Origin", .value = origin_value };
-        added_len += 1;
-    }
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer added.deinit(allocator);
+    errdefer for (added.items) |header| allocator.free(header.value);
+    httpRequestHeaders(allocator, request, &added) catch return HttpFetchError.OutOfMemory;
 
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
-    var network_request = buildNetworkRequest(allocator, request, added[0..added_len]) catch {
+    var network_request = buildNetworkRequest(allocator, request, added.items) catch {
         return HttpFetchError.OutOfMemory;
     };
     network_request.require_http2 = require_http2;
@@ -521,6 +511,71 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, request: *const Inter
     response.deinit();
     return internal_response.networkError(allocator) catch HttpFetchError.OutOfMemory;
 }
+
+/// HTTP-network-or-cache fetch step 8's headers for httpRequest: those it
+/// appends to the request's header list, gathered for the request sent (each
+/// value owned). curl adds `Host`, and `Content-Length` for a body, itself.
+fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) !void {
+    const list = &request.header_list;
+    // 8.5-8.9: a null body's Content-Length is `0` for POST and PUT.
+    // (A body's own length curl sends with it.)
+    if (request.body == null and (std.mem.eql(u8, request.method, "POST") or std.mem.eql(u8, request.method, "PUT"))) {
+        try addHeader(allocator, added, "Content-Length", "0");
+    }
+    // 8.11. If httpRequest's referrer is a URL, append (`Referer`, it
+    //       serialized and isomorphic encoded).
+    if (request.referrer == .url) try addHeader(allocator, added, "Referer", request.referrer.url);
+    // 8.12. Append a request `Origin` header for httpRequest.
+    if (try requestOriginHeader(allocator, request)) |origin_value| {
+        added.append(allocator, .{ .name = "Origin", .value = origin_value }) catch |err| {
+            allocator.free(origin_value);
+            return err;
+        };
+    }
+    // 8.15. If httpRequest's header list does not contain `User-Agent`,
+    //       append (`User-Agent`, the environment default `User-Agent`
+    //       value).
+    if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", default_user_agent);
+    // 8.16. A conditional request in cache mode "default" is "no-store".
+    var cache_mode = request.cache_mode;
+    if (cache_mode == .default) {
+        for ([_][]const u8{ "If-Modified-Since", "If-None-Match", "If-Unmodified-Since", "If-Match", "If-Range" }) |name| {
+            if (list.contains(name)) cache_mode = .no_store;
+        }
+    }
+    // 8.17. "no-cache": (`Cache-Control`, `max-age=0`), unless the request
+    //       has one or its prevent-modification flag is set.
+    if (cache_mode == .no_cache and !request.prevent_no_cache_cache_control_header_modification and !list.contains("Cache-Control")) {
+        try addHeader(allocator, added, "Cache-Control", "max-age=0");
+    }
+    // 8.18. "no-store" and "reload": `Pragma` and `Cache-Control` both
+    //       `no-cache`, each unless the request has one.
+    if (cache_mode == .no_store or cache_mode == .reload) {
+        if (!list.contains("Pragma")) try addHeader(allocator, added, "Pragma", "no-cache");
+        if (!list.contains("Cache-Control")) try addHeader(allocator, added, "Cache-Control", "no-cache");
+    }
+    // 8.19. If httpRequest's header list contains `Range`, then append
+    //       (`Accept-Encoding`, `identity`).
+    if (list.contains("Range")) try addHeader(allocator, added, "Accept-Encoding", "identity");
+}
+
+fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), name: []const u8, value: []const u8) !void {
+    const copy = try allocator.dupe(u8, value);
+    added.append(allocator, .{ .name = name, .value = copy }) catch |err| {
+        allocator.free(copy);
+        return err;
+    };
+}
+
+/// The environment default `User-Agent` value (Fetch: implementation
+/// defined; HTML's navigator.userAgent is to return it). The same per-OS
+/// string src/webidl/impls/Navigator.zig's userAgent getter returns.
+pub const default_user_agent = switch (@import("builtin").os.tag) {
+    .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) WhatWG-Zig/1.0",
+    .linux => "Mozilla/5.0 (X11; Linux x86_64) WhatWG-Zig/1.0",
+    .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WhatWG-Zig/1.0",
+    else => "Mozilla/5.0 WhatWG-Zig/1.0",
+};
 
 /// Fetch "append a request `Origin` header" for `request`: the value to
 /// append, or null when it appends none. OWNED.
@@ -831,6 +886,8 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         };
         try headers.append(allocator, .{ .name = "Origin", .value = origin });
     }
+    // 8.15 runs for the preflight too: its header list has no User-Agent.
+    try headers.append(allocator, .{ .name = "User-Agent", .value = default_user_agent });
 
     const header_slice = try headers.toOwnedSlice(allocator);
     errdefer allocator.free(header_slice);
@@ -1312,6 +1369,7 @@ test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe heade
         .{ "Access-Control-Request-Headers", "x-a,x-b" },
         .{ "Referer", "http://a.test/page" },
         .{ "Origin", "http://a.test" },
+        .{ "User-Agent", default_user_agent },
     };
     try std.testing.expectEqual(expected.len, preflight.headers.len);
     for (expected, preflight.headers) |want, got| {
@@ -1475,9 +1533,57 @@ test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, 
     const started = try httpNetworkOrCacheFetchStart(allocator, params, .{});
     const network_request = started.network;
     defer freeNetworkRequest(allocator, network_request);
-    const n = network_request.headers.len;
-    try std.testing.expectEqualStrings("Referer", network_request.headers[n - 2].name);
-    try std.testing.expectEqualStrings("http://a.test/page", network_request.headers[n - 2].value);
-    try std.testing.expectEqualStrings("Origin", network_request.headers[n - 1].name);
+    var referer_at: ?usize = null;
+    var origin_at: ?usize = null;
+    for (network_request.headers, 0..) |header, i| {
+        if (std.mem.eql(u8, header.name, "Referer")) {
+            referer_at = i;
+            try std.testing.expectEqualStrings("http://a.test/page", header.value);
+        }
+        if (std.mem.eql(u8, header.name, "Origin")) origin_at = i;
+    }
+    try std.testing.expect(referer_at.? < origin_at.?);
     try std.testing.expect(!request.header_list.contains("Referer"));
+}
+
+test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Length, and the cache headers" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setMethod("POST");
+    request.cache_mode = .no_store;
+    try request.header_list.append("Range", "bytes=0-1");
+
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer {
+        for (added.items) |h| allocator.free(h.value);
+        added.deinit(allocator);
+    }
+    try httpRequestHeaders(allocator, request, &added);
+    const want = [_][2][]const u8{
+        .{ "Content-Length", "0" },
+        .{ "User-Agent", default_user_agent },
+        .{ "Pragma", "no-cache" },
+        .{ "Cache-Control", "no-cache" },
+        .{ "Accept-Encoding", "identity" },
+    };
+    try std.testing.expectEqual(want.len, added.items.len);
+    for (want, added.items) |w, got| {
+        try std.testing.expectEqualStrings(w[0], got.name);
+        try std.testing.expectEqualStrings(w[1], got.value);
+    }
+
+    // A request's own User-Agent and Cache-Control stand; a conditional
+    // request in "default" mode is "no-store".
+    for (added.items) |h| allocator.free(h.value);
+    added.clearRetainingCapacity();
+    try request.setMethod("GET");
+    request.cache_mode = .default;
+    request.header_list.delete("Range");
+    try request.header_list.append("User-Agent", "mine");
+    try request.header_list.append("If-None-Match", "x");
+    try httpRequestHeaders(allocator, request, &added);
+    try std.testing.expectEqual(2, added.items.len);
+    try std.testing.expectEqualStrings("Pragma", added.items[0].name);
+    try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
 }
