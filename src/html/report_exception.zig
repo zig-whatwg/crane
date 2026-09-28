@@ -19,24 +19,8 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
-const v8 = @import("v8");
-const ffi = v8.ffi;
 
 const log = std.log.scoped(.report_exception);
-
-pub const Options = struct {
-    /// The script's muted errors flag (report an exception step 4): a classic
-    /// script whose response was CORS-cross-origin reports "Script error."
-    /// and nothing else about the exception.
-    muted: bool = false,
-    /// omitError (step 5): report everything but the exception value.
-    omit_error: bool = false,
-    /// Error information already extracted by the TryCatch that caught the
-    /// exception. For a compile error it carries the position of the syntax
-    /// error itself, which re-deriving it from the SyntaxError object cannot
-    /// always recover. When absent, it is extracted from `exception`.
-    info: ?*const ffi.V8ErrorInfo = null,
-};
 
 /// The globals currently "in error reporting mode" (step 6.1). An `onerror`
 /// that throws must not re-enter reporting for the same global, which would
@@ -70,9 +54,9 @@ pub const ReportOptions = struct {
 };
 
 /// Report an exception for `global` whose error information the engine has
-/// already extracted (step 2) - what an Engine operation that runs script
-/// hands its `runtime.ReportExceptionFn`. Engine-neutral: the thrown value is
-/// a runtime.JSValue, borrowed for the call.
+/// already extracted (step 2) - what an engine operation that runs script
+/// hands the host's `engine.Reporter`, or `engine.extractErrorInformation`
+/// returns. The thrown value is a runtime.JSValue, borrowed for the call.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
 /// Returns notHandled: false when an error handler canceled the event.
@@ -149,50 +133,6 @@ fn reportExtracted(
     return not_handled;
 }
 
-/// Report an exception `exception` (a Global<Value>*, borrowed) for `global`.
-///
-/// Returns notHandled: false when an error handler canceled the event.
-pub fn reportException(global: *runtime.Instance, exception: ?*ffi.Value, options: Options) bool {
-    const not_handled = true;
-
-    const engine_ctx = global.ctx.getEngineContext() orelse return not_handled;
-    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return not_handled;
-    const scope = ffi.v8_HandleScope_New(isolate) orelse return not_handled;
-    defer ffi.v8_HandleScope_Dispose(scope);
-
-    // Step 2: Let errorInfo be the result of extracting error information
-    // from exception. The spec leaves message, filename, lineno and colno
-    // implementation-defined.
-    var extracted: ?*ffi.V8ErrorInfo = null;
-    defer ffi.v8_FreeErrorInfo(extracted);
-    const info: ?*const ffi.V8ErrorInfo = options.info orelse blk: {
-        const value = exception orelse break :blk null;
-        extracted = ffi.v8_Exception_GetErrorInfo(context, value);
-        break :blk extracted;
-    };
-
-    var message: []const u8 = "Uncaught exception";
-    var filename: []const u8 = "";
-    var lineno: u32 = 0;
-    var colno: u32 = 0;
-    if (info) |i| {
-        if (i.getMessage()) |m| message = m;
-        if (i.getResourceName()) |r| filename = r;
-        if (i.line_number > 0) lineno = @intCast(i.line_number);
-        // V8 columns are 0-based; ErrorEvent.colno is 1-based in every
-        // engine that reports one.
-        if (i.column_number >= 0) colno = @intCast(i.column_number + 1);
-    }
-
-    // The event takes its own reference to the value; ours stays the caller's.
-    const error_value: ?runtime.JSValue = if (exception) |e| runtime.JSValue.fromHandleNonOwning(e) else null;
-    return reportExtracted(global, message, filename, lineno, colno, error_value, .{
-        .muted = options.muted,
-        .omit_error = options.omit_error,
-    });
-}
-
 /// Fire an ErrorEvent named "error" at `global`. Returns false when canceled.
 fn fireErrorEvent(
     global: *runtime.Instance,
@@ -232,28 +172,4 @@ fn fireErrorEvent(
     // wrapper cache from here on (a handler may have stored it).
     event.releaseIfUnwrapped(generation);
     return not_canceled;
-}
-
-/// The global object of the realm whose context `context` (Global<Context>*)
-/// is: its realm record's global object - a Window's realm or a frame's, and
-/// a worker's once its realm carries a record. Null when no realm is
-/// registered for the context, or its realm has no record.
-pub fn globalForContext(context: *ffi.Context) ?*runtime.Instance {
-    const realm = v8.context_manager.get(context) orelse return null;
-    const record = realm.getRealm() orelse return null;
-    const global = record.global_object orelse return null;
-    return @ptrCast(@alignCast(global));
-}
-
-/// Run `body(data)` with V8's automatic microtask checkpoints suppressed.
-///
-/// "Run a classic script" and "run a module script" report their exception
-/// BEFORE "clean up after running script", while the script's realm is still
-/// on the execution context stack - so the error handlers' own promise
-/// reactions wait for the checkpoint that clean-up performs, instead of
-/// running after each handler returns (which V8's auto policy would do, since
-/// the handlers are called from native code with nothing else on the stack).
-pub fn withMicrotasksSuppressed(body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void {
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return body(data);
-    ffi.v8_RunWithMicrotasksSuppressed(isolate, body, data);
 }

@@ -23,6 +23,15 @@ const InputCharacter = @import("input_stream.zig").InputCharacter;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 const entities = @import("entities.zig");
+
+/// The longest identifier in the named character references table
+/// ("CounterClockwiseContourIntegral;").
+const max_character_reference_name_len: usize = blk: {
+    @setEvalBranchQuota(10_000);
+    var longest: usize = 0;
+    for (entities.entities) |entity| longest = @max(longest, entity.name.len);
+    break :blk longest;
+};
 const document_write = @import("document_write.zig");
 const InputStreamManager = document_write.InputStreamManager;
 
@@ -289,19 +298,7 @@ pub const Tokenizer = struct {
     /// Get the next token from the tokenizer.
     pub fn nextToken(self: *Tokenizer) !?Token {
         // If we have queued tokens, return one using O(1) head index
-        const queue_len = self.token_queue.len;
-        if (self.token_queue_head < queue_len) {
-            const slice = self.token_queue.toSlice();
-            const token = slice[self.token_queue_head];
-            self.token_queue_head += 1;
-
-            // Compact the queue when head reaches halfway to avoid unbounded growth
-            // This amortizes the cost: O(1) per dequeue on average
-            if (self.token_queue_head >= 8 and self.token_queue_head >= queue_len / 2) {
-                try self.compactTokenQueue();
-            }
-            return token;
-        }
+        if (self.token_queue_head < self.token_queue.len) return try self.dequeueToken();
 
         // Process states until we emit a token
         while (true) {
@@ -319,11 +316,32 @@ pub const Tokenizer = struct {
                 return token;
             }
 
+            // A state that emitted nothing may still have queued tokens - a
+            // character reference flushed as its characters ("flush code
+            // points consumed as a character reference"). They were emitted
+            // then, before anything a later state emits: return them now, or
+            // the text after "a && b" would overtake its two "&"s.
+            if (self.token_queue_head < self.token_queue.len) return try self.dequeueToken();
+
             // Check for EOF after processing
             if (self.current_char.isEof() and self.state == .data) {
                 return null;
             }
         }
+    }
+
+    /// The token at the head of the queue, which must not be empty.
+    fn dequeueToken(self: *Tokenizer) !Token {
+        const queue_len = self.token_queue.len;
+        const token = self.token_queue.toSlice()[self.token_queue_head];
+        self.token_queue_head += 1;
+
+        // Compact the queue when head reaches halfway to avoid unbounded growth
+        // This amortizes the cost: O(1) per dequeue on average
+        if (self.token_queue_head >= 8 and self.token_queue_head >= queue_len / 2) {
+            try self.compactTokenQueue();
+        }
+        return token;
     }
 
     /// Compact the token queue by removing already-consumed tokens.
@@ -2376,135 +2394,112 @@ pub const Tokenizer = struct {
     }
 
     /// §13.2.5.73 Named character reference state
-    /// Implements the full named character reference lookup algorithm.
+    ///
+    /// "Consume the maximum number of characters possible, where the consumed
+    /// characters are one of the identifiers in the named character references
+    /// table. Append each character to the temporary buffer when it's
+    /// consumed."
+    ///
+    /// The input is read ahead as far as a name can go - ASCII alphanumerics,
+    /// up to and including a ";" - and the longest identifier among the
+    /// prefixes of that run is what this state consumes. What it read beyond
+    /// that was never consumed: it is handed on to the state that would have
+    /// read it (`handOnReadAhead`). Reading ahead used to CONSUME the whole
+    /// run, and only an attribute value got back what the name did not use:
+    /// in text "x &c y" read "x & y", "AT&T" read "AT&", "&notit;" read "¬".
     fn namedCharacterReferenceState(self: *Tokenizer) !?Token {
-        // Collect characters that could be part of a named character reference
-        // We need to peek ahead to find the longest matching entity
-        var entity_buffer: [64]u8 = undefined;
-        var entity_len: usize = 0;
-
-        // Copy what we have in the temporary buffer (after the &)
-        const temp_slice = self.temporary_buffer.items();
-        // Skip the '&' at the start
-        const start_offset: usize = if (temp_slice.len > 0 and temp_slice[0] == '&') 1 else 0;
-        for (temp_slice[start_offset..]) |c| {
-            if (entity_len < entity_buffer.len) {
-                entity_buffer[entity_len] = c;
-                entity_len += 1;
-            }
+        // The run: the current input character (the character reference state
+        // reconsumed it - an ASCII alphanumeric) and the name characters after
+        // it. One more than the longest identifier is enough to know the rest
+        // of a longer run is no part of any name.
+        var run: [max_character_reference_name_len + 1]u8 = undefined;
+        run[0] = @intCast(self.current_char.getCodepoint().?);
+        var run_len: usize = 1;
+        while (run_len < run.len and run[run_len - 1] != ';') {
+            const next = self.peekNextChar();
+            if (!(next.isAsciiAlphanumeric() or next.is(';'))) break;
+            run[run_len] = @intCast(next.getCodepoint().?);
+            run_len += 1;
+            _ = self.consumeNextChar();
         }
+        const read = run[0..run_len];
 
-        // Include the current character
-        if (self.current_char.getCodepoint()) |cp| {
-            if (cp < 128) {
-                if (entity_len < entity_buffer.len) {
-                    entity_buffer[entity_len] = @intCast(cp);
-                    entity_len += 1;
-                }
-            }
-        }
-
-        // Keep consuming alphanumeric characters to build the potential entity name
-        while (true) {
-            const next_char = self.peekNextChar();
-            if (next_char.isAsciiAlphanumeric() or next_char.is(';')) {
-                if (next_char.getCodepoint()) |cp| {
-                    if (entity_len < entity_buffer.len) {
-                        entity_buffer[entity_len] = @intCast(cp);
-                        entity_len += 1;
-                    }
-                    _ = self.consumeNextChar();
-                    // Stop if we hit a semicolon
-                    if (next_char.is(';')) break;
-                } else break;
-            } else {
-                break;
-            }
-        }
-
-        // Look up the longest matching entity
-        const input_slice = entity_buffer[0..entity_len];
-        const result = entities.lookup(input_slice);
-
-        if (result.entity) |entity| {
-            // Check if this is an entity being consumed as part of an attribute
-            // Per spec: If the character reference was consumed as part of an attribute,
-            // and the last character matched is not ';', and the next input character
-            // is either '=' or an ASCII alphanumeric, then flush and switch to return state
-            const ends_with_semicolon = entities.hasSemicolon(entity.name);
-
-            if (!ends_with_semicolon and self.isConsumedAsPartOfAttribute()) {
-                // Check the next character
-                const next = self.peekNextChar();
-                if (next.is('=') or next.isAsciiAlphanumeric()) {
-                    // Flush the temporary buffer and don't treat as character reference
-                    try self.flushCodePointsAsCharacterReference();
-                    // Append what we consumed
-                    for (input_slice) |c| {
-                        if (self.isConsumedAsPartOfAttribute()) {
-                            try self.appendToCurrentAttributeValue(c);
-                        }
-                    }
-                    self.state = self.return_state;
-                    return null;
-                }
-            }
-
-            // Report parse error if entity doesn't end with semicolon
-            if (!ends_with_semicolon) {
-                self.reportError(.missing_semicolon_after_character_reference);
-            }
-
-            // Clear the temporary buffer
-            self.temporary_buffer.clear();
-
-            // Emit the codepoints from the entity
-            // We need to handle this differently based on whether we're in an attribute or not
-            if (self.isConsumedAsPartOfAttribute()) {
-                for (entity.codepoints) |cp| {
-                    try self.appendToCurrentAttributeValue(cp);
-                }
-                // Append any unconsumed characters after the matched entity
-                if (result.consumed < entity_len) {
-                    for (input_slice[result.consumed..]) |c| {
-                        try self.appendToCurrentAttributeValue(c);
-                    }
-                }
-            } else {
-                // Emit character tokens for each codepoint
-                // First codepoint returned now, rest will be handled by pending_tokens mechanism
-                // For simplicity, emit as characters
-                for (entity.codepoints) |cp| {
-                    try self.temporary_buffer.append(@intCast(cp & 0xFF));
-                    if (cp > 0xFF) {
-                        // Handle multi-byte codepoints
-                        try self.temporary_buffer.append(@intCast((cp >> 8) & 0xFF));
-                        if (cp > 0xFFFF) {
-                            try self.temporary_buffer.append(@intCast((cp >> 16) & 0xFF));
-                        }
-                    }
-                }
-            }
-
-            self.state = self.return_state;
-
-            // If not in attribute, return the first codepoint as a character token
-            if (!self.isConsumedAsPartOfAttribute() and entity.codepoints.len > 0) {
-                return Token{ .character = entity.codepoints[0] };
-            }
-            return null;
-        } else {
-            // No match found - flush and switch to ambiguous ampersand state
+        const result = entities.lookup(read);
+        const entity = result.entity orelse {
+            // "Otherwise: Flush code points consumed as a character reference.
+            // Switch to the ambiguous ampersand state." Nothing after the "&"
+            // was consumed: the ambiguous ampersand state reads the run.
             try self.flushCodePointsAsCharacterReference();
-            // Also append the characters we consumed
-            for (input_slice) |c| {
-                if (self.isConsumedAsPartOfAttribute()) {
-                    try self.appendToCurrentAttributeValue(c);
-                }
+            return try self.handOnReadAhead(.ambiguous_ampersand, read);
+        };
+        const name = read[0..result.consumed];
+        const rest = read[result.consumed..];
+        try self.temporary_buffer.appendSlice(name);
+        const last_matched_is_semicolon = name[name.len - 1] == ';';
+
+        // "If the character reference was consumed as part of an attribute,
+        // and the last character matched is not a U+003B SEMICOLON character
+        // (;), and the next input character is either a U+003D EQUALS SIGN
+        // character (=) or an ASCII alphanumeric, then, for historical
+        // reasons, flush code points consumed as a character reference and
+        // switch to the return state." The next input character is the first
+        // one read past the name, if any was.
+        if (!last_matched_is_semicolon and self.isConsumedAsPartOfAttribute()) {
+            const next_is_alphanumeric_or_equals = if (rest.len > 0)
+                std.ascii.isAlphanumeric(rest[0])
+            else blk: {
+                const next = self.peekNextChar();
+                break :blk next.is('=') or next.isAsciiAlphanumeric();
+            };
+            if (next_is_alphanumeric_or_equals) {
+                try self.flushCodePointsAsCharacterReference();
+                return try self.handOnReadAhead(self.return_state, rest);
             }
-            self.state = .ambiguous_ampersand;
-            return null;
         }
+
+        // "Otherwise: 1. If the last character matched is not a U+003B
+        // SEMICOLON character (;), then this is a
+        // missing-semicolon-after-character-reference parse error. 2. Set the
+        // temporary buffer to the empty string. Append one or two characters
+        // corresponding to the character reference name ... 3. Flush code
+        // points consumed as a character reference. Switch to the return
+        // state." Every code point: some references are two.
+        if (!last_matched_is_semicolon) self.reportError(.missing_semicolon_after_character_reference);
+        self.temporary_buffer.clear();
+        for (entity.codepoints) |cp| {
+            if (self.isConsumedAsPartOfAttribute()) {
+                try self.appendToCurrentAttributeValue(cp);
+            } else {
+                try self.token_queue.append(Token{ .character = cp });
+            }
+        }
+        return try self.handOnReadAhead(self.return_state, rest);
+    }
+
+    /// Hand `chars` - characters the named character reference state read
+    /// ahead and did not consume: ASCII alphanumerics, at most a last ";" - to
+    /// `state`, the ambiguous ampersand state or the return state, as that
+    /// state would have consumed them: each one is a character of the text,
+    /// or of the attribute value (a ";" the ambiguous ampersand state sees is
+    /// an unknown-named-character-reference parse error first, and it
+    /// reconsumes it in the return state). Then the tokenizer is in the state
+    /// the next input character goes to.
+    fn handOnReadAhead(self: *Tokenizer, state: State, chars: []const u8) !?Token {
+        for (chars) |c| {
+            if (c == ';' and state == .ambiguous_ampersand) self.reportError(.unknown_named_character_reference);
+            if (self.isConsumedAsPartOfAttribute()) {
+                try self.appendToCurrentAttributeValue(c);
+            } else {
+                try self.token_queue.append(Token{ .character = c });
+            }
+        }
+        // The ambiguous ampersand state keeps reading alphanumerics; anything
+        // else it reconsumes in the return state.
+        const keeps_reading = state == .ambiguous_ampersand and
+            (chars.len == 0 or chars[chars.len - 1] != ';') and
+            self.peekNextChar().isAsciiAlphanumeric();
+        self.state = if (keeps_reading) .ambiguous_ampersand else self.return_state;
+        return null;
     }
 
     /// §13.2.5.74 Ambiguous ampersand state
@@ -2598,13 +2593,16 @@ pub const Tokenizer = struct {
             self.character_reference_code +|= @intCast(char.getCodepoint().? - 0x57);
             return null;
         } else if (char.is(';')) {
-            self.state = .numeric_character_reference_end;
-            return null;
+            // "Switch to the numeric character reference end state" - which
+            // consumes nothing, so its steps run now.
+            return try self.numericCharacterReferenceEnd();
         } else {
             self.reportError(.missing_semicolon_after_character_reference);
+            // "Reconsume in the numeric character reference end state": it
+            // consumes nothing either, so the return state reconsumes this
+            // character after it.
             self.reconsume = true;
-            self.state = .numeric_character_reference_end;
-            return null;
+            return try self.numericCharacterReferenceEnd();
         }
     }
 
@@ -2617,18 +2615,33 @@ pub const Tokenizer = struct {
             self.character_reference_code +|= @intCast(char.getCodepoint().? - 0x30);
             return null;
         } else if (char.is(';')) {
-            self.state = .numeric_character_reference_end;
-            return null;
+            // "Switch to the numeric character reference end state" - which
+            // consumes nothing, so its steps run now.
+            return try self.numericCharacterReferenceEnd();
         } else {
             self.reportError(.missing_semicolon_after_character_reference);
+            // "Reconsume in the numeric character reference end state": it
+            // consumes nothing either, so the return state reconsumes this
+            // character after it.
             self.reconsume = true;
-            self.state = .numeric_character_reference_end;
-            return null;
+            return try self.numericCharacterReferenceEnd();
         }
     }
 
     /// §13.2.5.80 Numeric character reference end state
+    ///
+    /// The state consumes no input character: the states that switch to it run
+    /// its steps directly (`numericCharacterReferenceEnd`), so the character
+    /// after the reference - the one after ";", or the one that ended the
+    /// digits - is the return state's. Running it as an ordinary state
+    /// consumed one character to run it and dropped it ("&#65;x" read "A").
     fn numericCharacterReferenceEndState(self: *Tokenizer) !?Token {
+        self.reconsume = true;
+        return self.numericCharacterReferenceEnd();
+    }
+
+    /// The numeric character reference end state's steps.
+    fn numericCharacterReferenceEnd(self: *Tokenizer) !?Token {
         var code = self.character_reference_code;
 
         // Apply replacements per spec
