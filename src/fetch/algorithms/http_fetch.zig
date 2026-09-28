@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
 const validation = @import("../internal/validation.zig");
+const referrer_policy = @import("referrer_policy");
 const InternalResponse = internal_response.InternalResponse;
 const ResponseType = internal_response.ResponseType;
 const internal_request = @import("../internal/request.zig");
@@ -182,9 +183,13 @@ pub fn httpRedirectFetchStart(
     const location_url = location orelse return .{ .response = response };
     defer allocator.free(location_url);
 
-    // Everything below needs only the status, so read it before letting the
-    // redirect response go.
+    // Everything below needs only the status and step 19's policy, so read
+    // them before letting the redirect response go.
     const status = response.status;
+    const redirect_policy = referrerPolicyOf(allocator, response) catch {
+        response.deinit();
+        return HttpFetchError.OutOfMemory;
+    };
     response.deinit();
 
     // Step 6: If locationURL's scheme is not an HTTP(S) scheme, return a
@@ -268,9 +273,9 @@ pub fn httpRedirectFetchStart(
     // Step 18: Append locationURL to request's URL list.
     request.addUrl(location_url) catch return HttpFetchError.OutOfMemory;
 
-    // Step 19: set request's referrer policy on redirect.
-    // TODO: needs the response's `Referrer-Policy` header parsed; the policy
-    // is left unchanged until then.
+    // Step 19: set request's referrer policy on redirect: "If policy is not
+    // the empty string, then set request's referrer policy to policy."
+    if (redirect_policy) |policy| request.referrer_policy = policy;
 
     // Steps 20-22: recursive main fetch. Redirect mode "manual" only reaches
     // here for a navigation, which this layer does not do, so recursive stays
@@ -312,6 +317,16 @@ const request_body_header_names = [_][]const u8{
     "Content-Location",
     "Content-Type",
 };
+
+/// Referrer Policy "parse a referrer policy from a Referrer-Policy header"
+/// on `response`: the last of its `Referrer-Policy` values that is a
+/// referrer policy, or null for the empty string (none is).
+fn referrerPolicyOf(allocator: Allocator, response: *InternalResponse) !?internal_request.ReferrerPolicy {
+    const value = (try response.header_list.get(allocator, "Referrer-Policy")) orelse return null;
+    defer allocator.free(value);
+    const parsed = referrer_policy.parseReferrerPolicyHeader(value) orelse return null;
+    return std.meta.stringToEnum(internal_request.ReferrerPolicy, @tagName(parsed));
+}
 
 /// URL "includes credentials": a non-empty username or password.
 fn urlIncludesCredentials(allocator: Allocator, url: []const u8) !bool {
@@ -458,14 +473,26 @@ pub fn httpNetworkOrCacheFetchStart(
         },
     };
 
-    // Step 8.12: Append a request `Origin` header for httpRequest - on the
-    // request sent, not on request itself: httpRequest is its clone, and a
-    // redirect's main fetch appends its own.
-    const origin_value = requestOriginHeader(allocator, request) catch return HttpFetchError.OutOfMemory;
+    // Steps 8.11-8.12 add headers to httpRequest - here, to the request
+    // sent, not to request itself: httpRequest is its clone, and a redirect's
+    // main fetch adds its own.
+    var added: [2]NetworkRequest.Header = undefined;
+    var added_len: usize = 0;
+    errdefer for (added[0..added_len]) |header| allocator.free(header.value);
+    // 8.11. If httpRequest's referrer is a URL, append (`Referer`, it
+    //       serialized).
+    if (request.referrer == .url) {
+        added[added_len] = .{ .name = "Referer", .value = allocator.dupe(u8, request.referrer.url) catch return HttpFetchError.OutOfMemory };
+        added_len += 1;
+    }
+    // 8.12. Append a request `Origin` header for httpRequest.
+    if (requestOriginHeader(allocator, request) catch return HttpFetchError.OutOfMemory) |origin_value| {
+        added[added_len] = .{ .name = "Origin", .value = origin_value };
+        added_len += 1;
+    }
 
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
-    var network_request = buildNetworkRequest(allocator, request, origin_value) catch {
-        if (origin_value) |v| allocator.free(v);
+    var network_request = buildNetworkRequest(allocator, request, added[0..added_len]) catch {
         return HttpFetchError.OutOfMemory;
     };
     network_request.require_http2 = require_http2;
@@ -629,20 +656,19 @@ pub fn httpNetworkFetchFinish(
     return response;
 }
 
-/// Build a NetworkRequest from an InternalRequest, with `origin_value` - owned,
-/// and the NetworkRequest's once this returns - as an `Origin` header after
-/// its own.
-fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, origin_value: ?[]const u8) !NetworkRequest {
+/// Build a NetworkRequest from an InternalRequest, with `added` after its own
+/// headers - their values owned, and the NetworkRequest's once this returns
+/// (on error, still the caller's).
+fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: []const NetworkRequest.Header) !NetworkRequest {
     // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
     // Allocate headers array
-    const extra: usize = if (origin_value != null) 1 else 0;
-    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + extra);
+    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + added.len);
     errdefer allocator.free(headers);
-    const owned_values = try allocator.alloc([]const u8, extra);
+    const owned_values = try allocator.alloc([]const u8, added.len);
     errdefer allocator.free(owned_values);
-    if (origin_value) |value| owned_values[0] = value;
+    for (added, 0..) |header, i| owned_values[i] = header.value;
 
     for (header_entries, 0..) |header, i| {
         headers[i] = .{
@@ -650,7 +676,7 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, origin_v
             .value = header.value,
         };
     }
-    if (origin_value) |value| headers[header_entries.len] = .{ .name = "Origin", .value = value };
+    for (added, 0..) |header, i| headers[header_entries.len + i] = header;
 
     // Get body bytes if present
     const body: ?[]const u8 = if (request.body) |b| switch (b) {
@@ -786,6 +812,16 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
             return err;
         };
         try headers.append(allocator, .{ .name = "Access-Control-Request-Headers", .value = value });
+    }
+    // The preflight's referrer is request's (which main fetch step 9 has
+    // determined): HTTP-network-or-cache fetch 8.11 sends it as `Referer`.
+    if (request.referrer == .url) {
+        const referer = try allocator.dupe(u8, request.referrer.url);
+        owned.append(allocator, referer) catch |err| {
+            allocator.free(referer);
+            return err;
+        };
+        try headers.append(allocator, .{ .name = "Referer", .value = referer });
     }
     if (request.origin != .client) {
         const origin = try request.serializeOrigin(allocator);
@@ -1258,6 +1294,7 @@ test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe heade
     const request = try InternalRequest.init(allocator, "http://b.test/x");
     defer request.deinit();
     try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
     try request.setMethod("PUT");
     try request.header_list.append("X-B", "1");
     try request.header_list.append("Content-Type", "text/plain");
@@ -1273,6 +1310,7 @@ test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe heade
         .{ "Access-Control-Request-Method", "PUT" },
         // Sorted, lowercased, joined by a bare comma.
         .{ "Access-Control-Request-Headers", "x-a,x-b" },
+        .{ "Referer", "http://a.test/page" },
         .{ "Origin", "http://a.test" },
     };
     try std.testing.expectEqual(expected.len, preflight.headers.len);
@@ -1404,4 +1442,42 @@ test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a windo
     const cors_kept = try httpNetworkOrCacheFetchFinish(allocator, request, cors_401);
     try std.testing.expect(cors_kept == cors_401);
     cors_kept.deinit();
+}
+
+test "HTTP-redirect fetch step 19: a redirect's Referrer-Policy becomes the request's" {
+    const allocator = std.testing.allocator;
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    try std.testing.expect((try referrerPolicyOf(allocator, response)) == null);
+    try response.header_list.append("Referrer-Policy", "no-referrer, bogus");
+    try response.header_list.append("Referrer-Policy", "origin");
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.origin, (try referrerPolicyOf(allocator, response)).?);
+}
+
+test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, before Origin" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
+    request.mode = .cors;
+    request.response_tainting = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    const started = try httpNetworkOrCacheFetchStart(allocator, params, .{});
+    const network_request = started.network;
+    defer freeNetworkRequest(allocator, network_request);
+    const n = network_request.headers.len;
+    try std.testing.expectEqualStrings("Referer", network_request.headers[n - 2].name);
+    try std.testing.expectEqualStrings("http://a.test/page", network_request.headers[n - 2].value);
+    try std.testing.expectEqualStrings("Origin", network_request.headers[n - 1].name);
+    try std.testing.expect(!request.header_list.contains("Referer"));
 }

@@ -239,6 +239,12 @@ pub fn createRequest(
     // 13 sets request's origin to its client's).
     if (state.client_origin) |origin| try request.setOrigin(origin);
 
+    // referrer: "client" - resolved to its URL (see `client_referrer`),
+    // which main fetch step 9 determines the request's referrer from.
+    if (state.client_origin != null) {
+        if (state.client_referrer) |source| try request.setReferrerUrl(source) else request.setReferrer(.no_referrer);
+    }
+
     // body: this's request body. Borrowed - `InternalRequest.deinit` frees only
     // the `.body` arm of the union, never `.bytes`.
     if (body) |b| {

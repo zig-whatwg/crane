@@ -38,14 +38,10 @@ pub const ReferrerSource = struct {
     /// The full URL for full referrer
     full_url: []const u8,
 
-    /// Check if this is a potentially trustworthy URL.
-    /// Simplified: HTTPS and localhost are trustworthy.
+    /// Check if this is a potentially trustworthy URL (see
+    /// `isPotentiallyTrustworthyOrigin`).
     pub fn isPotentiallyTrustworthy(self: ReferrerSource) bool {
-        if (std.mem.eql(u8, self.scheme, "https")) return true;
-        if (std.mem.eql(u8, self.host, "localhost")) return true;
-        if (std.mem.eql(u8, self.host, "127.0.0.1")) return true;
-        if (std.mem.startsWith(u8, self.host, "[::1]")) return true;
-        return false;
+        return isPotentiallyTrustworthyOrigin(self.scheme, self.host);
     }
 
     /// Get the origin-only URL (scheme://host:port/).
@@ -64,15 +60,48 @@ pub const TargetInfo = struct {
     host: []const u8,
     port: ?u16,
 
-    /// Check if this is a potentially trustworthy URL.
+    /// Check if this is a potentially trustworthy URL (see
+    /// `isPotentiallyTrustworthyOrigin`).
     pub fn isPotentiallyTrustworthy(self: TargetInfo) bool {
-        if (std.mem.eql(u8, self.scheme, "https")) return true;
-        if (std.mem.eql(u8, self.host, "localhost")) return true;
-        if (std.mem.eql(u8, self.host, "127.0.0.1")) return true;
-        if (std.mem.startsWith(u8, self.host, "[::1]")) return true;
-        return false;
+        return isPotentiallyTrustworthyOrigin(self.scheme, self.host);
     }
 };
+
+/// Secure Contexts "Is origin potentially trustworthy?" for a tuple origin
+/// given as its scheme and serialized host (an IPv6 host in brackets).
+///
+/// Spec: https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy
+pub fn isPotentiallyTrustworthyOrigin(scheme: []const u8, host: []const u8) bool {
+    // 3. If origin's scheme is either "https" or "wss", return "Potentially
+    //    Trustworthy".
+    if (std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "wss")) return true;
+    // 4. If origin's host matches one of the CIDR notations 127.0.0.0/8 or
+    //    ::1/128, return "Potentially Trustworthy".
+    if (std.mem.startsWith(u8, host, "127.") and isIPv4(host)) return true;
+    if (std.mem.eql(u8, host, "[::1]")) return true;
+    // 5. If the user agent conforms to the name resolution rules in
+    //    [let-localhost-be-localhost] and one of the following is true:
+    //    origin's host is "localhost" or "localhost.", or ends with
+    //    ".localhost" or ".localhost.".
+    if (std.mem.eql(u8, host, "localhost") or std.mem.eql(u8, host, "localhost.")) return true;
+    if (std.mem.endsWith(u8, host, ".localhost") or std.mem.endsWith(u8, host, ".localhost.")) return true;
+    // 6. If origin's scheme is "file", return "Potentially Trustworthy".
+    if (std.mem.eql(u8, scheme, "file")) return true;
+    // 8. Return "Not Trustworthy".
+    return false;
+}
+
+/// A serialized host that is an IPv4 address: four dotted decimals.
+fn isIPv4(host: []const u8) bool {
+    var parts: usize = 0;
+    var it = std.mem.splitScalar(u8, host, '.');
+    while (it.next()) |part| {
+        parts += 1;
+        if (part.len == 0) return false;
+        for (part) |c| if (!std.ascii.isDigit(c)) return false;
+    }
+    return parts == 4;
+}
 
 /// Determine the referrer for a request.
 ///
@@ -98,89 +127,88 @@ pub fn determineReferrer(
     target: TargetInfo,
     is_same_origin: bool,
 ) !Referrer {
-    // Step 1: If referrer source is null/empty, return no referrer
+    // Steps 1-3: the caller resolves referrerSource - `referrer_source`,
+    // null when there is none - and step 4 strips it: `full_url` is
+    // referrerURL (`stripUrlForReferrer`).
     const source = referrer_source orelse return .no_referrer;
-
-    // Step 2: Check for local schemes that should not send referrer
+    // Stripping a URL with a local scheme gives no referrer (8.4 step 2).
     if (isLocalScheme(source.scheme)) {
         return .no_referrer;
     }
 
-    // Step 3: Determine effective policy (empty -> default)
+    // Step 5: Let referrerOrigin be the result of stripping referrerSource
+    // for use as a referrer, with the origin-only flag set to true.
+    const referrer_origin = try source.originOnly(allocator);
+    defer allocator.free(referrer_origin);
+
+    // Step 6: If the result of serializing referrerURL is a string whose
+    // length is greater than 4096, set referrerURL to referrerOrigin.
+    const referrer_url = if (source.full_url.len > 4096) referrer_origin else source.full_url;
+
+    // The empty policy is the default (Fetch main fetch step 8 replaces it
+    // before this runs).
     const effective_policy = if (policy == .empty)
         ReferrerPolicy.default()
     else
         policy;
 
-    // Step 4: Apply the policy
-    return applyPolicy(allocator, effective_policy, source, target, is_same_origin);
+    // Step 8: Execute the statements corresponding to the value of policy.
+    return applyPolicy(allocator, effective_policy, source, referrer_url, referrer_origin, target, is_same_origin);
 }
 
-/// Apply a referrer policy to determine what to send.
-///
-/// Spec: § 8.3 policy-specific logic
+/// Referrer Policy 8.3 step 8: what `policy` sends - `referrer_url` or
+/// `referrer_origin` (copied), or no referrer.
 fn applyPolicy(
     allocator: Allocator,
     policy: ReferrerPolicy,
     source: ReferrerSource,
+    referrer_url: []const u8,
+    referrer_origin: []const u8,
     target: TargetInfo,
     is_same_origin: bool,
 ) !Referrer {
     const is_downgrade = isDowngrade(source, target);
-
-    return switch (policy) {
+    const chosen: ?[]const u8 = switch (policy) {
         .empty => unreachable, // Handled by caller
 
-        .no_referrer => .no_referrer,
+        // "no-referrer": Return no referrer.
+        .no_referrer => null,
 
-        .no_referrer_when_downgrade => {
-            // Send full URL unless downgrade
-            if (is_downgrade) return .no_referrer;
-            return .{ .url = try allocator.dupe(u8, source.full_url) };
-        },
+        // "no-referrer-when-downgrade": If referrerURL is a potentially
+        // trustworthy URL and request's current URL is not, then return no
+        // referrer. Return referrerURL.
+        .no_referrer_when_downgrade => if (is_downgrade) null else referrer_url,
 
-        .same_origin => {
-            // Only send for same-origin
-            if (is_same_origin) {
-                return .{ .url = try allocator.dupe(u8, source.full_url) };
-            }
-            return .no_referrer;
-        },
+        // "same-origin": If the origin of referrerURL and the origin of
+        // request's current URL are the same, then return referrerURL.
+        // Return no referrer.
+        .same_origin => if (is_same_origin) referrer_url else null,
 
-        .origin => {
-            // Always send origin only
-            return .{ .url = try source.originOnly(allocator) };
-        },
+        // "origin": Return referrerOrigin.
+        .origin => referrer_origin,
 
-        .strict_origin => {
-            // Send origin only, unless downgrade
-            if (is_downgrade) return .no_referrer;
-            return .{ .url = try source.originOnly(allocator) };
-        },
+        // "strict-origin": If referrerURL is a potentially trustworthy URL
+        // and request's current URL is not, then return no referrer. Return
+        // referrerOrigin.
+        .strict_origin => if (is_downgrade) null else referrer_origin,
 
-        .origin_when_cross_origin => {
-            // Full URL for same-origin, origin for cross-origin
-            if (is_same_origin) {
-                return .{ .url = try allocator.dupe(u8, source.full_url) };
-            }
-            return .{ .url = try source.originOnly(allocator) };
-        },
+        // "origin-when-cross-origin": If the origin of referrerURL and the
+        // origin of request's current URL are the same, then return
+        // referrerURL. Return referrerOrigin.
+        .origin_when_cross_origin => if (is_same_origin) referrer_url else referrer_origin,
 
-        .strict_origin_when_cross_origin => {
-            // Full URL for same-origin
-            // Origin for cross-origin (unless downgrade)
-            if (is_same_origin) {
-                return .{ .url = try allocator.dupe(u8, source.full_url) };
-            }
-            if (is_downgrade) return .no_referrer;
-            return .{ .url = try source.originOnly(allocator) };
-        },
+        // "strict-origin-when-cross-origin": 1. If the origin of referrerURL
+        // and the origin of request's current URL are the same, then return
+        // referrerURL. 2. If referrerURL is a potentially trustworthy URL and
+        // request's current URL is not, then return no referrer. 3. Return
+        // referrerOrigin.
+        .strict_origin_when_cross_origin => if (is_same_origin) referrer_url else if (is_downgrade) null else referrer_origin,
 
-        .unsafe_url => {
-            // Always send full URL
-            return .{ .url = try allocator.dupe(u8, source.full_url) };
-        },
+        // "unsafe-url": Return referrerURL.
+        .unsafe_url => referrer_url,
     };
+    const value = chosen orelse return .no_referrer;
+    return .{ .url = try allocator.dupe(u8, value) };
 }
 
 /// Check if this is a downgrade (HTTPS -> HTTP).
@@ -200,23 +228,26 @@ fn isLocalScheme(scheme: []const u8) bool {
         std.mem.eql(u8, scheme, "data");
 }
 
-/// Strip a URL for use as referrer.
+/// Strip a URL for use as referrer - without the origin-only flag
+/// (`ReferrerSource.originOnly` is that form).
 ///
 /// Spec: § 8.4 "Strip url for use as a referrer"
 ///
-/// Algorithm:
-/// 1. If URL scheme is local, return no referrer
-/// 2. Set username and password to empty string
-/// 3. Set fragment to null
-/// 4. Return URL
+/// 1. If url is null, return no referrer.
+/// 2. If url's scheme is a local scheme, then return no referrer.
+/// 3. Set url's username to the empty string.
+/// 4. Set url's password to the empty string.
+/// 5. Set url's fragment to null.
+/// 7. Return url.
 ///
-/// This function returns a new string with username/password/fragment removed.
+/// `url` is a serialized URL (the URL parser's output, so its authority is
+/// canonical); null is "no referrer". The result is owned.
 pub fn stripUrlForReferrer(allocator: Allocator, url: []const u8) !?[]const u8 {
     // Find scheme - look for first : character
     const colon_pos = std.mem.indexOf(u8, url, ":") orelse return null;
     const scheme = url[0..colon_pos];
 
-    // Check for local schemes
+    // Step 2: If url's scheme is a local scheme, then return no referrer.
     if (isLocalScheme(scheme)) {
         return null;
     }
@@ -228,17 +259,24 @@ pub fn stripUrlForReferrer(allocator: Allocator, url: []const u8) !?[]const u8 {
         return null;
     }
 
-    // Find fragment and remove it
+    // Step 5: Set url's fragment to null.
     const fragment_pos = std.mem.indexOf(u8, url, "#");
     const url_without_fragment = if (fragment_pos) |pos|
         url[0..pos]
     else
         url;
 
-    // TODO: Strip username:password@ if present
-    // For now, assume URLs don't have credentials embedded
-    // (most modern URLs don't use this deprecated pattern)
+    // Steps 3-4: Set url's username and password to the empty string. In a
+    // serialized URL they are the userinfo before the last "@" of the
+    // authority, which ends at the first "/", "?" or "#" after "://".
+    const authority_start = colon_pos + 3;
+    const authority_len = std.mem.indexOfAny(u8, url_without_fragment[authority_start..], "/?#") orelse url_without_fragment.len - authority_start;
+    const authority = url_without_fragment[authority_start .. authority_start + authority_len];
+    if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| {
+        return try std.mem.concat(allocator, u8, &.{ url_without_fragment[0..authority_start], url_without_fragment[authority_start + at + 1 ..] });
+    }
 
+    // Step 7: Return url.
     return try allocator.dupe(u8, url_without_fragment);
 }
 

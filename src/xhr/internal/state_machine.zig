@@ -209,6 +209,11 @@ pub const XMLHttpRequestState = struct {
     /// send() has asked for it: the request's origin. Owned.
     client_origin: ?[]const u8,
 
+    /// The request's referrer, resolved from its client when send() runs:
+    /// the client's document URL (a worker's creation URL), or null for
+    /// none (an opaque origin, or no URL to name). Owned.
+    client_referrer: ?[]const u8,
+
     /// Initialize state
     ///
     /// Spec: Constructor steps set initial values
@@ -247,6 +252,7 @@ pub const XMLHttpRequestState = struct {
             .base_url = null,
             .event_sink = null,
             .client_origin = null,
+            .client_referrer = null,
         };
     }
 
@@ -258,9 +264,18 @@ pub const XMLHttpRequestState = struct {
         self.client_origin = copy;
     }
 
+    /// Set the request's referrer source (see `client_referrer`), copied;
+    /// null for none.
+    pub fn setClientReferrer(self: *XMLHttpRequestState, url: ?[]const u8) !void {
+        const copy: ?[]const u8 = if (url) |u| try self.allocator.dupe(u8, u) else null;
+        if (self.client_referrer) |old| self.allocator.free(old);
+        self.client_referrer = copy;
+    }
+
     /// Clean up state
     pub fn deinit(self: *XMLHttpRequestState) void {
         if (self.client_origin) |o| self.allocator.free(o);
+        if (self.client_referrer) |r| self.allocator.free(r);
         // Free request state
         if (self.request_method) |m| self.allocator.free(m);
         if (self.request_url) |u| self.allocator.free(u);

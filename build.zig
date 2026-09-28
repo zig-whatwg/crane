@@ -2441,6 +2441,11 @@ pub fn build(b: *std.Build) void {
         const run_fetch_tests = b.addRunArtifact(fetch_tests);
         test_step.dependOn(&run_fetch_tests.step);
 
+        // Referrer Policy is a module of its own, so the fetch test binary,
+        // though it imports it, never runs its test blocks.
+        const referrer_policy_tests = b.addTest(.{ .root_module = referrer_policy_mod });
+        test_step.dependOn(&b.addRunArtifact(referrer_policy_tests).step);
+
         // Add dedicated test files from tests/fetch/ when they exist
         const fetch_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },

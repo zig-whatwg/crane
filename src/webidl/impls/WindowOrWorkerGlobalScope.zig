@@ -769,6 +769,25 @@ fn populateRequestFromClient(global: *runtime.Instance, request: *@import("fetch
     }
     // 2. If request's origin is "client": the client's origin.
     if (request.origin == .client) try setClientOrigin(global, request);
+    // Referrer Policy "determine request's referrer", step 3's "client" case,
+    // resolved here where the client is known; main fetch step 9 takes it
+    // from there as a URL referrer, which is the same referrerSource.
+    if (request.referrer == .client) try setClientReferrer(global, request);
+}
+
+/// A "client" referrer's source: a Window's document's URL, or a worker's
+/// creation URL - both are the realm's document URL - and no referrer at
+/// all for a client whose origin is opaque.
+fn setClientReferrer(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
+    if (request.origin == .origin and std.mem.eql(u8, request.origin.origin, "null")) {
+        request.setReferrer(.no_referrer);
+        return;
+    }
+    // TODO: an iframe srcdoc document's referrer source is its container
+    // document's URL; "about:srcdoc" here strips to no referrer.
+    const url = global.ctx.documentUrl() orelse return;
+    if (url.len == 0) return;
+    try request.setReferrerUrl(url);
 }
 
 /// Set `request`'s origin to `global`'s settings object's origin,

@@ -638,6 +638,10 @@ fn setClientOrigin(instance: *runtime.Instance, state: *XMLHttpRequestState) !vo
     // An origin the global does not know yet stays "client".
     if (origin.len == 0) return;
     try state.setClientOrigin(origin);
+    // The request's referrer "client", resolved: this realm's document URL
+    // (a worker's creation URL), and none for an opaque origin.
+    const referrer: ?[]const u8 = if (std.mem.eql(u8, origin, "null")) null else instance.ctx.documentUrl();
+    try state.setClientReferrer(if (referrer) |r| (if (r.len > 0) r else null) else null);
 }
 
 /// "Parse JSON from bytes", as a completion: the response getter returns
