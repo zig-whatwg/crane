@@ -288,7 +288,12 @@ pub const NetworkScheduler = struct {
             switch (job.client) {
                 .stream => |client| {
                     if (!job.head_delivered and (job.transfer.headersComplete() or job.ended != null)) {
-                        if (job.transfer.headersComplete()) {
+                        // A transfer that ended cleanly mid-header-block:
+                        // the connection's close ends the block. (One that
+                        // failed - curl refusing a header line with a NUL
+                        // in it, say - is the failure it is.)
+                        const closed_cleanly = if (job.ended) |result| result == curl.CURLE_OK else false;
+                        if (job.transfer.headersComplete() or (closed_cleanly and job.transfer.endHeadersAtClose())) {
                             job.head_delivered = true;
                             const head = job.transfer.head() catch |err| {
                                 self.finalize(job);
