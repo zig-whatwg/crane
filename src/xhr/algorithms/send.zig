@@ -198,6 +198,16 @@ fn isUtf8Label(text: []const u16) bool {
     return true;
 }
 
+/// The upload's progress accounting for a request whose upload `loadstart`
+/// send() step 11.5 has already fired (`sendStart`): marked started, so the
+/// first chunk does not fire it a second time - one `loadstart` at the
+/// upload object, however many requests a redirect makes.
+fn startedUploadTracker(body_length: usize, sink: ?event_support.EventSink) UploadTracker {
+    var tracker = UploadTracker.init(body_length, sink);
+    tracker.started = true;
+    return tracker;
+}
+
 /// Steps 11.1-11.6 of send(): fire loadstart.
 ///
 /// SYNCHRONOUS, and that is the point. `loadstart` is a step of `send()`, not
@@ -279,7 +289,7 @@ pub fn sendAsyncFinish(
     // `abort()` or `open()` ends the fetch, and this never runs.
     var upload_tracker: ?UploadTracker = null;
     if (!state.upload_complete_flag and state.upload_listener_flag) {
-        upload_tracker = UploadTracker.init(if (body) |b| b.len else 0, state.event_sink);
+        upload_tracker = startedUploadTracker(if (body) |b| b.len else 0, state.event_sink);
     }
     return FetchIntegration.processFetchResult(
         state,
@@ -328,7 +338,7 @@ fn sendAsync(
     // to decide whether to fire `loadstart` at the upload object.
     var upload_tracker: ?UploadTracker = null;
     if (!state.upload_complete_flag and state.upload_listener_flag) {
-        upload_tracker = UploadTracker.init(request_body_length, state.event_sink);
+        upload_tracker = startedUploadTracker(request_body_length, state.event_sink);
     }
 
     // Steps 11.7-11.10: run the fetch, feeding the processor.
@@ -444,4 +454,9 @@ test "send() step 4.5: a USVString body's author charset becomes UTF-8, and noth
     try expectContentType("charset=bogus", "charset=bogus", .usvstring, "text/plain;charset=UTF-8");
     // Not a USVString: the author's type stands whatever its charset.
     try expectContentType("text/plain;charset=shift-jis", "text/plain;charset=shift-jis", .other, "application/octet-stream");
+}
+
+test "the upload tracker send() makes has fired loadstart already" {
+    const tracker = startedUploadTracker(12000, null);
+    try std.testing.expect(tracker.started);
 }
