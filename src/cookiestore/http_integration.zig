@@ -221,19 +221,21 @@ pub fn storeCookie(allocator: std.mem.Allocator, jar: *CookieJar, parsed: *Parse
     // 3. A host that failed to parse stores nothing.
     if (parsed.host_failure) return .ignored;
     // 4. Its creation-time and last-access-time are now (Cookie.init).
+    // The cookie's host is null - it had no Domain attribute - while it is
+    // host-only: parseCookie marks it so, and so does the Cookie Store API's
+    // "set a cookie" given no domain.
+    var has_host = !cookie.host_only and cookie.domain != null;
     // 5. A public suffix is a host only for itself, host-only.
-    if (!options.allow_non_host_only_cookie_for_public_suffix) {
-        if (cookie.domain) |domain| {
-            if (try domain_matching.isPublicSuffix(allocator, domain)) {
-                if (!std.ascii.eqlIgnoreCase(domain, options.host)) return .ignored;
-                if (cookie.allocator) |owner| owner.free(domain);
-                cookie.domain = null;
-            }
+    if (has_host and !options.allow_non_host_only_cookie_for_public_suffix) {
+        const domain = cookie.domain.?;
+        if (try domain_matching.isPublicSuffix(allocator, domain)) {
+            if (!std.ascii.eqlIgnoreCase(domain, options.host)) return .ignored;
+            has_host = false;
         }
     }
-    if (cookie.domain) |domain| {
+    if (has_host) {
         // 7. Otherwise host must Domain-Match it.
-        if (!domain_matching.domainMatches(options.host, domain)) return .ignored;
+        if (!domain_matching.domainMatches(options.host, cookie.domain.?)) return .ignored;
         cookie.host_only = false;
     } else {
         // 6. A cookie with no host is host-only, for host.

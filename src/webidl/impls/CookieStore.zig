@@ -35,46 +35,61 @@ pub const ImplError = error{
 };
 
 /// Internal state for CookieStore implementation
+///
+/// The cookies are not here: they are the user agent's, in the jar this
+/// store's relevant settings object reaches (`clientOf`), which fetch,
+/// navigations and document.cookie use too.
 pub const InternalState = struct {
-    /// The origin URL host for this cookie store
-    origin_host: []const u8,
     /// Whether this store is in a secure context
     is_secure_context: bool,
     /// The onchange event handler
     onchange_handler: ?*const anyopaque,
-    /// Cookie jar for storage
-    cookie_jar: CookieJar,
     /// Change observer for event dispatch
     change_observer: CookieChangeObserver,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, origin_host: []const u8, is_secure_context: bool) !*InternalState {
+    pub fn init(allocator: std.mem.Allocator, is_secure_context: bool) !*InternalState {
         const internal = try allocator.create(InternalState);
-        errdefer allocator.destroy(internal);
-
-        const host_copy = try allocator.dupe(u8, origin_host);
-        errdefer allocator.free(host_copy);
-
         internal.* = InternalState{
-            .origin_host = host_copy,
             .is_secure_context = is_secure_context,
             .onchange_handler = null,
-            .cookie_jar = CookieJar.init(allocator),
             .change_observer = CookieChangeObserver.init(allocator),
             .allocator = allocator,
         };
-
         return internal;
     }
 
     pub fn deinit(self: *InternalState) void {
-        self.cookie_jar.deinit();
         self.change_observer.deinit();
-        self.allocator.free(self.origin_host);
         self.allocator.destroy(self);
     }
 };
+
+/// This store's relevant settings object, as the Cookie Store algorithms
+/// read it: the user agent's cookie jar, its creation URL, and whether its
+/// origin is opaque.
+const Client = struct {
+    jar: *CookieJar,
+    /// The creation URL, serialized - the realm's document URL (a worker's
+    /// is its script URL). Borrowed from the realm.
+    url: []const u8,
+    opaque_origin: bool,
+};
+
+/// `instance`'s relevant settings object as a `Client`, or null for one
+/// that reaches no jar (a realm no Browser made) or has no URL yet.
+fn clientOf(instance: *runtime.Instance) ?Client {
+    const record = instance.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const global_settings = @import("dom").global_settings;
+    const jar = global_settings.cookieJarOf(global) orelse return null;
+    const url = instance.ctx.documentUrl() orelse return null;
+    const settings = global_settings.of(global) orelse return null;
+    const origin = settings.origin(global) catch return null;
+    defer global.ctx.allocator.free(origin);
+    return .{ .jar = jar, .url = url, .opaque_origin = std.mem.eql(u8, origin, "null") };
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -86,7 +101,7 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
 
     // Initialize internal state with default values
-    const internal = try InternalState.init(allocator, "localhost", true);
+    const internal = try InternalState.init(allocator, true);
 
     // Store internal state pointer in state
     const state = instance.getState(StateType);
@@ -132,22 +147,21 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) a
 // without an isolate - see tests/cookiestore/query_items_test.zig.
 // ============================================================================
 
-/// Query this store's jar. `null` matches every cookie.
+/// Cookie Store "query cookies" given `url` (serialized) and `name`:
+/// `jar`'s cookies for the URL as a "non-HTTP" API sees them - no HttpOnly
+/// cookie - those named `name`, or all for null.
 ///
 /// https://cookiestore.spec.whatwg.org/#query-cookies
 ///
 /// Caller owns the list and each item; pass both to `freeItems`.
 pub fn queryItems(
-    internal: *InternalState,
+    allocator: std.mem.Allocator,
+    jar: *CookieJar,
+    url: []const u8,
     name: ?[]const u8,
 ) !std.ArrayListUnmanaged(CookieListItem) {
-    return cookiestore.queryCookies(
-        internal.allocator,
-        &internal.cookie_jar,
-        internal.origin_host,
-        "/",
-        name,
-    );
+    const parts = cookiestore.RequestUrl.of(url) orelse return .empty;
+    return cookiestore.queryCookies(allocator, jar, parts.host, parts.path, name);
 }
 
 /// Release a list returned by `queryItems`.
@@ -197,9 +211,14 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
 
     const internal = getInternalState(instance) orelse
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    // Steps 1-4: the relevant settings object; an opaque origin rejects
+    // with a SecurityError; its creation URL is the one queried.
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    // Step 4: run query cookies with url and name.
-    var items = queryItems(internal, nameFilter(name)) catch
+    // Step 6.1: run query cookies with url and name.
+    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
         return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -220,8 +239,12 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
 
     const internal = getInternalState(instance) orelse
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    // Steps 1-4, as get().
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    var items = queryItems(internal, nameFilter(name)) catch
+    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
         return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -244,8 +267,15 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
     if (!internal.is_secure_context) {
         return cookie_values.rejectedWithTypeError(realm, "CookieStore.set requires a secure context");
     }
+    // Steps 1-4, as get().
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
+    const url = cookiestore.RequestUrl.of(client.url) orelse
+        return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
 
-    cookiestore.setCookie(internal.allocator, &internal.cookie_jar, internal.origin_host, .{
+    // Step 6.1: set a cookie with url, name, value, and the defaults.
+    cookiestore.setCookieObserved(internal.allocator, client.jar, &internal.change_observer, url.host, .{
         .name = name,
         .value = value,
     }) catch |err| return switch (err) {
@@ -266,8 +296,15 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
 
     const internal = getInternalState(instance) orelse
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    // Steps 1-4, as get().
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
+    const url = cookiestore.RequestUrl.of(client.url) orelse
+        return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
 
-    cookiestore.deleteCookie(internal.allocator, &internal.cookie_jar, internal.origin_host, .{
+    // Step 6.1: delete a cookie with url, name, null, "/" and true.
+    cookiestore.deleteCookieObserved(internal.allocator, client.jar, &internal.change_observer, url.host, .{
         .name = name,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
@@ -284,6 +321,10 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
 /// Create a new CookieStore for a given origin
 /// This is used by Window and ServiceWorkerGlobalScope to create their
 /// cookieStore attribute.
+///
+/// `origin_host` is not read: every operation reads the store's relevant
+/// settings object - its jar, creation URL and origin - when it runs.
+/// (Window passed its serialized origin here as a host.)
 pub fn createForOrigin(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -292,22 +333,15 @@ pub fn createForOrigin(
     origin_host: []const u8,
     is_secure_context: bool,
 ) !*runtime.Instance {
+    _ = origin_host;
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
 
-    const internal = try InternalState.init(allocator, origin_host, is_secure_context);
+    const internal = try InternalState.init(allocator, is_secure_context);
 
     const state = instance.getState(StateType);
     state.own._internal = internal;
 
     return instance;
-}
-
-/// Get the cookie jar for direct access (used by Fetch API)
-pub fn getCookieJar(instance: *runtime.Instance) ?*CookieJar {
-    if (getInternalState(instance)) |internal| {
-        return &internal.cookie_jar;
-    }
-    return null;
 }
 
 /// Get the change observer for event registration

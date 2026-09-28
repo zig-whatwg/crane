@@ -89,6 +89,14 @@ pub fn rejectedWithTypeError(realm: runtime.Context, message: []const u8) engine
     return (try engine.createRejectedPromise(realm, exception.value)).take();
 }
 
+/// WebIDL "a promise rejected with" a new DOMException named `name`, for
+/// the binding - an opaque origin's "SecurityError".
+pub fn rejectedWithDOMException(realm: runtime.Context, name: []const u8, message: []const u8) engine.Error!JSValue {
+    const exception = try engine.createDOMException(realm, name, message);
+    defer exception.release();
+    return (try engine.createRejectedPromise(realm, exception.value)).take();
+}
+
 /// The realm an operation's promise is made in: the current realm (WebIDL
 /// makes an operation's promise in the realm of the function called), else
 /// the object's relevant realm.
