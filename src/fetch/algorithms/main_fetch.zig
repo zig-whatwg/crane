@@ -141,6 +141,9 @@ pub const MainFetchStart = union(enum) {
     response: *InternalResponse,
     /// Step 12's fetch is HTTP fetch.
     http_fetch,
+    /// Step 12's fetch is HTTP fetch with makeCORSPreflight true: a request
+    /// the CORS protocol lets out only once a CORS-preflight fetch agrees.
+    http_fetch_with_cors_preflight,
 };
 
 /// Main fetch steps 1-12, as far as the fetch that produces its response.
@@ -244,17 +247,37 @@ pub fn mainFetchStart(
     // error.
     if (!scheme_fetch.isHttpScheme(scheme)) return .{ .response = try internal_response.networkError(allocator) };
 
-    // A request that needs a CORS-preflight (its use-CORS-preflight flag, or
-    // an unsafe request with a method or headers that are not
-    // CORS-safelisted), and otherwise: set request's response tainting to
-    // "cors" and run HTTP fetch - with makeCORSPreflight for the first.
-    //
-    // TODO: the CORS-preflight fetch. It must become a network step of its
-    // own, as the request is, and until it does the request goes out without
-    // one - as every request did before this step existed - and its response
-    // still meets HTTP fetch 4.4's CORS check.
+    // request's use-CORS-preflight flag is set, or its unsafe-request flag
+    // is set and either its method is not a CORS-safelisted method or the
+    // CORS-unsafe request-header names with its header list is not empty:
+    //   1. Set request's response tainting to "cors".
+    //   2. Return the result of running HTTP fetch given fetchParams and
+    //      true. (Steps 3-4 clear the CORS-preflight cache on a network
+    //      error; there is no cache.)
+    // Otherwise:
+    //   1. Set request's response tainting to "cors".
+    //   2. Return the result of running HTTP fetch given fetchParams.
     request.response_tainting = .cors;
+    if (needsCorsPreflight(allocator, request) catch return MainFetchError.OutOfMemory) return .http_fetch_with_cors_preflight;
     return .http_fetch;
+}
+
+/// Main fetch step 12's condition for HTTP fetch with makeCORSPreflight.
+fn needsCorsPreflight(allocator: Allocator, request: *const InternalRequest) !bool {
+    if (request.use_cors_preflight) return true;
+    if (!request.unsafe_request) return false;
+    if (!isCorsSafelistedMethod(request.method)) return true;
+    const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
+    defer {
+        for (unsafe_names) |name| allocator.free(name);
+        allocator.free(unsafe_names);
+    }
+    return unsafe_names.len > 0;
+}
+
+/// A CORS-safelisted method: `GET`, `HEAD` or `POST`.
+pub fn isCorsSafelistedMethod(method: []const u8) bool {
+    return std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "POST");
 }
 
 /// Main fetch step 12's "run scheme fetch": HTTP fetch for an HTTP(S) URL
@@ -547,7 +570,7 @@ test "extractScheme helper" {
     try std.testing.expectEqualStrings("", extractScheme("no-colon-here"));
 }
 
-const StepTwelveOutcome = enum { http_fetch, response, network_error };
+const StepTwelveOutcome = enum { http_fetch, http_fetch_with_cors_preflight, response, network_error };
 
 /// Run main fetch steps 1-12 for a GET of `url` with `origin` (null: the
 /// request's origin stays "client"), and say where step 12 left it.
@@ -575,6 +598,7 @@ fn runStepTwelve(
 
     return switch (try mainFetchStart(allocator, params, false)) {
         .http_fetch => .{ .outcome = .http_fetch, .tainting = request.response_tainting },
+        .http_fetch_with_cors_preflight => .{ .outcome = .http_fetch_with_cors_preflight, .tainting = request.response_tainting },
         .response => |response| blk: {
             defer response.deinit();
             break :blk .{
@@ -710,4 +734,44 @@ test "main fetch step 14: tainting marks the response, and an opaque-redirect on
     _ = mainFetchFinish(params, false, redirect);
     try std.testing.expectEqual(ResponseType.opaqueredirect, redirect.response_type);
     try std.testing.expectEqual(0, redirect.cors_exposed_header_name_list.items.len);
+}
+
+test "main fetch step 12: an unsafe cross-origin request needs a CORS-preflight" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // Not an unsafe request (one the user agent made): no preflight,
+    // whatever its method.
+    try request.setMethod("PUT");
+    try std.testing.expectEqual(.http_fetch, try mainFetchStart(allocator, params, false));
+
+    // An unsafe request: a method that is not CORS-safelisted...
+    request.unsafe_request = true;
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
+
+    // ...but a safelisted method with safelisted headers goes as it is...
+    try request.setMethod("POST");
+    try request.header_list.append("Content-Type", "text/plain");
+    try std.testing.expectEqual(.http_fetch, try mainFetchStart(allocator, params, false));
+
+    // ...until a header is not safelisted.
+    try request.header_list.append("X-Custom", "1");
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
+
+    // The use-CORS-preflight flag asks for one outright.
+    request.unsafe_request = false;
+    request.use_cors_preflight = true;
+    try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
 }

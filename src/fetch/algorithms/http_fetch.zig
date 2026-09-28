@@ -16,6 +16,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
+const validation = @import("../internal/validation.zig");
 const InternalResponse = internal_response.InternalResponse;
 const ResponseType = internal_response.ResponseType;
 const internal_request = @import("../internal/request.zig");
@@ -28,11 +29,8 @@ const network = @import("../network/root.zig");
 const NetworkRequest = network.NetworkRequest;
 const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
-const LibcurlBackend = network.LibcurlBackend;
 const CurlCookieManager = network.curl_cookies.CurlCookieManager;
-const cors = @import("../cors/root.zig");
 const clock = @import("clock");
-const PreflightCache = cors.PreflightCache;
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
@@ -56,14 +54,10 @@ pub const HttpFetchResult = struct {
 
 /// Options for HTTP fetch.
 pub const HttpFetchOptions = struct {
-    /// CORS-preflight flag - set if preflight should be performed
-    cors_preflight_flag: bool = false,
     /// Cookie manager for credentials handling (optional)
     /// If null, LibcurlBackend creates its own cookie manager.
     /// Cookies are handled automatically by libcurl when attached.
     cookie_manager: ?*CurlCookieManager = null,
-    /// Preflight cache for CORS preflight requests (optional)
-    preflight_cache: ?*PreflightCache = null,
 };
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
@@ -445,27 +439,7 @@ pub fn httpNetworkOrCacheFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    // CORS preflight per Fetch spec §4.8 step 8
-    // If CORS-preflight flag is set, perform preflight before actual request
-    //
-    // Main fetch sets no CORS flags yet, so nothing reaches this. When it
-    // does, the preflight has to become a network step of its own, like the
-    // request below: as it stands it blocks.
-    if (options.cors_preflight_flag) {
-        const preflight_result = performCorsPreflight(allocator, request, options) catch {
-            return HttpFetchError.OutOfMemory;
-        };
-
-        switch (preflight_result) {
-            .success => {
-                // Preflight succeeded, continue with actual request
-            },
-            .failure => {
-                // Preflight failed
-                return HttpFetchError.CorsError;
-            },
-        }
-    }
+    _ = options;
 
     // HTTP-network fetch, step 8.3: "If connection is an HTTP/1.x
     // connection, request's body is non-null, and request's body's source is
@@ -730,244 +704,195 @@ pub fn getCurrentTimeMs() f64 {
 }
 
 // =============================================================================
-// CORS Preflight Integration
+// CORS-preflight fetch
 // =============================================================================
 
-/// Perform CORS preflight request using real network.
-///
-/// Per Fetch spec §4.8 step 8:
-/// "If CORS-preflight flag is set, then run CORS-preflight fetch"
-///
-/// This function:
-/// 1. Checks preflight cache for existing valid entry
-/// 2. If not cached, performs OPTIONS request via LibcurlBackend
-/// 3. Validates response and caches successful preflights
-fn performCorsPreflight(
-    allocator: Allocator,
-    request: *InternalRequest,
-    options: HttpFetchOptions,
-) !cors.PreflightResult {
-    // Get request origin
-    const origin = switch (request.origin) {
-        .client => return .{ .failure = .cors_check_failed },
-        .origin => |o| o,
-    };
-
-    const url = request.currentUrl();
-
-    // Check preflight cache first
-    if (options.preflight_cache) |cache| {
-        if (cache.match(origin, url, origin)) |entry| {
-            // Validate cached entry allows this request
-            if (entry.isMethodAllowed(request.method)) {
-                // Check headers
-                const header_entries = request.header_list.iterator();
-                var all_headers_allowed = true;
-                for (header_entries) |header| {
-                    if (!cors.isCorseSafelistedRequestHeader(header.name, header.value)) {
-                        if (!entry.isHeaderAllowed(header.name)) {
-                            all_headers_allowed = false;
-                            break;
-                        }
-                    }
-                }
-                if (all_headers_allowed) {
-                    // Cache hit - preflight allowed
-                    return .{
-                        .success = .{
-                            .allocator = allocator,
-                            .methods = .empty,
-                            .headers = .empty,
-                            .methods_wildcard = entry.methods_wildcard,
-                            .headers_wildcard = entry.headers_wildcard,
-                            .expiry_time = entry.expiry_time,
-                        },
-                    };
-                }
-            }
-        }
-    }
-
-    // No valid cache entry - perform preflight request
-
-    // Get unsafe header names
-    const header_entries = request.header_list.iterator();
-    var header_names: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer header_names.deinit(allocator);
-    var header_values: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer header_values.deinit(allocator);
-
-    for (header_entries) |header| {
-        try header_names.append(allocator, header.name);
-        try header_values.append(allocator, header.value);
-    }
-
-    const unsafe_headers = try cors.getCorsUnsafeHeaderNames(
-        allocator,
-        header_names.items,
-        header_values.items,
-    );
-    defer allocator.free(unsafe_headers);
-
-    // Build preflight (OPTIONS) request
-    var preflight_headers: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
-    defer preflight_headers.deinit(allocator);
-
-    // Add Origin header
-    try preflight_headers.append(allocator, .{ .name = "Origin", .value = origin });
-
-    // Add Access-Control-Request-Method header
-    try preflight_headers.append(allocator, .{ .name = "Access-Control-Request-Method", .value = request.method });
-
-    // Add Access-Control-Request-Headers if we have unsafe headers
-    var headers_value: ?[]u8 = null;
-    defer if (headers_value) |h| allocator.free(h);
-
-    if (unsafe_headers.len > 0) {
-        // Join unsafe header names with ", "
-        var total_len: usize = 0;
-        for (unsafe_headers) |h| {
-            total_len += h.len;
-        }
-        total_len += (unsafe_headers.len - 1) * 2;
-
-        headers_value = try allocator.alloc(u8, total_len);
-        var pos: usize = 0;
-        for (unsafe_headers, 0..) |h, i| {
-            @memcpy(headers_value.?[pos..][0..h.len], h);
-            pos += h.len;
-            if (i < unsafe_headers.len - 1) {
-                headers_value.?[pos] = ',';
-                headers_value.?[pos + 1] = ' ';
-                pos += 2;
-            }
-        }
-        try preflight_headers.append(allocator, .{
-            .name = "Access-Control-Request-Headers",
-            .value = headers_value.?,
-        });
-    }
-
-    const preflight_request = NetworkRequest{
-        .url = url,
-        .method = "OPTIONS",
-        .headers = preflight_headers.items,
-        .body = null,
-        .http_version = .http_1_1,
-        .connect_timeout_ms = 30_000,
-        .timeout_ms = 30_000, // Shorter timeout for preflight
-        .follow_redirects = false,
-        .max_redirects = 0,
-        .proxy = null,
-        // Whatever the embedder registered, which is `verify_peer` and
-        // `verify_host` against the system trust store unless it said otherwise.
-        .cert_options = network.defaultCertOptions(),
-        .verbose = false,
-    };
-
-    // Perform network request (preflight doesn't use cookies)
-    const backend_impl = LibcurlBackend.initWithOptions(allocator, .{
-        .enable_cookies = false, // Preflight doesn't need cookies
-    }) catch {
-        return .{ .failure = .cors_check_failed };
-    };
-    defer backend_impl.deinit();
-
-    const backend_iface = backend_impl.getBackend();
-
-    var network_response = backend_iface.send(allocator, &preflight_request) catch {
-        return .{ .failure = .cors_check_failed };
-    };
-    defer network_response.deinit();
-
-    // Convert network response headers to a format validatePreflightResponse expects
-    var response_headers = PreflightResponseHeaders.init(allocator);
-    defer response_headers.deinit();
-
-    for (network_response.headers) |header| {
-        try response_headers.put(header.name, header.value);
-    }
-
-    // Map CredentialsMode
-    const creds_mode: cors.CredentialsMode = switch (request.credentials_mode) {
-        .omit => .omit,
-        .same_origin => .same_origin,
-        .include => .include,
-    };
-
-    // Validate preflight response
-    const result = cors.validatePreflightResponse(
-        allocator,
-        origin,
-        request.method,
-        if (unsafe_headers.len > 0) unsafe_headers else null,
-        creds_mode,
-        response_headers,
-        network_response.status,
-    );
-
-    // Cache successful preflight if we have a cache
-    if (options.preflight_cache) |cache| {
-        switch (result) {
-            .success => |entry| {
-                // Extract methods and headers for caching
-                var methods_list: std.ArrayListUnmanaged([]const u8) = .empty;
-                defer methods_list.deinit(allocator);
-                for (entry.methods.items) |m| {
-                    try methods_list.append(allocator, m);
-                }
-
-                var headers_list: std.ArrayListUnmanaged([]const u8) = .empty;
-                defer headers_list.deinit(allocator);
-                for (entry.headers.items) |h| {
-                    try headers_list.append(allocator, h);
-                }
-
-                cache.createEntry(
-                    origin,
-                    url,
-                    origin, // network partition key
-                    @as(u64, @intCast(@max(0, entry.expiry_time - clock.wallSeconds()))),
-                    methods_list.items,
-                    entry.methods_wildcard,
-                    headers_list.items,
-                    entry.headers_wildcard,
-                    request.credentials_mode == .include,
-                ) catch {
-                    // Cache failure is non-fatal
-                };
-            },
-            .failure => {},
-        }
-    }
-
-    return result;
+/// HTTP fetch step 4.1's condition, given makeCORSPreflight: does `request`
+/// need a CORS-preflight fetch first? With no CORS-preflight cache there is
+/// never a cache entry match, so: its method is not CORS-safelisted or its
+/// use-CORS-preflight flag is set, or it has a CORS-unsafe request-header
+/// name.
+pub fn corsPreflightNeeded(allocator: Allocator, request: *const InternalRequest) !bool {
+    if (request.use_cors_preflight or !isCorsSafelistedMethod(request.method)) return true;
+    const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
+    defer freeNames(allocator, unsafe_names);
+    return unsafe_names.len > 0;
 }
 
-/// Header wrapper for preflight response validation.
-const PreflightResponseHeaders = struct {
-    headers: std.StringHashMap([]const u8),
-    allocator: Allocator,
+/// CORS-preflight fetch, steps 1-6 up to the network: the preflight request,
+/// for the network to answer. `corsPreflightFetchFinish` takes the answer.
+///
+/// Spec: https://fetch.spec.whatwg.org/#cors-preflight-fetch-0
+pub fn corsPreflightFetchStart(allocator: Allocator, request: *InternalRequest) HttpFetchError!NetworkRequest {
+    return buildPreflightRequest(allocator, request) catch HttpFetchError.OutOfMemory;
+}
 
-    pub fn init(allocator: Allocator) PreflightResponseHeaders {
-        return .{
-            .headers = std.StringHashMap([]const u8).init(allocator),
-            .allocator = allocator,
+fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !NetworkRequest {
+    // 1. preflight: method `OPTIONS`, request's URL list, origin and
+    //    referrer; mode "cors" and response tainting "cors" - so its
+    //    `Origin` header is request's origin, byte-serialized (step 8.12 of
+    //    the HTTP-network-or-cache fetch step 6 runs).
+    var owned: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer {
+        for (owned.items) |value| allocator.free(value);
+        owned.deinit(allocator);
+    }
+    var headers: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    errdefer headers.deinit(allocator);
+
+    // 2. Append (`Accept`, `*/*`).
+    try headers.append(allocator, .{ .name = "Accept", .value = "*/*" });
+    // 3. Append (`Access-Control-Request-Method`, request's method).
+    try headers.append(allocator, .{ .name = "Access-Control-Request-Method", .value = request.method });
+    // 4-5. The CORS-unsafe request-header names with request's header list,
+    //      if any, separated by `,` - not combined: no 0x20 after 0x2C.
+    const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
+    defer freeNames(allocator, unsafe_names);
+    if (unsafe_names.len > 0) {
+        const value = try std.mem.join(allocator, ",", unsafe_names);
+        owned.append(allocator, value) catch |err| {
+            allocator.free(value);
+            return err;
         };
+        try headers.append(allocator, .{ .name = "Access-Control-Request-Headers", .value = value });
+    }
+    if (request.origin != .client) {
+        const origin = try request.serializeOrigin(allocator);
+        owned.append(allocator, origin) catch |err| {
+            allocator.free(origin);
+            return err;
+        };
+        try headers.append(allocator, .{ .name = "Origin", .value = origin });
     }
 
-    pub fn deinit(self: *PreflightResponseHeaders) void {
-        self.headers.deinit();
+    const header_slice = try headers.toOwnedSlice(allocator);
+    errdefer allocator.free(header_slice);
+    const owned_values = try owned.toOwnedSlice(allocator);
+    return .{
+        .url = request.currentUrl(),
+        .method = "OPTIONS",
+        .headers = header_slice,
+        .body = null,
+        .follow_redirects = false,
+        .cert_options = network.defaultCertOptions(),
+        .owned_values = owned_values,
+    };
+}
+
+/// CORS-preflight fetch step 7, once the network answered the preflight
+/// with `network_response`: whether it lets `request` go - false is step 8's
+/// network error. With no CORS-preflight cache, steps 8-15 have nothing to
+/// store.
+pub fn corsPreflightFetchFinish(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) HttpFetchError!bool {
+    // Every error on the way is an allocation failing.
+    return preflightAllows(allocator, request, network_response) catch HttpFetchError.OutOfMemory;
+}
+
+fn preflightAllows(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) !bool {
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.status = network_response.status;
+    for (network_response.headers) |header| try response.header_list.append(header.name, header.value);
+
+    // 7. If a CORS check for request (not preflight: request's credentials
+    //    mode is the one that counts) and response returns success and
+    //    response's status is an ok status:
+    if (try corsCheck(allocator, request, response) == .failure) return false;
+    if (!internal_response.isOkStatus(response.status)) return false;
+
+    // 1-3. methods and headerNames: the `Access-Control-Allow-Methods` and
+    //      `Access-Control-Allow-Headers` values; failure is a network error.
+    const listed_methods = tokenList(allocator, response, "Access-Control-Allow-Methods") catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.NotATokenList => return false,
+    };
+    const methods_null = listed_methods == null;
+    var methods = listed_methods orelse TokenList{};
+    defer methods.deinit(allocator);
+    var header_names = (tokenList(allocator, response, "Access-Control-Allow-Headers") catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.NotATokenList => return false,
+    }) orelse TokenList{};
+    defer header_names.deinit(allocator);
+
+    // 4. If methods is null and request's use-CORS-preflight flag is set,
+    //    methods is « request's method ».
+    const method_listed = if (methods_null and request.use_cors_preflight) true else methods.containsExact(request.method);
+
+    const include = request.credentials_mode == .include;
+    // 5. If request's method is not in methods, is not a CORS-safelisted
+    //    method, and request's credentials mode is "include" or methods does
+    //    not contain `*`: a network error.
+    if (!method_listed and !isCorsSafelistedMethod(request.method) and (include or !methods.containsExact("*"))) return false;
+
+    // 6. A CORS non-wildcard request-header name (`Authorization`) in
+    //    request's header list must be in headerNames, `*` or not.
+    for (request.header_list.entries.items) |header| {
+        if (validation.isCORSNonWildcardRequestHeaderName(header.name) and !header_names.containsIgnoreCase(header.name)) return false;
     }
 
-    pub fn put(self: *PreflightResponseHeaders, name: []const u8, value: []const u8) !void {
-        try self.headers.put(name, value);
+    // 7. Each CORS-unsafe request-header name must be in headerNames, or
+    //    headerNames contain `*` and request's credentials mode not be
+    //    "include".
+    const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
+    defer freeNames(allocator, unsafe_names);
+    for (unsafe_names) |name| {
+        if (!header_names.containsIgnoreCase(name) and (include or !header_names.containsExact("*"))) return false;
     }
 
-    pub fn get(self: *const PreflightResponseHeaders, name: []const u8) ?[]const u8 {
-        return self.headers.get(name);
+    // 8-16. max-age and the cache: there is no CORS-preflight cache ("If
+    //       the user agent does not provide for a cache, then return
+    //       response").
+    return true;
+}
+
+/// A header's list of tokens (Fetch "extracting header list values" for a
+/// #method or #field-name header): slices of `combined`, which it owns.
+const TokenList = struct {
+    combined: []const u8 = "",
+    items: std.ArrayListUnmanaged([]const u8) = .empty,
+
+    fn deinit(self: *TokenList, allocator: Allocator) void {
+        self.items.deinit(allocator);
+        allocator.free(self.combined);
+    }
+
+    fn containsExact(self: *const TokenList, value: []const u8) bool {
+        for (self.items.items) |item| if (std.mem.eql(u8, item, value)) return true;
+        return false;
+    }
+
+    fn containsIgnoreCase(self: *const TokenList, value: []const u8) bool {
+        for (self.items.items) |item| if (std.ascii.eqlIgnoreCase(item, value)) return true;
+        return false;
     }
 };
+
+/// `name`'s values in `response`'s header list as a token list: null when
+/// there is no such header, error.NotATokenList for the spec's failure.
+fn tokenList(allocator: Allocator, response: *InternalResponse, name: []const u8) error{ OutOfMemory, NotATokenList }!?TokenList {
+    const combined = (try response.header_list.get(allocator, name)) orelse return null;
+    var list: TokenList = .{ .combined = combined };
+    errdefer list.deinit(allocator);
+    var it = std.mem.splitScalar(u8, combined, ',');
+    while (it.next()) |raw| {
+        const item = std.mem.trim(u8, raw, " \t");
+        if (item.len == 0) continue;
+        if (!validation.isValidHeaderName(item)) return error.NotATokenList;
+        try list.items.append(allocator, item);
+    }
+    return list;
+}
+
+fn freeNames(allocator: Allocator, names: []const []const u8) void {
+    for (names) |name| allocator.free(name);
+    allocator.free(names);
+}
+
+/// A CORS-safelisted method: `GET`, `HEAD` or `POST`.
+fn isCorsSafelistedMethod(method: []const u8) bool {
+    return std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "POST");
+}
 
 // =============================================================================
 // Tests
@@ -1294,4 +1219,112 @@ test "includeCredentials: include always, same-origin only while tainting is bas
     request.credentials_mode = .omit;
     request.response_tainting = .basic;
     try std.testing.expect(!httpNetworkFetchUsesCookies(request));
+}
+
+test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe header names and the origin" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setMethod("PUT");
+    try request.header_list.append("X-B", "1");
+    try request.header_list.append("Content-Type", "text/plain");
+    try request.header_list.append("x-a", "2");
+
+    try std.testing.expect(try corsPreflightNeeded(allocator, request));
+    const preflight = try corsPreflightFetchStart(allocator, request);
+    defer freeNetworkRequest(allocator, preflight);
+    try std.testing.expectEqualStrings("OPTIONS", preflight.method);
+    try std.testing.expectEqualStrings("http://b.test/x", preflight.url);
+    const expected = [_][2][]const u8{
+        .{ "Accept", "*/*" },
+        .{ "Access-Control-Request-Method", "PUT" },
+        // Sorted, lowercased, joined by a bare comma.
+        .{ "Access-Control-Request-Headers", "x-a,x-b" },
+        .{ "Origin", "http://a.test" },
+    };
+    try std.testing.expectEqual(expected.len, preflight.headers.len);
+    for (expected, preflight.headers) |want, got| {
+        try std.testing.expectEqualStrings(want[0], got.name);
+        try std.testing.expectEqualStrings(want[1], got.value);
+    }
+}
+
+fn preflightAnswer(status: u16, headers: []NetworkResponse.Header) NetworkResponse {
+    return .{
+        .allocator = std.testing.allocator,
+        .status = status,
+        .http_version = .http_1_1,
+        .headers = headers,
+        .body = null,
+        .final_url = null,
+        .total_time_ms = 0,
+        .time_to_first_byte_ms = 0,
+        .redirect_count = 0,
+        .remote_ip = null,
+        .remote_port = null,
+    };
+}
+
+test "CORS-preflight fetch step 7: the answer must allow the origin, the method and every unsafe header" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setMethod("PUT");
+    try request.header_list.append("X-A", "1");
+
+    var allowed = [_]NetworkResponse.Header{
+        .{ .name = "Access-Control-Allow-Origin", .value = "http://a.test" },
+        .{ .name = "Access-Control-Allow-Methods", .value = "GET, PUT" },
+        .{ .name = "Access-Control-Allow-Headers", .value = "x-a" },
+    };
+    try std.testing.expect(try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &allowed)));
+    // Not an ok status.
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(302, &allowed)));
+
+    // No such method; methods compare byte for byte.
+    var wrong_case = [_]NetworkResponse.Header{
+        .{ .name = "Access-Control-Allow-Origin", .value = "http://a.test" },
+        .{ .name = "Access-Control-Allow-Methods", .value = "put" },
+        .{ .name = "Access-Control-Allow-Headers", .value = "X-A" },
+    };
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &wrong_case)));
+
+    // A header left out; then `*`, which serves without credentials only.
+    var wildcard = [_]NetworkResponse.Header{
+        .{ .name = "Access-Control-Allow-Origin", .value = "http://a.test" },
+        .{ .name = "Access-Control-Allow-Methods", .value = "*" },
+        .{ .name = "Access-Control-Allow-Headers", .value = "*" },
+        .{ .name = "Access-Control-Allow-Credentials", .value = "true" },
+    };
+    try std.testing.expect(try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &wildcard)));
+    request.credentials_mode = .include;
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &wildcard)));
+    request.credentials_mode = .same_origin;
+
+    // `Authorization` is never covered by `*`.
+    try request.header_list.append("Authorization", "x");
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &wildcard)));
+
+    // A value that is not a token list is failure.
+    var broken = [_]NetworkResponse.Header{
+        .{ .name = "Access-Control-Allow-Origin", .value = "http://a.test" },
+        .{ .name = "Access-Control-Allow-Methods", .value = "PUT, not a token" },
+    };
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &broken)));
+}
+
+test "CORS-preflight fetch step 7.4: with the use-CORS-preflight flag, no Allow-Methods allows request's method" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setMethod("PUT");
+    var bare = [_]NetworkResponse.Header{
+        .{ .name = "Access-Control-Allow-Origin", .value = "*" },
+    };
+    try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
+    request.use_cors_preflight = true;
+    try std.testing.expect(try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
 }
