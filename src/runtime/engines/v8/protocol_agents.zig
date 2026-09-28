@@ -110,14 +110,6 @@ pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     return agents.get(isolate);
 }
 
-/// Whether `isolate` is an agent whose host supplied loadImportedModule: its
-/// import() is the protocol's, which the adapter's older per-realm
-/// registration must leave in place.
-pub fn hasModuleHooks(isolate: *ffi.Isolate) bool {
-    const record = recordOf(isolate) orelse return false;
-    return record.hooks.loadImportedModule != null;
-}
-
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
