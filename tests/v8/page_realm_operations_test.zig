@@ -1531,8 +1531,8 @@ const ImportHost = struct {
 
 test "protocol: import() reaches the agent's host with its referrer, and finishes with the namespace" {
     // The agent's realm is registered (AgentRealm.make) after createAgent
-    // installed the protocol's import() - and must not replace it
-    // (engine.setDynamicImportHandler).
+    // installed the protocol's import() - and must not replace it (a realm's
+    // registration used to install the legacy import() handler).
     _ = try realm();
     var host: ImportHost = .{};
     const hooks: protocol.HostHooks = .{ .loadImportedModule = ImportHost.load, .importMetaUrl = ImportHost.metaUrl };
