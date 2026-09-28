@@ -1283,6 +1283,33 @@ test "protocol: an agent ended while another isolate is entered leaves that isol
     try std.testing.expect(v8.context_manager.get(context_once.?) != null);
 }
 
+test "protocol: an agent made inside another's realm is not the host agent, even when it ends with no isolate entered" {
+    const base = try realm();
+    const no_hooks: protocol.HostHooks = .{};
+    // Made while this file's isolate is entered: as a worker's agent is made,
+    // by its owner's script.
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
+    {
+        const in_agent = try AgentRealm.make(agent);
+        defer in_agent.end();
+    }
+    // Ended with NO isolate entered: as a Browser ends its workers once its
+    // page realm has exited the page isolate. What is entered at the end says
+    // nothing about whose agent this is; it is still not the thread's host,
+    // so only its own isolate's state goes - the context manager keeps this
+    // file's realm, and its templates still work.
+    {
+        ffi.v8_Isolate_Exit(isolate_once.?);
+        defer ffi.v8_Isolate_Enter(isolate_once.?);
+        try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
+        protocol.destroyAgent(agent);
+        try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
+    }
+    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+    try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
+}
+
 test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" {
     _ = try realm();
     const no_hooks: protocol.HostHooks = .{};
