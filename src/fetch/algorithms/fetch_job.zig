@@ -311,7 +311,11 @@ pub const FetchJob = struct {
     }
 
     /// HTTP fetch, once HTTP-network-or-cache fetch has returned `response`.
-    fn httpNetworkOrCacheFetchReturned(self: *FetchJob, response: *InternalResponse) FetchError!Step {
+    fn httpNetworkOrCacheFetchReturned(self: *FetchJob, network_response: *InternalResponse) FetchError!Step {
+        // The rest of HTTP-network-or-cache fetch (step 14, a 401).
+        const response = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.request, network_response) catch |err| {
+            return self.httpFetchFailed(err);
+        };
         const next = http_fetch.httpFetchFinish(self.allocator, self.params, .{}, response) catch |err| {
             return self.httpFetchFailed(err);
         };

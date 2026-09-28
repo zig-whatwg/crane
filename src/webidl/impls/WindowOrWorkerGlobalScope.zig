@@ -698,10 +698,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // may not, so it fetches a clone: nothing script can observe tells the
     // two apart, since the fetch changes only request's current URL.
     const fetched_request = try request.clone();
-    // Fetch "fetch" step 13: "If request's origin is "client", then set
-    // request's origin to request's client's origin" - this global's
-    // settings object's.
-    if (fetched_request.origin == .client) setClientOrigin(instance, fetched_request) catch {
+    // Fetch "populate request from client": the request's client is this
+    // global's settings object.
+    populateRequestFromClient(instance, fetched_request) catch {
         fetched_request.deinit();
         return error.OutOfMemory;
     };
@@ -753,6 +752,23 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // Step 13.
     return p.take();
+}
+
+/// Fetch "populate request from client", for a request whose client is
+/// `global`'s settings object.
+fn populateRequestFromClient(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
+    // 1. If request's traversable for user prompts is "client": a Window's
+    //    navigable's traversable, or "no-traversable". The Window stands in
+    //    for its traversable: only whether there is one is ever read
+    //    (HTTP-network-or-cache fetch step 14).
+    if (request.traversable_for_user_prompts == .client) {
+        request.traversable_for_user_prompts = if (std.mem.eql(u8, global.vtable.name, "Window"))
+            .{ .traversable = @ptrCast(global) }
+        else
+            .no_traversable;
+    }
+    // 2. If request's origin is "client": the client's origin.
+    if (request.origin == .client) try setClientOrigin(global, request);
 }
 
 /// Set `request`'s origin to `global`'s settings object's origin,

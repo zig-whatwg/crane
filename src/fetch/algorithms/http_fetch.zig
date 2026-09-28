@@ -472,6 +472,29 @@ pub fn httpNetworkOrCacheFetchStart(
     return .{ .network = network_request };
 }
 
+/// HTTP-network-or-cache fetch, once HTTP-network fetch has returned
+/// `response` (ownership passes in and out): step 14, a 401.
+///
+/// "If response's status is 401, httpRequest's response tainting is not
+/// "cors", includeCredentials is true, and request's traversable for user
+/// prompts is a traversable navigable", a request whose body has a null
+/// source - a stream, which cannot be sent again - is a network error
+/// (14.2.1). The rest of the step prompts the end user for a username and
+/// password and fetches again; there is no one to prompt here, so the
+/// prompt is as good as cancelled and the 401 is the response.
+pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, request: *const InternalRequest, response: *InternalResponse) HttpFetchError!*InternalResponse {
+    if (response.status != 401) return response;
+    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request)) return response;
+    if (request.traversable_for_user_prompts != .traversable) return response;
+    const body = request.body orelse return response;
+    switch (body) {
+        .bytes => return response,
+        .body => |b| if (b.source != .none) return response,
+    }
+    response.deinit();
+    return internal_response.networkError(allocator) catch HttpFetchError.OutOfMemory;
+}
+
 /// Fetch "append a request `Origin` header" for `request`: the value to
 /// append, or null when it appends none. OWNED.
 ///
@@ -1336,4 +1359,49 @@ test "CORS-preflight fetch step 7.4: with the use-CORS-preflight flag, no Allow-
     try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
     request.use_cors_preflight = true;
     try std.testing.expect(try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
+}
+
+test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a window is a network error" {
+    const allocator = std.testing.allocator;
+    const Body = @import("../internal/body.zig").Body;
+
+    var window_token: u8 = 0;
+    const request = try InternalRequest.init(allocator, "https://a.test/upload");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    try request.setMethod("POST");
+    request.traversable_for_user_prompts = .{ .traversable = &window_token };
+    request.body = .{ .body = try Body.fromSource(allocator, .none, 0) };
+
+    // A 401: the body cannot be sent again for the credentials a prompt
+    // would ask for, so a network error.
+    const unauthorized = try InternalResponse.init(allocator);
+    unauthorized.status = 401;
+    const refused = try httpNetworkOrCacheFetchFinish(allocator, request, unauthorized);
+    defer refused.deinit();
+    try std.testing.expect(isNetworkError(refused));
+
+    // Any other status goes on as it is.
+    const ok = try InternalResponse.init(allocator);
+    ok.status = 200;
+    const kept = try httpNetworkOrCacheFetchFinish(allocator, request, ok);
+    try std.testing.expect(kept == ok);
+    kept.deinit();
+
+    // With no traversable to prompt in (a worker's request), the 401 stands.
+    request.traversable_for_user_prompts = .no_traversable;
+    const worker_401 = try InternalResponse.init(allocator);
+    worker_401.status = 401;
+    const stands = try httpNetworkOrCacheFetchFinish(allocator, request, worker_401);
+    try std.testing.expect(stands == worker_401);
+    stands.deinit();
+
+    // Nor for a CORS request, or one without credentials.
+    request.traversable_for_user_prompts = .{ .traversable = &window_token };
+    request.response_tainting = .cors;
+    const cors_401 = try InternalResponse.init(allocator);
+    cors_401.status = 401;
+    const cors_kept = try httpNetworkOrCacheFetchFinish(allocator, request, cors_401);
+    try std.testing.expect(cors_kept == cors_401);
+    cors_kept.deinit();
 }
