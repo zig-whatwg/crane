@@ -471,13 +471,18 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
     const client = clientOf(instance) orelse
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
-    const url = cookiestore.RequestUrl.of(client.url) orelse
-        return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
+    // A creation URL with no host (about:srcdoc, about:blank) keeps no
+    // cookies: the storage model ignores one. The pair is still validated -
+    // an invalid one still rejects - against a jar that is thrown away.
+    var scratch = CookieJar.init(internal.allocator);
+    defer scratch.deinit();
+    const url = cookiestore.RequestUrl.of(client.url);
+    const jar = if (url != null) client.jar else &scratch;
 
     // Step 6.1: set a cookie with url, name, value, and the defaults.
     // The jar's change hook records the change for every store (this one
     // included), so nothing is recorded here.
-    cookiestore.setCookie(internal.allocator, client.jar, url.host, .{
+    cookiestore.setCookie(internal.allocator, jar, if (url) |u| u.host else "", .{
         .name = name,
         .value = value,
     }) catch |err| return switch (err) {
@@ -502,11 +507,14 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
     const client = clientOf(instance) orelse
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
-    const url = cookiestore.RequestUrl.of(client.url) orelse
-        return cookie_values.rejectedWithTypeError(realm, "Cookies are kept only for HTTP(S) URLs");
+    // As set(): a URL with no host keeps no cookies to delete.
+    var scratch = CookieJar.init(internal.allocator);
+    defer scratch.deinit();
+    const url = cookiestore.RequestUrl.of(client.url);
+    const jar = if (url != null) client.jar else &scratch;
 
     // Step 6.1: delete a cookie with url, name, null, "/" and true.
-    cookiestore.deleteCookie(internal.allocator, client.jar, url.host, .{
+    cookiestore.deleteCookie(internal.allocator, jar, if (url) |u| u.host else "", .{
         .name = name,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
