@@ -23,6 +23,10 @@ pub const RequestSteps = struct {
     /// `request_object`'s request (a `*fetch.internal.InternalRequest`),
     /// borrowed: it lives as long as the Request object.
     request_of: *const fn (request_object: *runtime.Instance) ?*anyopaque,
+    /// `request_object`'s body's stream when its bytes are only in it - a
+    /// ReadableStream given as the body, or a proxy of one - so fetch()
+    /// must read the stream to send them. Null for a body of bytes.
+    body_stream: *const fn (request_object: *runtime.Instance) ?*runtime.Instance,
 };
 
 pub const ResponseSteps = struct {
@@ -30,6 +34,10 @@ pub const ResponseSteps = struct {
     /// `*fetch.internal.InternalResponse`, whose ownership passes to it) with
     /// a headers guard of `guard`.
     adopt: *const fn (response_object: *runtime.Instance, response: *anyopaque, guard: Guard) void,
+    /// Make `response_object` follow `signal`, the signal of the fetch()
+    /// call that made it: once it is aborted, the body is errored with its
+    /// reason ("abort the fetch() call" step 5).
+    follow: *const fn (response_object: *runtime.Instance, signal: *runtime.Instance) void,
 };
 
 threadlocal var request_steps: ?RequestSteps = null;
@@ -52,6 +60,21 @@ pub fn requestOf(request_object: *runtime.Instance) ?*anyopaque {
     return steps.request_of(request_object);
 }
 
+/// Make `response_object` follow the AbortSignal `signal`. False when
+/// Response has installed nothing.
+pub fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instance) bool {
+    const steps = response_steps orelse return false;
+    steps.follow(response_object, signal);
+    return true;
+}
+
+/// `request_object`'s body's stream, if its bytes are only in it (see
+/// RequestSteps.body_stream).
+pub fn requestBodyStream(request_object: *runtime.Instance) ?*runtime.Instance {
+    const steps = request_steps orelse return null;
+    return steps.body_stream(request_object);
+}
+
 /// Hand `response` to `response_object`. False when Response has installed
 /// nothing, and then `response` is still the caller's.
 pub fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, guard: Guard) bool {
@@ -71,5 +94,7 @@ test "without installed steps nothing is asked of an object" {
     var object: runtime.Instance = undefined;
     var response: u8 = 0;
     try std.testing.expect(requestOf(&object) == null);
+    try std.testing.expect(requestBodyStream(&object) == null);
     try std.testing.expect(!adoptResponse(&object, &response, .immutable));
+    try std.testing.expect(!followSignal(&object, &object));
 }

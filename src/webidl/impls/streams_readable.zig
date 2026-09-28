@@ -17,6 +17,7 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const js = @import("streams_js.zig");
+const engine = @import("engine");
 const sw = @import("streams_writable.zig");
 /// DOM § 3.3's hook: pipeTo adds an abort algorithm to its signal.
 const abort_algorithms = @import("dom").abort_algorithms;
@@ -320,7 +321,9 @@ pub fn convertUnderlyingSource(realm: Realm, allocator: std.mem.Allocator, objec
     // [EnforceRange] unsigned long long autoAllocateChunkSize
     if (try js.getMember(realm, obj, "autoAllocateChunkSize")) |v| {
         defer js.dispose(v);
-        const n = @import("v8").ffi.v8_Value_NumberValue(v, realm.context);
+        // ToNumber: a throwing valueOf is the conversion's abrupt completion,
+        // pending for the binding.
+        const n = engine.convertToUnrestrictedDouble(realm.ctx, js.toReturn(v)) catch |err| return js.fromEngineError(err);
         // [EnforceRange]: NaN and ±∞ throw; then truncate; out of range throws.
         if (std.math.isNan(n) or std.math.isInf(n)) return throwTypeError(realm, "autoAllocateChunkSize is not a finite number");
         const t = @trunc(n);
@@ -333,16 +336,9 @@ pub fn convertUnderlyingSource(realm: Realm, allocator: std.mem.Allocator, objec
     // ReadableStreamType type: an enum value, so ToString then match.
     if (try js.getMember(realm, obj, "type")) |v| {
         defer js.dispose(v);
-        const ffi = @import("v8").ffi;
-        const str = ffi.v8_Value_ToString(v, realm.context) orelse return error.ExceptionPending;
-        defer ffi.v8_String_Dispose(str);
-        var buf: [8]u8 = undefined;
-        const len = ffi.v8_String_Utf8Length(str);
-        const is_bytes = len == 5 and blk: {
-            _ = ffi.v8_String_WriteUtf8(str, &buf, 5);
-            break :blk std.mem.eql(u8, buf[0..5], "bytes");
-        };
-        if (!is_bytes) return throwTypeError(realm, "The type of an underlying source must be \"bytes\"");
+        const text = engine.convertToDOMString(realm.ctx, js.toReturn(v), allocator) catch |err| return js.fromEngineError(err);
+        defer allocator.free(text);
+        if (!std.mem.eql(u8, text, "bytes")) return throwTypeError(realm, "The type of an underlying source must be \"bytes\"");
         dict.bytes = true;
     }
     return dict;
@@ -904,6 +900,19 @@ fn defaultClearAlgorithms(c: *DefaultController) void {
     c.size_algorithm = .cleared;
 }
 
+/// The size callback's result converted to `unrestricted double` (ToNumber),
+/// as steps engine.completionOf runs.
+const SizeConversion = struct {
+    realm: runtime.Context,
+    value: Value,
+    number: f64 = 0,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *SizeConversion = @ptrCast(@alignCast(data.?));
+        self.number = try engine.convertToUnrestrictedDouble(self.realm, js.toReturn(self.value));
+    }
+};
+
 /// ReadableStreamDefaultControllerClose(controller)
 pub fn defaultControllerClose(realm: Realm, controller_instance: *runtime.Instance) void {
     const c = defaultControllerOf(controller_instance).?;
@@ -946,7 +955,20 @@ pub fn defaultControllerEnqueueCompletion(realm: Realm, controller_instance: *ru
                 const completion = try realm.call(f, null, &.{chunk});
                 defer completion.deinit();
                 switch (completion) {
-                    .normal => |v| break :blk @import("v8").ffi.v8_Value_NumberValue(v, realm.context),
+                    .normal => |v| {
+                        // The size callback's result converted to `unrestricted
+                        // double` (WebIDL "invoke a callback function" step
+                        // 14): ToNumber, whose abrupt completion - a throwing
+                        // valueOf - is the size algorithm's too.
+                        var conversion = SizeConversion{ .realm = realm.ctx, .value = v };
+                        const abrupt = engine.completionOf(realm.ctx, SizeConversion.steps, &conversion) catch |err| return js.fromEngineError(err);
+                        const reason = abrupt orelse break :blk conversion.number;
+                        defer reason.release();
+                        const thrown = try realm.fromRuntime(reason.value);
+                        // 4.2 An abrupt completion errors the controller and is returned.
+                        defaultControllerError(realm, controller_instance, thrown);
+                        return thrown;
+                    },
                     // 4.2 An abrupt completion errors the controller and is returned.
                     .thrown => |e| {
                         defaultControllerError(realm, controller_instance, e);
@@ -1297,7 +1319,7 @@ fn byteEnqueueChunkToQueue(c: *ByteController, buffer: Value, byte_offset: usize
 /// ReadableByteStreamControllerEnqueueClonedChunkToQueue(controller, buffer, byteOffset, byteLength)
 fn byteEnqueueClonedChunkToQueue(realm: Realm, controller_instance: *runtime.Instance, c: *ByteController, buffer: Value, byte_offset: usize, byte_length: usize) js.Error!void {
     // Step 1: Let cloneResult be CloneArrayBuffer(buffer, byteOffset, byteLength, %ArrayBuffer%).
-    const clone_buffer = js.allocateBuffer(byte_length) orelse {
+    const clone_buffer = js.allocateBufferIn(realm, byte_length) orelse {
         const e = try realm.rangeError("Array buffer allocation failed");
         defer js.dispose(e);
         // Step 2: error the controller and return the completion.
@@ -1571,7 +1593,7 @@ fn bytePullSteps(realm: Realm, controller_instance: *runtime.Instance, c: *ByteC
     if (c.queue_total_size > 0) return byteFillReadRequestFromQueue(realm, c, request);
     // Step 5: auto-allocate a buffer for the source to fill.
     if (c.auto_allocate_chunk_size) |size| {
-        const buffer = js.allocateBuffer(@intCast(size)) orelse {
+        const buffer = js.allocateBufferIn(realm, @intCast(size)) orelse {
             const e = realm.rangeError("Array buffer allocation failed") catch return request.vtable.drop(request.ctx);
             defer js.dispose(e);
             return request.vtable.err(request.ctx, realm, e);
@@ -2066,7 +2088,7 @@ fn pipeReadChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const writer = sw.writerOf(state.writer) orelse return;
     if (writer.stream != null) {
         if (sw.writerWrite(realm, writer, chunk)) |write_promise| {
-            @import("v8").ffi.v8_Promise_MarkAsHandled(write_promise);
+            engine.markPromiseAsHandled(write_promise.realm, write_promise.value);
             js.disposeOptional(&state.current_write);
             state.current_write = write_promise;
             state.write_count += 1;
@@ -2286,7 +2308,32 @@ const DefaultTee = struct {
     branch1: ?*runtime.Instance = null,
     branch2: ?*runtime.Instance = null,
     cancel_promise: Deferred,
+    /// Holders of this state, each letting go once: each branch's source
+    /// (until its algorithms are cleared - closed, errored or cancelled), the
+    /// reaction to the reader's closed promise, a read in flight, a chunk's
+    /// queued microtask, and `defaultTee` while it builds the branches. The
+    /// last to let go frees it - mirroring PipeState.
+    refs: usize = 1,
+
+    fn retain(self: *DefaultTee) *DefaultTee {
+        self.refs += 1;
+        return self;
+    }
+
+    fn release(self: *DefaultTee) void {
+        releaseTee(DefaultTee, self);
+    }
 };
+
+/// Let go of a tee's state; the last holder frees it.
+fn releaseTee(comptime T: type, state: *T) void {
+    state.refs -= 1;
+    if (state.refs > 0) return;
+    js.disposeOptional(&state.reason1);
+    js.disposeOptional(&state.reason2);
+    state.cancel_promise.deinit();
+    state.allocator.destroy(state);
+}
 
 /// A tee branch's source: pull and cancel route to the shared tee state.
 const TeeBranch = struct {
@@ -2316,7 +2363,11 @@ const TeeBranch = struct {
 
     fn deinitBranch(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
         const self: *TeeBranch = @ptrCast(@alignCast(ctx.?));
+        const state = self.tee;
+        const byte = self.byte;
         allocator.destroy(self);
+        // This branch no longer reaches the tee's state.
+        if (byte) releaseTee(ByteTee, @ptrCast(@alignCast(state))) else releaseTee(DefaultTee, @ptrCast(@alignCast(state)));
     }
 
     const vtable = Source.VTable{ .start = start, .pull = pull, .cancel = cancelBranch, .deinit = deinitBranch };
@@ -2337,28 +2388,43 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Ins
     const reader = try acquireDefaultReader(realm, stream_instance);
     _ = try realm.wrap(reader);
     // Steps 4-12
-    const state = try allocator.create(DefaultTee);
-    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = try Deferred.init(realm) };
+    const cancel_promise = try Deferred.init(realm);
+    const state = allocator.create(DefaultTee) catch |err| {
+        cancel_promise.deinit();
+        return err;
+    };
+    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = cancel_promise };
+    // Building the branches holds the state; each branch and the reaction
+    // below hold their own from here.
+    defer state.release();
     // Steps 16-18: the branches.
     state.branch1 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, false), 1, .one);
     state.branch2 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, false), 1, .one);
     // Step 19: upon rejection of reader.[[closedPromise]], error both branches.
     if (readerSlots(reader).closed_promise) |closed| {
-        try realm.react(closed.promise, DefaultTee, state, defaultTeeClosedFulfilled, defaultTeeClosedRejected);
+        realm.react(closed.promise, DefaultTee, state.retain(), defaultTeeClosedFulfilled, defaultTeeClosedRejected) catch |err| {
+            state.release();
+            return err;
+        };
     }
     // Step 20
     return .{ state.branch1.?, state.branch2.? };
 }
 
+/// A branch's source, holding the tee's state until the branch's algorithms
+/// are cleared (`TeeBranch.deinitBranch`).
 fn teeSource(allocator: std.mem.Allocator, state: anytype, second: bool, byte: bool) !Source {
     const branch = try allocator.create(TeeBranch);
-    branch.* = .{ .tee = state, .second = second, .byte = byte };
+    branch.* = .{ .tee = state.retain(), .second = second, .byte = byte };
     return .{ .ctx = branch, .vtable = &TeeBranch.vtable };
 }
 
-fn defaultTeeClosedFulfilled(_: *DefaultTee, _: Value) void {}
+fn defaultTeeClosedFulfilled(state: *DefaultTee, _: Value) void {
+    state.release();
+}
 
 fn defaultTeeClosedRejected(state: *DefaultTee, r: Value) void {
+    defer state.release();
     const realm = Realm.of(state.stream) catch return;
     // 19.1-19.3
     defaultControllerError(realm, streamSlots(state.branch1.?).controller.?, r);
@@ -2375,20 +2441,23 @@ fn defaultTeePull(realm: Realm, state: *DefaultTee) void {
     }
     // 13.2
     state.reading = true;
-    // 13.3-13.4
+    // 13.3-13.4 - the read holds the state until one of its steps runs.
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
-    defaultReaderRead(realm, reader, .{ .ctx = state, .vtable = &default_tee_read_vtable });
+    defaultReaderRead(realm, reader, .{ .ctx = state.retain(), .vtable = &default_tee_read_vtable });
 }
 
 const default_tee_read_vtable = ReadRequest.VTable{
     .chunk = defaultTeeChunk,
     .close = defaultTeeClose,
     .err = defaultTeeError,
-    .drop = teeDrop,
+    .drop = defaultTeeDrop,
 };
 
-fn teeDrop(_: *anyopaque) void {}
+fn defaultTeeDrop(ctx: *anyopaque) void {
+    const state: *DefaultTee = @ptrCast(@alignCast(ctx));
+    state.release();
+}
 
 const TeeChunk = struct {
     state: *DefaultTee,
@@ -2397,11 +2466,12 @@ const TeeChunk = struct {
 
 fn defaultTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
-    // 1. Queue a microtask for the rest.
-    const task = state.allocator.create(TeeChunk) catch return;
+    // 1. Queue a microtask for the rest. The read's hold on the state passes
+    // to the microtask.
+    const task = state.allocator.create(TeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     } };
     js.queueMicrotask(realm, TeeChunk, task, defaultTeeChunkMicrotask);
 }
@@ -2411,6 +2481,7 @@ fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1 Set readAgain to false.
@@ -2429,6 +2500,7 @@ fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
 
 fn defaultTeeClose(ctx: *anyopaque, realm: Realm) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
+    defer state.release();
     // Close steps 1-4
     state.reading = false;
     if (!state.canceled1) defaultControllerClose(realm, streamSlots(state.branch1.?).controller.?);
@@ -2440,6 +2512,7 @@ fn defaultTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));
     // Error steps 1: Set reading to false.
     state.reading = false;
+    state.release();
 }
 
 /// Steps 14-15 (cancel1Algorithm / cancel2Algorithm), for both tee kinds.
@@ -2484,6 +2557,18 @@ const ByteTee = struct {
     branch1: ?*runtime.Instance = null,
     branch2: ?*runtime.Instance = null,
     cancel_promise: Deferred,
+    /// Holders, as DefaultTee's - with a reaction per reader it has had
+    /// (forwardReaderError), and BYOB reads in flight.
+    refs: usize = 1,
+
+    fn retain(self: *ByteTee) *ByteTee {
+        self.refs += 1;
+        return self;
+    }
+
+    fn release(self: *ByteTee) void {
+        releaseTee(ByteTee, self);
+    }
 };
 
 fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instance {
@@ -2492,8 +2577,15 @@ fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instan
     const reader = try acquireDefaultReader(realm, stream_instance);
     _ = try realm.wrap(reader);
     // Steps 4-13
-    const state = try allocator.create(ByteTee);
-    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = try Deferred.init(realm) };
+    const cancel_promise = try Deferred.init(realm);
+    const state = allocator.create(ByteTee) catch |err| {
+        cancel_promise.deinit();
+        return err;
+    };
+    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = cancel_promise };
+    // Building the branches holds the state; each branch and each reaction
+    // hold their own from here.
+    defer state.release();
     // Steps 21-23
     state.branch1 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, true));
     state.branch2 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, true));
@@ -2512,17 +2604,25 @@ const ForwardError = struct {
 fn byteTeeForwardReaderError(realm: Realm, state: *ByteTee, this_reader: *runtime.Instance) void {
     const closed = readerSlots(this_reader).closed_promise orelse return;
     const ctx = state.allocator.create(ForwardError) catch return;
-    ctx.* = .{ .state = state, .this_reader = this_reader };
-    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected) catch state.allocator.destroy(ctx);
+    ctx.* = .{ .state = state.retain(), .this_reader = this_reader };
+    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected) catch {
+        state.allocator.destroy(ctx);
+        state.release();
+    };
 }
 
 fn forwardErrorFulfilled(ctx: *ForwardError, _: Value) void {
-    ctx.state.allocator.destroy(ctx);
+    const state = ctx.state;
+    state.allocator.destroy(ctx);
+    state.release();
 }
 
 fn forwardErrorRejected(ctx: *ForwardError, r: Value) void {
     const state = ctx.state;
-    defer state.allocator.destroy(ctx);
+    defer {
+        state.allocator.destroy(ctx);
+        state.release();
+    }
     // 14.1.1 If thisReader is not reader, return.
     if (ctx.this_reader != state.reader) return;
     const realm = Realm.of(state.stream) catch return;
@@ -2563,18 +2663,23 @@ fn byteTeePullWithDefaultReader(realm: Realm, state: *ByteTee) void {
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
-    // 15.2-15.3
+    // 15.2-15.3 - the read holds the state until one of its steps runs.
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
-    defaultReaderRead(realm, reader, .{ .ctx = state, .vtable = &byte_tee_read_vtable });
+    defaultReaderRead(realm, reader, .{ .ctx = state.retain(), .vtable = &byte_tee_read_vtable });
 }
 
 const byte_tee_read_vtable = ReadRequest.VTable{
     .chunk = byteTeeDefaultChunk,
     .close = byteTeeDefaultClose,
     .err = byteTeeError,
-    .drop = teeDrop,
+    .drop = byteTeeDrop,
 };
+
+fn byteTeeDrop(ctx: *anyopaque) void {
+    const state: *ByteTee = @ptrCast(@alignCast(ctx));
+    state.release();
+}
 
 const ByteTeeChunk = struct {
     state: *ByteTee,
@@ -2586,10 +2691,11 @@ const ByteTeeChunk = struct {
 
 fn byteTeeDefaultChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
-    const task = state.allocator.create(ByteTeeChunk) catch return;
+    // The read's hold on the state passes to the microtask.
+    const task = state.allocator.create(ByteTeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     } };
     js.queueMicrotask(realm, ByteTeeChunk, task, byteTeeDefaultChunkMicrotask);
 }
@@ -2599,7 +2705,7 @@ fn cloneAsUint8Array(view: Value) ?Value {
     const info = js.describeView(view) orelse return null;
     const buffer = js.viewBuffer(view) catch return null;
     defer js.dispose(buffer);
-    const clone_buffer = js.allocateBuffer(info.byte_length) orelse return null;
+    const clone_buffer = js.allocateBufferIn(.{ .ctx = view.realm }, info.byte_length) orelse return null;
     defer js.dispose(clone_buffer);
     if (js.bufferBytes(buffer)) |src| {
         if (js.bufferBytes(clone_buffer)) |dst| {
@@ -2614,6 +2720,7 @@ fn byteTeeDefaultChunkMicrotask(task: *ByteTeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
@@ -2643,6 +2750,7 @@ fn byteTeeDefaultChunkMicrotask(task: *ByteTeeChunk) void {
 
 fn byteTeeDefaultClose(ctx: *anyopaque, realm: Realm) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
+    defer state.release();
     // Close steps 1-6
     state.reading = false;
     const c1 = streamSlots(state.branch1.?).controller.?;
@@ -2657,6 +2765,7 @@ fn byteTeeDefaultClose(ctx: *anyopaque, realm: Realm) void {
 fn byteTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const state: *ByteTee = @ptrCast(@alignCast(ctx));
     state.reading = false;
+    state.release();
 }
 
 const ByobTeeRead = struct {
@@ -2675,10 +2784,11 @@ fn byteTeePullWithByobReader(realm: Realm, state: *ByteTee, view: Value, for_bra
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
-    const ctx = state.allocator.create(ByobTeeRead) catch return;
-    ctx.* = .{ .state = state, .for_branch2 = for_branch2 };
     const reader = readerOf(state.reader) orelse return;
     if (reader.stream == null) return;
+    // The read holds the state until one of its steps runs.
+    const ctx = state.allocator.create(ByobTeeRead) catch return;
+    ctx.* = .{ .state = state.retain(), .for_branch2 = for_branch2 };
     // 16.5 Perform ! ReadableStreamBYOBReaderRead(reader, view, 1, readIntoRequest).
     byobReaderRead(realm, reader, view, 1, .{ .ctx = ctx, .vtable = &byob_tee_read_vtable });
 }
@@ -2692,7 +2802,9 @@ const byob_tee_read_vtable = ReadIntoRequest.VTable{
 
 fn byobTeeDrop(ctx: *anyopaque) void {
     const read: *ByobTeeRead = @ptrCast(@alignCast(ctx));
-    read.state.allocator.destroy(read);
+    const state = read.state;
+    state.allocator.destroy(read);
+    state.release();
 }
 
 fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
@@ -2700,10 +2812,11 @@ fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state = read.state;
     const for_branch2 = read.for_branch2;
     state.allocator.destroy(read);
-    const task = state.allocator.create(ByteTeeChunk) catch return;
+    // The read's hold on the state passes to the microtask.
+    const task = state.allocator.create(ByteTeeChunk) catch return state.release();
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
-        return;
+        return state.release();
     }, .for_branch2 = for_branch2, .byob = true };
     js.queueMicrotask(realm, ByteTeeChunk, task, byobTeeChunkMicrotask);
 }
@@ -2713,6 +2826,7 @@ fn byobTeeChunkMicrotask(task: *ByteTeeChunk) void {
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
+        state.release();
     }
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
@@ -2749,6 +2863,7 @@ fn byobTeeClose(ctx: *anyopaque, realm: Realm, chunk: ?Value) void {
     const state = read.state;
     const for_branch2 = read.for_branch2;
     state.allocator.destroy(read);
+    defer state.release();
     // Close steps 1-7
     state.reading = false;
     const byob_branch = if (for_branch2) state.branch2.? else state.branch1.?;
@@ -2768,13 +2883,17 @@ fn byobTeeClose(ctx: *anyopaque, realm: Realm, chunk: ?Value) void {
 
 fn byobTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
     const read: *ByobTeeRead = @ptrCast(@alignCast(ctx));
-    read.state.reading = false;
-    read.state.allocator.destroy(read);
+    const state = read.state;
+    state.reading = false;
+    state.allocator.destroy(read);
+    state.release();
 }
 
 // ============================================================================
-// Async iteration (§ 4.2.5) with WebIDL's asynchronous iterator machinery
-// (next() and return() chain on the ongoing promise)
+// Async iteration (§ 4.2.5) over WebIDL's asynchronous iterator objects: the
+// engine keeps the object's ongoing promise and is finished (WebIDL 3.7.10),
+// and calls these steps for "get the next iteration result" and the
+// asynchronous iterator return.
 // ============================================================================
 
 pub const AsyncIterator = struct {
@@ -2782,11 +2901,12 @@ pub const AsyncIterator = struct {
     stream: *runtime.Instance,
     reader: *runtime.Instance,
     prevent_cancel: bool,
-    /// The ongoing promise, owned.
-    ongoing: ?Value = null,
-    is_finished: bool = false,
-    /// The last promise handed to script.
-    returned: ?Value = null,
+};
+
+const async_iterator_steps: engine.AsyncIteratorSteps = .{
+    .next = iteratorNextSteps,
+    .@"return" = iteratorReturnSteps,
+    .finalize = iteratorFinalize,
 };
 
 /// The asynchronous iterator initialization steps, and the iterator object.
@@ -2799,88 +2919,100 @@ pub fn values(realm: Realm, stream_instance: *runtime.Instance, prevent_cancel: 
     const it = try allocator.create(AsyncIterator);
     // Steps 3-4
     it.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .prevent_cancel = prevent_cancel };
-    const ffi = @import("v8").ffi;
-    const obj = ffi.v8_AsyncIterator_New(realm.isolate, realm.context, it, iteratorNextShim, iteratorReturnShim) orelse {
+    const object = engine.createAsyncIterator(realm.ctx, &async_iterator_steps, it) catch |err| {
         allocator.destroy(it);
-        return error.V8Failure;
+        return js.fromEngineError(err);
     };
-    return @ptrCast(obj);
+    return .{ .value = object.take(), .realm = realm.ctx };
 }
 
-fn iteratorGive(it: *AsyncIterator, promise: Value) *@import("v8").ffi.Promise {
-    js.disposeOptional(&it.returned);
-    it.returned = promise;
-    return @ptrCast(promise);
+/// The iterator object was collected. No engine work here: the reader and
+/// stream stay the wrapper cache's.
+fn iteratorFinalize(data: ?*anyopaque) void {
+    const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
+    it.allocator.destroy(it);
 }
 
-fn iteratorNextShim(_: *@import("v8").ffi.Isolate, _: *@import("v8").ffi.Context, ptr: ?*anyopaque) callconv(.c) ?*@import("v8").ffi.Promise {
-    const it: *AsyncIterator = @ptrCast(@alignCast(ptr orelse return null));
-    const realm = Realm.of(it.stream) catch return null;
-    const p = iteratorNext(realm, it) catch return null;
-    return iteratorGive(it, p);
-}
-
-fn iteratorReturnShim(_: *@import("v8").ffi.Isolate, _: *@import("v8").ffi.Context, ptr: ?*anyopaque) callconv(.c) ?*@import("v8").ffi.Promise {
-    const it: *AsyncIterator = @ptrCast(@alignCast(ptr orelse return null));
-    const realm = Realm.of(it.stream) catch return null;
-    const undef = realm.undefinedValue() catch return null;
-    defer js.dispose(undef);
-    const p = iteratorReturn(realm, it, undef) catch return null;
-    return iteratorGive(it, p);
-}
-
-/// WebIDL § 3.7.10.2 %AsyncIteratorPrototype%.next(): run nextSteps after the
-/// ongoing promise settles, or now. Owned promise.
-fn iteratorNext(realm: Realm, it: *AsyncIterator) js.Error!Value {
-    const deferred = try Deferred.init(realm);
-    const step = try it.allocator.create(IterStep);
-    step.* = .{ .it = it, .deferred = deferred, .kind = .next, .arg = null };
-    const result = try js.clone(deferred.promise);
-    if (it.ongoing) |ongoing| {
-        // 7: afterOngoingPromise = PerformPromiseThen(ongoing, nextSteps, nextSteps)
-        try realm.react(ongoing, IterStep, step, IterStep.run, IterStep.run);
-    } else {
-        // 8
-        step.run(undefined);
+/// § 4.2.5 "get the next iteration result": a promise for `{ value, done }`.
+fn iteratorNextSteps(data: ?*anyopaque) engine.Error!engine.Owned {
+    const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
+    const realm = Realm.of(it.stream) catch return error.OperationFailed;
+    // Step 3: Let promise be a new promise.
+    const deferred = Deferred.init(realm) catch return error.OperationFailed;
+    const promise = js.clone(deferred.promise) catch {
+        deferred.deinit();
+        return error.OperationFailed;
+    };
+    // Step 1: Let reader be iterator's reader.
+    const reader = readerOf(it.reader) orelse {
+        deferred.deinit();
+        js.dispose(promise);
+        return error.OperationFailed;
+    };
+    // Step 2 asserts the reader still has its stream; one released under the
+    // iterator rejects instead.
+    if (reader.stream == null) {
+        if (realm.typeError("The iterator's reader was released")) |e| {
+            defer js.dispose(e);
+            deferred.reject(realm, e);
+        } else |_| {}
+        deferred.deinit();
+        return .{ .value = promise.value };
     }
-    // 9: Set object's ongoing promise to afterOngoingPromise.
-    js.disposeOptional(&it.ongoing);
-    it.ongoing = try js.clone(result);
-    return result;
+    const step = it.allocator.create(IterStep) catch {
+        deferred.deinit();
+        js.dispose(promise);
+        return error.OutOfMemory;
+    };
+    step.* = .{ .allocator = it.allocator, .reader = it.reader, .deferred = deferred };
+    // Steps 4-5: Perform ! ReadableStreamDefaultReaderRead(reader, readRequest).
+    defaultReaderRead(realm, reader, .{ .ctx = step, .vtable = &iter_read_vtable });
+    // Step 6: Return promise.
+    return .{ .value = promise.value };
 }
 
-/// WebIDL %AsyncIteratorPrototype%.return(value). Owned promise.
-fn iteratorReturn(realm: Realm, it: *AsyncIterator, value: Value) js.Error!Value {
-    const deferred = try Deferred.init(realm);
-    const step = try it.allocator.create(IterStep);
-    step.* = .{ .it = it, .deferred = deferred, .kind = .ret, .arg = try js.clone(value) };
-    const result = try js.clone(deferred.promise);
-    if (it.ongoing) |ongoing| {
-        try realm.react(ongoing, IterStep, step, IterStep.run, IterStep.run);
-    } else {
-        step.run(undefined);
+/// § 4.2.5 the asynchronous iterator return steps, given `arg`: a promise.
+/// WebIDL then fulfills with `{ value: arg, done: true }`.
+fn iteratorReturnSteps(data: ?*anyopaque, arg: runtime.JSValue) engine.Error!engine.Owned {
+    const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
+    const realm = Realm.of(it.stream) catch return error.OperationFailed;
+    // Step 1: Let reader be iterator's reader.
+    const reader_instance = it.reader;
+    const reader = readerOf(reader_instance) orelse return error.OperationFailed;
+    // Step 2 asserts the reader still has its stream; one already released
+    // has nothing to cancel.
+    if (reader.stream == null) {
+        const resolved = realm.promiseResolvedWithUndefined() catch return error.OperationFailed;
+        return .{ .value = resolved.value };
     }
-    return result;
+    // Step 4: If iterator's prevent cancel is false:
+    if (!it.prevent_cancel) {
+        const reason: Value = .{ .value = arg, .realm = realm.ctx };
+        // 4.1 Let result be ! ReadableStreamReaderGenericCancel(reader, arg).
+        const result = readerGenericCancel(realm, reader, reason) catch return error.OperationFailed;
+        // 4.2 Perform ! ReadableStreamDefaultReaderRelease(reader).
+        defaultReaderRelease(realm, reader_instance);
+        // 4.3 Return result.
+        return .{ .value = result.value };
+    }
+    // Step 5: Perform ! ReadableStreamDefaultReaderRelease(reader).
+    defaultReaderRelease(realm, reader_instance);
+    // Step 6: Return a promise resolved with undefined.
+    const resolved = realm.promiseResolvedWithUndefined() catch return error.OperationFailed;
+    return .{ .value = resolved.value };
 }
 
+/// The read request of "get the next iteration result". It holds the reader,
+/// not the iterator: the iterator object can be collected while its read is
+/// pending.
 const IterStep = struct {
-    it: *AsyncIterator,
+    allocator: std.mem.Allocator,
+    reader: *runtime.Instance,
     deferred: Deferred,
-    kind: enum { next, ret },
-    arg: ?Value,
 
     fn finish(self: *IterStep) void {
-        js.disposeOptional(&self.arg);
         self.deferred.deinit();
-        self.it.allocator.destroy(self);
-    }
-
-    fn run(self: *IterStep, _: Value) void {
-        const realm = Realm.of(self.it.stream) catch return self.finish();
-        switch (self.kind) {
-            .next => self.runNext(realm),
-            .ret => self.runReturn(realm),
-        }
+        self.allocator.destroy(self);
     }
 
     fn resolveResult(self: *IterStep, realm: Realm, value: Value, done: bool) void {
@@ -2890,98 +3022,27 @@ const IterStep = struct {
         } else |_| {}
     }
 
-    /// nextSteps.
-    fn runNext(self: *IterStep, realm: Realm) void {
-        const it = self.it;
-        // 2: finished: { value: undefined, done: true }.
-        if (it.is_finished) {
-            if (realm.undefinedValue()) |undef| {
-                defer js.dispose(undef);
-                self.resolveResult(realm, undef, true);
-            } else |_| {}
-            return self.finish();
-        }
-        // 4: get the next iteration result - § 4.2.5 steps 1-5.
-        const reader = readerOf(it.reader) orelse return self.finish();
-        if (reader.stream == null) {
-            if (realm.typeError("The iterator's reader was released")) |e| {
-                defer js.dispose(e);
-                self.deferred.reject(realm, e);
-            } else |_| {}
-            return self.finish();
-        }
-        defaultReaderRead(realm, reader, .{ .ctx = self, .vtable = &iter_read_vtable });
-    }
-
-    /// returnSteps, then fulfillSteps: { value, done: true }.
-    fn runReturn(self: *IterStep, realm: Realm) void {
-        const it = self.it;
-        const value = self.arg orelse return self.finish();
-        // 2: finished already.
-        if (it.is_finished) {
-            self.resolveResult(realm, value, true);
-            return self.finish();
-        }
-        // 3: Set object's is finished to true.
-        it.is_finished = true;
-        // 4: the asynchronous iterator return steps (§ 4.2.5).
-        const reader_instance = it.reader;
-        const reader = readerOf(reader_instance) orelse return self.finish();
-        if (reader.stream == null) {
-            self.resolveResult(realm, value, true);
-            return self.finish();
-        }
-        if (!it.prevent_cancel) {
-            // 4.1-4.3: cancel, release, then wait for the cancelation.
-            const result = readerGenericCancel(realm, reader, value) catch return self.finish();
-            defer js.dispose(result);
-            defaultReaderRelease(realm, reader_instance);
-            realm.react(result, IterStep, self, IterStep.returnFulfilled, IterStep.returnRejected) catch self.finish();
-            return;
-        }
-        // 5-6
-        defaultReaderRelease(realm, reader_instance);
-        self.resolveResult(realm, value, true);
-        self.finish();
-    }
-
-    fn returnFulfilled(self: *IterStep, _: Value) void {
-        const realm = Realm.of(self.it.stream) catch return self.finish();
-        if (self.arg) |v| self.resolveResult(realm, v, true);
-        self.finish();
-    }
-
-    fn returnRejected(self: *IterStep, reason: Value) void {
-        const realm = Realm.of(self.it.stream) catch return self.finish();
-        self.deferred.reject(realm, reason);
-        self.finish();
-    }
-
-    // The read request of "get the next iteration result".
+    // chunk steps: resolve promise with chunk - { value: chunk, done: false }.
     fn readChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
         const self: *IterStep = @ptrCast(@alignCast(ctx));
-        // chunk steps: resolve with chunk -> { value: chunk, done: false }.
         self.resolveResult(realm, chunk, false);
         self.finish();
     }
 
+    // close steps: release the reader; resolve promise with end of iteration.
     fn readClose(ctx: *anyopaque, realm: Realm) void {
         const self: *IterStep = @ptrCast(@alignCast(ctx));
-        // close steps: release the reader; end of iteration.
-        defaultReaderRelease(realm, self.it.reader);
-        self.it.is_finished = true;
+        defaultReaderRelease(realm, self.reader);
         if (realm.undefinedValue()) |undef| {
-            defer js.dispose(undef);
             self.resolveResult(realm, undef, true);
         } else |_| {}
         self.finish();
     }
 
+    // error steps: release the reader; reject promise with e.
     fn readError(ctx: *anyopaque, realm: Realm, e: Value) void {
         const self: *IterStep = @ptrCast(@alignCast(ctx));
-        // error steps: release the reader; reject (rejectSteps: finished).
-        defaultReaderRelease(realm, self.it.reader);
-        self.it.is_finished = true;
+        defaultReaderRelease(realm, self.reader);
         self.deferred.reject(realm, e);
         self.finish();
     }

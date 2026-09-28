@@ -21,13 +21,13 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const WebSocket = interfaces.WebSocket;
 
 // Import the WebSocket connection module
@@ -37,9 +37,6 @@ const WebSocketConnection = websocket.WebSocketConnection;
 
 // The constructor applies the URL parser, per steps 2-5.
 const api_parser = @import("api_parser");
-
-// A socket keeps its own wrapper alive until it has closed.
-const same_object = @import("same_object.zig");
 
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
@@ -173,75 +170,40 @@ fn pumpCallback(user_data: ?*anyopaque) void {
     token.arm();
 }
 
-/// Run one pump turn with a HandleScope on the stack.
+/// Run one pump turn as a task of the socket's realm.
 ///
-/// A timer callback is entered from the event loop, not from V8, so there is no
-/// scope. Everything downstream of an event - wrapping the event object,
-/// invoking a listener - asks V8 for a Local, and without a scope that is not a
-/// failed call but an abort:
+/// A timer callback is entered from the event loop, not from script, so
+/// nothing has entered the socket's realm. The Engine table's
+/// `runTaskInRealm` does: the realm's agent (a worker's own, never the
+/// page's), a scope and its context - and afterwards the end of the task
+/// the realm's way, which for a worker is its microtask checkpoint and what
+/// it posted leaving for the page (the harness in a worker reports its
+/// results by message, so a close event that ran `test.done()` and stopped
+/// there would still read as a timeout). A window's host loop ends its own.
 ///
-///     # Fatal error in v8::HandleScope::CreateHandle()
-///     # Cannot create a handle without a HandleScope
-///
-/// which the journal records as one CRASH with no subtests and no clue.
-///
-/// If no isolate can be found, the pump does NOTHING rather than proceed
-/// unscoped, and reports itself live so the next turn can try again. A socket
-/// that never pumps times out; one that pumps unscoped takes the process down
-/// and every remaining test file with it.
-///
-/// ## A worker socket
-///
-/// A worker realm has no event loop of its own: its tasks run as timers on the
-/// page's loop, so a worker socket's pump turn starts with the PAGE's isolate
-/// entered. Three things make it a turn of the worker instead:
-///
-/// 1. ENTER the socket's isolate (`v8_Isolate_Enter`). A HandleScope on the
-///    worker's isolate is not enough, and neither is entering the worker's
-///    context: everything below - `JsScope`, the event wrappers, the listener
-///    calls, `binaryPayload` - asks `v8_Isolate_GetCurrent()`, and
-///    until the isolate is entered that answers with the page's. Handles made
-///    there, under a scope opened on the worker's isolate, are the "Cannot
-///    create a handle without a HandleScope" abort that kept worker sockets
-///    unpumped until now. AbortSignal.timeout()'s task hit the same wall
-///    (AGENTS.md, "A task fired into a worker from outside must end the
-///    worker's turn").
-/// 2. A `JsScope` on the socket's own realm: a HandleScope plus its context.
-/// 3. END the worker's turn (`finishTaskIn`), with the isolate still entered:
-///    a microtask checkpoint, then whatever the worker posted to the page. The
-///    harness in a worker reports its results by message, so a close event
-///    that ran `test.done()` and stopped there would still read as a timeout.
-///
-/// Every step is a no-op for a window socket: its isolate is already the
-/// current one, and `finishTaskIn` finds no worker with that isolate.
-///
-/// A worker realm that ends frees every Instance in its wrapper cache, and
-/// `InternalState.deinit` cancels the token on the way, so no turn is ever
-/// pumped into a disposed isolate.
+/// If the realm cannot be entered - it has gone - the pump does NOTHING and
+/// reports itself live, so the next turn can try again. A worker realm that
+/// ends frees every Instance in its wrapper cache, and `InternalState.deinit`
+/// cancels the token on the way, so no turn is ever pumped into a destroyed
+/// realm.
 fn pumpInScope(instance: *runtime.Instance) bool {
-    const ffi = v8_engine.ffi;
-
-    const internal = getInternal(instance) orelse return false;
-    const isolate = internal.isolate orelse ffi.v8_Isolate_GetCurrent() orelse return true;
-
-    // 1. The socket's isolate, entered for the whole turn.
-    const entered = ffi.v8_Isolate_GetCurrent() != isolate;
-    if (entered) ffi.v8_Isolate_Enter(isolate);
-    defer if (entered) ffi.v8_Isolate_Exit(isolate);
-
-    // 2. A scope and the socket's realm. `pump` may run script that frees the
-    //    WebSocket, so nothing after it reads `instance` - the scope carries
-    //    its own context and isolate.
-    const live = blk: {
-        const scope = v8_engine.JsScope.init(instance.ctx) orelse break :blk true;
-        defer scope.deinit();
-        break :blk pump(instance);
-    };
-
-    // 3. The end of the turn, for a worker; nothing for a window.
-    @import("html").worker_v8_context.finishTaskIn(isolate);
-    return live;
+    // `pump` may run script that frees the WebSocket, so nothing after it
+    // reads `instance`: the realm is its own object.
+    const realm = instance.ctx;
+    var turn = PumpTurn{ .instance = instance };
+    engine.runTaskInRealm(realm, PumpTurn.steps, &turn) catch return true;
+    return turn.live;
 }
+
+const PumpTurn = struct {
+    instance: *runtime.Instance,
+    live: bool = true,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *PumpTurn = @ptrCast(@alignCast(data orelse return));
+        self.live = pump(self.instance);
+    }
+};
 
 /// Internal state for WebSocket implementation
 pub const InternalState = struct {
@@ -255,10 +217,6 @@ pub const InternalState = struct {
 
     /// Binary type preference
     binary_type: enums.BinaryType,
-
-    /// The isolate the socket was made in: the page's, or a worker's. The pump
-    /// enters it for each turn (see `pumpInScope`).
-    isolate: ?*v8_engine.ffi.Isolate,
 
     /// The pump's token, while one exists. See `PollToken`.
     poll: ?*PollToken = null,
@@ -295,22 +253,12 @@ pub const InternalState = struct {
     /// The socket's own wrapper, held from construction until the close event
     /// has fired.
     ///
-    /// WebSockets § 7: a WebSocket whose connection is not yet closed must not
-    /// be collected while it has listeners for the events still to come - and
-    /// a socket is routinely held by nothing but its listeners
-    /// (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
-    /// channel exists (WebSocket::HasPendingActivity); this is that, through
-    /// the same Pin XMLHttpRequest holds across a fetch. Released in the close
-    /// task, and in deinit, which is how a realm's teardown gets past it.
-    keep_alive: same_object.Pin = .{},
-
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
             .connection = null,
             .url_string = "",
             .binary_type = ._blob_,
-            .isolate = null,
         };
     }
 
@@ -321,8 +269,6 @@ pub const InternalState = struct {
             token.detach();
             self.poll = null;
         }
-
-        self.keep_alive.release();
 
         if (self.connection) |conn| {
             conn.deinit();
@@ -403,8 +349,15 @@ pub fn init(
     return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
+/// End the pending-activity hold the constructor took (idempotent).
+fn releasePendingActivity(instance: *runtime.Instance) void {
+    engine.releasePlatformObject(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Whatever pending-activity hold is left on it goes with it.
+    releasePendingActivity(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -460,7 +413,7 @@ fn pump(instance: *runtime.Instance) bool {
     //    step per turn so that script keeps running while it is in flight.
     if (!internal.connect_attempted and !connection.closed) {
         internal.connect_attempted = true;
-        const origin = clientOrigin(instance.ctx);
+        const origin = clientOrigin(instance);
         defer if (origin) |o| instance.ctx.allocator.free(o);
         connection.startConnect(.{
             .protocols = internal.requested_protocols,
@@ -571,7 +524,7 @@ fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
     fireCloseEvent(instance, outcome);
 
     // Nothing more will fire: the socket's lifetime is its wrapper's again.
-    if (getInternal(instance)) |live| live.keep_alive.release();
+    releasePendingActivity(instance);
 }
 
 const CloseOutcome = struct {
@@ -585,14 +538,8 @@ const CloseOutcome = struct {
 /// header to every request whose mode is "websocket"). Read through the
 /// realm's global, which is a Window or a WorkerGlobalScope and so answers
 /// WindowOrWorkerGlobalScope's `origin`. Owned by `ctx.allocator`.
-fn clientOrigin(ctx: runtime.Context) ?[]const u8 {
-    const ffi = v8_engine.ffi;
-    const engine_ctx = ctx.engine_ctx orelse return null;
-    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const global = ffi.v8_Context_Global(v8_context) orelse return null;
-    defer ffi.v8_Object_Dispose(global);
-    const raw = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
-    const global_instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
+    const global_instance = relevantGlobal(instance) orelse return null;
     const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
     // "null" is an opaque origin, and a header saying so is still the one to send.
     return origin;
@@ -618,7 +565,7 @@ fn fireSimpleEvent(instance: *runtime.Instance, name: []const u8) void {
         webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
 
-    deliver(instance, event, type_string, .plain);
+    deliver(instance, event, type_string);
 }
 
 fn fireCloseEvent(instance: *runtime.Instance, outcome: CloseOutcome) void {
@@ -638,7 +585,7 @@ fn fireCloseEvent(instance: *runtime.Instance, outcome: CloseOutcome) void {
         webidl.Opt(dictionaries.CloseEventInit).passed(init_dict),
     ) catch return;
 
-    deliver(instance, event, type_string, .close);
+    deliver(instance, event, type_string);
 }
 
 fn fireMessageEvent(
@@ -655,10 +602,10 @@ fn fireMessageEvent(
     // event outlives this call. `MessageEvent.call_constructor` clones the
     // dictionary's data, so an OWNED string here would be cloned and then
     // leaked; a ref is cloned into an owned copy, which is what is wanted.
-    const payload: runtime.JSValue = blk: {
-        if (is_text) break :blk runtime.JSValue.fromStringRef(data);
-        break :blk binaryPayload(instance, internal, data) orelse return;
-    };
+    const binary: ?engine.Owned = if (is_text) null else (binaryPayload(instance, internal, data) orelse return);
+    // The event keeps its own hold on a binary payload.
+    defer if (binary) |payload| payload.release();
+    const payload: runtime.JSValue = if (binary) |b| b.value else runtime.JSValue.fromStringRef(data);
 
     const init_dict = dictionaries.MessageEventInit{
         .base = .{},
@@ -672,61 +619,37 @@ fn fireMessageEvent(
         webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
     ) catch return;
 
-    deliver(instance, event, type_string, .message);
+    deliver(instance, event, type_string);
 }
 
-/// A binary frame as `binaryType` says to present it.
+/// A binary frame as `binaryType` says to present it. OWNED: the caller
+/// releases it once the event holds its own (a Blob is an Instance, the
+/// event's and its wrapper's: releasing it does nothing).
 fn binaryPayload(
     instance: *runtime.Instance,
     internal: *InternalState,
     data: []const u8,
-) ?runtime.JSValue {
+) ?engine.Owned {
+    const ctx = instance.ctx;
+    // The ArrayBuffer COPIES the bytes into a buffer the engine owns, so the
+    // pump's receive buffer does not have to outlive the call. Made in the
+    // socket's realm (the pump's task entered it).
+    const buffer = engine.createArrayBuffer(ctx, data) catch return null;
     switch (internal.binary_type) {
-        ._arraybuffer_ => {
-            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return null;
-            const engine_ctx = instance.ctx.engine_ctx orelse return null;
-            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-            // v8_ArrayBuffer_NewWithData COPIES into a buffer V8 owns, so the
-            // stack payload does not have to outlive the call.
-            const value = v8_engine.ffi.v8_ArrayBuffer_NewWithData(
-                isolate,
-                v8_context,
-                @ptrCast(@constCast(data.ptr)),
-                data.len,
-            ) orelse return null;
-            return runtime.JSValue.fromGlobalHandle(@ptrCast(value));
-        },
+        ._arraybuffer_ => return buffer,
         ._blob_ => {
+            defer buffer.release();
             // Built through Blob's own constructor rather than by reaching into
             // its impl: `new Blob([arrayBuffer])`, assembled here. The Blob
-            // copies the bytes into its BlobData, so the pump's stack buffer
-            // does not have to outlive this call.
-            const v8 = v8_engine.ffi;
-            const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
-            const engine_ctx = instance.ctx.engine_ctx orelse return null;
-            const v8_context: *v8.Context = @ptrCast(@alignCast(engine_ctx));
-
-            const buffer = v8.v8_ArrayBuffer_NewWithData(
-                isolate,
-                v8_context,
-                @ptrCast(@constCast(data.ptr)),
-                data.len,
-            ) orelse return null;
-            defer v8.v8_Value_Dispose(buffer);
-
-            // Both of these allocate a Global the caller owns, and the Blob
-            // copies out of them rather than retaining them.
-            const parts = v8.v8_Array_New(isolate, 1);
-            defer v8.v8_Value_Dispose(@ptrCast(parts));
-            if (!v8.v8_Array_Set(parts, v8_context, 0, buffer)) return null;
-
+            // copies the bytes into its BlobData.
+            const parts = engine.createSequenceOfValues(ctx, &.{buffer.value}) catch return null;
+            defer parts.release();
             const blob = interfaces.Blob.call_constructor(
-                instance.ctx,
-                webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromHandleNonOwning(@ptrCast(parts))),
+                ctx,
+                webidl.Opt(runtime.JSValue).passed(parts.borrow()),
                 webidl.Opt(dictionaries.BlobPropertyBag).notPassed(),
             ) catch return null;
-            return runtime.JSValue.fromInstance(blob);
+            return .{ .value = runtime.JSValue.fromInstance(blob) };
         },
     }
 }
@@ -741,14 +664,11 @@ fn originOf(url: []const u8) []const u8 {
     return url[0 .. sep + 3 + end];
 }
 
-const EventShape = enum { plain, close, message };
-
 /// Fire `event` at the WebSocket, then release it if nothing kept it.
 fn deliver(
     target: *runtime.Instance,
     event: *runtime.Instance,
     type_string: runtime.DOMString,
-    shape: EventShape,
 ) void {
     // `dispatchEvent` throws unless the event's INITIALIZED flag is set, and no
     // constructor sets it. `initEvent` does, and gives the event an owned copy
@@ -762,30 +682,24 @@ fn deliver(
 
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl.
+    const generation = runtime.SlabAllocator.generationOf(event);
     _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 
-    releaseEventIfUnwrapped(event, shape);
+    releaseEventIfUnwrapped(event, generation);
 }
 
 /// Free an event nobody ever saw.
 ///
-/// The wrapper cache is the proof: every path that hands an event to V8 puts it
-/// there and the weak callback owns it from that moment, so an event absent
-/// from the cache after dispatch has provably never been seen and freeing it is
-/// safe. One that IS cached is left entirely alone. Same reasoning, and the
-/// same hazard, as `XMLHttpRequest.releaseEventIfUnwrapped`.
-fn releaseEventIfUnwrapped(event: *runtime.Instance, shape: EventShape) void {
-    const cache_storage = event.ctx.getV8WrapperCacheStorage() orelse return;
-    const cache: *v8_engine.WrapperCache = @ptrCast(@alignCast(cache_storage));
-    if (cache.get(event) != null) return;
-
-    switch (shape) {
-        .plain => interfaces.Event.deinit(event),
-        .close => interfaces.CloseEvent.deinit(event),
-        .message => interfaces.MessageEvent.deinit(event),
-    }
+/// The wrapper cache is the proof: every path that hands an event to script
+/// wraps it, and the wrapper owns it from that moment, so an event with no
+/// wrapper after dispatch has provably never been seen and freeing it is
+/// safe. One that IS wrapped is left entirely alone
+/// (`runtime.Instance.releaseIfUnwrapped`). Same reasoning, and the same
+/// hazard, as `XMLHttpRequest.releaseEventIfUnwrapped`.
+fn releaseEventIfUnwrapped(event: *runtime.Instance, generation: u64) void {
+    event.releaseIfUnwrapped(generation);
 }
 
 /// Constructor implementation
@@ -807,6 +721,10 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, shape: EventShape) void {
 /// 12. Run this step in parallel: Establish a WebSocket connection given urlRecord,
 ///     protocols, and client.
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    // "This": made first, so its relevant settings object answers step 1.
+    const instance = try init(ctx.allocator, State, &WebSocket.vtable, ctx);
+    errdefer deinit(instance);
+
     // Steps 1-2. Parse url against this's relevant settings object's API base
     // URL. With no base, which is what this passed, every relative url - "",
     // "test", "?" - failed step 3 instead of resolving against the page.
@@ -816,7 +734,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // SyntaxError because a space cannot appear in a host.
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
-    if (apiBaseURL(ctx)) |base| {
+    if (apiBaseURL(instance)) |base| {
         defer ctx.allocator.free(base);
         base_record = api_parser.parseURL(ctx.allocator, base, null) catch null;
     }
@@ -863,10 +781,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     var url_owned = true;
     defer if (url_owned) ctx.allocator.free(url_string);
 
-    // Create instance
-    const instance = try init(ctx.allocator, State, &WebSocket.vtable, ctx);
-    errdefer deinit(instance);
-
     // Get state
     const state = instance.getState(State);
 
@@ -874,15 +788,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(ctx.allocator);
-
-    // Store the V8 isolate for Global handle management.
-    //
-    // NOT `ctx.getEngineContextAs(Isolate)`, which is what this used to be:
-    // `engine_ctx` holds the V8 *Context*, and that cast just relabels it. The
-    // four `get_on*` accessors have been passing a Context to
-    // `GlobalHandle.get(isolate)` ever since, and went unnoticed only because
-    // nothing ever fired an event to read a handler back with.
-    internal.isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     state.own._internal = internal;
 
@@ -906,7 +811,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // Steps 8-9. protocols is a string or a sequence of strings. Each must be a
     // valid HTTP token, and no value may repeat (ASCII case-insensitively) -
     // otherwise throw a "SyntaxError" DOMException.
-    internal.requested_protocols = try parseProtocols(ctx.allocator, protocols);
+    internal.requested_protocols = try parseProtocols(ctx, ctx.allocator, protocols);
 
     // Step 12. "Run this step in parallel: establish a WebSocket connection."
     //
@@ -916,7 +821,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // CONNECTING - which several tests in `websockets/` assert directly.
     //
     // A worker realm is pumped the same way: its timer is the page's, and
-    // `pumpInScope` enters the worker's isolate for each turn.
+    // `pumpInScope` runs each turn as a task of the worker's realm.
     const timer = ctx.getOptionalTimer() orelse {
         // No timer means no event loop, so nothing could ever deliver an event.
         // Leave the socket in CONNECTING rather than pretending otherwise.
@@ -927,7 +832,19 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     internal.poll = token;
     token.arm();
 
-    internal.keep_alive.hold(instance);
+    // WebSockets § 7: a WebSocket whose connection is not yet closed must not
+    // be collected while it has listeners for the events still to come - and
+    // a socket is routinely held by nothing but its listeners
+    // (`new WebSocket(url).onmessage = f`). Blink holds it for as long as its
+    // channel exists (WebSocket::HasPendingActivity); this is that, through
+    // the engine's pending-activity hold - taken before the binding wraps the
+    // socket, and so by the wrapper script gets. (A same_object Pin
+    // taken here made a wrapper of its own, which the constructor's wrapper
+    // then replaced in the cache: the Pin held an object script never saw,
+    // and the socket was collected with its connection still pending - the
+    // first ~20 of websockets/Create-blocked-port.any.js's sockets in a
+    // worker.) Released by the close task, and by deinit.
+    engine.keepPlatformObjectAlive(instance);
 
     return instance;
 }
@@ -937,25 +854,38 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
 /// A window's is its document's base URL, read through the Document's
-/// `baseURI`; a worker's is its script URL, which the context entry records
-/// (html/worker_v8_context.zig). The same lookup `Request`'s constructor makes.
-fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
-    if (ctx.getEngineContextAs(v8_engine.ffi.Context)) |v8_context| {
-        if (v8_engine.context_manager.getWindowForContext(v8_context)) |window| {
-            const document = interfaces.Window.get_document(window) catch null;
-            if (document) |d| {
-                const base = interfaces.Node.get_baseURI(d) catch null;
-                if (base) |b| {
-                    if (b.len > 0) return @constCast(b);
-                    d.ctx.allocator.free(b);
-                }
+/// `baseURI`; a worker's is its script URL, which its realm records as its
+/// document URL. The same lookup `Request`'s constructor makes.
+fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
+    const ctx = instance.ctx;
+    if (relevantWindow(instance)) |window| {
+        const document = interfaces.Window.get_document(window) catch null;
+        if (document) |d| {
+            const base = interfaces.Node.get_baseURI(d) catch null;
+            if (base) |b| {
+                if (b.len > 0) return @constCast(b);
+                d.ctx.allocator.free(b);
             }
         }
-        if (v8_engine.context_manager.getDocumentUrl(v8_context)) |document_url| {
-            if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
-        }
+    }
+    if (ctx.documentUrl()) |document_url| {
+        if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
     }
     return null;
+}
+
+/// `instance`'s relevant global object: its relevant realm's global object,
+/// from the realm record.
+fn relevantGlobal(instance: *runtime.Instance) ?*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
+/// `instance`'s relevant global object, when it is a Window.
+fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
+    const global = relevantGlobal(instance) orelse return null;
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
 }
 
 /// Steps 8-9 of the constructor: validate and copy the requested subprotocols.
@@ -964,6 +894,7 @@ fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
 /// `CreateWebSocket(false, false)` must send no Sec-WebSocket-Protocol header
 /// at all.
 fn parseProtocols(
+    ctx: runtime.Context,
     allocator: std.mem.Allocator,
     protocols: webidl.Opt(runtime.JSValue),
 ) !?[][]const u8 {
@@ -975,7 +906,7 @@ fn parseProtocols(
         list.deinit(allocator);
     }
 
-    try collectProtocolStrings(allocator, &list, protocols.value);
+    try collectProtocolStrings(ctx, allocator, &list, protocols.value);
 
     if (list.items.len == 0) {
         list.deinit(allocator);
@@ -996,19 +927,21 @@ fn parseProtocols(
 /// Pull the strings out of the protocols argument.
 ///
 /// `protocols` is `(DOMString or sequence<DOMString>)`, and reaches an impl as
-/// an unconverted JSValue, so both shapes are read straight off the V8 value.
+/// an unconverted JSValue, so this is WebIDL's union conversion (§ 3.2.25):
+/// an object with an @@iterator is the sequence, any other object is
+/// converted to the DOMString, and a primitive the binding has already made
+/// a string of arrives as one.
 fn collectProtocolStrings(
+    ctx: runtime.Context,
     allocator: std.mem.Allocator,
     list: *std.ArrayList([]const u8),
     value: runtime.JSValue,
 ) !void {
-    const v8 = v8_engine.ffi;
-
-    // WebIDL § 3.2.24, union conversion: anything that is not an object is
+    // WebIDL § 3.2.25, union conversion: anything that is not an object is
     // converted to the union's DOMString. The binding has already done that for
-    // a string - it arrives here as `.string`, never as a handle - and this used
-    // to return on any non-handle, so `new WebSocket(url, "/echo")` sent no
-    // protocol at all instead of throwing the SyntaxError step 9 requires.
+    // a string - it arrives here as `.string` - and this used to return on any
+    // non-handle, so `new WebSocket(url, "/echo")` sent no protocol at all
+    // instead of throwing the SyntaxError step 9 requires.
     switch (value) {
         .string => |s| return list.append(allocator, try allocator.dupe(u8, s.data)),
         .boolean => |b| return list.append(allocator, try allocator.dupe(u8, if (b) "true" else "false")),
@@ -1018,32 +951,22 @@ fn collectProtocolStrings(
         // `undefined` is the omitted argument's default: the empty sequence.
         .undefined, .instance => return,
     }
-    const v8_value: *v8.Value = @ptrCast(@alignCast(value.handle.ptr));
-
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return;
-
-    if (v8.v8_Value_IsString(v8_value)) {
-        // A bare string is a sequence of just that string.
-        if (try v8StringToOwned(allocator, v8_value)) |s| try list.append(allocator, s);
+    // An object with an @@iterator: the sequence<DOMString>.
+    if (try engine.convertToSequenceOfDOMStrings(ctx, value, allocator)) |strings| {
+        defer allocator.free(strings);
+        var taken: usize = 0;
+        errdefer for (strings[taken..]) |string| allocator.free(string);
+        for (strings) |string| {
+            try list.append(allocator, string);
+            taken += 1;
+        }
         return;
     }
 
-    if (!v8.v8_Value_IsArray(v8_value)) return;
-
-    const v8_array: *v8.Array = @ptrCast(v8_value);
-    const length = v8.v8_Array_Length(v8_array);
-    if (length == 0) return;
-
-    // `v8_Isolate_GetCurrentContext` allocates a Global the caller owns.
-    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(v8_context);
-
-    var i: u32 = 0;
-    while (i < length) : (i += 1) {
-        const element = v8.v8_Array_Get(v8_context, v8_array, i) orelse continue;
-        defer v8.v8_Value_Dispose(element);
-        if (try v8StringToOwned(allocator, element)) |s| try list.append(allocator, s);
-    }
+    // Any other object: the DOMString.
+    const string = try engine.convertToDOMString(ctx, value, allocator);
+    errdefer allocator.free(string);
+    try list.append(allocator, string);
 }
 
 /// ECMAScript's Number::toString, for a number passed as a protocol.
@@ -1059,21 +982,6 @@ fn numberToString(allocator: std.mem.Allocator, n: f64) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{d}", .{@as(i128, @intFromFloat(n))});
     }
     return std.fmt.allocPrint(allocator, "{d}", .{n});
-}
-
-/// A V8 string as an owned UTF-8 slice, or null if it is not a string.
-fn v8StringToOwned(allocator: std.mem.Allocator, value: *v8_engine.ffi.Value) !?[]const u8 {
-    const v8 = v8_engine.ffi;
-    if (!v8.v8_Value_IsString(value)) return null;
-
-    const str: *v8.String = @ptrCast(value);
-    const utf8_len = v8.v8_String_Utf8Length(str);
-    if (utf8_len <= 0) return try allocator.dupe(u8, "");
-
-    const buffer = try allocator.alloc(u8, @intCast(utf8_len));
-    errdefer allocator.free(buffer);
-    _ = v8.v8_String_WriteUtf8(str, buffer.ptr, utf8_len);
-    return buffer;
 }
 
 /// An HTTP token, per RFC 9110 § 5.6.2. Empty is not a token.
@@ -1305,7 +1213,7 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!vo
     var scratch: ?[]const u8 = null;
     defer if (scratch) |s| internal.allocator.free(s);
 
-    var payload = try payloadOf(internal, data, &scratch);
+    var payload = try payloadOf(instance, internal, data, &scratch);
 
     // "If data is a string: let data be the result of converting data to a
     // sequence of Unicode scalar values." A lone surrogate becomes U+FFFD
@@ -1343,21 +1251,20 @@ const Payload = struct {
 ///
 /// `send` takes `(BufferSource or Blob or USVString)`, and the argument
 /// reaches the impl unconverted, so this is WebIDL's union conversion
-/// (§ 3.2.24): an ArrayBuffer or a view of one is binary; a Blob is binary;
+/// (§ 3.2.25): a Blob is binary; an ArrayBuffer or a view of one is binary;
 /// ANYTHING else - null, a number, a function, the window - is converted to a
 /// USVString with ToString and sent as text. `ws.send(null)` sends "null".
 /// This used to send an empty frame for anything that was not a string or a
 /// buffer, and `interfaces/WebSocket/send/010.html` round-trips ten of them.
 ///
-/// `scratch` receives an allocation only when one was needed; everything else
-/// is a view into V8's own backing store, valid for this call only - which is
-/// all the connection needs, since it copies what it queues.
+/// `scratch` receives an allocation whenever one was made; the connection
+/// copies what it queues.
 fn payloadOf(
+    instance: *runtime.Instance,
     internal: *InternalState,
     data: runtime.JSValue,
     scratch: *?[]const u8,
 ) !Payload {
-    const v8 = v8_engine.ffi;
     const allocator = internal.allocator;
 
     switch (data) {
@@ -1375,92 +1282,42 @@ fn payloadOf(
         .instance => return .{ .bytes = "", .is_text = true },
         .handle => {},
     }
-    const value: *v8.Value = @ptrCast(@alignCast(data.handle.ptr));
+    const ctx = instance.ctx;
 
-    if (v8.v8_Value_IsString(value)) {
-        const str: *v8.String = @ptrCast(value);
-        const utf8_len = v8.v8_String_Utf8Length(str);
-        if (utf8_len <= 0) return .{ .bytes = "", .is_text = true };
-        const buffer = try allocator.alloc(u8, @intCast(utf8_len));
-        scratch.* = buffer;
-        _ = v8.v8_String_WriteUtf8(str, buffer.ptr, utf8_len);
-        return .{ .bytes = buffer, .is_text = true };
+    // A platform object implementing Blob (or File, which is one).
+    if (engine.convertToPlatformObject(ctx, data)) |object| {
+        if (isBlob(object)) {
+            // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
+            // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
+            // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
+            // promises. Reading them directly would be a new impls-boundary call;
+            // doing it properly needs a hook Blob installs (src/dom/, the shape of
+            // fetch_objects.zig) plus the spec's asynchronous read, holding back
+            // every later frame until the Blob's bytes are in the queue. Until then
+            // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
+            // reports a failure rather than hiding one.
+            return .{ .bytes = "", .is_text = false };
+        }
     }
 
-    if (v8.v8_Value_IsArrayBuffer(value)) {
-        const ab: *v8.ArrayBuffer = @ptrCast(value);
-        const len = v8.v8_ArrayBuffer_ByteLength(ab);
-        if (len == 0) return .{ .bytes = "", .is_text = false };
-        const ptr = v8.v8_ArrayBuffer_Data(ab) orelse return .{ .bytes = "", .is_text = false };
-        const bytes: [*]const u8 = @ptrCast(ptr);
-        return .{ .bytes = bytes[0..len], .is_text = false };
-    }
-
-    if (v8.v8_Value_IsArrayBufferView(value)) {
-        // A view sends the bytes it describes, NOT its whole buffer - which is
-        // the entire point of `Send-binary-arraybufferview-*-offset-length`.
-        // Any view: a typed array or a DataView.
-        var info: v8.ViewInfo = undefined;
-        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return error.TypeError;
-        // BufferSource is not [AllowShared].
-        if (info.buffer_shared) return error.TypeError;
-        if (info.byte_length == 0 or info.buffer_detached) return .{ .bytes = "", .is_text = false };
-        // An owned Global: dispose it. The view holds the buffer, so its bytes
-        // outlive the handle for as long as this call needs them. The typed
-        // array accessor this used before leaked one Global per send.
-        const buffer = v8.v8_ArrayBufferView_Buffer(value) orelse return .{ .bytes = "", .is_text = false };
-        defer v8.v8_Value_Dispose(buffer);
-        const ptr = v8.v8_ArrayBuffer_Data(@ptrCast(buffer)) orelse return .{ .bytes = "", .is_text = false };
-        const bytes: [*]const u8 = @ptrCast(ptr);
-        return .{ .bytes = bytes[info.byte_offset..][0..info.byte_length], .is_text = false };
-    }
-
-    if (isBlob(value)) {
-        // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
-        // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
-        // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
-        // promises. Reading them directly would be a new impls-boundary call;
-        // doing it properly needs a hook Blob installs (src/dom/, the shape of
-        // fetch_objects.zig) plus the spec's asynchronous read, holding back
-        // every later frame until the Blob's bytes are in the queue. Until then
-        // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
-        // reports a failure rather than hiding one.
-        return .{ .bytes = "", .is_text = false };
+    // An ArrayBuffer, or the bytes a view describes of its buffer (NOT the
+    // whole buffer - the point of `Send-binary-arraybufferview-*-offset-length`).
+    if (try engine.getCopyOfBufferSourceBytes(ctx, data, allocator)) |bytes| {
+        scratch.* = bytes;
+        return .{ .bytes = bytes, .is_text = false };
     }
 
     // Everything else is the USVString member: ToString, which throws for a
     // Symbol and propagates whatever a `toString` throws.
-    if (v8.v8_Value_IsSymbol(value)) return error.TypeError;
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.v8_Context_Dispose(context);
-    const result = v8.v8_Value_ToString_Safe(value, context);
-    defer v8.v8_FreeToStringResult(result);
-    if (result.exception) |exception| {
-        v8.v8_Isolate_ThrowException(isolate, exception);
-        return error.ExceptionPending;
-    }
-    const str = result.value orelse return error.TypeError;
-    const utf8_len = v8.v8_String_Utf8Length(str);
-    if (utf8_len <= 0) return .{ .bytes = "", .is_text = true };
-    const buffer = try allocator.alloc(u8, @intCast(utf8_len));
-    scratch.* = buffer;
-    _ = v8.v8_String_WriteUtf8(str, buffer.ptr, utf8_len);
-    return .{ .bytes = buffer, .is_text = true };
+    const text = try engine.convertToUSVString(ctx, data, allocator);
+    scratch.* = text;
+    return .{ .bytes = text, .is_text = true };
 }
 
-/// Is `value` a Blob (or a File, which is one)? Its wrapper's first internal
-/// field is the Instance, whose vtable names its interface. Asked of an
-/// object only, and only once it has internal fields: reading field 0 of an
-/// object without one is a V8 CHECK.
-fn isBlob(value: *v8_engine.ffi.Value) bool {
-    const v8 = v8_engine.ffi;
-    if (!v8.v8_Value_IsObject(value)) return false;
-    const object: *v8.Object = @ptrCast(value);
-    if (v8.v8_Object_InternalFieldCount(object) < 1) return false;
-    const raw = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return false;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
-    const name = instance.vtable.name;
+/// Is `object` a Blob (or a File, which is one)? Its vtable names its
+/// interface.
+fn isBlob(object: *runtime.Instance) bool {
+    const name = object.vtable.name;
     return std.mem.eql(u8, name, "Blob") or std.mem.eql(u8, name, "File");
 }
 

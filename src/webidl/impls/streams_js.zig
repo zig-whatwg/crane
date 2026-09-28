@@ -1,18 +1,22 @@
-//! JavaScript interop for the Streams implementation.
+//! JavaScript interop for the Streams implementation, over the engine
+//! protocol (`@import("engine")`).
 //!
 //! The Streams algorithms are written in terms of four JavaScript notions -
 //! values, promises you can settle, reactions to a promise, and invoking an
 //! author callback - and each needs one exact behaviour that the older
 //! streams code approximated (errors became TypeError strings, `start()` ran
-//! with `this` undefined, a Local slot pointer was handed to APIs expecting a
-//! Global). This file is that behaviour, once.
+//! with `this` undefined). This file is that behaviour, once, on engine
+//! operations: no engine handle type appears here or in its consumers.
 //!
-//! ## One handle kind
+//! ## Values
 //!
-//! Every `Value` here is a V8 `Global<Value>*`. Never a Local slot pointer
-//! from `v8_Global_Get` - passing one where a Global is expected reads the
-//! object's map word as a handle location. A comment on each function says who
-//! owns what it returns; "owned" means the caller disposes it exactly once.
+//! A `Value` is an engine value together with the realm it belongs to, so the
+//! realm-less `clone(v)` and `dispose(v)` keep working: holding a value needs
+//! a realm (`engine.retainValue`), and a JavaScriptCore value always pairs
+//! with its context anyway. A comment on each function says who owns what it
+//! returns; "owned" means the caller disposes it exactly once. Disposing a
+//! primitive, or a platform object named by `.instance`, does nothing -
+//! neither holds an engine resource - so every Value may be disposed alike.
 //!
 //! ## Lifetime of the objects the reactions point at
 //!
@@ -23,75 +27,84 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
-const ffi = v8.ffi;
+const engine = @import("engine");
 
-pub const Value = *ffi.Value;
+/// An engine value and the realm it belongs to.
+pub const Value = struct {
+    value: runtime.JSValue,
+    realm: runtime.Context,
+};
 
 pub const Error = error{
-    /// A JavaScript exception is pending on the isolate; the binding lets it
-    /// propagate instead of throwing a second one.
+    /// A JavaScript exception is pending; the binding lets it propagate
+    /// instead of throwing a second one.
     ExceptionPending,
     NoIsolate,
     NoContext,
     OutOfMemory,
-    /// V8 refused to create a value or run a call (termination, OOM).
+    /// The engine refused to create a value or run a call (termination, no
+    /// realm behind the context, out of handles).
     V8Failure,
 };
 
-/// The isolate and context a streams object runs in.
+/// An engine failure as this file's error: what is pending stays pending,
+/// anything else is a failure to act.
+pub fn fromEngineError(err: engine.Error) Error {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.ExceptionPending => error.ExceptionPending,
+        else => error.V8Failure,
+    };
+}
+
+/// An engine result as a Value of `realm`: the Owned's value, now the Value's
+/// holder's to dispose.
+fn adopt(realm: runtime.Context, owned: engine.Owned) Value {
+    return .{ .value = owned.take(), .realm = realm };
+}
+
+/// The realm a streams object runs in.
 pub const Realm = struct {
-    isolate: *ffi.Isolate,
-    /// Borrowed: the runtime context's own Global<Context>*.
-    context: *ffi.Context,
+    ctx: runtime.Context,
 
     pub fn of(instance: *const runtime.Instance) Error!Realm {
         return ofContext(instance.ctx);
     }
 
+    /// A realm with no engine realm behind it (retired, or never made) runs
+    /// nothing.
     pub fn ofContext(ctx: runtime.Context) Error!Realm {
-        const isolate = ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
-        const engine_ctx = ctx.engine_ctx orelse return error.NoContext;
-        return .{ .isolate = isolate, .context = @ptrCast(@alignCast(engine_ctx)) };
+        if (ctx.engine_ctx == null) return error.NoContext;
+        return .{ .ctx = ctx };
     }
 
     // ------------------------------------------------------------------
     // Values
     // ------------------------------------------------------------------
 
-    /// Owned.
+    /// Owned (a primitive: nothing to dispose).
     pub fn undefinedValue(self: Realm) Error!Value {
-        return ffi.v8_Undefined(self.isolate) orelse error.V8Failure;
+        return .{ .value = .undefined, .realm = self.ctx };
     }
 
-    /// Owned.
+    /// Owned (a primitive).
     pub fn number(self: Realm, n: f64) Value {
-        return @ptrCast(ffi.v8_Number_New(self.isolate, n));
+        return .{ .value = .{ .number = n }, .realm = self.ctx };
     }
 
     /// Owned.
     pub fn string(self: Realm, s: []const u8) Error!Value {
-        const str = if (s.len == 0)
-            ffi.v8_String_Empty(self.isolate)
-        else
-            ffi.v8_String_NewFromUtf8(self.isolate, s.ptr, @intCast(s.len));
-        return @ptrCast(str orelse return error.V8Failure);
+        const held = engine.retainValue(self.ctx, runtime.JSValue.fromStringRef(s)) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, held);
     }
 
     /// Owned copy of a value the binding handed in. The binding never
-    /// disposes a `runtime.JSValue` argument's handle (see
-    /// `argHandleIsCopied`), and impl-to-impl callers keep theirs, so the
-    /// argument is treated as BORROWED and cloned.
+    /// disposes a `runtime.JSValue` argument's handle, and impl-to-impl
+    /// callers keep theirs, so the argument is treated as BORROWED and held
+    /// anew. A platform object is held as its wrapper, in its relevant realm.
     pub fn fromRuntime(self: Realm, value: runtime.JSValue) Error!Value {
-        return switch (value) {
-            .undefined => self.undefinedValue(),
-            .null => ffi.v8_Null(self.isolate) orelse error.V8Failure,
-            .boolean => |b| ffi.v8_Boolean_New(self.isolate, b) orelse error.V8Failure,
-            .number => |n| self.number(n),
-            .string => |s| self.string(s.data),
-            .handle => |h| clone(@ptrCast(@alignCast(h.ptr))),
-            .instance => |i| clone(try self.wrap(i)),
-        };
+        const held = engine.retainValue(self.ctx, value) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, held);
     }
 
     /// Owned; `.undefined` when the optional argument was not passed.
@@ -99,12 +112,14 @@ pub const Realm = struct {
         return if (value.was_passed) self.fromRuntime(value.value) else self.undefinedValue();
     }
 
-    /// Borrowed: the wrapper cache's own handle for `instance`, created on
-    /// first use. Never dispose it.
+    /// `instance` as a Value, its wrapper made now: the wrapper cache keeps a
+    /// streams-graph object's wrapper, and the instance with it, for the
+    /// realm's life - which is what a Zig pointer to it needs. Borrowed:
+    /// disposing it does nothing.
     pub fn wrap(self: Realm, instance: *runtime.Instance) Error!Value {
-        const wrapper = v8.conversions.instanceToV8(self.isolate, instance);
-        if (ffi.v8_Value_IsUndefined(wrapper)) return error.V8Failure;
-        return wrapper;
+        const wrapper = engine.retainValue(instance.ctx, .{ .instance = instance }) catch |err| return fromEngineError(err);
+        wrapper.release();
+        return .{ .value = .{ .instance = instance }, .realm = self.ctx };
     }
 
     // ------------------------------------------------------------------
@@ -113,22 +128,20 @@ pub const Realm = struct {
 
     /// Owned: a new TypeError of this realm.
     pub fn typeError(self: Realm, message: []const u8) Error!Value {
-        const msg = ffi.v8_String_NewFromUtf8(self.isolate, message.ptr, @intCast(message.len)) orelse return error.V8Failure;
-        defer ffi.v8_String_Dispose(msg);
-        return ffi.v8_Exception_TypeErrorInContext(self.context, msg) orelse error.V8Failure;
+        const e = engine.createSimpleException(self.ctx, .TypeError, message) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, e);
     }
 
     /// Owned: a new RangeError of this realm.
     pub fn rangeError(self: Realm, message: []const u8) Error!Value {
-        const msg = ffi.v8_String_NewFromUtf8(self.isolate, message.ptr, @intCast(message.len)) orelse return error.V8Failure;
-        defer ffi.v8_String_Dispose(msg);
-        return ffi.v8_Exception_RangeErrorInContext(self.context, msg) orelse error.V8Failure;
+        const e = engine.createSimpleException(self.ctx, .RangeError, message) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, e);
     }
 
     /// Throw `value` into the calling script. Returns the error an impl
     /// returns so the binding leaves the exception in flight.
     pub fn throwValue(self: Realm, value: Value) error{ExceptionPending} {
-        ffi.v8_Isolate_ThrowException(self.isolate, value);
+        engine.throwValue(self.ctx, value.value) catch {};
         return error.ExceptionPending;
     }
 
@@ -136,18 +149,25 @@ pub const Realm = struct {
     // Calls
     // ------------------------------------------------------------------
 
-    /// Call `function` and return its completion. Both arms are owned.
+    /// WebIDL "invoke a callback function" with "rethrow": call `function`
+    /// with `this` (undefined when null) and return its completion. Both arms
+    /// are owned.
     pub fn call(self: Realm, function: Value, this: ?Value, args: []const Value) Error!Completion {
-        var threw: bool = true;
-        const result = ffi.v8_Function_CallCatching(
-            self.context,
-            function,
-            this,
-            @intCast(args.len),
-            if (args.len == 0) null else args.ptr,
-            &threw,
-        ) orelse return error.V8Failure;
-        return if (threw) .{ .thrown = result } else .{ .normal = result };
+        // Borrowed for the call: the function stays its holder's.
+        const callback: engine.CallbackFunction = .{
+            .function = .{ .value = function.value },
+            .context = self.ctx,
+        };
+        var argument_values: [8]runtime.JSValue = undefined;
+        if (args.len > argument_values.len) return error.V8Failure;
+        for (args, 0..) |arg, i| argument_values[i] = arg.value;
+        const this_arg: engine.CallbackThis = if (this) |t| .{ .value = t.value } else .undefined;
+        const completion = engine.invokeCallbackFunction(self.ctx, &callback, this_arg, argument_values[0..args.len], .rethrow) catch |err|
+            return fromEngineError(err);
+        return switch (completion) {
+            .normal => |v| .{ .normal = adopt(self.ctx, v) },
+            .throw => |e| .{ .thrown = adopt(self.ctx, e) },
+        };
     }
 
     /// WebIDL "invoke a callback function" whose return type is a promise:
@@ -174,25 +194,19 @@ pub const Realm = struct {
     /// WebIDL "a promise resolved with": always a new promise, resolved with
     /// `value` - so a thenable is adopted, not returned. Owned.
     pub fn promiseResolvedWith(self: Realm, value: Value) Error!Value {
-        var deferred = try Deferred.init(self);
-        defer deferred.deinitResolverOnly();
-        deferred.resolve(self, value);
-        return deferred.promise;
+        const promise = engine.createResolvedPromise(self.ctx, value.value) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, promise);
     }
 
     /// Owned.
     pub fn promiseResolvedWithUndefined(self: Realm) Error!Value {
-        const undef = try self.undefinedValue();
-        defer dispose(undef);
-        return self.promiseResolvedWith(undef);
+        return self.promiseResolvedWith(try self.undefinedValue());
     }
 
     /// WebIDL "a promise rejected with". Owned.
     pub fn promiseRejectedWith(self: Realm, reason: Value) Error!Value {
-        var deferred = try Deferred.init(self);
-        defer deferred.deinitResolverOnly();
-        deferred.reject(self, reason);
-        return deferred.promise;
+        const promise = engine.createRejectedPromise(self.ctx, reason.value) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, promise);
     }
 
     /// Owned: a promise rejected with a new TypeError.
@@ -203,7 +217,8 @@ pub const Realm = struct {
     }
 
     /// WebIDL "react to" `promise`. `ctx` must stay valid until one of the
-    /// handlers runs. The settled value is borrowed by the handler.
+    /// handlers runs. The settled value is borrowed by the handler, as a
+    /// Value of the realm the reaction runs in - the one it was made in.
     pub fn react(
         self: Realm,
         promise: Value,
@@ -212,15 +227,26 @@ pub const Realm = struct {
         comptime on_fulfilled: fn (*Ctx, Value) void,
         comptime on_rejected: fn (*Ctx, Value) void,
     ) Error!void {
-        const Trampoline = struct {
-            fn run(data: ?*anyopaque, value: ?*ffi.Value, rejected: bool) callconv(.c) void {
-                const c: *Ctx = @ptrCast(@alignCast(data.?));
-                const v = value.?;
-                defer dispose(v);
-                if (rejected) on_rejected(c, v) else on_fulfilled(c, v);
+        const Steps = struct {
+            const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected };
+
+            /// The reaction's function was made in the reacting realm, so
+            /// that is the current realm while it runs.
+            fn realmOfReaction() ?runtime.Context {
+                return engine.currentRealm();
+            }
+
+            fn fulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
+                const realm = realmOfReaction() orelse return;
+                on_fulfilled(@ptrCast(@alignCast(data.?)), .{ .value = value, .realm = realm });
+            }
+
+            fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+                const realm = realmOfReaction() orelse return;
+                on_rejected(@ptrCast(@alignCast(data.?)), .{ .value = reason, .realm = realm });
             }
         };
-        if (!ffi.v8_Promise_React(self.context, promise, Trampoline.run, ctx)) return error.V8Failure;
+        engine.reactToPromise(self.ctx, promise.value, &Steps.steps, ctx) catch |err| return fromEngineError(err);
     }
 };
 
@@ -232,98 +258,187 @@ pub const ResultOrder = enum {
     iterator,
 };
 
+/// `{ value, done }` in `order`. Owned.
 pub fn resultObject(realm: Realm, value: Value, done: bool, order: ResultOrder) Error!Value {
-    const obj = ffi.v8_Object_NewInContext(realm.context) orelse return error.V8Failure;
-    const done_value = ffi.v8_Boolean_New(realm.isolate, done) orelse return error.V8Failure;
-    defer dispose(done_value);
-    const value_key = ffi.v8_String_NewFromUtf8(realm.isolate, "value", 5) orelse return error.V8Failure;
-    defer ffi.v8_String_Dispose(value_key);
-    const done_key = ffi.v8_String_NewFromUtf8(realm.isolate, "done", 4) orelse return error.V8Failure;
-    defer ffi.v8_String_Dispose(done_key);
-    switch (order) {
-        .dictionary => {
-            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, done_key, done_value);
-            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, value_key, value);
-        },
-        .iterator => {
-            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, value_key, value);
-            _ = ffi.v8_Object_CreateDataProperty(obj, realm.context, done_key, done_value);
-        },
-    }
-    return @ptrCast(obj);
+    const done_member: engine.DictionaryMember = .{ .name = "done", .value = .{ .boolean = done } };
+    const value_member: engine.DictionaryMember = .{ .name = "value", .value = value.value };
+    const members: [2]engine.DictionaryMember = switch (order) {
+        .dictionary => .{ done_member, value_member },
+        .iterator => .{ value_member, done_member },
+    };
+    const object = engine.createDictionaryObject(realm.ctx, &members) catch |err| return fromEngineError(err);
+    return adopt(realm.ctx, object);
 }
 
 /// CreateArrayFromList(values). Owned.
 pub fn arrayFrom(realm: Realm, values: []const Value) Error!Value {
-    const arr = ffi.v8_Array_NewInContext(realm.context, @intCast(values.len)) orelse return error.V8Failure;
-    for (values, 0..) |v, i| _ = ffi.v8_Array_Set(arr, realm.context, @intCast(i), v);
-    return @ptrCast(arr);
+    var buffer: [8]runtime.JSValue = undefined;
+    if (values.len > buffer.len) return error.V8Failure;
+    for (values, 0..) |v, i| buffer[i] = v.value;
+    const array = engine.createSequenceOfValues(realm.ctx, buffer[0..values.len]) catch |err| return fromEngineError(err);
+    return adopt(realm.ctx, array);
 }
 
 /// HTML "queue a microtask" running `callback(ctx)`.
 pub fn queueMicrotask(realm: Realm, comptime Ctx: type, ctx: *Ctx, comptime callback: fn (*Ctx) void) void {
-    const Trampoline = struct {
-        fn run(data: ?*anyopaque) callconv(.c) void {
+    const Steps = struct {
+        fn run(data: ?*anyopaque) void {
             callback(@ptrCast(@alignCast(data.?)));
         }
     };
-    ffi.v8_Isolate_QueueMicrotask(realm.isolate, Trampoline.run, ctx);
+    const queued: engine.Error!void = if (realm.ctx.agent) |agent| engine.queueMicrotask(agent, Steps.run, ctx) else error.NotSupported;
+    queued catch {
+        // No agent to queue on (a realm with no engine behind it): run the
+        // steps now. Later than a microtask would be never happens, so the
+        // read loop they continue does not stall; the cost is that they run
+        // inside the caller's steps instead of after them.
+        callback(ctx);
+    };
 }
 
-/// Owned boolean.
+/// Owned boolean (a primitive).
 pub fn boolean(realm: Realm, b: bool) Error!Value {
-    return ffi.v8_Boolean_New(realm.isolate, b) orelse error.V8Failure;
+    return .{ .value = .{ .boolean = b }, .realm = realm.ctx };
 }
 
 // ============================================================================
 // ArrayBuffers and views (Streams § 8.3)
 // ============================================================================
 
-pub const ViewKind = ffi.ViewKind;
-pub const ViewInfo = ffi.ViewInfo;
+/// An ArrayBufferView's kind, by its constructor ([[TypedArrayName]], or a
+/// DataView).
+pub const ViewKind = enum {
+    int8,
+    uint8,
+    uint8_clamped,
+    int16,
+    uint16,
+    int32,
+    uint32,
+    float32,
+    float64,
+    bigint64,
+    biguint64,
+    data_view,
+
+    /// Element size from the typed array constructors table (1 for DataView).
+    pub fn elementSize(self: ViewKind) usize {
+        return switch (self) {
+            .int8, .uint8, .uint8_clamped, .data_view => 1,
+            .int16, .uint16 => 2,
+            .int32, .uint32, .float32 => 4,
+            .float64, .bigint64, .biguint64 => 8,
+        };
+    }
+
+    fn toEngine(self: ViewKind) engine.ViewType {
+        return switch (self) {
+            .int8 => .int8_array,
+            .uint8 => .uint8_array,
+            .uint8_clamped => .uint8_clamped_array,
+            .int16 => .int16_array,
+            .uint16 => .uint16_array,
+            .int32 => .int32_array,
+            .uint32 => .uint32_array,
+            .float32 => .float32_array,
+            .float64 => .float64_array,
+            .bigint64 => .bigint64_array,
+            .biguint64 => .biguint64_array,
+            .data_view => .data_view,
+        };
+    }
+
+    fn fromEngine(view_type: engine.ViewType) ViewKind {
+        return switch (view_type) {
+            .int8_array => .int8,
+            .uint8_array => .uint8,
+            .uint8_clamped_array => .uint8_clamped,
+            .int16_array => .int16,
+            .uint16_array => .uint16,
+            .int32_array => .int32,
+            .uint32_array => .uint32,
+            .float32_array => .float32,
+            .float64_array => .float64,
+            .bigint64_array => .bigint64,
+            .biguint64_array => .biguint64,
+            .data_view => .data_view,
+        };
+    }
+};
+
+/// What an ArrayBufferView is, and the buffer it views.
+pub const ViewInfo = struct {
+    kind: ViewKind,
+    byte_offset: usize,
+    byte_length: usize,
+    /// [[ArrayLength]], or the byte length for a DataView.
+    length: usize,
+    /// The viewed buffer's byte length: 0 when it is detached.
+    buffer_byte_length: usize,
+    buffer_detached: bool,
+    buffer_shared: bool,
+};
 
 pub fn describeView(view: Value) ?ViewInfo {
-    var info: ViewInfo = undefined;
-    if (!ffi.v8_ArrayBufferView_Describe(view, &info)) return null;
-    return info;
+    const description = engine.describeArrayBufferView(view.realm, view.value) orelse return null;
+    const kind = ViewKind.fromEngine(description.view_type);
+    var buffer_byte_length: usize = 0;
+    if (!description.detached) {
+        if (engine.getViewedArrayBuffer(view.realm, view.value)) |buffer| {
+            defer buffer.release();
+            if (engine.borrowArrayBufferBytes(view.realm, buffer.value)) |bytes| buffer_byte_length = bytes.len;
+        } else |_| {}
+    }
+    return .{
+        .kind = kind,
+        .byte_offset = description.byte_offset,
+        .byte_length = description.byte_length,
+        .length = description.byte_length / kind.elementSize(),
+        .buffer_byte_length = buffer_byte_length,
+        .buffer_detached = description.detached,
+        .buffer_shared = description.shared,
+    };
 }
 
 /// view.[[ViewedArrayBuffer]]. Owned.
 pub fn viewBuffer(view: Value) Error!Value {
-    return ffi.v8_ArrayBufferView_Buffer(view) orelse error.V8Failure;
+    const buffer = engine.getViewedArrayBuffer(view.realm, view.value) catch |err| return fromEngineError(err);
+    return adopt(view.realm, buffer);
 }
 
-/// Construct(ctor-of-kind, « buffer, byteOffset, length »). Owned.
+/// Construct(ctor-of-kind, « buffer, byteOffset, length »): `length` in
+/// elements (bytes for a DataView). Owned.
 pub fn newView(kind: ViewKind, buffer: Value, byte_offset: usize, length: usize) Error!Value {
-    return ffi.v8_ArrayBufferView_New(kind, buffer, byte_offset, length) orelse error.V8Failure;
+    const view = engine.createArrayBufferView(buffer.realm, kind.toEngine(), buffer.value, byte_offset, length) catch |err|
+        return fromEngineError(err);
+    return adopt(buffer.realm, view);
 }
 
 /// TransferArrayBuffer(O). Owned; null when it cannot be transferred.
 pub fn transferBuffer(buffer: Value) ?Value {
-    return ffi.v8_ArrayBuffer_Transfer(buffer);
+    const transferred = engine.transferArrayBuffer(buffer.realm, buffer.value) catch return null;
+    return adopt(buffer.realm, transferred);
 }
 
 pub fn canTransferBuffer(buffer: Value) bool {
-    return ffi.v8_ArrayBuffer_CanTransfer(buffer);
+    return engine.canTransferArrayBuffer(buffer.realm, buffer.value);
 }
 
 pub fn isDetachedBuffer(buffer: Value) bool {
-    return ffi.v8_ArrayBuffer_IsDetachedValue(buffer);
+    return engine.isDetachedBuffer(buffer.realm, buffer.value);
 }
 
-/// The bytes of an ArrayBuffer; null when detached.
+/// The bytes of an ArrayBuffer, borrowed until script next runs or the
+/// buffer detaches; null when detached.
 pub fn bufferBytes(buffer: Value) ?[]u8 {
-    var data: ?*anyopaque = null;
-    var len: usize = 0;
-    if (!ffi.v8_ArrayBuffer_Bytes(buffer, &data, &len)) return null;
-    if (len == 0) return &[_]u8{};
-    const ptr: [*]u8 = @ptrCast(data orelse return null);
-    return ptr[0..len];
+    return engine.borrowArrayBufferBytes(buffer.realm, buffer.value);
 }
 
-/// AllocateArrayBuffer(%ArrayBuffer%, n). Owned; null on allocation failure.
-pub fn allocateBuffer(byte_length: usize) ?Value {
-    return ffi.v8_ArrayBuffer_Allocate(byte_length);
+/// AllocateArrayBuffer(%ArrayBuffer% of `realm`, n). Owned; null on
+/// allocation failure.
+pub fn allocateBufferIn(realm: Realm, byte_length: usize) ?Value {
+    const buffer = engine.allocateArrayBuffer(realm.ctx, byte_length) catch return null;
+    return adopt(realm.ctx, buffer);
 }
 
 /// The completion of a call: a normal return value or a thrown value.
@@ -340,24 +455,39 @@ pub const Completion = union(enum) {
 
 /// A promise together with the capability to settle it - the spec's
 /// "a new promise", later "resolve"d or "reject"ed.
+///
+/// [[PromiseState]] has no engine operation (JavaScriptCore has none): a
+/// Deferred's promise is settled only through the Deferred, so the Deferred
+/// records it, in a cell of its own that its copies share.
 pub const Deferred = struct {
-    resolver: *ffi.PromiseResolver,
-    /// Owned Global of the promise itself.
+    capability: engine.PromiseCapability,
+    /// Owned: the Deferred's own hold on the promise, which outlives the
+    /// capability (`deinitResolverOnly` keeps it for the caller).
     promise: Value,
+    /// Whether resolve or reject has run. Allocated with `allocator`.
+    settled: *bool,
+    allocator: std.mem.Allocator,
 
     pub fn init(realm: Realm) Error!Deferred {
-        const resolver = ffi.v8_PromiseResolver_New(realm.context) orelse return error.V8Failure;
-        errdefer ffi.v8_PromiseResolver_Dispose(resolver);
-        const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.V8Failure;
-        return .{ .resolver = resolver, .promise = @ptrCast(promise) };
+        var capability = engine.createPromise(realm.ctx) catch |err| return fromEngineError(err);
+        errdefer engine.releasePromiseCapability(&capability);
+        const promise = engine.retainValue(realm.ctx, capability.promise) catch |err| return fromEngineError(err);
+        errdefer promise.release();
+        const allocator = realm.ctx.allocator;
+        const settled = try allocator.create(bool);
+        settled.* = false;
+        return .{
+            .capability = capability,
+            .promise = adopt(realm.ctx, promise),
+            .settled = settled,
+            .allocator = allocator,
+        };
     }
 
     /// A new promise already resolved with undefined.
     pub fn initResolved(realm: Realm) Error!Deferred {
         var d = try init(realm);
-        const undef = try realm.undefinedValue();
-        defer dispose(undef);
-        d.resolve(realm, undef);
+        d.resolve(realm, try realm.undefinedValue());
         return d;
     }
 
@@ -370,27 +500,33 @@ pub const Deferred = struct {
 
     /// Settling an already-settled promise is a no-op, as in the spec.
     pub fn resolve(self: Deferred, realm: Realm, value: Value) void {
-        _ = ffi.v8_PromiseResolver_Resolve(self.resolver, realm.context, value);
+        _ = realm;
+        if (self.settled.*) return;
+        var capability = self.capability;
+        engine.resolvePromise(&capability, value.value) catch return;
+        self.settled.* = true;
     }
 
     pub fn resolveUndefined(self: Deferred, realm: Realm) void {
-        const undef = realm.undefinedValue() catch return;
-        defer dispose(undef);
-        self.resolve(realm, undef);
+        self.resolve(realm, .{ .value = .undefined, .realm = realm.ctx });
     }
 
     pub fn reject(self: Deferred, realm: Realm, reason: Value) void {
-        _ = ffi.v8_PromiseResolver_Reject(self.resolver, realm.context, reason);
+        _ = realm;
+        if (self.settled.*) return;
+        var capability = self.capability;
+        engine.rejectPromise(&capability, reason.value) catch return;
+        self.settled.* = true;
     }
 
     /// [[PromiseState]] is "pending".
     pub fn isPending(self: Deferred) bool {
-        return ffi.v8_Promise_State(@ptrCast(self.promise)) == 0;
+        return !self.settled.*;
     }
 
     /// Set [[PromiseIsHandled]] to true.
     pub fn markHandled(self: Deferred) void {
-        ffi.v8_Promise_MarkAsHandled(self.promise);
+        engine.markPromiseAsHandled(self.promise.realm, self.promise.value);
     }
 
     /// The promise as a return value. Borrowed from this Deferred: the binding
@@ -400,29 +536,34 @@ pub const Deferred = struct {
     }
 
     /// The promise as the call's result, handed over (`toReturnOwned`): for a
-    /// Deferred made for this call and kept nowhere once it returns.
+    /// Deferred made for this call and kept nowhere once it returns. Only the
+    /// promise is handed over: the caller still releases the rest
+    /// (`deinitResolverOnly`).
     pub fn returnOwned(self: Deferred) runtime.JSValue {
         return toReturnOwned(self.promise);
     }
 
     pub fn deinit(self: Deferred) void {
-        ffi.v8_PromiseResolver_Dispose(self.resolver);
+        self.deinitResolverOnly();
         dispose(self.promise);
     }
 
-    /// Release the resolver, keeping `promise` for the caller.
-    fn deinitResolverOnly(self: Deferred) void {
-        ffi.v8_PromiseResolver_Dispose(self.resolver);
+    /// Release the capability, keeping `promise` for the caller.
+    pub fn deinitResolverOnly(self: Deferred) void {
+        var capability = self.capability;
+        engine.releasePromiseCapability(&capability);
+        self.allocator.destroy(self.settled);
     }
 };
 
-/// Owned: a second Global for `value`.
+/// Owned: a second hold on `value`.
 pub fn clone(value: Value) Error!Value {
-    return ffi.v8_Global_Clone(value) orelse error.V8Failure;
+    const held = engine.retainValue(value.realm, value.value) catch |err| return fromEngineError(err);
+    return adopt(value.realm, held);
 }
 
 pub fn dispose(value: Value) void {
-    ffi.v8_Global_Dispose(value);
+    engine.releaseValue(.{ .value = value.value });
 }
 
 pub fn disposeOptional(value: *?Value) void {
@@ -431,30 +572,60 @@ pub fn disposeOptional(value: *?Value) void {
 }
 
 /// A value as an impl return that the impl may still hold: the binding reads
-/// the handle and leaves it alone. Right for a stored promise; a handle made
-/// only to be returned leaks this way, so use `toReturnOwned` for that.
+/// it and leaves it alone. Right for a stored promise; a value made only to
+/// be returned leaks this way, so use `toReturnOwned` for that. Also the
+/// BORROWED form an engine operation takes.
 pub fn toReturn(value: Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = false, .handle_scope = .global } };
+    return (engine.Owned{ .value = value.value }).borrow();
 }
 
-/// A value made only to be returned, handed over: the binding releases the
-/// handle once it is the call's result. Only for a handle the impl keeps
-/// nowhere - a stored promise (a writer's [[closeRequest]], say) must use
-/// `toReturn`, or the binding frees it under its holder.
+/// A value made only to be returned, handed over: the binding releases it
+/// once it is the call's result. Only for a value the impl keeps nowhere - a
+/// stored promise (a writer's [[closeRequest]], say) must use `toReturn`, or
+/// the binding frees it under its holder.
 pub fn toReturnOwned(value: Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
+    return value.value;
+}
+
+/// An IDL value's engine handle - an ArrayBufferView argument's, say - as a
+/// Value of `realm`, owned: the caller disposes it, as the IDL value's owner
+/// would have.
+pub fn adoptHandle(realm: Realm, handle: *anyopaque) Value {
+    return .{
+        .value = .{ .handle = .{ .ptr = handle, .needs_disposal = true, .handle_scope = .global } },
+        .realm = realm.ctx,
+    };
+}
+
+/// The engine handle `value` is, BORROWED - for an IDL value that carries
+/// one (an ArrayBufferView's `js`). Null for a value that is none (a
+/// primitive, or a platform object named by `.instance`).
+pub fn handleOf(value: Value) ?*anyopaque {
+    return switch (value.value) {
+        .handle => |h| h.ptr,
+        else => null,
+    };
 }
 
 pub fn isUndefined(value: Value) bool {
-    return ffi.v8_Value_IsUndefined(value);
+    return switch (value.value) {
+        .undefined => true,
+        .handle => engine.typeOf(value.realm, value.value) == .undefined,
+        else => false,
+    };
 }
 
 pub fn isFunction(value: Value) bool {
-    return ffi.v8_Value_IsFunction(value);
+    return engine.isCallable(value.realm, value.value);
 }
 
+/// Type(value) is Object - functions included.
 pub fn isObject(value: Value) bool {
-    return ffi.v8_Value_IsObject(value);
+    return switch (value.value) {
+        .instance => true,
+        .handle => engine.typeOf(value.realm, value.value) == .object,
+        else => false,
+    };
 }
 
 /// Read one member of a dictionary being converted from `object` (WebIDL
@@ -462,10 +633,8 @@ pub fn isObject(value: Value) bool {
 /// when the member is undefined - i.e. not present. A throwing getter leaves
 /// its exception pending and returns error.ExceptionPending.
 pub fn getMember(realm: Realm, object: Value, key: []const u8) Error!?Value {
-    const key_str = ffi.v8_String_NewFromUtf8(realm.isolate, key.ptr, @intCast(key.len)) orelse return error.V8Failure;
-    defer ffi.v8_String_Dispose(key_str);
-    const value = ffi.v8_Object_Get(@ptrCast(object), realm.context, @ptrCast(key_str)) orelse
-        return error.ExceptionPending;
+    const member = engine.getProperty(realm.ctx, object.value, key) catch |err| return fromEngineError(err);
+    const value = adopt(realm.ctx, member);
     if (isUndefined(value)) {
         dispose(value);
         return null;

@@ -324,6 +324,12 @@ pub const IFrameIntegration = struct {
     /// `retireRealmContext`. Set with the context.
     retired_realm_destroy: ?*const fn (data: *anyopaque, global: ?*anyopaque, allocator: Allocator) void = null,
 
+    /// The realm an auxiliary navigable's first realm was made under - the
+    /// opener's (a runtime.Context, opaque here) - for the realms later
+    /// navigations make; an iframe's parent realm is its parent navigable's
+    /// window's. Not owned.
+    parent_realm: ?*anyopaque = null,
+
     /// Guard flag to prevent recursive cleanup during context teardown
     /// Set to true when cleanupRealmContext is entered
     cleanup_in_progress: bool,
@@ -335,13 +341,13 @@ pub const IFrameIntegration = struct {
     // These callbacks are set by modules with V8 access (e.g., HTMLIFrameElement impl)
     // to allow script execution without directly importing v8 in this module.
 
-    /// Callback to execute a script string in the iframe's context
-    /// Parameters: (engine_context, script_source) -> void
+    /// Callback to execute a script string in the iframe's realm
+    /// Parameters: (runtime_context - the realm, script_source) -> void
     /// Set by modules with engine access
     execute_script_callback: ?*const fn (?*anyopaque, []const u8) void,
 
     /// Callback to update the Location URL in the iframe's window
-    /// Parameters: (engine_context, url) -> void
+    /// Parameters: (runtime_context - the realm, url) -> void
     /// Set by modules with engine access
     update_location_callback: ?*const fn (?*anyopaque, []const u8) void,
 
@@ -410,6 +416,12 @@ pub const IFrameIntegration = struct {
     /// creator's - or null for an opaque one. Owned.
     window_origin: ?[]u8 = null,
 
+    /// The about base URL the next document this navigable makes is created
+    /// with ("create and initialize a Document object"): set just before a
+    /// commit that makes an about:blank or about:srcdoc document, taken by
+    /// whatever creates the document, and cleared after the commit. Owned.
+    next_about_base_url: ?[]u8 = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -456,6 +468,7 @@ pub const IFrameIntegration = struct {
         self.retired_realms.deinit(self.allocator);
         if (self.window_origin) |o| self.allocator.free(o);
         self.window_origin = null;
+        self.setNextAboutBaseUrl(null);
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -533,7 +546,7 @@ pub const IFrameIntegration = struct {
         // 2. Wrapper cache cleanup triggers HTMLIFrameElement.deinit()
         // 3. HTMLIFrameElement.deinit() calls integration.deinit()
         // 4. integration.deinit() calls cleanupRealmContext()
-        // 5. cleanupRealmContext() tries to call destroyChildContext()
+        // 5. cleanupRealmContext() tries to end the realm
         //    which is already being torn down by context_manager.deinit()
         if (self.cleanup_in_progress) return;
         self.cleanup_in_progress = true;
@@ -595,6 +608,14 @@ pub const IFrameIntegration = struct {
         self.ongoing_navigation = .none;
         self.window_proxy = null;
         self.state = .uninitialized;
+    }
+
+    /// The about base URL for the next document this navigable makes (a
+    /// copy), or null for none.
+    pub fn setNextAboutBaseUrl(self: *IFrameIntegration, url: ?[]const u8) void {
+        const copy: ?[]u8 = if (url) |u| self.allocator.dupe(u8, u) catch null else null;
+        if (self.next_about_base_url) |old| self.allocator.free(old);
+        self.next_about_base_url = copy;
     }
 
     /// Record the origin the navigable's Windows are created with.
@@ -742,7 +763,7 @@ pub const IFrameIntegration = struct {
     /// - BrowsingContext is a Zig-only struct with no V8 references - safe to deinit synchronously
     /// - V8 context cleanup (cleanupRealmContext) is NOT done here - the child V8 context must
     ///   remain alive so V8's weak callbacks can properly handle wrapper cleanup when GC runs
-    /// - The wrapper cache cleanup happens via destroyChildContext when V8 GC runs
+    /// - The wrapper cache cleanup happens when the realm ends (engine.destroyWindowRealm)
     ///
     /// This follows the Chromium pattern of deterministic cleanup during element removal,
     /// not GC-driven cleanup. The BC must be destroyed here to prevent memory leaks caused
@@ -903,7 +924,7 @@ pub const IFrameIntegration = struct {
         if (std.mem.startsWith(u8, url, "javascript:")) {
             const script = url["javascript:".len..];
             if (self.execute_script_callback) |exec| {
-                exec(self.engine_context, script);
+                exec(self.runtime_context, script);
             }
             self.updateLocationUrl(url);
             try self.recordCommit(url, "text/html");
@@ -1584,19 +1605,19 @@ pub const IFrameIntegration = struct {
     /// Per HTML Standard §4.12.1.1, scripts should execute in document order.
     /// For simplicity, we only execute inline scripts (no external src support here).
     pub fn executeScriptsInTree(self: *IFrameIntegration, document_node: *html_parser.TreeNode) void {
-        // Need both engine context and script execution callback
-        const engine_ctx = self.engine_context orelse return;
+        // Need both the realm and the script execution callback
+        const realm = self.runtime_context orelse return;
         const execute_callback = self.execute_script_callback orelse return;
 
         // Walk the tree and execute scripts
-        self.executeScriptsRecursive(document_node, engine_ctx, execute_callback);
+        self.executeScriptsRecursive(document_node, realm, execute_callback);
     }
 
     /// Recursively walk the tree and execute script elements
     fn executeScriptsRecursive(
         self: *IFrameIntegration,
         node: *html_parser.TreeNode,
-        engine_ctx: *anyopaque,
+        realm: *anyopaque,
         execute_callback: *const fn (?*anyopaque, []const u8) void,
     ) void {
         // Check if this is a script element
@@ -1613,7 +1634,7 @@ pub const IFrameIntegration = struct {
                     const script_text = self.getScriptTextContent(node);
                     if (script_text.len > 0) {
                         // Execute via callback (which has V8 access)
-                        execute_callback(engine_ctx, script_text);
+                        execute_callback(realm, script_text);
                     }
                 }
             }
@@ -1622,7 +1643,7 @@ pub const IFrameIntegration = struct {
         // Recurse to children (depth-first, document order)
         var child = node.first_child;
         while (child) |c| {
-            self.executeScriptsRecursive(c, engine_ctx, execute_callback);
+            self.executeScriptsRecursive(c, realm, execute_callback);
             child = c.next_sibling;
         }
     }
@@ -1646,12 +1667,12 @@ pub const IFrameIntegration = struct {
     /// Update the iframe's Location URL to reflect the navigated URL.
     /// This is called during navigation so that `location.hash`, etc. work correctly.
     fn updateLocationUrl(self: *IFrameIntegration, url: []const u8) void {
-        // Need both engine context and location update callback
-        const engine_ctx = self.engine_context orelse return;
+        // Need both the realm and the location update callback
+        const realm = self.runtime_context orelse return;
         const update_callback = self.update_location_callback orelse return;
 
-        // Call the callback (which has V8/impls access)
-        update_callback(engine_ctx, url);
+        // Call the callback (which has impls access)
+        update_callback(realm, url);
     }
 };
 

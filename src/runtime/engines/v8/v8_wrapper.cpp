@@ -2616,16 +2616,46 @@ void v8_Isolate_GetContextCounts(Isolate* isolate, size_t* native_contexts,
     if (detached_contexts) *detached_contexts = stats.number_of_detached_contexts();
 }
 
+// Bytes of V8's global handle table in use: every live Global<T>, whoever made
+// it, counted by V8 itself (GlobalHandles::UsedSize, adjusted as each handle is
+// created or reset). Unlike the CRANE_TRACK_GLOBALS counters it is in every
+// build, so a test can assert that an operation leaves no handle behind.
+size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    return stats.used_global_handles_size();
+}
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
+// A context's identity for Crane's realm registry (context_manager and every
+// cache keyed like it): a number stored in the context's embedder data the
+// first time it is asked for, never reused. This used to return the
+// NativeContext's heap address, which a compacting GC changes - a realm
+// registered before a full collection was no longer found after it, and a
+// context moved onto a freed address would alias another realm's entry. Blink
+// keys its per-context data the same way (V8PerContextData in the context's
+// embedder data). Index 0 is V8's old debugger slot. Contexts made while a
+// snapshot is being built get no id: a snapshot must not carry pointer
+// embedder data, and nothing compacts during generation.
+static constexpr int kCraneContextIdIndex = 1;
+static std::atomic<uintptr_t> g_next_context_id{1};
+
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
-    // Get the internal V8 context pointer from the Global handle
-    // This address is stable and can be used as a HashMap key
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context_handle->Get(isolate);
-    // Return the raw internal pointer - this is stable across handle conversions
-    return *reinterpret_cast<void**>(*ctx);
+    if (g_snapshot_mode) return *reinterpret_cast<void**>(*ctx);
+    // Only Crane writes embedder data, and only this slot, so a slot within
+    // the array's length is ours.
+    if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCraneContextIdIndex)) {
+        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex)) return id;
+    }
+    // Shifted so the value is an aligned pointer, as the embedder-data API
+    // requires; never zero.
+    void* id = reinterpret_cast<void*>(g_next_context_id.fetch_add(1, std::memory_order_relaxed) << 3);
+    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id);
+    return id;
 }
 
 void v8_Isolate_ThrowException(Isolate* isolate, Global<Value>* exception) {
@@ -11558,3 +11588,1043 @@ void v8_Isolate_SetHostCreateShadowRealmContextCallback(
 }
 
 } // extern "C"
+
+// Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
+// its functions only inside its own region, so parallel lanes never edit the same lines.
+// ---- lane: engine-boundary ----
+extern "C" {
+
+// The steps of WebIDL's record<K, V> conversion (3.2.23) that run script, each
+// under a TryCatch so the caller converts between them exactly as the spec
+// orders them. Each returns the completion the way v8_Function_CallCatching
+// does: on a throw the thrown value (caught, not left pending) with `*threw`
+// true - null only when there is nothing to report, a terminating isolate.
+// Every non-null result is a new Global the caller owns.
+
+/// O.[[OwnPropertyKeys]](): every own key - Symbols included, integer indices
+/// as Strings - in the spec's order, as an Array. For a Proxy, its ownKeys
+/// trap and nothing else (no filter, so no getOwnPropertyDescriptor calls).
+Global<Value>* v8_Object_OwnPropertyKeysCatching(Global<Context>* context, Global<Value>* object, bool* threw) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    if (!context || !object || object->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    if (!value->IsObject()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Array> keys = value.As<Object>()->GetOwnPropertyNames(
+        ctx, PropertyFilter::ALL_PROPERTIES, KeyConversionMode::kConvertToString);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (keys.IsEmpty()) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, keys.ToLocalChecked().As<Value>()));
+}
+
+/// O.[[GetOwnProperty]](key), answering what the record conversion asks of
+/// it: whether the property exists AND is enumerable (`*enumerable`). `key` is
+/// a String or Symbol from v8_Object_OwnPropertyKeysCatching. Returns the
+/// thrown value (owned) when script threw, else null; `*threw` says which.
+Global<Value>* v8_Object_IsOwnEnumerableCatching(
+    Global<Context>* context,
+    Global<Value>* object,
+    Global<Value>* key,
+    bool* enumerable,
+    bool* threw
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *enumerable = false;
+    *threw = true;
+    if (!context || !object || object->IsEmpty() || !key || key->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    Local<Value> name = key->Get(isolate);
+    if (!value->IsObject() || !name->IsName()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_desc = value.As<Object>()->GetOwnPropertyDescriptor(ctx, name.As<Name>());
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    Local<Value> desc;
+    if (!maybe_desc.ToLocal(&desc)) return nullptr;
+    *threw = false;
+    // Undefined: no such own property.
+    if (!desc->IsObject()) return nullptr;
+    // FromPropertyDescriptor's new ordinary object: its own `enumerable` data
+    // property, so reading it runs no script.
+    Local<Value> flag;
+    if (desc.As<Object>()->Get(ctx, String::NewFromUtf8Literal(isolate, "enumerable")).ToLocal(&flag)) {
+        *enumerable = flag->BooleanValue(isolate);
+    }
+    return nullptr;
+}
+
+/// Get(O, key) for a String or Symbol `key` - the property key itself, never
+/// its UTF-8 rendering, which would lose a lone surrogate.
+Global<Value>* v8_Object_GetByKeyCatching(Global<Context>* context, Global<Value>* object, Global<Value>* key, bool* threw) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    if (!context || !object || object->IsEmpty() || !key || key->IsEmpty()) return nullptr;
+    Local<Value> value = object->Get(isolate);
+    if (!value->IsObject()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Value> maybe_value = value.As<Object>()->Get(ctx, key->Get(isolate));
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        return trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    }
+    if (maybe_value.IsEmpty()) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
+}
+
+/// A String of `length` UTF-16 code units, lone surrogates kept - what a
+/// JavaScript string may hold and UTF-8 cannot carry
+/// (String::NewFromTwoByte). A new Global the caller owns, as a Value:
+/// released with v8_Global_Dispose / v8_Value_Dispose, so it is not counted
+/// among the live String Globals. Null when V8 refuses it (longer than
+/// String::kMaxLength).
+Global<Value>* v8_Value_StringFromTwoByte(Isolate* isolate, const uint16_t* data, int length) {
+    if (!isolate || length < 0 || (length > 0 && !data)) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<String> str;
+    if (length == 0) {
+        str = String::Empty(isolate);
+    } else if (!String::NewFromTwoByte(isolate, data, NewStringType::kNormal, length).ToLocal(&str)) {
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, str));
+}
+
+} // extern "C"
+// ---- end lane: engine-boundary ----
+// ---- lane: page-realm ----
+// ============================================================================
+// The engine protocol's realms and scripts (design 4.2-4.3): what the
+// page-realm lane's adapter files (protocol_realms.zig, protocol_scripts.zig)
+// need beyond the FFI above.
+// ============================================================================
+extern "C" {
+
+/// ECMAScript GetFunctionRealm(obj): follows proxies and bound functions to
+/// their targets and answers the realm of the function (or object) at the end
+/// - V8's own JSReceiver::GetFunctionRealm walk, over the public API, which
+/// has no call for it. A Global the caller owns; null for a value that is not
+/// an object, and with `*revoked_proxy` set when the walk reaches a revoked
+/// proxy (where the spec throws a TypeError).
+Global<Context>* v8_Value_GetFunctionRealm(Global<Value>* value, bool* revoked_proxy) {
+    *revoked_proxy = false;
+    if (!value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> current = value->Get(isolate);
+    for (;;) {
+        if (!current->IsObject()) return nullptr;
+        if (current->IsProxy()) {
+            Local<Proxy> proxy = current.As<Proxy>();
+            // Step 4.a: a revoked proxy throws.
+            if (proxy->IsRevoked()) {
+                *revoked_proxy = true;
+                return nullptr;
+            }
+            // Step 4.b-c: the proxy's target.
+            current = proxy->GetTarget();
+            continue;
+        }
+        if (current->IsFunction()) {
+            // Step 3: a bound function's target function.
+            Local<Value> target = current.As<Function>()->GetBoundFunction();
+            if (!target->IsUndefined()) {
+                current = target;
+                continue;
+            }
+        }
+        // Step 1-2 (a function's [[Realm]]), and step 5 (the current realm) -
+        // which, for an object that is no function, V8 answers with the
+        // object's creation context, as its own walk does.
+        Local<Context> ctx;
+        if (!current.As<Object>()->GetCreationContext(isolate).ToLocal(&ctx)) return nullptr;
+        g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+        return trackHandle(new Global<Context>(isolate, ctx));
+    }
+}
+
+/// A context from `global_template`, around the detached global proxy
+/// `global_proxy` (a WindowProxy kept across a navigation), for a realm made
+/// afresh rather than from the snapshot. A Global the caller owns.
+Global<Context>* v8_Context_NewWithGlobalTemplateAndProxy(Isolate* isolate, Global<ObjectTemplate>* global_template, Global<Object>* global_proxy) {
+    if (!isolate || !global_template || !global_proxy) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = Context::New(isolate, nullptr, global_template->Get(isolate), global_proxy->Get(isolate));
+    if (context.IsEmpty()) return nullptr;
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
+/// Whether JavaScript frames are on `isolate`'s stack: whether HTML's
+/// JavaScript execution context stack still holds more than the realm
+/// execution contexts the host pushed itself.
+bool v8_Isolate_HasJavaScriptOnStack(Isolate* isolate) {
+    if (!isolate) return false;
+    HandleScope handle_scope(isolate);
+    return StackTrace::CurrentStackTrace(isolate, 1)->GetFrameCount() > 0;
+}
+
+/// An event handler content attribute's function (HTML "getting the current
+/// value of the event handler" step 3.9): named `name`, with the parameters
+/// `parameter_names` (event; evt for SVG; the five of a Window's onerror), its
+/// body `body`, and its scope the global environment wrapped by the object
+/// environments of `scopes`, OUTERMOST FIRST (document, form owner, element).
+/// v8_CompileEventHandler with the parameter list given rather than chosen.
+///
+/// Returns the function (Global<Value>*, caller owns), or nullptr with
+/// `*out_error` set (v8_FreeErrorInfo; its `exception` is the SyntaxError)
+/// when the body does not parse.
+Global<Value>* v8_CompileEventHandlerWithParameters(
+    Global<Context>* context,
+    const char* name,
+    int name_len,
+    const char* body,
+    int body_len,
+    const char* const* parameter_names,
+    int parameter_count,
+    Global<Object>** scopes,
+    int scope_count,
+    V8ErrorInfo** out_error
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *out_error = nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+
+    Local<String> source_text;
+    Local<String> function_name;
+    if (!String::NewFromUtf8(isolate, body, NewStringType::kNormal, body_len).ToLocal(&source_text) ||
+        !String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&function_name)) {
+        return nullptr;
+    }
+
+    std::vector<Local<String>> params;
+    for (int i = 0; i < parameter_count; i++) {
+        Local<String> param;
+        if (!String::NewFromUtf8(isolate, parameter_names[i]).ToLocal(&param)) return nullptr;
+        params.push_back(param);
+    }
+
+    std::vector<Local<Object>> extensions;
+    for (int i = 0; i < scope_count; i++) {
+        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
+    }
+
+    ScriptCompiler::Source source(source_text);
+    Local<Function> function;
+    if (!ScriptCompiler::CompileFunction(
+            ctx, &source, params.size(), params.empty() ? nullptr : params.data(),
+            extensions.size(), extensions.empty() ? nullptr : extensions.data())
+             .ToLocal(&function)) {
+        if (try_catch.HasCaught()) {
+            *out_error = extractException(isolate, &try_catch);
+        } else {
+            *out_error = new V8ErrorInfo();
+            (*out_error)->has_error = true;
+            (*out_error)->message = strdup("Event handler could not be compiled");
+            (*out_error)->line_number = -1;
+            (*out_error)->column_number = -1;
+        }
+        return nullptr;
+    }
+
+    function->SetName(function_name);
+    return trackHandle(new Global<Value>(isolate, function.As<Value>()));
+}
+
+/// A script or module's ScriptOrigin host-defined options for the engine
+/// protocol: [kind, host_defined], the host's pointer as a Number (exact: a
+/// user-space address is below 2^53). `kind` is 0 for a classic script, 1
+/// for a module - what HostLoadImportedModule's referrer is.
+static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int kind, void* host_defined) {
+    Local<PrimitiveArray> options = PrimitiveArray::New(isolate, 2);
+    options->Set(isolate, 0, Integer::New(isolate, kind));
+    options->Set(isolate, 1, Number::New(isolate, static_cast<double>(reinterpret_cast<uintptr_t>(host_defined))));
+    return options;
+}
+
+/// Compile a classic script with a ScriptOrigin naming `resource_name` (null:
+/// the empty string) and carrying `host_defined` (null: none) - so that an
+/// import() from it names its host script as the referrer. As
+/// v8_Script_CompileWithOrigin_Safe otherwise.
+V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name,
+    void* host_defined
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);
+    Local<String> local_source = source->Get(isolate);
+    Local<Value> local_resource_name = resource_name ? resource_name->Get(isolate).As<Value>() : String::Empty(isolate).As<Value>();
+
+    V8ScriptCompileResult* result = new V8ScriptCompileResult();
+    result->script = nullptr;
+    result->error = nullptr;
+
+    Local<Data> host_defined_options;
+    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    ScriptOrigin origin(local_resource_name, 0, 0, false, -1, Local<Value>(), false, false, false, host_defined_options);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source, &origin);
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    if (maybe_script.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Script compilation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    result->script = trackHandle(new Global<Script>(isolate, maybe_script.ToLocalChecked()));
+    return result;
+}
+
+/// Whether V8's platform is initialized in this process. V8's flags must be
+/// set before it is (they are frozen after), and it cannot be initialized
+/// again once disposed.
+bool v8_Platform_IsInitialized() {
+    return v8_initialized;
+}
+
+/// The engine protocol's HostPromiseRejectionTracker dispatcher: one Zig
+/// function for every agent, which finds the agent's hooks by its isolate.
+/// Set to the same function by every agent that installs the callback, so
+/// agents on other threads never see another value.
+static void (*g_protocol_promise_reject)(Isolate*, int, Global<Value>*, Global<Value>*) = nullptr;
+
+static void ProtocolPromiseRejectCallback(PromiseRejectMessage message) {
+    auto dispatch = g_protocol_promise_reject;
+    if (!dispatch) return;
+    // The callback runs on the isolate's own thread, synchronously.
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Promise> promise = message.GetPromise();
+    // The rejection's value, for a reject; empty for a handler added later.
+    Local<Value> reason = message.GetValue();
+    dispatch(
+        isolate,
+        static_cast<int>(message.GetEvent()),
+        trackHandle(new Global<Value>(isolate, promise)),
+        reason.IsEmpty() ? nullptr : trackHandle(new Global<Value>(isolate, reason))
+    );
+}
+
+/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
+/// `dispatch(isolate, event, promise, reason)` - `event` a
+/// v8::PromiseRejectEvent, `promise` and `reason` (null when V8 gives none)
+/// Globals the dispatcher owns.
+void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate, void (*dispatch)(Isolate*, int, Global<Value>*, Global<Value>*)) {
+    g_protocol_promise_reject = dispatch;
+    isolate->SetPromiseRejectCallback(ProtocolPromiseRejectCallback);
+}
+
+/// Remove HostPromiseRejectionTracker from `isolate` alone (the dispatcher,
+/// and every other isolate's callback, stay).
+void v8_Isolate_ClearProtocolPromiseRejectCallback(Isolate* isolate) {
+    isolate->SetPromiseRejectCallback(nullptr);
+}
+
+// ---- modules through the engine protocol ----
+
+/// The host's pointer in host-defined options protocolHostDefinedOptions
+/// made: `*kind` 0 for a classic script, 1 for a module; -1 (and null) for
+/// options it did not make - an event handler's, eval's, another path's.
+static void protocolReadHostDefined(Isolate* isolate, Local<Data> options, int* kind, void** host_defined) {
+    *kind = -1;
+    *host_defined = nullptr;
+    if (options.IsEmpty() || !options->IsFixedArray()) return;
+    Local<PrimitiveArray> array = Local<PrimitiveArray>::Cast(options);
+    if (array->Length() != 2) return;
+    Local<Primitive> k = array->Get(isolate, 0);
+    Local<Primitive> p = array->Get(isolate, 1);
+    if (!k->IsInt32() || !p->IsNumber()) return;
+    *kind = k.As<Int32>()->Value();
+    *host_defined = reinterpret_cast<void*>(static_cast<uintptr_t>(p.As<Number>()->Value()));
+}
+
+/// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
+/// names `resource_name` and carries `host_defined` as a module's (kind 1),
+/// in `context`. Free with v8_FreeModuleCompileResult; its module is OWNED.
+V8ModuleCompileResult* v8_Module_CompileWithHostDefined_Safe(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name,
+    void* host_defined
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);
+    Local<String> local_source = source->Get(isolate);
+    Local<String> local_name = resource_name ? resource_name->Get(isolate) : String::Empty(isolate);
+
+    V8ModuleCompileResult* result = new V8ModuleCompileResult();
+    result->module = nullptr;
+    result->error = nullptr;
+
+    Local<Data> host_defined_options;
+    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 1, host_defined);
+    ScriptOrigin origin(local_name, 0, 0, false, -1, Local<Value>(), false, false, true, host_defined_options);
+    ScriptCompiler::Source script_source(local_source, origin);
+
+    TryCatch try_catch(isolate);
+    MaybeLocal<Module> maybe_module = ScriptCompiler::CompileModule(isolate, &script_source);
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    if (maybe_module.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Module compilation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    result->module = trackHandle(new Global<Module>(isolate, maybe_module.ToLocalChecked()));
+    return result;
+}
+
+/// The host's answer for one module request during a Link: the resolved
+/// module (a Global the host keeps), or null.
+typedef Global<Module>* (*ProtocolResolveModule)(void* data, Global<Module>* referrer, const char* specifier, int specifier_len, const char* type_attribute);
+
+struct ProtocolResolver {
+    ProtocolResolveModule resolve;
+    void* data;
+};
+
+/// The resolver of the Link in progress on this thread. V8 13.1 resolves a
+/// graph's static imports synchronously inside InstantiateModule, with a
+/// callback that carries no data, so the Link passes its resolver here; a
+/// nested Link (from inside a resolve) saves and restores it.
+static thread_local ProtocolResolver* t_protocol_resolver = nullptr;
+
+static MaybeLocal<Module> ProtocolResolveModuleCallback(
+    Local<Context> context,
+    Local<String> specifier,
+    Local<FixedArray> import_attributes,
+    Local<Module> referrer
+) {
+    Isolate* isolate = context->GetIsolate();
+    ProtocolResolver* resolver = t_protocol_resolver;
+    if (!resolver || !resolver->resolve) {
+        throwUnresolvedModuleSpecifier(isolate, specifier);
+        return MaybeLocal<Module>();
+    }
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    // A static import's attributes carry source positions: (key, value,
+    // position) triples.
+    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 3, nullptr);
+    // The referrer, BORROWED for the call: the host names it by its record.
+    Global<Module> referrer_handle(isolate, referrer);
+    Global<Module>* resolved = resolver->resolve(
+        resolver->data,
+        &referrer_handle,
+        *specifier_utf8 ? *specifier_utf8 : "",
+        specifier_utf8.length(),
+        type_attribute
+    );
+    delete[] type_attribute;
+    if (!resolved) {
+        throwUnresolvedModuleSpecifier(isolate, specifier);
+        return MaybeLocal<Module>();
+    }
+    return resolved->Get(isolate);
+}
+
+/// ECMAScript Link() on `module`, each request resolved by `resolve(data,
+/// ...)`. True on success; false with `*exception` the error (a Global the
+/// caller owns; null when V8 threw nothing, as when terminating).
+bool v8_Module_LinkWithResolver(
+    Global<Context>* context,
+    Global<Module>* module,
+    ProtocolResolveModule resolve,
+    void* data,
+    Global<Value>** exception
+) {
+    *exception = nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);
+
+    ProtocolResolver resolver{resolve, data};
+    ProtocolResolver* previous = t_protocol_resolver;
+    t_protocol_resolver = &resolver;
+    TryCatch try_catch(isolate);
+    bool linked = module->Get(isolate)->InstantiateModule(local_context, ProtocolResolveModuleCallback).FromMaybe(false);
+    t_protocol_resolver = previous;
+    if (linked) return true;
+    if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+        *exception = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    } else if (try_catch.HasTerminated()) {
+        try_catch.ReThrow();
+    }
+    return false;
+}
+
+/// ECMAScript Evaluate() on a linked `module`, in `context`: 0 when its
+/// promise is fulfilled; 1 when rejected (or it threw), with `*value` the
+/// reason; 2 when pending on top-level await, with `*value` the promise;
+/// -1 when V8 returned nothing (terminating). `*value` is a Global the caller
+/// owns. A rejected promise is marked as handled: the reason is the host's
+/// to report, and the promise is not script's to observe.
+int v8_Module_EvaluateForProtocol(Global<Context>* context, Global<Module>* module, Global<Value>** value) {
+    *value = nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);
+
+    TryCatch try_catch(isolate);
+    Local<Value> result;
+    if (!module->Get(isolate)->Evaluate(local_context).ToLocal(&result)) {
+        if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+            *value = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+            return 1;
+        }
+        if (try_catch.HasTerminated()) try_catch.ReThrow();
+        return -1;
+    }
+    if (!result->IsPromise()) return 0;
+    Local<Promise> promise = result.As<Promise>();
+    switch (promise->State()) {
+        case Promise::kFulfilled:
+            return 0;
+        case Promise::kRejected:
+            promise->MarkAsHandled();
+            *value = trackHandle(new Global<Value>(isolate, promise->Result()));
+            return 1;
+        default:
+            *value = trackHandle(new Global<Value>(isolate, promise));
+            return 2;
+    }
+}
+
+/// ContinueDynamicImport's settle steps: data is [resolver, namespace].
+static void ProtocolDynamicImportFulfilled(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Array> data = info.Data().As<Array>();
+    Local<Value> resolver, ns;
+    if (!data->Get(context, 0).ToLocal(&resolver) || !data->Get(context, 1).ToLocal(&ns)) return;
+    (void)resolver.As<Promise::Resolver>()->Resolve(context, ns);
+}
+
+static void ProtocolDynamicImportRejected(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Array> data = info.Data().As<Array>();
+    Local<Value> resolver;
+    if (!data->Get(context, 0).ToLocal(&resolver)) return;
+    (void)resolver.As<Promise::Resolver>()->Reject(context, info[0]);
+}
+
+/// ECMAScript ContinueDynamicImport(promiseCapability, module) for an
+/// import() whose module the host loaded: Link (a graph the host linked
+/// links again at no cost; one it did not fails here, having no resolver),
+/// Evaluate, then settle the import() promise with the module namespace or
+/// the evaluation's reason. Consumes `context_ptr` and `resolver_ptr`, as
+/// v8_DynamicImport_Resolve does; `module` stays the caller's.
+void v8_DynamicImport_ContinueWithModule(void* context_ptr, void* resolver_ptr, Global<Module>* module_global) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
+    Global<Promise::Resolver>* resolver_global = static_cast<Global<Promise::Resolver>*>(resolver_ptr);
+    Local<Context> context = context_global->Get(isolate);
+    Context::Scope context_scope(context);
+    Local<Promise::Resolver> resolver = resolver_global->Get(isolate);
+    Local<Module> module = module_global->Get(isolate);
+
+    auto reject_with_caught = [&](TryCatch& try_catch, const char* fallback) {
+        Local<Value> reason;
+        if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+            reason = try_catch.Exception();
+            try_catch.Reset();
+        } else {
+            reason = Exception::TypeError(String::NewFromUtf8(isolate, fallback).ToLocalChecked());
+        }
+        (void)resolver->Reject(context, reason);
+    };
+
+    {
+        TryCatch try_catch(isolate);
+        // 1-2. Link().
+        if (module->GetStatus() == Module::kUninstantiated) {
+            ProtocolResolver* previous = t_protocol_resolver;
+            t_protocol_resolver = nullptr;
+            bool linked = module->InstantiateModule(context, ProtocolResolveModuleCallback).FromMaybe(false);
+            t_protocol_resolver = previous;
+            if (!linked) {
+                reject_with_caught(try_catch, "The imported module could not be linked");
+                goto done;
+            }
+        }
+        // 3-4. Evaluate().
+        Local<Value> evaluated;
+        if (!module->Evaluate(context).ToLocal(&evaluated)) {
+            reject_with_caught(try_catch, "The imported module could not be evaluated");
+            goto done;
+        }
+        Local<Value> ns = module->GetModuleNamespace();
+        if (!evaluated->IsPromise()) {
+            (void)resolver->Resolve(context, ns);
+            goto done;
+        }
+        // 5-8. Settle the import() promise when evaluation settles.
+        Local<Array> data = Array::New(isolate, 2);
+        (void)data->Set(context, 0, resolver);
+        (void)data->Set(context, 1, ns);
+        Local<Function> on_fulfilled, on_rejected;
+        if (!Function::New(context, ProtocolDynamicImportFulfilled, data, 1).ToLocal(&on_fulfilled) ||
+            !Function::New(context, ProtocolDynamicImportRejected, data, 1).ToLocal(&on_rejected)) {
+            reject_with_caught(try_catch, "The imported module could not be awaited");
+            goto done;
+        }
+        (void)evaluated.As<Promise>()->Then(context, on_fulfilled, on_rejected);
+    }
+done:
+    delete context_global;
+    resolver_global->Reset();
+    delete resolver_global;
+}
+
+/// The engine protocol's module hook dispatchers: one Zig function each for
+/// every agent, which finds the agent's hooks by its isolate.
+typedef void (*ProtocolDynamicImportDispatch)(
+    Isolate* isolate,
+    Global<Context>* context,
+    int referrer_kind,
+    void* referrer,
+    const char* specifier,
+    int specifier_len,
+    const char* type_attribute,
+    Global<Promise::Resolver>* resolver
+);
+typedef const char* (*ProtocolImportMetaUrlDispatch)(Isolate* isolate, Global<Module>* module, int identity_hash, size_t* len);
+
+static ProtocolDynamicImportDispatch g_protocol_dynamic_import = nullptr;
+static ProtocolImportMetaUrlDispatch g_protocol_import_meta_url = nullptr;
+
+/// HostLoadImportedModule for an import(): the referrer from the host-defined
+/// options the protocol compiled the script or module with, the realm from
+/// the context import() was called in (HTML's current settings object), and
+/// the promise - whose resolver, with the context, the dispatcher OWNS until
+/// the host finishes the import.
+static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
+    Local<Context> context,
+    Local<Data> host_defined_options,
+    Local<Value> resource_name,
+    Local<String> specifier,
+    Local<FixedArray> import_attributes
+) {
+    (void)resource_name;
+    Isolate* isolate = context->GetIsolate();
+    EscapableHandleScope handle_scope(isolate);
+    Local<Promise::Resolver> resolver;
+    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
+
+    auto dispatch = g_protocol_dynamic_import;
+    if (!dispatch) {
+        (void)resolver->Reject(context, Exception::TypeError(String::NewFromUtf8Literal(isolate, "import() is not supported here")));
+        return handle_scope.Escape(resolver->GetPromise());
+    }
+    int kind = -1;
+    void* referrer = nullptr;
+    protocolReadHostDefined(isolate, host_defined_options, &kind, &referrer);
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    // A dynamic import's attributes are (key, value) pairs.
+    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 2, nullptr);
+    dispatch(
+        isolate,
+        new Global<Context>(isolate, context),
+        kind,
+        referrer,
+        *specifier_utf8 ? *specifier_utf8 : "",
+        specifier_utf8.length(),
+        type_attribute,
+        new Global<Promise::Resolver>(isolate, resolver)
+    );
+    delete[] type_attribute;
+    return handle_scope.Escape(resolver->GetPromise());
+}
+
+/// HostGetImportMetaProperties: import.meta.url, from the host's module
+/// script (found by its record on the Zig side).
+static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
+    auto dispatch = g_protocol_import_meta_url;
+    if (!dispatch) return;
+    Isolate* isolate = context->GetIsolate();
+    Global<Module> handle(isolate, module);
+    size_t len = 0;
+    const char* url = dispatch(isolate, &handle, module->GetIdentityHash(), &len);
+    if (!url) return;
+    Local<String> value;
+    if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
+    (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
+}
+
+/// Install the protocol's import() and import.meta hooks on `isolate`, each
+/// only when given.
+void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url) {
+    if (dynamic_import) {
+        g_protocol_dynamic_import = dynamic_import;
+        isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
+    }
+    if (import_meta_url) {
+        g_protocol_import_meta_url = import_meta_url;
+        isolate->SetHostInitializeImportMetaObjectCallback(ProtocolInitializeImportMeta);
+    }
+}
+
+} // extern "C"
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+// ============================================================================
+// WebIDL "create a simple exception" (the runtime-impls lane's Engine
+// operation createSimpleException): the error constructors v8::Exception
+// reaches beyond TypeError and RangeError, created in a given realm.
+// ============================================================================
+
+extern "C" {
+
+/// Create ReferenceError in a specific context: Construct(%ReferenceError%,
+/// « message ») with that realm's intrinsic, as the TypeError and RangeError
+/// variants above do.
+Global<Value>* v8_Exception_ReferenceErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+
+    Context::Scope context_scope(ctx);
+
+    Local<Value> exception = Exception::ReferenceError(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
+} // extern "C"
+
+extern "C" {
+
+/// WebIDL "write" `length` bytes into an ArrayBufferView, `starting_offset`
+/// bytes into the view (the runtime-impls lane's writeIntoArrayBufferView):
+/// SetValueInBuffer over [[ViewedArrayBuffer]] from [[ByteOffset]] +
+/// startingOffset, for an ArrayBuffer or a SharedArrayBuffer alike. False when
+/// `view` is not an ArrayBufferView, its buffer is detached, or the bytes do
+/// not fit in the view.
+bool v8_ArrayBufferView_WriteBytes(Global<Value>* view, const uint8_t* bytes, size_t length, size_t starting_offset) {
+    if (!view || view->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = view->Get(isolate);
+    if (!v->IsArrayBufferView()) return false;
+    Local<ArrayBufferView> abv = v.As<ArrayBufferView>();
+    size_t view_length = abv->ByteLength();
+    if (starting_offset > view_length || length > view_length - starting_offset) return false;
+    Local<Object> buffer = abv->Buffer();
+    void* data = nullptr;
+    if (buffer->IsSharedArrayBuffer()) {
+        data = buffer.As<SharedArrayBuffer>()->Data();
+    } else if (buffer->IsArrayBuffer()) {
+        Local<ArrayBuffer> ab = buffer.As<ArrayBuffer>();
+        if (ab->WasDetached()) return false;
+        data = ab->Data();
+    }
+    if (length == 0) return true;
+    if (!data || !bytes) return false;
+    memcpy(static_cast<uint8_t*>(data) + abv->ByteOffset() + starting_offset, bytes, length);
+    return true;
+}
+
+} // extern "C"
+// ---- end lane: runtime-impls ----
+// ---- lane: protocol ----
+// The engine protocol's additive FFI (engine-protocol-design.md, decision 11).
+extern "C" {
+
+/// HTML "prepare to run a callback" for V8: run `body(data)` with `incumbent`
+/// pushed onto the backup incumbent settings object stack
+/// (v8::Context::BackupIncumbentScope), so Isolate::GetIncumbentContext
+/// answers it for everything the body runs until a script frame is newer.
+/// The scope keys off its own stack address, so it has to live here, around
+/// the body - Blink's CallbackInvokeHelper holds it the same way. A null
+/// `incumbent` runs the body with nothing pushed.
+void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, void (*body)(void*), void* data) {
+    HandleScope handle_scope(isolate);
+    if (!incumbent || incumbent->IsEmpty()) {
+        body(data);
+        return;
+    }
+    Local<Context> context = incumbent->Get(isolate);
+    Context::BackupIncumbentScope scope(context);
+    body(data);
+}
+
+/// HTML's incumbent realm here: Isolate::GetIncumbentContext - the realm of
+/// the most recent script frame, or of the innermost backup incumbent scope
+/// newer than it, or the entered context. A new Global the caller owns
+/// (counted as GetCurrentContext's are); null when no context is entered.
+Global<Context>* v8_Isolate_GetIncumbentContext(Isolate* isolate) {
+    if (!isolate || !isolate->InContext()) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetIncumbentContext();
+    if (context.IsEmpty()) return nullptr;
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
+/// A function of `context` whose steps are `callback`, with `data` as its
+/// [[data]] (FunctionCallbackInfo::Data) and `length` as its "length" - made
+/// with Function::New, which unlike a FunctionTemplate is not cached per
+/// context, so a closure made per object or per step is collected with what
+/// references it. Not a constructor. A new Global the caller owns; null on
+/// failure.
+Global<Value>* v8_Function_NewWithData(Global<Context>* context, ZigCallback callback, Global<Value>* data, int length) {
+    if (!context || context->IsEmpty() || !callback) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> data_value = (data && !data->IsEmpty()) ? data->Get(isolate) : Local<Value>();
+    Local<Function> function;
+    if (!Function::New(ctx, reinterpret_cast<FunctionCallback>(callback), data_value, length, ConstructorBehavior::kThrow).ToLocal(&function)) {
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, function));
+}
+
+/// PerformPromiseThen(promise, onFulfilled, onRejected, capability), a null
+/// handler being the spec's undefined: V8's one-handler Then (or Catch) for
+/// it. v8_Promise_Then hands V8's two-handler Then an empty Local for a null
+/// handler, which V8 dereferences. The derived promise - the capability's -
+/// as a new Global the caller owns; null on failure.
+Global<Value>* v8_Promise_ThenWithOptionalHandlers(Global<Context>* context, Global<Value>* promise, Global<Value>* on_fulfilled, Global<Value>* on_rejected) {
+    if (!context || !promise || promise->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> value = promise->Get(isolate);
+    if (!value->IsPromise()) return nullptr;
+    Local<Promise> target = value.As<Promise>();
+    bool has_fulfilled = on_fulfilled && !on_fulfilled->IsEmpty() && on_fulfilled->Get(isolate)->IsFunction();
+    bool has_rejected = on_rejected && !on_rejected->IsEmpty() && on_rejected->Get(isolate)->IsFunction();
+    MaybeLocal<Promise> derived;
+    if (has_fulfilled && has_rejected) {
+        derived = target->Then(ctx, on_fulfilled->Get(isolate).As<Function>(), on_rejected->Get(isolate).As<Function>());
+    } else if (has_fulfilled) {
+        derived = target->Then(ctx, on_fulfilled->Get(isolate).As<Function>());
+    } else if (has_rejected) {
+        derived = target->Catch(ctx, on_rejected->Get(isolate).As<Function>());
+    } else {
+        return nullptr;
+    }
+    Local<Promise> result;
+    if (!derived.ToLocal(&result)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, result));
+}
+
+/// ECMAScript ToObject(value) in `context`: an object itself, a primitive's
+/// wrapper object (a String, Number, Boolean, Symbol or BigInt object of the
+/// context's realm). Null for undefined and null - ToObject's TypeError,
+/// which the caller throws (nothing is thrown here) - or on failure. A new
+/// Global the caller owns.
+Global<Value>* v8_Value_ToObject(Global<Context>* context, Global<Value>* value) {
+    if (!context || !value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = value->Get(isolate);
+    if (v->IsNullOrUndefined()) return nullptr;
+    Local<Object> object;
+    if (!v->ToObject(context->Get(isolate)).ToLocal(&object)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, object));
+}
+
+/// HTML "extract error information" at the throw site: what the TryCatch
+/// that caught an exception knows of where it was thrown - its Message's
+/// script, line and column - taken while the TryCatch still holds it.
+/// v8::Exception::CreateMessage, asked after the call has returned, can only
+/// read a stack an Error object captured when it was made: a thrown string or
+/// number has none, and no frame is left to capture. The message is the
+/// value's ToString, as v8_Exception_GetErrorInfo makes it, under a TryCatch
+/// of its own so that a throwing toString neither replaces the exception nor
+/// stays pending. `exception` is null. Null when the TryCatch has no message.
+static V8ErrorInfo* errorInfoAtThrowSite(Isolate* isolate, Local<Context> ctx, TryCatch& try_catch) {
+    Local<Message> message = try_catch.Message();
+    if (message.IsEmpty()) return nullptr;
+    Local<Value> exception = try_catch.Exception();
+
+    V8ErrorInfo* info = new V8ErrorInfo();
+    info->has_error = true;
+    info->message = nullptr;
+    info->stack_trace = nullptr;
+    info->source_line = nullptr;
+    info->resource_name = nullptr;
+    info->exception = nullptr;
+    info->line_number = message->GetLineNumber(ctx).FromMaybe(-1);
+    info->column_number = message->GetStartColumn();
+    String::Utf8Value resource(isolate, message->GetScriptResourceName());
+    info->resource_name = strdup(*resource ? *resource : "");
+    {
+        TryCatch to_string(isolate);
+        String::Utf8Value text(isolate, exception);
+        info->message = strdup(*text ? *text : "Uncaught exception");
+    }
+    return info;
+}
+
+/// v8_Function_CallCatching, and on a throw `*site` is where it was thrown
+/// (errorInfoAtThrowSite; the caller frees it with v8_FreeErrorInfo, and it
+/// may be null). Every non-null result is a new Global the caller owns.
+Global<Value>* v8_Function_CallCatchingWithSite(
+    Global<Context>* context,
+    Global<Value>* function,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv,
+    bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+
+    if (!context || !function || function->IsEmpty()) return nullptr;
+    Local<Value> fn_value = function->Get(isolate);
+    if (!fn_value->IsFunction()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Value> this_val = recv ? recv->Get(isolate) : Undefined(isolate).As<Value>();
+
+    std::vector<Local<Value>> local_argv;
+    local_argv.reserve(argc > 0 ? argc : 0);
+    for (int i = 0; i < argc; i++) {
+        local_argv.push_back(argv[i] ? argv[i]->Get(isolate) : Undefined(isolate).As<Value>());
+    }
+
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    MaybeLocal<Value> maybe_result = fn_value.As<Function>()->Call(
+        ctx, this_val, argc, local_argv.empty() ? nullptr : local_argv.data());
+
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (maybe_result.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
+}
+
+/// v8_Object_GetCatching, and on a throw `*site` is where it was thrown, as
+/// v8_Function_CallCatchingWithSite has it.
+Global<Value>* v8_Object_GetCatchingWithSite(
+    Global<Context>* context,
+    Global<Value>* object,
+    const char* key,
+    int key_len,
+    bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+
+    if (!context || !object || object->IsEmpty() || !key) return nullptr;
+    Local<Value> obj_value = object->Get(isolate);
+    if (!obj_value->IsObject()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
+
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    MaybeLocal<Value> maybe_value = obj_value.As<Object>()->Get(ctx, name);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (maybe_value.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_value.ToLocalChecked()));
+}
+
+} // extern "C"
+// ---- end lane: protocol ----
+// ---- lane: networking ----
+extern "C" {
+
+/// Infra "serialize a JavaScript value to a JSON string", steps 1-2, as
+/// ffi.zig documents. JSON::Stringify runs the intrinsic %JSON.stringify% and
+/// turns its result into a String with ToString, so a result of undefined
+/// arrives as the string "undefined" - which no JSON text can be (a string
+/// is quoted), so that string is how undefined is recognised. What the
+/// serializer throws is left pending: there is no TryCatch here.
+Global<Value>* v8_JSON_StringifyValue(Global<Context>* context, Global<Value>* value, bool* no_representation) {
+    *no_representation = false;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate || !context || !value) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<String> json;
+    if (!JSON::Stringify(ctx, value->Get(isolate)).ToLocal(&json)) return nullptr;
+    static constexpr char kUndefined[] = "undefined";
+    if (json->Length() == sizeof(kUndefined) - 1 && json->StringEquals(String::NewFromUtf8Literal(isolate, kUndefined))) {
+        *no_representation = true;
+        return nullptr;
+    }
+    return trackHandle(new Global<Value>(isolate, json));
+}
+
+} // extern "C"
+// ---- end lane: networking ----

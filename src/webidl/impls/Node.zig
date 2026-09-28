@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
@@ -227,13 +228,11 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
     }
 
-    // Mark as cleaned up in V8 wrapper cache to prevent double-free.
-    // When Document.deinit triggers this cleanup, we're cleaning up the DOM tree.
-    // The wrapper cache also has references to these nodes. If we don't mark
-    // them, wrapper_cache.deinit() will try to call deinit again (double-free).
-    // Import context_manager to access markInstanceCleanedUp
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // The host is freeing the node: its wrapper must not free it again.
+    // When Document.deinit triggers this cleanup, we're cleaning up the DOM
+    // tree, and the engine's wrapper cache also references these nodes;
+    // unmarked, its teardown would run deinit again (a double free).
+    engine.platformObjectDestroyed(instance);
 
     // First, recursively deinit all child nodes.
     // We must do this BEFORE removing ourselves from the registry,
@@ -340,7 +339,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
-    // wrapper cache is tearing down, markInstanceCleanedUp cannot flag the
+    // wrapper cache is tearing down, platformObjectDestroyed cannot flag the
     // entry, so this record is the only thing that stops the cache running
     // this deinit a second time. A reissued slot starts fresh (Instance.init).
     runtime.instance_lifecycle.markCleanupComplete(instance);
@@ -366,9 +365,8 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         return; // Already being cleaned up, skip
     }
 
-    // Mark in wrapper cache to prevent double-free during cache cleanup.
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // Its wrapper must not free it again (engine.platformObjectDestroyed).
+    engine.platformObjectDestroyed(instance);
 
     const internal = Registry.get(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
@@ -492,9 +490,8 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// HTML "document base URL": the frozen base URL of the first `base` element
 /// with an `href` attribute in tree order, and otherwise the document's
-/// fallback base URL, which is its URL. Deviation: the fallback's "about base
-/// URL" (what an about:srcdoc or about:blank document inherits from its
-/// creator) is not tracked, so those documents answer with their own URL.
+/// fallback base URL: its about base URL - what an about:srcdoc or
+/// about:blank document inherits from its creator - or else its URL.
 ///
 /// This was a stub returning "" for every node, so nothing could resolve a
 /// relative URL against a document - an iframe's relative `src` above all.
@@ -507,9 +504,13 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
         internal.owner_document orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
-    // The fallback base URL. The getter clones into the document's allocator.
-    const fallback = try interfaces.Document.get_URL(document);
-    defer document.ctx.allocator.free(fallback);
+    // The fallback base URL: steps 1-2, an about:blank or iframe srcdoc
+    // document's about base URL - its creator's base - when it has one, and
+    // otherwise (step 3) the document's URL. The getter clones into the
+    // document's allocator.
+    const url = try interfaces.Document.get_URL(document);
+    defer document.ctx.allocator.free(url);
+    const fallback = @import("dom").document_lifecycle.aboutFallbackBaseUrl(document) orelse url;
 
     if (firstBaseHref(document)) |href| {
         var owned_href = href;

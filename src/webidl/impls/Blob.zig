@@ -16,19 +16,14 @@ const callbacks = @import("callbacks");
 const file = @import("file");
 const Blob = interfaces.Blob;
 
-// Import streams infrastructure for Promise support
-const event_loop_mod = @import("streams_event_loop");
-const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const engine = @import("engine");
+const encoding = @import("encoding");
 const webidl = @import("webidl");
-const webidl_errors = webidl.errors;
 
-// Import V8 for promise bridging
-const v8_engine = @import("v8");
-const v8 = v8_engine.ffi;
-const promise_utils = v8_engine.promise;
-
-// Import ReadableStream impl for internal API (Zig-only stream creation)
-const ReadableStreamImpl = @import("ReadableStream.zig");
+// The byte stream "get stream" returns.
+const js = @import("streams_js.zig");
+const srd = @import("streams_readable.zig");
+const same_object = @import("same_object.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Blob.State;
@@ -62,8 +57,28 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
+    // through this hook.
+    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes });
+
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     return instance;
+}
+
+/// dom.blob_bytes: this Blob's bytes, borrowed - a Blob's data never changes.
+fn bytesOf(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.blob_data.bytes;
+}
+
+/// dom.blob_bytes: give a new Blob a copy of `bytes`, and `mime_type` as its
+/// type (BlobData lowercases it, or drops one with a character outside
+/// U+0020-U+007E).
+fn setBytes(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+    errdefer blob_data.deinit();
+    try setBlobData(instance, allocator, blob_data);
 }
 
 /// Deinitialize instance - clean up owned resources only
@@ -112,8 +127,10 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
     // Get MIME type from options
     const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
-    // Process blob parts if provided
-    const bytes = try processBlobParts(ctx.allocator, if (blobParts.wasPassed()) blobParts.value else null, endings_mode);
+    // Process blob parts if provided. An optional argument that is
+    // undefined is missing (WebIDL 3.7.x "overload resolution", step 12.1).
+    const parts: ?runtime.JSValue = if (blobParts.wasPassed() and engine.typeOf(ctx, blobParts.value) != .undefined) blobParts.value else null;
+    const bytes = try processBlobParts(ctx, parts, endings_mode);
     defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
     // Create the internal BlobData
@@ -124,104 +141,74 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
     return instance;
 }
 
-/// FileAPI "process blob parts" for a JS `sequence<BlobPart>`: the bytes of
-/// every USVString (as UTF-8), ArrayBuffer and ArrayBufferView, in order.
-/// Shared with File, whose constructor's first step is the same algorithm.
-/// The caller owns a non-empty result; an empty one is static.
+/// The `endings` member of BlobPropertyBag, as "process blob parts" takes it.
+pub const Endings = file.algorithms.Endings;
+
+/// FileAPI "process blob parts" for a JS `sequence<BlobPart>`: `parts`
+/// converted to the IDL sequence (WebIDL 3.2.21), each item to the union
+/// (Blob or BufferSource or USVString) (3.2.24), then their bytes in order,
+/// a string's line endings converted when `endings` is native
+/// (file.algorithms.processBlobParts). Shared with File, whose constructor's
+/// first step is the same algorithm. Missing parts are no bytes.
 ///
-/// TODO: a Blob part contributes its bytes, anything else is converted with
-/// ToString, and `endings: "native"` converts line endings - none of which
-/// happens yet.
-pub fn processBlobParts(allocator: std.mem.Allocator, parts: ?runtime.JSValue, endings: file.algorithms.Endings) ![]const u8 {
-    _ = endings;
-    const js_value = parts orelse return "";
-
-    // Must be a handle to a V8 value
-    if (js_value != .handle) {
+/// OWNED by `realm.allocator` when non-empty; an empty result allocates
+/// nothing.
+pub fn processBlobParts(realm: runtime.Context, parts: ?runtime.JSValue, endings: Endings) ![]const u8 {
+    const value = parts orelse return "";
+    var converted: BlobPartSequence = .{ .realm = realm, .allocator = realm.allocator };
+    defer converted.deinit();
+    // 3.2.21: not an Object (step 1), or one with no @@iterator (step 3),
+    // is a TypeError.
+    if (!try engine.iterate(realm, value, BlobPartSequence.each, &converted)) return error.TypeError;
+    const bytes = try file.algorithms.processBlobParts(realm.allocator, converted.parts.items, .{ .endings = endings });
+    if (bytes.len == 0) {
+        realm.allocator.free(bytes);
         return "";
     }
+    return bytes;
+}
 
-    const handle = js_value.handle;
-    const v8_value: *v8.Value = @ptrCast(@alignCast(handle.ptr));
+/// A `sequence<BlobPart>` as it is converted, item by item: every part's
+/// bytes are copied, as a later item's conversion runs script that can drop
+/// the last reference to an earlier Blob or detach an earlier buffer.
+const BlobPartSequence = struct {
+    realm: runtime.Context,
+    allocator: std.mem.Allocator,
+    parts: std.ArrayListUnmanaged(file.algorithms.BlobPart) = .empty,
 
-    // Check if it's an array
-    if (!v8.v8_Value_IsArray(v8_value)) {
-        return "";
+    fn deinit(self: *BlobPartSequence) void {
+        for (self.parts.items) |part| switch (part) {
+            .blob => {},
+            .buffer => |bytes| self.allocator.free(bytes),
+            .string => |text| self.allocator.free(text),
+        };
+        self.parts.deinit(self.allocator);
     }
 
-    const v8_array: *v8.Array = @ptrCast(v8_value);
-    const length = v8.v8_Array_Length(v8_array);
-
-    if (length == 0) {
-        return "";
+    fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
+        const self: *BlobPartSequence = @ptrCast(@alignCast(data.?));
+        try self.parts.ensureUnusedCapacity(self.allocator, 1);
+        self.parts.appendAssumeCapacity(try convertBlobPart(self.realm, item, self.allocator));
     }
+};
 
-    // Get V8 context
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return "";
-    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return "";
-    defer v8.v8_Context_Dispose(v8_context);
-
-    // First pass: calculate total size needed
-    var total_size: usize = 0;
-    for (0..length) |i| {
-        const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
-
-        if (v8.v8_Value_IsString(elem)) {
-            const str: *v8.String = @ptrCast(elem);
-            total_size += @as(usize, @intCast(v8.v8_String_Utf8Length(str)));
-        } else if (v8.v8_Value_IsArrayBuffer(elem)) {
-            const ab: *v8.ArrayBuffer = @ptrCast(elem);
-            total_size += v8.v8_ArrayBuffer_ByteLength(ab);
-        } else if (v8.v8_Value_IsArrayBufferView(elem)) {
-            total_size += v8.v8_TypedArray_ByteLength(elem);
+/// WebIDL 3.2.24, converting `item` to (Blob or BufferSource or USVString).
+/// OWNED by `allocator`.
+fn convertBlobPart(realm: runtime.Context, item: runtime.JSValue, allocator: std.mem.Allocator) engine.Error!file.algorithms.BlobPart {
+    // 4. A platform object that implements Blob is the Blob: its bytes. Any
+    //    other platform object is no member here but the string (12).
+    if (engine.convertToPlatformObject(realm, item)) |object| {
+        if (object.stateAs(State)) |state| {
+            const bytes: []const u8 = if (state.own._internal) |internal| internal.blob_data.bytes else "";
+            return .{ .buffer = try allocator.dupe(u8, bytes) };
         }
     }
-
-    if (total_size == 0) {
-        return "";
-    }
-
-    // Allocate buffer for all bytes
-    const buffer = try allocator.alloc(u8, total_size);
-
-    // Second pass: copy bytes
-    var offset: usize = 0;
-    for (0..length) |i| {
-        const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
-
-        if (v8.v8_Value_IsString(elem)) {
-            const str: *v8.String = @ptrCast(elem);
-            const utf8_len = v8.v8_String_Utf8Length(str);
-            if (utf8_len > 0) {
-                _ = v8.v8_String_WriteUtf8(str, buffer[offset..].ptr, utf8_len);
-                offset += @as(usize, @intCast(utf8_len));
-            }
-        } else if (v8.v8_Value_IsArrayBuffer(elem)) {
-            const ab: *v8.ArrayBuffer = @ptrCast(elem);
-            const byte_length = v8.v8_ArrayBuffer_ByteLength(ab);
-            if (byte_length > 0) {
-                if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
-                    const data: [*]const u8 = @ptrCast(data_ptr);
-                    @memcpy(buffer[offset..][0..byte_length], data[0..byte_length]);
-                    offset += byte_length;
-                }
-            }
-        } else if (v8.v8_Value_IsArrayBufferView(elem)) {
-            if (v8.v8_TypedArray_Buffer(elem)) |ab| {
-                const byte_offset = v8.v8_TypedArray_ByteOffset(elem);
-                const byte_length = v8.v8_TypedArray_ByteLength(elem);
-                if (byte_length > 0) {
-                    if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
-                        const data: [*]const u8 = @ptrCast(data_ptr);
-                        @memcpy(buffer[offset..][0..byte_length], data[byte_offset..][0..byte_length]);
-                        offset += byte_length;
-                    }
-                }
-            }
-        }
-    }
-
-    return buffer;
+    // 5-9. An ArrayBuffer or ArrayBufferView: a copy of the bytes it holds
+    //      (a view on a shared buffer is a TypeError - BufferSource is not
+    //      [AllowShared]).
+    if (try engine.getCopyOfBufferSourceBytes(realm, item, allocator)) |bytes| return .{ .buffer = bytes };
+    // 12. Anything else is the USVString it converts to, as UTF-8.
+    return .{ .string = try engine.convertToUSVString(realm, item, allocator) };
 }
 
 /// Give `instance`'s Blob part its byte sequence, taking `blob_data` on
@@ -345,186 +332,137 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 4. Return the result of transforming promise with UTF-8 decode.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
+    // The blob's bytes are in memory and never change, so reading all of
+    // them through a stream (steps 1-3) is those bytes, and the promise is
+    // fulfilled with them already. A new promise, and the values it is
+    // fulfilled with, are the current realm's (the transform's handler).
+    const realm = engine.currentRealm() orelse instance.ctx;
+    // 4. ... UTF-8 decode on its first argument.
+    const text = try utf8Decode(realm.allocator, internal.blob_data.bytes);
+    defer realm.allocator.free(text);
+    const promise = try engine.createResolvedPromise(realm, runtime.JSValue.fromStringRef(text));
+    return promise.take();
+}
 
-    // For Blob.text(), we synchronously read bytes and decode as UTF-8
-    // Per spec, text() always uses UTF-8 (unlike FileReader.readAsText which can use other encodings)
-    const bytes = internal.blob_data.bytes;
-
-    // Get V8 context for promise creation
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-    defer v8.v8_Context_Dispose(context);
-
-    // Create a V8 string from the bytes (UTF-8 decode)
-    const v8_string = if (bytes.len > 0)
-        v8.v8_String_NewFromUtf8(isolate, bytes.ptr, @intCast(bytes.len)) orelse return error.OutOfMemory
-    else
-        v8.v8_String_Empty(isolate) orelse return error.OutOfMemory;
-
-    // Create a resolved promise with the string
-    const resolver = v8.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-    const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-
-    // Resolve with the string
-    _ = v8.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(v8_string));
-
-    return runtime.JSValue.fromPromise(@ptrCast(promise));
+/// Encoding "UTF-8 decode" of `bytes` - a leading BOM stripped, each invalid
+/// sequence U+FFFD - held as UTF-8, as the engine takes a string. OWNED.
+fn utf8Decode(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    const code_units = try encoding.utf8Decode(allocator, bytes);
+    defer allocator.free(code_units);
+    // A decoder's output is scalar values: no surrogate is unpaired.
+    return std.unicode.utf16LeToUtf8Alloc(allocator, code_units) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => unreachable,
+    };
 }
 
 /// Operation: stream
 ///
-/// Spec: https://www.w3.org/TR/FileAPI/#stream-method-algo
-/// Returns a ReadableStream for reading blob contents.
+/// Spec: https://w3c.github.io/FileAPI/#stream-method-algo - "get stream":
+/// a new ReadableStream set up with byte reading support, into which the
+/// blob's bytes are enqueued as Uint8Arrays, and which is closed once all
+/// of them have been.
 ///
-/// The stream() method returns the result of calling "get stream" on the blob:
-/// 1. Create a new ReadableStream with byte reading support
-/// 2. Pull algorithm reads chunks from blob bytes
-/// 3. Returns stream that yields all blob bytes
-///
-/// Implementation note: Uses internal ReadableStream API (createFromZigSource)
-/// to bypass the V8/JavaScript constructor path, similar to how browsers like
-/// Firefox use ReadableStream::CreateByteNative() internally.
+/// The bytes are enqueued as the stream pulls, a chunk at a time, rather
+/// than all at once in parallel: a Blob's data is in memory and never
+/// changes, so reading it when asked is the same bytes in the same order,
+/// and a stream nobody reads holds none of them.
 pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
-    const ctx = instance.ctx;
-
-    // Create the blob stream source state
-    const source_state = allocator.create(BlobStreamSource) catch return error.OutOfMemory;
-    errdefer allocator.destroy(source_state);
-
-    source_state.* = BlobStreamSource{
-        .blob_data = internal.blob_data,
-        .position = 0,
-        .allocator = allocator,
-    };
-
-    // Create ReadableStream using internal Zig API (bypasses V8/JSValue path)
-    // This mirrors browser implementations like Firefox's CreateByteNative()
-    const zig_source = ReadableStreamImpl.ZigUnderlyingSource{
-        .pull = &blobStreamPullNative,
-        .cancel = &blobStreamCancelNative,
-        .context = @ptrCast(source_state),
-        .is_byte_stream = true,
-        .auto_allocate_chunk_size = DEFAULT_CHUNK_SIZE,
-    };
-
-    const stream = ReadableStreamImpl.createFromZigSource(
-        allocator,
-        ctx,
-        zig_source,
-    ) catch |err| {
-        allocator.destroy(source_state);
-        return switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
-            error.NoEventLoop => error.InvalidState,
-        };
-    };
-
-    return stream;
+    _ = getInternal(instance) orelse return error.InvalidState;
+    const realm = try js.Realm.of(instance);
+    return BlobStream.create(realm, instance);
 }
 
-/// Default chunk size for blob streaming (64KB)
-const DEFAULT_CHUNK_SIZE: u64 = 64 * 1024;
+/// The most "get stream" enqueues per pull.
+const chunk_size: usize = 64 * 1024;
 
-/// Type string for byte streams
-const blob_stream_type_bytes: []const u8 = "bytes";
-
-/// Thread-local context for blob stream callbacks
-/// This is a workaround since UnderlyingSource doesn't support context
-threadlocal var blob_stream_context: ?*BlobStreamSource = null;
-
-/// Clear the thread-local blob stream context
-///
-/// MUST be called on isolate disposal to prevent use-after-free.
-/// The blob stream context may hold references to BlobData that becomes
-/// invalid when the isolate's associated Zig state is cleaned up.
-///
-/// Called by the isolate lifecycle cleanup sequence.
-pub fn clearBlobStreamContext() void {
-    blob_stream_context = null;
-}
-
-/// Internal state for blob stream source
-const BlobStreamSource = struct {
-    blob_data: *file.BlobData,
-    position: usize,
+/// The underlying source of a Blob's stream. It reads the Blob's own bytes,
+/// so it keeps the Blob alive (`keep`) until the stream is done with it.
+const BlobStream = struct {
     allocator: std.mem.Allocator,
+    blob: *runtime.Instance,
+    keep: same_object.Pin = .{},
+    /// Bytes of the blob already enqueued.
+    position: usize = 0,
+    /// Every byte is enqueued, or the stream was cancelled: the blob is let
+    /// go, and must not be read again.
+    done: bool = false,
+    /// The stream is done with this source (its algorithms were cleared).
+    detached: bool = false,
+    /// Calls into the stream under way from here: freeing waits for them.
+    busy: u32 = 0,
+
+    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+
+    fn create(realm: js.Realm, blob: *runtime.Instance) !*runtime.Instance {
+        const allocator = blob.ctx.allocator;
+        const self = try allocator.create(BlobStream);
+        self.* = .{ .allocator = allocator, .blob = blob };
+        self.keep.hold(blob);
+        // A failed setup clears the source's algorithms, which must not free
+        // it under this call.
+        self.busy += 1;
+        const stream = srd.createReadableByteStream(realm, blob.ctx, .{ .ctx = self, .vtable = &vtable });
+        self.busy -= 1;
+        if (stream) |st| return st else |err| {
+            self.detached = true;
+            self.freeIfDone();
+            return err;
+        }
+    }
+
+    fn start(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance) js.Error!js.Completion {
+        return .{ .normal = try realm.undefinedValue() };
+    }
+
+    /// Enqueue the next chunk, and close the stream after the last.
+    fn pull(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.busy += 1;
+        defer {
+            self.busy -= 1;
+            self.freeIfDone();
+        }
+        if (self.done) return realm.promiseResolvedWithUndefined();
+        const bytes = if (getInternal(self.blob)) |internal| internal.blob_data.bytes else &[_]u8{};
+        if (self.position < bytes.len) {
+            const chunk = bytes[self.position..][0..@min(chunk_size, bytes.len - self.position)];
+            self.position += chunk.len;
+            const buffer = js.allocateBufferIn(realm, chunk.len) orelse return error.V8Failure;
+            defer js.dispose(buffer);
+            if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..chunk.len], chunk);
+            const view = try js.newView(.uint8, buffer, 0, chunk.len);
+            defer js.dispose(view);
+            try srd.byteControllerEnqueue(realm, controller, view);
+        }
+        if (!self.detached and self.position >= bytes.len) {
+            // All of it is enqueued: nothing more to read, so let the blob go.
+            self.done = true;
+            self.keep.release();
+            try srd.byteControllerClose(realm, controller);
+        }
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.done = true;
+        self.keep.release();
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn deinitSource(ctx: ?*anyopaque, _: std.mem.Allocator) void {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        self.detached = true;
+        self.freeIfDone();
+    }
+
+    fn freeIfDone(self: *BlobStream) void {
+        if (!self.detached or self.busy > 0) return;
+        self.keep.release();
+        self.allocator.destroy(self);
+    }
 };
-
-/// Sentinel value to indicate no result / end of stream
-const null_result: u8 = 0;
-/// Sentinel value to indicate successful read
-const success_result: u8 = 1;
-
-/// Native pull callback for blob stream (used with internal ReadableStream API)
-/// Called by ReadableStream when it needs more data.
-/// Signature matches ZigUnderlyingSource.pull
-fn blobStreamPullNative(controller: *runtime.Instance, context: ?*anyopaque) anyerror!void {
-    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return error.InvalidState));
-
-    // Check if we've read all bytes
-    if (source.position >= source.blob_data.bytes.len) {
-        // Close the stream - no more data
-        // TODO: Call controller.close() when ReadableByteStreamController is fully implemented
-        _ = controller;
-        return;
-    }
-
-    // Calculate chunk size
-    const remaining = source.blob_data.bytes.len - source.position;
-    const chunk_len = @min(remaining, DEFAULT_CHUNK_SIZE);
-
-    // Get the chunk data
-    const chunk_data = source.blob_data.bytes[source.position..][0..chunk_len];
-    _ = chunk_data; // TODO: Enqueue to controller when fully implemented
-
-    // Advance position
-    source.position += chunk_len;
-}
-
-/// Native cancel callback for blob stream (used with internal ReadableStream API)
-/// Signature matches ZigUnderlyingSource.cancel
-fn blobStreamCancelNative(reason: ?*const anyopaque, context: ?*anyopaque) anyerror!void {
-    _ = reason;
-    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return));
-    // Reset position
-    source.position = 0;
-}
-
-/// Legacy pull callback for blob stream (kept for compatibility)
-/// Called by ReadableStream when it needs more data
-fn blobStreamPull(controller: *const anyopaque) *const anyopaque {
-    _ = controller;
-    // Get source state from thread-local context
-    const source = blob_stream_context orelse return @ptrCast(&null_result);
-
-    // Check if we've read all bytes
-    if (source.position >= source.blob_data.bytes.len) {
-        // Signal end of stream
-        return @ptrCast(&null_result);
-    }
-
-    // Calculate chunk size
-    const remaining = source.blob_data.bytes.len - source.position;
-    const chunk_len = @min(remaining, DEFAULT_CHUNK_SIZE);
-
-    // Advance position
-    source.position += chunk_len;
-
-    // Return success marker (in full impl, would enqueue chunk to controller)
-    return @ptrCast(&success_result);
-}
-
-/// Legacy cancel callback for blob stream (kept for compatibility)
-fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
-    _ = controller;
-    // Reset position if source exists
-    if (blob_stream_context) |source| {
-        source.position = 0;
-    }
-    return @ptrCast(&null_result);
-}
 
 /// Operation: bytes
 ///
@@ -538,35 +476,17 @@ fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
 /// 4. Return the result of transforming promise to create Uint8Array from bytes.
 pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
-
-    // Get event loop from context
-    const ev_loop = instance.ctx.getEventLoop() catch return error.InvalidState;
-
-    // Create promise that resolves with bytes (Uint8Array contents)
-    // Note: The actual Uint8Array wrapper would be created by the V8 binding layer
-    // Here we just return the raw bytes that would populate the Uint8Array
-    const promise = AsyncPromise([]const u8).init(allocator, ev_loop) catch return error.OutOfMemory;
-
-    // Get blob bytes
+    // Steps 1-3 as in text(): the bytes are the blob's own.
+    const realm = engine.currentRealm() orelse instance.ctx;
+    // 4. ... a new Uint8Array wrapping an ArrayBuffer containing its first
+    //    argument.
     const bytes = internal.blob_data.bytes;
-
-    // Fulfill immediately since blob bytes are already in memory
-    promise.fulfill(bytes);
-
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        []const u8,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    const buffer = try engine.createArrayBuffer(realm, bytes);
+    defer buffer.release();
+    const view = try engine.createArrayBufferView(realm, .uint8_array, buffer.value, 0, bytes.len);
+    defer view.release();
+    const promise = try engine.createResolvedPromise(realm, view.value);
+    return promise.take();
 }
 
 /// Operation: arrayBuffer
@@ -581,34 +501,13 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 4. Return the result of transforming promise to create ArrayBuffer from bytes.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Get blob bytes
-    const bytes = internal.blob_data.bytes;
-
-    // Get V8 context for promise creation
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
-    defer v8.v8_Context_Dispose(context);
-
-    // Create a V8 ArrayBuffer with the blob bytes
-    const array_buffer = v8.v8_ArrayBuffer_New(isolate, bytes.len) orelse return error.OutOfMemory;
-
-    // Copy bytes into the ArrayBuffer
-    if (bytes.len > 0) {
-        if (v8.v8_ArrayBuffer_Data(array_buffer)) |data_ptr| {
-            const dest: [*]u8 = @ptrCast(data_ptr);
-            @memcpy(dest[0..bytes.len], bytes);
-        }
-    }
-
-    // Create a resolved promise with the ArrayBuffer
-    const resolver = v8.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
-    const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-
-    // Resolve with the ArrayBuffer
-    _ = v8.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(array_buffer));
-
-    return runtime.JSValue.fromPromise(@ptrCast(promise));
+    // Steps 1-3 as in text(): the bytes are the blob's own.
+    const realm = engine.currentRealm() orelse instance.ctx;
+    // 4. ... a new ArrayBuffer whose contents are its first argument.
+    const buffer = try engine.createArrayBuffer(realm, internal.blob_data.bytes);
+    defer buffer.release();
+    const promise = try engine.createResolvedPromise(realm, buffer.value);
+    return promise.take();
 }
 
 // ============================================================================

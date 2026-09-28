@@ -44,8 +44,9 @@ pub const CloneError = error{
 ///
 /// Per HTML Standard §2.7.3, the [[Type]] field identifies the serialized value type.
 pub const SerializationType = enum {
-    // V8 serialized bytes (for cross-isolate Worker transfer)
-    v8_serialized,
+    // The engine's own serialization (StructuredSerializeWithTransfer through
+    // the engine protocol) - bytes only the engine reads back.
+    engine_serialized,
 
     // Primitives (step 4)
     primitive,
@@ -215,8 +216,8 @@ pub const SerializedValue = struct {
     data: SerializedData,
 
     pub const SerializedData = union(SerializationType) {
-        // V8 serialized bytes (for cross-isolate Worker transfer)
-        v8_serialized: V8SerializedData,
+        // The engine's own serialization
+        engine_serialized: EngineSerializedData,
 
         // Primitives
         primitive: PrimitiveValue,
@@ -283,19 +284,19 @@ pub const SerializedValue = struct {
 
     pub fn deinit(self: *SerializedValue) void {
         switch (self.data) {
-            .v8_serialized => |v8| {
-                // Free V8 serialized bytes
-                self.allocator.free(v8.serialized_bytes);
+            .engine_serialized => |serialized| {
+                // Free the engine's serialized bytes
+                self.allocator.free(serialized.serialized_bytes);
                 // Free each transferred ArrayBuffer's data
-                for (v8.transferred_arraybuffers) |ab| {
+                for (serialized.transferred_arraybuffers) |ab| {
                     self.allocator.free(ab.data);
                 }
                 // Free the ArrayBuffer array itself
-                self.allocator.free(v8.transferred_arraybuffers);
+                self.allocator.free(serialized.transferred_arraybuffers);
                 // Free the transferred ports array (port objects are NOT freed here -
                 // they're transferred to the destination realm and owned there)
-                if (v8.transferred_ports.len > 0) {
-                    self.allocator.free(v8.transferred_ports);
+                if (serialized.transferred_ports.len > 0) {
+                    self.allocator.free(serialized.transferred_ports);
                 }
             },
             .primitive => |p| {
@@ -382,10 +383,12 @@ pub const RegExpData = struct {
     flags: []const u8,
 };
 
-/// V8 serialized data for cross-isolate transfer (Worker messaging)
-/// This holds V8 ValueSerializer output bytes plus transferred ArrayBuffer/MessagePort data.
-pub const V8SerializedData = struct {
-    /// V8 serialized bytes (from ValueSerializer)
+/// The engine's serialization for transfer to another agent (Worker
+/// messaging): bytes only the engine reads back (the engine protocol's
+/// StructuredSerializeWithTransfer), plus the transferred ArrayBuffers' and
+/// MessagePorts' data.
+pub const EngineSerializedData = struct {
+    /// The engine's serialized bytes
     serialized_bytes: []u8,
     /// Transferred ArrayBuffer data (copied before detach)
     transferred_arraybuffers: []TransferredArrayBufferData,

@@ -94,7 +94,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8_ffi = @import("ffi.zig");
 // Phase 7: libuv is gone. The timer backend is native - see native_timer.zig.
-const native_timer = @import("native_timer.zig");
+const native_timer = @import("runtime").native_timer;
 const TimerManagerImpl = native_timer.NativeTimerManager;
 const runtime = @import("runtime");
 

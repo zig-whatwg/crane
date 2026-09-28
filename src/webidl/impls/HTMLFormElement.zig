@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -15,7 +16,6 @@ const encoding_mod = @import("encoding");
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
 const encode_sets = @import("encode_sets");
-const v8 = @import("v8");
 const log = std.log.scoped(.forms);
 
 // Import related impls for attribute access
@@ -773,10 +773,17 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     // Step 4.1: Set the form's planned navigation to null.
     internal.planned_navigation = 0;
 
-    // A task is entered from the event loop, not from script: it has no
-    // HandleScope or entered context of its own.
-    const scope = v8.JsScope.init(task.form.ctx) orelse return;
-    defer scope.deinit();
+    // A task is entered from the event loop, not from script: it runs as a
+    // task of the form's realm, which enters it. A realm with no engine
+    // behind it any more (its page has gone) runs nothing, and the task has
+    // no one to report to: it is dropped, as a task of a document that is
+    // not fully active is.
+    engine.runTaskInRealm(task.form.ctx, navigateSteps, task) catch {};
+}
+
+/// Step 4.2 of the planned navigation's task, inside the form's realm.
+fn navigateSteps(data: ?*anyopaque) void {
+    const task: *PlannedNavigation = @ptrCast(@alignCast(data orelse return));
 
     // Step 4.2: "Navigate targetNavigable to url using the form element's
     // node document, with historyHandling set to historyHandling" - which

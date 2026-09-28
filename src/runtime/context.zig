@@ -171,6 +171,34 @@ pub const ContextData = struct {
     /// Engine-specific opaque context (V8 Isolate, JSC VM, etc.)
     engine_ctx: ?*anyopaque,
 
+    /// What ends a task in this realm beyond the microtask checkpoint, when
+    /// its event loop does more - a worker's forwards what the worker posted
+    /// and schedules its next dispatch. Set by the host that runs the realm;
+    /// the engine's `runTaskInRealm` calls it after the task's steps. Null
+    /// for a window realm, whose host loop ends its own tasks.
+    end_of_task: ?*const fn (realm: *ContextData) void = null,
+
+    /// HTML "report an exception" steps this realm's host owns, for an
+    /// exception nothing else reports - one an event listener threw, say. A
+    /// worker realm's fires an ErrorEvent at its WorkerGlobalScope and, when
+    /// that is not handled, at its Worker with `error` null. Set by the host
+    /// that runs the realm (the worker host installs it); null for a window
+    /// realm, whose global object reports its own.
+    report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_interface.zig").ErrorInfo) void = null,
+
+    /// The agent this realm belongs to (V8: its isolate), set by the adapter
+    /// that created the realm. Operations that enter a realm from outside it
+    /// - a task fired from the page's loop into a worker's realm - enter its
+    /// agent, which for a worker realm is never the page's.
+    agent: ?*@import("engine_interface.zig").Agent = null,
+
+    /// The URL this realm's settings object records as its document's (a
+    /// Window) or its script's (a worker): the API base URL that fetch, XHR,
+    /// WebSocket and module resolution resolve against. Realm state, not
+    /// engine state - it used to live in the V8 adapter's context manager.
+    /// Owned; set with `setDocumentUrl`.
+    document_url: ?[]u8 = null,
+
     console_state: ConsoleState,
 
     /// Event loop for async operations (streams, promises, etc.)
@@ -312,8 +340,27 @@ pub const ContextData = struct {
             }
         }
 
+        self.clearDocumentUrl();
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
+    }
+
+    /// The URL this realm records for its document (or worker script), if any.
+    pub fn documentUrl(self: *const Self) ?[]const u8 {
+        return self.document_url;
+    }
+
+    /// Record `url` as this realm's document URL, replacing any before it.
+    pub fn setDocumentUrl(self: *Self, url: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, url);
+        self.clearDocumentUrl();
+        self.document_url = copy;
+    }
+
+    /// Forget the recorded document URL, freeing it.
+    pub fn clearDocumentUrl(self: *Self) void {
+        if (self.document_url) |url| self.allocator.free(url);
+        self.document_url = null;
     }
 
     /// Get V8 wrapper cache storage (returns null if not initialized)
@@ -517,38 +564,6 @@ pub const ContextData = struct {
     /// done separately by the owner.
     pub fn clearRealm(self: *Self) void {
         self.realm = null;
-    }
-
-    /// Create a TypeError from this context's realm
-    ///
-    /// If a full Realm is available, creates the error from that realm.
-    /// Otherwise returns null.
-    pub fn createTypeError(self: *const Self, message: []const u8) ?*anyopaque {
-        if (self.realm) |realm| {
-            return realm.createTypeError(message);
-        }
-        return null;
-    }
-
-    /// Throw a TypeError from this context's realm
-    ///
-    /// If a full Realm is available, throws from that realm.
-    /// Otherwise does nothing.
-    pub fn throwTypeError(self: *const Self, message: []const u8) void {
-        if (self.realm) |realm| {
-            realm.throwTypeError(message);
-        }
-    }
-
-    /// Create a plain object in this context's realm
-    ///
-    /// If a full Realm is available, creates the object in that realm
-    /// (with correct prototype chain). Otherwise returns null.
-    pub fn createObject(self: *const Self) ?*anyopaque {
-        if (self.realm) |realm| {
-            return realm.createObject();
-        }
-        return null;
     }
 };
 
@@ -794,22 +809,4 @@ test "ContextData - init with realm option" {
 
     try testing.expect(ctx.hasRealm());
     try testing.expect(ctx.getRealm() == realm);
-}
-
-test "ContextData - createTypeError without realm returns null" {
-    var ctx = try ContextData.init(testing.allocator, .{});
-    defer ctx.deinit();
-
-    // No realm, should return null
-    const error_obj = ctx.createTypeError("test error");
-    try testing.expect(error_obj == null);
-}
-
-test "ContextData - createObject without realm returns null" {
-    var ctx = try ContextData.init(testing.allocator, .{});
-    defer ctx.deinit();
-
-    // No realm, should return null
-    const obj = ctx.createObject();
-    try testing.expect(obj == null);
 }

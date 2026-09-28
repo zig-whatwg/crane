@@ -27,6 +27,9 @@ pub const Implementation = struct {
     is_unloading: *const fn (document: *runtime.Instance) bool,
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
+    destroy: *const fn (document: *runtime.Instance) void,
+    set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
+    about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
 };
 
 /// The "steps to fire beforeunload" result that navigation reads: whether the
@@ -109,6 +112,35 @@ pub fn unload(document: *runtime.Instance) void {
     impl.unload(document);
 }
 
+/// HTML "destroy" `document` (§7.5.5): it is no longer salvageable and its
+/// browsing context is null - `document.defaultView` answers null from here
+/// on. What "destroy a child navigable" does to the documents of a removed
+/// frame, and what "unload" ends with for a document nothing keeps.
+pub fn destroy(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.destroy(document);
+}
+
+/// "Create and initialize a Document object" and "create a new browsing
+/// context and document": `document`'s about base URL - its creator's, or
+/// the navigation's source document's, document base URL - which an
+/// about:blank or iframe srcdoc document uses as its fallback base URL.
+/// Copied. Called by the navigable as it makes the document, before any of
+/// its script runs.
+pub fn setAboutBaseUrl(document: *runtime.Instance, url: ?[]const u8) void {
+    const impl = implementation orelse return;
+    impl.set_about_base_url(document, url);
+}
+
+/// HTML "fallback base URL" steps 1-2: the about base URL, when `document` is
+/// an iframe srcdoc document or its URL matches about:blank and it has one;
+/// otherwise null, and the fallback base URL is the document's URL (step 3).
+/// Borrowed from the document.
+pub fn aboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
+    const impl = implementation orelse return null;
+    return impl.about_fallback_base_url(document);
+}
+
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
     const saved = implementation;
@@ -121,6 +153,8 @@ test "without an installed implementation nothing is asked of a document" {
     loadDelayMayHaveEnded(&document);
     markInitialAboutBlank(&document);
     unload(&document);
+    destroy(&document);
+    setAboutBaseUrl(&document, "http://x.test/");
     // The answers that let a caller go on: a document nobody can ask about
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.
@@ -128,4 +162,5 @@ test "without an installed implementation nothing is asked of a document" {
     try std.testing.expect(!isInitialAboutBlank(&document));
     try std.testing.expect(!isUnloading(&document));
     try std.testing.expect(!fireBeforeUnload(&document).canceled);
+    try std.testing.expect(aboutFallbackBaseUrl(&document) == null);
 }

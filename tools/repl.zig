@@ -11,7 +11,7 @@
 //! - History support
 
 const std = @import("std");
-const v8 = @import("v8");
+const engine = @import("engine");
 const runtime = @import("runtime");
 
 // Import Browser from the browser module
@@ -62,21 +62,20 @@ const Repl = struct {
         self.browser.deinit();
     }
 
-    /// Get V8 isolate from browser
-    fn getIsolate(self: *Self) *v8.ffi.Isolate {
-        return self.browser.isolate.?;
+    /// The page's realm: the browser's current context's.
+    fn getRealm(self: *Self) runtime.Context {
+        return self.browser.current_context.?.realm.?;
     }
 
-    /// Get V8 context from browser's current context
-    fn getContext(self: *Self) *v8.ffi.Context {
-        return self.browser.current_context.?.v8_context.?;
+    /// The page's global object, as a value.
+    fn getGlobal(self: *Self) runtime.JSValue {
+        return .{ .instance = self.browser.current_context.?.window_instance.? };
     }
 
     /// Execute JavaScript code and return result
     /// Supports top-level await by wrapping code in an async IIFE
     pub fn eval(self: *Self, code: []const u8) ![]const u8 {
-        const isolate = self.getIsolate();
-        const context = self.getContext();
+        const realm = self.getRealm();
 
         // Check if code contains 'await' - if so, wrap in async IIFE
         const needs_async_wrap = std.mem.indexOf(u8, code, "await") != null;
@@ -142,256 +141,167 @@ const Repl = struct {
         }
         defer if (needs_async_wrap) self.allocator.free(wrapped_code);
 
-        // Create V8 string from code
-        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source_to_use.ptr, @intCast(source_to_use.len)) orelse return error.StringCreateFailed;
-
-        // Compile script
-        const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
-            // Get exception message
-            const exception = v8.ffi.v8_TryCatch_Exception(context);
-            if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
-                if (exc_str) |str| {
-                    const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
-                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    return buffer;
-                }
-            }
-            return error.CompileError;
+        // Evaluate it. What it throws is the answer: its message, as the
+        // console would print it.
+        var thrown = Thrown{ .allocator = self.allocator };
+        defer thrown.deinit();
+        const completion = engine.evaluateClassicScript(realm, .{ .utf8 = source_to_use }, "", null, thrown.reporter()) catch |err| switch (err) {
+            error.ExceptionReported => return thrown.take() orelse try self.allocator.dupe(u8, "Uncaught exception"),
+            else => return err,
         };
+        defer completion.release();
 
-        // Run script
-        var result = v8.ffi.v8_Script_Run(context, script) orelse {
-            // Get exception message
-            const exception = v8.ffi.v8_TryCatch_Exception(context);
-            if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
-                if (exc_str) |str| {
-                    const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
-                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    return buffer;
-                }
-            }
-            return error.RuntimeError;
-        };
+        // The value, where the formatter reads it.
+        try engine.setProperty(realm, self.getGlobal(), "__repl_value__", completion.value);
+        defer self.runQuietly("delete globalThis.__repl_value__; delete globalThis.__repl_state__;");
 
-        // Run microtasks to process any pending promises
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-        // If the result is a Promise (from async IIFE), wait for it to resolve
-        if (v8.ffi.v8_Value_IsPromise(result)) {
-            const promise: *v8.ffi.Promise = @ptrCast(result);
-
-            // Poll the event loop until promise settles
+        // A promise - an async IIFE's - is waited for: its settled value, or
+        // the reason it was rejected, is what is shown.
+        if (self.evaluatesTo("globalThis.__repl_value__ instanceof Promise", "true")) {
+            self.runQuietly(
+                \\globalThis.__repl_state__ = 'pending';
+                \\globalThis.__repl_value__.then(
+                \\  (v) => { globalThis.__repl_value__ = v; globalThis.__repl_state__ = 'fulfilled'; },
+                \\  (e) => { globalThis.__repl_value__ = e; globalThis.__repl_state__ = 'rejected'; });
+            );
             var iterations: u32 = 0;
             const max_iterations: u32 = 10000; // Prevent infinite loops
-
-            while (v8.ffi.v8_Promise_State(promise) == 0 and iterations < max_iterations) : (iterations += 1) {
-                // Run microtasks
-                v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
+            while (self.evaluatesTo("globalThis.__repl_state__", "pending") and iterations < max_iterations) : (iterations += 1) {
+                if (realm.agent) |agent| engine.performMicrotaskCheckpoint(agent) catch {};
                 // Small delay to prevent busy-waiting
                 if (iterations > 100) {
-                    // std.Thread.sleep was removed in 0.16; Io.sleep replaces it.
-                    // Swallow cancellation so the poll loop stays infallible, as before.
+                    // Swallow cancellation so the poll loop stays infallible.
                     self.io.sleep(.fromNanoseconds(1_000_000), .awake) catch {}; // 1ms
                 }
             }
-
-            const state = v8.ffi.v8_Promise_State(promise);
-            if (state == 1) {
-                // Fulfilled - get the resolved value
-                if (v8.ffi.v8_Promise_Result(promise)) |resolved| {
-                    result = resolved;
-                }
-            } else if (state == 2) {
-                // Rejected - get the rejection reason
-                if (v8.ffi.v8_Promise_Result(promise)) |rejected| {
-                    const exc_str = v8.ffi.v8_Value_ToString(rejected, context);
-                    if (exc_str) |str| {
-                        const len = v8.ffi.v8_String_Utf8Length(str);
-                        const buffer = try self.allocator.alloc(u8, @intCast(len));
-                        _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                        return buffer;
-                    }
-                }
-                return try self.allocator.dupe(u8, "Promise rejected");
-            } else {
-                // Still pending after max iterations
+            if (self.evaluatesTo("globalThis.__repl_state__", "pending")) {
                 return try self.allocator.dupe(u8, "Promise { <pending> } (timeout)");
+            }
+            if (self.evaluatesTo("globalThis.__repl_state__", "rejected")) {
+                return self.evaluateToString("String(globalThis.__repl_value__)") catch try self.allocator.dupe(u8, "Promise rejected");
             }
         }
 
         // Format the result for display
-        return self.formatValueForDisplay(result);
+        return self.evaluateToString(format_code) catch try self.allocator.dupe(u8, "[object]");
     }
 
-    /// Format a V8 value for REPL display (like Chrome DevTools)
-    fn formatValueForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
-        const context = self.getContext();
+    /// The REPL's view of a value (like Chrome DevTools): a string quoted, a
+    /// function its source, an array its first elements, an Error its name
+    /// and message, an object its constructor and first properties.
+    const format_code =
+        \\(function() {
+        \\  const obj = globalThis.__repl_value__;
+        \\  if (obj === null) return 'null';
+        \\  if (obj === undefined) return 'undefined';
+        \\  if (typeof obj === 'string') return "'" + obj + "'";
+        \\  if (typeof obj !== 'object') return String(obj);
+        \\
+        \\  let name = '';
+        \\  if (obj.constructor && obj.constructor.name) {
+        \\    name = obj.constructor.name;
+        \\  } else if (Object.prototype.toString.call(obj) === '[object Object]') {
+        \\    name = 'Object';
+        \\  }
+        \\
+        \\  if (Array.isArray(obj)) {
+        \\    if (obj.length === 0) return '[]';
+        \\    if (obj.length > 5) {
+        \\      return '[' + obj.slice(0,5).map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ', ...]';
+        \\    }
+        \\    return '[' + obj.map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ']';
+        \\  }
+        \\
+        \\  if (obj instanceof Error) {
+        \\    return obj.name + ': ' + obj.message;
+        \\  }
+        \\
+        \\  if (obj instanceof Promise) {
+        \\    return 'Promise { <pending> }';
+        \\  }
+        \\
+        \\  const props = [];
+        \\  const keys = Object.keys(obj);
+        \\  const maxProps = 5;
+        \\
+        \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
+        \\    const key = keys[i];
+        \\    try {
+        \\      const val = obj[key];
+        \\      let valStr;
+        \\      if (val === null) valStr = 'null';
+        \\      else if (val === undefined) valStr = 'undefined';
+        \\      else if (typeof val === 'string') valStr = JSON.stringify(val);
+        \\      else if (typeof val === 'function') valStr = '[Function]';
+        \\      else if (typeof val === 'object') valStr = val.constructor ? val.constructor.name : '[object]';
+        \\      else valStr = String(val);
+        \\      props.push(key + ': ' + valStr);
+        \\    } catch(e) {
+        \\      props.push(key + ': [error]');
+        \\    }
+        \\  }
+        \\
+        \\  if (keys.length > maxProps) {
+        \\    props.push('...');
+        \\  }
+        \\
+        \\  if (props.length === 0) {
+        \\    return name + ' {}';
+        \\  }
+        \\
+        \\  return name + ' {' + props.join(', ') + '}';
+        \\})()
+    ;
 
-        // Handle primitives directly
-        if (v8.ffi.v8_Value_IsUndefined(value)) {
-            return try self.allocator.dupe(u8, "undefined");
-        }
-        if (v8.ffi.v8_Value_IsNull(value)) {
-            return try self.allocator.dupe(u8, "null");
-        }
-        if (v8.ffi.v8_Value_IsBoolean(value) or v8.ffi.v8_Value_IsNumber(value)) {
-            const str = v8.ffi.v8_Value_ToString(value, context) orelse {
-                return try self.allocator.dupe(u8, "undefined");
-            };
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            const buffer = try self.allocator.alloc(u8, @intCast(len));
-            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-            return buffer;
-        }
-        if (v8.ffi.v8_Value_IsString(value)) {
-            // Wrap strings in quotes for display
-            const str: *v8.ffi.String = @ptrCast(value);
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            // +2 for quotes
-            const buffer = try self.allocator.alloc(u8, @intCast(len + 2));
-            buffer[0] = '\'';
-            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr + 1, @intCast(len));
-            buffer[@intCast(len + 1)] = '\'';
-            return buffer;
-        }
-        if (v8.ffi.v8_Value_IsFunction(value)) {
-            const str = v8.ffi.v8_Value_ToString(value, context) orelse {
-                return try self.allocator.dupe(u8, "[Function]");
-            };
-            const len = v8.ffi.v8_String_Utf8Length(str);
-            const buffer = try self.allocator.alloc(u8, @intCast(len));
-            _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-            return buffer;
+    /// What a script threw, as the engine reported it: its message, copied.
+    const Thrown = struct {
+        allocator: std.mem.Allocator,
+        message: ?[]u8 = null,
+
+        fn reporter(self: *Thrown) engine.Reporter {
+            return .{ .report = report, .host = self };
         }
 
-        // For objects (including arrays), use our inspector
-        if (v8.ffi.v8_Value_IsObject(value)) {
-            return self.formatObjectForDisplay(value);
+        fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+            const self: *Thrown = @ptrCast(@alignCast(host.?));
+            if (self.message != null) return;
+            self.message = self.allocator.dupe(u8, info.message) catch null;
         }
 
-        // Fallback to toString
-        const result_str = v8.ffi.v8_Value_ToString(value, context) orelse {
-            return try self.allocator.dupe(u8, "undefined");
-        };
-        const len = v8.ffi.v8_String_Utf8Length(result_str);
-        const buffer = try self.allocator.alloc(u8, @intCast(len));
-        _ = v8.ffi.v8_String_WriteUtf8(result_str, buffer.ptr, @intCast(len));
-        return buffer;
+        fn take(self: *Thrown) ?[]u8 {
+            const message = self.message;
+            self.message = null;
+            return message;
+        }
+
+        fn deinit(self: *Thrown) void {
+            if (self.message) |m| self.allocator.free(m);
+        }
+    };
+
+    /// Run the REPL's own script for its effects; what it throws is dropped.
+    fn runQuietly(self: *Self, source: []const u8) void {
+        var thrown = Thrown{ .allocator = self.allocator };
+        defer thrown.deinit();
+        engine.runClassicScript(self.getRealm(), .{ .utf8 = source }, "", null, thrown.reporter()) catch {};
     }
 
-    /// Format an object for REPL display using JavaScript's own introspection
-    fn formatObjectForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
-        const context = self.getContext();
-        const isolate = self.getIsolate();
+    /// The REPL's own script's completion value, ToString'd.
+    fn evaluateToString(self: *Self, source: []const u8) ![]u8 {
+        var thrown = Thrown{ .allocator = self.allocator };
+        defer thrown.deinit();
+        return engine.evaluateClassicScriptToString(self.getRealm(), .{ .utf8 = source }, "", null, self.allocator, thrown.reporter());
+    }
 
-        // Store the value temporarily so our formatter can access it
-        const global = v8.ffi.v8_Context_Global(context) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-        const temp_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__repl_temp__", 13) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-        _ = v8.ffi.v8_Object_Set(global, context, @ptrCast(temp_key), value);
-        defer {
-            if (v8.ffi.v8_Undefined(isolate)) |undef| {
-                _ = v8.ffi.v8_Object_Set(global, context, @ptrCast(temp_key), undef);
-            }
-        }
-
-        // JavaScript code to format the object like Chrome DevTools
-        const format_code =
-            \\(function() {
-            \\  const obj = __repl_temp__;
-            \\  if (obj === null) return 'null';
-            \\  if (obj === undefined) return 'undefined';
-            \\  
-            \\  let name = '';
-            \\  if (obj.constructor && obj.constructor.name) {
-            \\    name = obj.constructor.name;
-            \\  } else if (Object.prototype.toString.call(obj) === '[object Object]') {
-            \\    name = 'Object';
-            \\  }
-            \\  
-            \\  if (Array.isArray(obj)) {
-            \\    if (obj.length === 0) return '[]';
-            \\    if (obj.length > 5) {
-            \\      return '[' + obj.slice(0,5).map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ', ...]';
-            \\    }
-            \\    return '[' + obj.map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ']';
-            \\  }
-            \\  
-            \\  if (obj instanceof Error) {
-            \\    return obj.name + ': ' + obj.message;
-            \\  }
-            \\  
-            \\  if (obj instanceof Promise) {
-            \\    return 'Promise { <pending> }';
-            \\  }
-            \\  
-            \\  const props = [];
-            \\  const keys = Object.keys(obj);
-            \\  const maxProps = 5;
-            \\  
-            \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
-            \\    const key = keys[i];
-            \\    try {
-            \\      const val = obj[key];
-            \\      let valStr;
-            \\      if (val === null) valStr = 'null';
-            \\      else if (val === undefined) valStr = 'undefined';
-            \\      else if (typeof val === 'string') valStr = JSON.stringify(val);
-            \\      else if (typeof val === 'function') valStr = '[Function]';
-            \\      else if (typeof val === 'object') valStr = val.constructor ? val.constructor.name : '[object]';
-            \\      else valStr = String(val);
-            \\      props.push(key + ': ' + valStr);
-            \\    } catch(e) {
-            \\      props.push(key + ': [error]');
-            \\    }
-            \\  }
-            \\  
-            \\  if (keys.length > maxProps) {
-            \\    props.push('...');
-            \\  }
-            \\  
-            \\  if (props.length === 0) {
-            \\    return name + ' {}';
-            \\  }
-            \\  
-            \\  return name + ' {' + props.join(', ') + '}';
-            \\})()
-        ;
-
-        const format_str = v8.ffi.v8_String_NewFromUtf8(isolate, format_code.ptr, @intCast(format_code.len)) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-
-        const format_script = v8.ffi.v8_Script_Compile(context, format_str) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-
-        const format_result = v8.ffi.v8_Script_Run(context, format_script) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-
-        const result_str = v8.ffi.v8_Value_ToString(format_result, context) orelse {
-            return try self.allocator.dupe(u8, "[object]");
-        };
-
-        const len = v8.ffi.v8_String_Utf8Length(result_str);
-        const buffer = try self.allocator.alloc(u8, @intCast(len));
-        _ = v8.ffi.v8_String_WriteUtf8(result_str, buffer.ptr, @intCast(len));
-        return buffer;
+    /// Whether the REPL's own `source` evaluates to the string `expected`.
+    fn evaluatesTo(self: *Self, source: []const u8, expected: []const u8) bool {
+        const got = self.evaluateToString(source) catch return false;
+        defer self.allocator.free(got);
+        return std.mem.eql(u8, got, expected);
     }
 
     /// Get completions for tab completion
     pub fn getCompletions(self: *Self, input: []const u8) !struct { completions: [][]const u8, prefix_len: usize } {
-        const context = self.getContext();
-
         var completions = std.ArrayList([]const u8).empty;
         errdefer {
             for (completions.items) |item| {
@@ -400,69 +310,36 @@ const Repl = struct {
             completions.deinit(self.allocator);
         }
 
-        // Check if input contains a dot - if so, complete on object properties
-        if (std.mem.lastIndexOfScalar(u8, input, '.')) |dot_pos| {
-            const obj_expr = input[0..dot_pos];
-            const prop_prefix = input[dot_pos + 1 ..];
+        // Complete on an object's properties after a dot, else on the globals.
+        const dot = std.mem.lastIndexOfScalar(u8, input, '.');
+        const object_expression = if (dot) |d| input[0..d] else "globalThis";
+        const prefix = if (dot) |d| input[d + 1 ..] else input;
+        if (object_expression.len > 0) try self.getPropertyNames(object_expression, prefix, &completions);
 
-            // Evaluate the object expression to get the object
-            const obj = self.evalExpression(obj_expr) orelse {
-                return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = prop_prefix.len };
-            };
-
-            // Get property names from the object (including prototype chain)
-            try self.getPropertyNames(obj, prop_prefix, &completions);
-
-            return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = prop_prefix.len };
-        }
-
-        // No dot - complete on globals
-        const global = v8.ffi.v8_Context_Global(context) orelse return error.NoGlobal;
-        try self.getPropertyNames(global, input, &completions);
-
-        return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = input.len };
+        return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = prefix.len };
     }
 
-    /// Evaluate an expression and return the resulting object (or null if not an object)
-    fn evalExpression(self: *Self, expr: []const u8) ?*v8.ffi.Object {
-        if (expr.len == 0) return null;
+    /// The enumerable property names of `object_expression`'s value, along its
+    /// prototype chain, that start with `prefix`.
+    fn getPropertyNames(self: *Self, object_expression: []const u8, prefix: []const u8, completions: *std.ArrayList([]const u8)) !void {
+        const source = try std.fmt.allocPrint(self.allocator,
+            \\(() => {{
+            \\  const o = ({s});
+            \\  if (o === null || (typeof o !== 'object' && typeof o !== 'function')) return '';
+            \\  const names = [];
+            \\  for (const k in o) names.push(k);
+            \\  return names.join('\n');
+            \\}})()
+        , .{object_expression});
+        defer self.allocator.free(source);
+        const names = self.evaluateToString(source) catch return;
+        defer self.allocator.free(names);
 
-        const isolate = self.getIsolate();
-        const context = self.getContext();
-
-        const source = v8.ffi.v8_String_NewFromUtf8(
-            isolate,
-            expr.ptr,
-            @intCast(expr.len),
-        ) orelse return null;
-
-        const script = v8.ffi.v8_Script_Compile(context, source) orelse return null;
-        const result = v8.ffi.v8_Script_Run(context, script) orelse return null;
-
-        if (!v8.ffi.v8_Value_IsObject(result)) return null;
-
-        return @ptrCast(result);
-    }
-
-    /// Get property names from an object that match prefix
-    fn getPropertyNames(self: *Self, obj: *v8.ffi.Object, prefix: []const u8, completions: *std.ArrayList([]const u8)) !void {
-        const context = self.getContext();
-
-        const names = v8.ffi.v8_Object_GetPropertyNames(context, obj) orelse return;
-        const len = v8.ffi.v8_Array_Length(names);
-        var i: u32 = 0;
-        while (i < len) : (i += 1) {
-            const name_val = v8.ffi.v8_Array_Get(context, names, i) orelse continue;
-            const name_str = v8.ffi.v8_Value_ToString(name_val, context) orelse continue;
-
-            const name_len = v8.ffi.v8_String_Utf8Length(name_str);
-            const name_buf = try self.allocator.alloc(u8, @intCast(name_len));
-            _ = v8.ffi.v8_String_WriteUtf8(name_str, name_buf.ptr, @intCast(name_len));
-
-            if (prefix.len == 0 or std.mem.startsWith(u8, name_buf, prefix)) {
-                try completions.append(self.allocator, name_buf);
-            } else {
-                self.allocator.free(name_buf);
+        var it = std.mem.splitScalar(u8, names, '\n');
+        while (it.next()) |name| {
+            if (name.len == 0) continue;
+            if (prefix.len == 0 or std.mem.startsWith(u8, name, prefix)) {
+                try completions.append(self.allocator, try self.allocator.dupe(u8, name));
             }
         }
     }

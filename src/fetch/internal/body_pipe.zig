@@ -18,13 +18,25 @@
 //! to the network.
 //!
 //! Single-threaded: both ends run on the thread that runs the page's script.
-//! There is no backpressure yet - bytes nobody reads are buffered; pausing the
-//! transfer (CURLPAUSE) is the next step for a body nobody drains.
+//!
+//! Backpressure: once every reader has `high_water_mark` bytes it has not
+//! taken, the producer is asked to pause (the transfer stops reading from
+//! its socket, CURLPAUSE_RECV), and once the reader furthest ahead is below
+//! `low_water_mark` again, to go on. The reader furthest ahead decides, so
+//! a clone nobody reads never stalls the one that is read - its copy grows,
+//! as a ReadableStream tee's does. Blink's DataPipe and WebKit's
+//! NetworkLoad pause the same way, on a reader that falls behind.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const State = enum { open, closed, errored };
+
+/// The unread bytes at which the producer is paused - when every reader has
+/// this many.
+pub const high_water_mark: usize = 1024 * 1024;
+/// The unread bytes below which it goes on - when any reader is under.
+pub const low_water_mark: usize = 256 * 1024;
 
 /// Why a body ended in error.
 pub const Failure = struct {
@@ -37,11 +49,18 @@ pub const Failure = struct {
     pub const Kind = enum { network, aborted };
 };
 
-/// Stops the network end - cancels the transfer - when no reader is left.
+/// Stops the network end - cancels the transfer - when no reader is left,
+/// and holds it back while every reader is behind.
 pub const Producer = struct {
     context: *anyopaque,
     /// After this the producer must not touch the source again.
     cancel: *const fn (context: *anyopaque) void,
+    /// Stop producing for now: every reader is at the high-water mark. Null
+    /// for a producer that must not pause - one whose reader takes nothing
+    /// until the end, which would never come.
+    pause: ?*const fn (context: *anyopaque) void = null,
+    /// Go on after `pause`.
+    unpause: ?*const fn (context: *anyopaque) void = null,
 };
 
 /// Hears that a reader's pipe has something new: bytes, or its end.
@@ -57,6 +76,8 @@ pub const PipeSource = struct {
     producer: ?Producer = null,
     state: State = .open,
     failure: ?Failure = null,
+    /// The producer is paused (`pause` ran, `unpause` has not).
+    paused: bool = false,
 
     /// A source with one reader. The producer, if any, is attached next.
     pub fn create(allocator: Allocator) !*PipeSource {
@@ -86,7 +107,35 @@ pub const PipeSource = struct {
             };
             pipe.received += bytes.len;
         }
+        self.holdBackIfBehind();
         self.notifyAll();
+    }
+
+    /// The least any reader has not taken: what decides backpressure.
+    fn leastUnread(self: *const PipeSource) usize {
+        if (self.branches.items.len == 0) return 0;
+        var least: usize = std.math.maxInt(usize);
+        for (self.branches.items) |pipe| least = @min(least, pipe.buffered.items.len);
+        return least;
+    }
+
+    /// Pause the producer once every reader is at the high-water mark.
+    fn holdBackIfBehind(self: *PipeSource) void {
+        if (self.paused or self.state != .open) return;
+        const producer = self.producer orelse return;
+        const pause = producer.pause orelse return;
+        if (self.leastUnread() < high_water_mark) return;
+        self.paused = true;
+        pause(producer.context);
+    }
+
+    /// Let the producer go on once a reader is below the low-water mark.
+    fn goOnIfCaughtUp(self: *PipeSource) void {
+        if (!self.paused) return;
+        if (self.leastUnread() >= low_water_mark and self.branches.items.len > 0) return;
+        self.paused = false;
+        const producer = self.producer orelse return;
+        if (producer.unpause) |unpause| unpause(producer.context);
     }
 
     /// The body ended cleanly. The producer is done with this source.
@@ -177,8 +226,11 @@ pub const BodyPipe = struct {
     consumer: ?Consumer = null,
 
     /// Take what has arrived since the last take. The bytes are the caller's.
+    /// A paused producer goes on once this reader has caught up.
     pub fn take(self: *BodyPipe) ![]u8 {
-        return self.buffered.toOwnedSlice(self.allocator);
+        const bytes = try self.buffered.toOwnedSlice(self.allocator);
+        self.source.goOnIfCaughtUp();
+        return bytes;
     }
 
     /// Whether there is anything to take.
@@ -210,6 +262,8 @@ pub const BodyPipe = struct {
         source.detachBranch(self);
         self.buffered.deinit(self.allocator);
         self.allocator.destroy(self);
+        // The reader that held it back may be the one that went.
+        if (source.branches.items.len > 0) source.goOnIfCaughtUp();
         source.stopIfUnread();
     }
 };

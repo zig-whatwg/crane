@@ -38,7 +38,8 @@ pub const InstancePtr = *anyopaque;
 
 // Import security policy types for COOP/COEP
 const security_policies = @import("../navigation/security_policies.zig");
-const JointHistory = @import("../navigation/joint_history.zig").JointHistory;
+const joint_history = @import("../navigation/joint_history.zig");
+const JointHistory = joint_history.JointHistory;
 const CoopValue = security_policies.CoopValue;
 const CoepValue = security_policies.CoepValue;
 
@@ -564,11 +565,11 @@ pub const BrowsingContext = struct {
     /// The session history of this context's traversable, with an entry for
     /// this context and every context from it up to its traversable ("initialize
     /// the navigable"): each one missing gets an entry for its active
-    /// document, at the current step. `url_of` gives a document's URL, owned
-    /// by the allocator it is given.
+    /// document, at the current step. `info_of` gives a document's URL and
+    /// origin, owned by the allocator it is given.
     pub fn ensureHistoryEntries(
         self: *BrowsingContext,
-        url_of: *const fn (document: InstancePtr, allocator: Allocator) anyerror![]u8,
+        info_of: *const fn (document: InstancePtr, allocator: Allocator) anyerror!joint_history.DocumentInfo,
     ) !*JointHistory {
         const history = try self.jointHistory();
         var current: ?*BrowsingContext = self;
@@ -577,9 +578,10 @@ pub const BrowsingContext = struct {
             if (depth > 64) break;
             if (!history.hasNavigable(ctx.id)) {
                 if (ctx.getActiveDocument()) |document| {
-                    const url = try url_of(document, history.allocator);
-                    defer history.allocator.free(url);
-                    try history.addInitialEntry(ctx.id, url, document);
+                    const info = try info_of(document, history.allocator);
+                    defer history.allocator.free(info.url);
+                    defer history.allocator.free(info.origin);
+                    try history.addInitialEntry(ctx.id, info.url, document, info.origin);
                 }
             }
             current = ctx.parent;

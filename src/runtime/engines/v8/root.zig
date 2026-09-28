@@ -57,6 +57,21 @@ pub const ffi = @import("ffi.zig");
 /// V8 Engine Interface (implements runtime.EngineInterface)
 /// Use this to create engine-agnostic contexts that work with V8
 pub const engine = @import("engine.zig");
+
+/// The engine protocol's V8 side: in a V8 build `engine_impl` is this module,
+/// and src/runtime/engine_protocol.zig forwards every operation to
+/// `protocol`.
+pub const protocol = @import("protocol.zig");
+/// The protocol's module side, for the legacy import() / import.meta bridge
+/// in html/script_execution.zig. TODO(protocol): removed when Browser creates
+/// its agent with engine.createAgent (navigation lane resume).
+pub const protocol_modules = @import("protocol_modules.zig");
+/// V8's import.meta callback for an agent without HostHooks, for the same
+/// bridge. TODO(protocol): removed when Browser creates its agent with
+/// engine.createAgent (navigation lane resume).
+pub fn installLegacyImportMetaUrl(isolate: *ffi.Isolate, callback: ffi.ImportMetaUrlCallback) void {
+    ffi.v8_Isolate_SetImportMetaUrlCallback(isolate, callback);
+}
 pub const v8_engine_interface = engine.v8_engine_interface;
 
 /// Type conversions between Zig and V8
@@ -132,7 +147,7 @@ pub const WrapperCache = wrapper_cache_mod.WrapperCache;
 pub const isolate_ownership = @import("isolate_ownership.zig");
 
 /// Timer manager for V8 isolates. libuv-free since Phase 7 - see native_timer.zig.
-pub const native_timer = @import("native_timer.zig");
+pub const native_timer = @import("runtime").native_timer;
 pub const NativeTimerManager = native_timer.NativeTimerManager;
 
 /// Template registry for wrapping Zig instances as V8 objects
@@ -250,6 +265,10 @@ pub const createArrayInRealm = realm_v8.createArrayInRealm;
 pub const createTypeErrorInRealm = realm_v8.createTypeErrorInRealm;
 pub const throwTypeErrorFromRealm = realm_v8.throwTypeErrorFromRealm;
 pub const populateRealmIntrinsics = realm_v8.populateIntrinsics;
+
+/// Worker realms: createWorkerRealm and the realm record it makes (tests reach
+/// `recordRealm` here).
+pub const worker_realm = @import("worker_realm.zig");
 
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");

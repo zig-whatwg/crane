@@ -34,7 +34,6 @@ const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
 const overload_resolver = @import("overload_resolver.zig");
-const async_iterator = @import("async_iterator.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
@@ -396,8 +395,9 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // referred to again.
         if (T == *runtime.Instance) break :blk true;
 
-        // BodyInit: convertBodyInit makes an owned or empty USVString on every
-        // path - the BufferSource arm, which would be a view, is never produced.
+        // BodyInit: convertBodyInit copies out of the handle on every path -
+        // an owned USVString, a copy of a buffer's bytes, or the Instance a
+        // platform object's wrapper holds (see `freeBodyInitArg`).
         if (T == copied_arg_types.BodyInit) break :blk true;
 
         // A sequence reads each element through its own handle (v8_Array_Get):
@@ -446,6 +446,39 @@ fn memberHandleIsSafe(comptime T: type) bool {
 pub const copied_arg_types = struct {
     pub const BodyInit = @import("typedefs").BodyInit;
 };
+
+/// Free a converted BodyInit argument - what `conv.convertBodyInit` allocated,
+/// and nothing else.
+///
+/// Ownership is the conversion's, not the type's, so this is decided here by
+/// arm rather than by the structural rules. Those would get the BufferSource
+/// arm wrong: `argConversionIsNonOwning` rightly calls BufferSource a view
+/// that must never be freed - true of TextDecoder's AllowSharedBufferSource,
+/// false of BodyInit's, which is a copy (an ArrayBuffer struct and its bytes)
+/// so that nothing in the call can detach the buffer under it. Left to the
+/// structural rules, every `new Response(bytes)` leaked the copy.
+///
+/// - `readable_stream`, `blob`, `form_data`, `urlsearch_params`: the Instance
+///   a wrapper holds. Not ours.
+/// - `buffer_source`: always `.array_buffer`, struct and data both owned.
+/// - `usvstring`: an owned buffer, or a literal "" (length 0) never freed.
+pub fn freeBodyInitArg(allocator: std.mem.Allocator, arg: copied_arg_types.BodyInit) void {
+    switch (arg) {
+        .readable_stream => {},
+        .xmlhttp_request_body_init => |inner| switch (inner) {
+            .blob, .form_data, .urlsearch_params => {},
+            .buffer_source => |source| switch (source) {
+                .array_buffer => |buffer| {
+                    buffer.deinit(allocator);
+                    allocator.destroy(buffer);
+                },
+                // Never produced by convertBodyInit.
+                .array_buffer_view => {},
+            },
+            .usvstring => |text| if (text.len > 0) allocator.free(text),
+        },
+    }
+}
 
 /// Does converting an argument of type `T` yield a NON-OWNING view - memory
 /// this engine never allocated and must therefore never free?
@@ -941,13 +974,18 @@ pub fn V8Interface(comptime Interface: type) type {
         ///
         /// Creates a FunctionTemplate and attaches it to the global object.
         /// Also registers the template in the global registry for instance wrapping.
+        ///
+        /// The global is taken for the call and released: a Global of the
+        /// global proxy left behind keeps the realm's whole context alive
+        /// after the realm ends.
         pub fn registerGlobal(
             isolate: *v8.Isolate,
             context: *v8.Context,
             global_name: []const u8,
         ) void {
-            const global = v8.v8_Context_Global(context);
-            registerGlobalFast(isolate, context, global.?, global_name);
+            const global = v8.v8_Context_Global(context) orelse return;
+            defer v8.v8_Object_Dispose(global);
+            registerGlobalFast(isolate, context, global, global_name);
         }
 
         /// Register interface as a global constructor in V8 (fast path)
@@ -1523,12 +1561,16 @@ pub fn V8Interface(comptime Interface: type) type {
             // SetPrototypeProviderTemplate is NOT used because it uses the provider's
             // .prototype property, not an instance.
 
-            // Set class name
+            // Set class name. The template keeps the name itself
+            // (FunctionTemplate::SetClassName takes a Local), so this handle
+            // is released once it is set: it is made for every interface in
+            // every isolate, and a worker realm rebuilds every template.
             const name_str = v8.v8_String_NewFromUtf8(
                 isolate,
                 name.ptr,
                 @intCast(name.len),
             ).?;
+            defer v8.v8_String_Dispose(name_str);
             v8.v8_FunctionTemplate_SetClassName(template, name_str);
 
             // Set constructor length from the call_constructor function signature
@@ -1600,8 +1642,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetCallAsFunctionHandler(instance_tmpl, htmlAllCollectionCallHandler, null);
             }
 
-            // Get prototype template (only used for non-callback interfaces)
+            // Get prototype template (only used for non-callback interfaces).
+            // The function template owns it; this handle to it is ours, for
+            // the calls below.
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
+            defer v8.v8_ObjectTemplate_Dispose(proto_tmpl);
 
             // ========================================
             // INHERITANCE SETUP - MUST BE FIRST
@@ -1683,6 +1728,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     prop_name.ptr,
                     @intCast(prop_name.len),
                 ).?;
+                // SetAccessorProperty reads it as a Local; the template keeps its own.
+                defer v8.v8_String_Dispose(prop_name_str);
 
                 // Use callback from static store - SAME callback registered in registerExternalReferences()
                 // This ensures V8 snapshot restoration can reconnect the callback correctly
@@ -1731,6 +1778,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Create V8 number for constant value
                     const proto_v8_value = v8.v8_Number_New(isolate, @floatFromInt(proto_const_value));
+                    defer v8.v8_Value_Dispose(@ptrCast(proto_v8_value));
 
                     // Create string for constant name
                     const proto_name_str = v8.v8_String_NewFromUtf8(
@@ -1740,6 +1788,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     );
 
                     if (proto_name_str) |proto_const_name_v8| {
+                        // ObjectTemplate::Set keeps the key and value itself.
+                        defer v8.v8_String_Dispose(proto_const_name_v8);
                         // Set constant on prototype template with correct attributes
                         // V8 PropertyAttribute flags:
                         //   None = 0, ReadOnly = 1, DontEnum = 2, DontDelete = 4
@@ -2728,6 +2778,18 @@ pub fn V8Interface(comptime Interface: type) type {
             var buf: [160]u8 = undefined;
             const key = std.fmt.bufPrint(&buf, "crane:SameObject:" ++ prop_name ++ "@{x}", .{addr}) catch return;
             v8.v8_Object_SetPrivateRef(owner, key.ptr, @intCast(key.len), child);
+
+            // And the edge back. A [SameObject] child - classList, dataset,
+            // attributes, style - reads and writes through its owner, and
+            // script can keep the child and drop the owner; the owner must then
+            // live as long as the child (Blink traces the child to its element;
+            // WebKit forwards the child's refcount to it). A JS-heap edge, not
+            // a Global, so the pair still collects as a unit. Without it,
+            // `el.attributes` kept past `el` read a freed element.
+            if (!v8.v8_Value_IsObject(child)) return;
+            var back_buf: [168]u8 = undefined;
+            const back = std.fmt.bufPrint(&back_buf, "crane:SameObjectOwner:" ++ prop_name ++ "@{x}", .{addr}) catch return;
+            v8.v8_Object_SetPrivateRef(@ptrCast(child), back.ptr, @intCast(back.len), @ptrCast(owner));
         }
 
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
@@ -3119,6 +3181,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // `[]const u8`, so every rule below would claim it. See
             // `argConversionIsNonOwning`.
             if (argConversionIsNonOwning(T)) return false;
+            // BodyInit: freed by arm, as its conversion allocated it - before
+            // the union rule below, which would take its copied BufferSource
+            // arm for a view (`freeBodyInitArg`).
+            if (T == copied_arg_types.BodyInit) return true;
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
@@ -3198,6 +3264,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Empty strings return a static slice that must NOT be freed.
         fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
             if (comptime !needsArgCleanup(T)) return;
+            if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
 
             if (T == []const u8) {
                 // Only free if it's not the static empty slice and has content
@@ -3905,6 +3972,8 @@ pub fn V8Interface(comptime Interface: type) type {
             ) orelse {
                 std.debug.panic("Failed to create function template for method", .{});
             };
+            // ObjectTemplate::Set below keeps the method template itself.
+            defer v8.v8_FunctionTemplate_Dispose(method_tmpl);
 
             // Set method length (arity) - number of required parameters
             v8.v8_FunctionTemplate_SetLength(method_tmpl, arity);
@@ -3925,6 +3994,7 @@ pub fn V8Interface(comptime Interface: type) type {
             ) orelse {
                 std.debug.panic("Failed to create string for method name", .{});
             };
+            defer v8.v8_String_Dispose(name_str);
             // Per WebIDL spec §3.7.6, method properties should be:
             // { writable: true, enumerable: true, configurable: true }
             v8.v8_ObjectTemplate_SetWithAttributes(
@@ -4096,17 +4166,6 @@ pub fn V8Interface(comptime Interface: type) type {
             // ========================================
             // POST-CONSTRUCTOR HOOKS: Interface-specific initialization
             // ========================================
-            // For ReadableStream: invoke pending start callback now that V8 wrappers exist
-            // Use constructor_context since callbacks should execute in the object's realm
-            if (comptime std.mem.eql(u8, interface_name, "ReadableStream")) {
-                invokeReadableStreamStartCallback(instance, this_obj, isolate, constructor_context, allocator);
-            }
-
-            // For WritableStream: invoke pending start callback now that V8 wrappers exist
-            if (comptime std.mem.eql(u8, interface_name, "WritableStream")) {
-                invokeWritableStreamStartCallback(instance, this_obj, isolate, constructor_context, allocator);
-            }
-
             // For DOMException: add stack property per WebIDL spec
             // If the implementation has a stack property on normal errors, DOMException must too
             if (comptime std.mem.eql(u8, interface_name, "DOMException")) {
@@ -7622,6 +7681,20 @@ pub fn V8Interface(comptime Interface: type) type {
                         nullToEmptyString(isolate_inner, raw_value_v8)
                     else
                         raw_value_v8;
+                    // The value's handle is owned (`info.get` allocates a Global,
+                    // as does `v8_Undefined`), and released here unless it was
+                    // handed to a conversion that may keep it - the rule
+                    // `convertArgReleasing` applies to an operation's arguments,
+                    // `argHandleIsCopied`. A setter released nothing, so every
+                    // assignment leaked one handle, and one that held an object
+                    // of another realm kept that realm alive.
+                    const value_is_copied = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                        if (fi.params.len < 2) break :blk true;
+                        break :blk argHandleIsCopied(fi.params[1].type orelse break :blk false);
+                    };
+                    var value_handed_over = false;
+                    defer if (value_is_copied or !value_handed_over) v8.v8_Value_Dispose(new_value_v8);
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
@@ -7827,6 +7900,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Per WebIDL spec, for enumeration types, if the value is not a valid
                     // enum value, the setter should be a no-op (silently return without error).
                     // https://webidl.spec.whatwg.org/#idl-enums
+                    value_handed_over = true;
                     const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {
@@ -8008,22 +8082,25 @@ pub fn V8Interface(comptime Interface: type) type {
             if (T == runtime.DOMString) {
                 // Check if it's a string
                 if (!v8.v8_Value_IsString(v8_value)) {
-                    // Coerce to string
+                    // Coerce to string; ToString's result is owned.
                     const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
+                    defer v8.v8_String_Dispose(str);
                     return try conv.fromV8String(allocator, isolate, context, str);
                 }
                 const str: *v8.String = @ptrCast(v8_value);
                 return try conv.fromV8String(allocator, isolate, context, str);
             } else if (T == runtime.USVString or T == []const u8) {
-                // Similar to DOMString
-                if (!v8.v8_Value_IsString(v8_value)) {
+                // DOMString conversion, then every lone surrogate becomes
+                // U+FFFD (WebIDL 3.2.11); the bytes are the fresh copy
+                // fromV8String allocated, so they are rewritten in place.
+                const dom_str = if (!v8.v8_Value_IsString(v8_value)) blk: {
                     const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    const dom_str = try conv.fromV8String(allocator, isolate, context, str);
-                    return dom_str.asSlice();
-                }
-                const str: *v8.String = @ptrCast(v8_value);
-                const dom_str = try conv.fromV8String(allocator, isolate, context, str);
-                return dom_str.asSlice();
+                    defer v8.v8_String_Dispose(str);
+                    break :blk try conv.fromV8String(allocator, isolate, context, str);
+                } else try conv.fromV8String(allocator, isolate, context, @ptrCast(v8_value));
+                const bytes = dom_str.asSlice();
+                if (bytes.len > 0) conv.replaceLoneSurrogates(@constCast(bytes));
+                return bytes;
             } else if (T == bool or T == runtime.Boolean) {
                 return conv.fromV8Boolean(isolate, v8_value);
             } else if (@typeInfo(T) == .int or @typeInfo(T) == .float) {
@@ -8650,123 +8727,6 @@ fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) 
 // Post-Constructor Hooks
 // ============================================================================
 
-/// Invoke ReadableStream's pending start callback after constructor completes
-///
-/// This is a post-constructor hook that runs AFTER the V8 wrapper exists.
-/// The start callback in UnderlyingSource needs the controller V8 wrapper,
-/// which doesn't exist during the Zig constructor execution.
-///
-/// Called from constructorCallback when interface_name == "ReadableStream"
-///
-/// ## Architecture Note
-///
-/// This function is part of the V8 binding layer, which bridges V8 and Zig
-/// implementations. Per Golden Rule #12, we use interfaces where possible:
-/// - State type: obtained from interface (interfaces.ReadableStream.State)
-/// - Internal callback: requires impls because invokePendingStartCallback is
-///   an internal V8-specific method not exposed through the interface
-fn invokeReadableStreamStartCallback(
-    instance: *runtime.Instance,
-    this_obj: *v8.Object,
-    isolate: *v8.Isolate,
-    v8_context: *v8.Context,
-    allocator: std.mem.Allocator,
-) void {
-    _ = allocator;
-    _ = this_obj;
-
-    // Import impls module for internal V8-specific callbacks
-    // Note: These methods (invokePendingStartCallback, invokePendingByteStartCallback)
-    // are V8-internal implementation details, not WebIDL interface methods.
-    // Since this is V8 engine code, we call impls directly.
-    const ReadableStreamImpl = @import("impls").ReadableStream;
-    const ReadableByteStreamControllerInterface = @import("interfaces").ReadableByteStreamController;
-
-    // Get the controller from the stream's internal state
-    const state = instance.getState(ReadableStreamImpl.State);
-    const internal = state.own._internal orelse return;
-    const controller_instance = internal.controller orelse return;
-
-    // Determine controller type by comparing vtable pointers
-    // This allows us to dispatch to the correct callback handler
-    const is_byte_stream = controller_instance.vtable == &ReadableByteStreamControllerInterface.vtable;
-
-    // Wrap the controller as a V8 object so we can pass it to the JS callback
-    const controller_name = if (is_byte_stream) "ReadableByteStreamController" else "ReadableStreamDefaultController";
-    const controller_v8 = template_registry.wrapInstanceAsV8Object(
-        controller_instance,
-        controller_name,
-        isolate,
-        v8_context,
-    ) catch {
-        return;
-    };
-
-    // Invoke the appropriate pending start callback based on controller type
-    // Call the impl directly since these are V8-internal methods, not WebIDL interface methods
-    if (is_byte_stream) {
-        ReadableStreamImpl.invokePendingByteStartCallback(
-            instance,
-            @ptrCast(controller_v8),
-            @ptrCast(isolate),
-            @ptrCast(v8_context),
-        );
-    } else {
-        ReadableStreamImpl.invokePendingStartCallback(
-            instance,
-            @ptrCast(controller_v8),
-            @ptrCast(isolate),
-            @ptrCast(v8_context),
-        );
-    }
-}
-
-/// Invoke WritableStream start callback after V8 wrapper exists
-///
-/// Similar to invokeReadableStreamStartCallback but for WritableStream.
-/// This ensures the start() callback can receive a proper V8 controller wrapper.
-///
-/// Called from constructorCallback when interface_name == "WritableStream"
-fn invokeWritableStreamStartCallback(
-    instance: *runtime.Instance,
-    this_obj: *v8.Object,
-    isolate: *v8.Isolate,
-    v8_context: *v8.Context,
-    allocator: std.mem.Allocator,
-) void {
-    _ = allocator;
-    _ = this_obj;
-
-    // Import impls module for internal V8-specific callbacks
-    // Note: invokePendingStartCallback is a V8-internal implementation detail,
-    // not a WebIDL interface method. Since this is V8 engine code, we call impls directly.
-    const WritableStreamImpl = @import("impls").WritableStream;
-
-    // Get the controller from the stream's internal state
-    const state = instance.getState(WritableStreamImpl.State);
-    const internal = state.own._internal orelse return;
-    const controller_instance = internal.controller orelse return;
-
-    // Wrap the controller as a V8 object so we can pass it to the JS callback
-    const controller_v8 = template_registry.wrapInstanceAsV8Object(
-        controller_instance,
-        "WritableStreamDefaultController",
-        isolate,
-        v8_context,
-    ) catch {
-        return;
-    };
-
-    // Invoke the pending start callback with the controller wrapper
-    // Call the impl directly since this is a V8-internal method, not a WebIDL interface method
-    WritableStreamImpl.invokePendingStartCallback(
-        instance,
-        @ptrCast(controller_v8),
-        @ptrCast(isolate),
-        @ptrCast(v8_context),
-    );
-}
-
 /// Capture stack trace for DOMException instances
 ///
 /// Per WebIDL spec and WPT tests (DOMException-custom-bindings.any.js):
@@ -8783,7 +8743,14 @@ fn captureDOMExceptionStack(
     // This creates a proper stack trace on the target object
     //
     // We pass 'this_obj' as a temporary global variable for the script to use
+    // Every handle below is an owned Global, and each is released here: the
+    // global object, the script and its completion value. v8_Object_Set and
+    // v8_Script_Run read them as Locals and keep nothing. Kept, they were three
+    // Globals per DOMException - the global object is the whole page, and
+    // the script is bound to the realm - so every page that made or threw
+    // one stayed alive for the life of the process.
     const global = v8.v8_Context_Global(v8_context) orelse return;
+    defer v8.v8_Object_Dispose(global);
 
     // Store the DOMException object as a temporary global for the script to access
     const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
@@ -8810,7 +8777,8 @@ fn captureDOMExceptionStack(
     const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
     defer v8.v8_String_Dispose(source);
     const script = v8.v8_Script_Compile(v8_context, source) orelse return;
-    _ = v8.v8_Script_Run(v8_context, script);
+    defer v8.v8_Script_Dispose(script);
+    if (v8.v8_Script_Run(v8_context, script)) |result| v8.v8_Value_Dispose(result);
 }
 
 // ============================================================================

@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8_engine = @import("v8");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -25,6 +25,7 @@ const ResponseType = xhr.state_machine.ResponseType;
 const open_algo = xhr.open;
 const headers_algo = xhr.headers;
 const send_algo = xhr.send;
+const response_algo = xhr.response;
 const XHREventType = xhr.XHREventType;
 const EventTargetKind = xhr.EventTargetKind;
 const ProgressEventData = xhr.ProgressEventData;
@@ -34,6 +35,9 @@ const clock = @import("clock");
 const fetch_mod = @import("fetch");
 
 const same_object = @import("same_object.zig");
+const fetch_body = @import("fetch_body.zig");
+const blob_bytes = @import("dom").blob_bytes;
+const infra = @import("infra");
 
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
@@ -58,9 +62,6 @@ pub const InternalState = struct {
     xhr_state: XMLHttpRequestState,
     allocator: std.mem.Allocator,
 
-    /// V8 isolate for creating/disposing Global handles
-    isolate: ?*v8_engine.ffi.Isolate,
-
     /// The asynchronous send()'s fetch, from send() until its task has run.
     pending_fetch: ?*PendingFetch,
 
@@ -69,11 +70,16 @@ pub const InternalState = struct {
     /// which script sets on it and then never touches again.
     upload_pin: same_object.Pin,
 
+    /// This's response object when it is an object - the ArrayBuffer, Blob
+    /// or JSON value `response` made - held so every later read returns that
+    /// same object. OWNED. (Null and failure are xhr_state.response_object's.)
+    /// It holds nothing that can reach this XHR, so the hold makes no cycle.
+    response_value: ?engine.Owned = null,
+
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
-            .isolate = null,
             .pending_fetch = null,
             .upload_pin = .{},
         };
@@ -89,9 +95,17 @@ pub const InternalState = struct {
         pending.cancel();
     }
 
+    /// Set this's response object to null (open() step 11).
+    fn releaseResponseValue(self: *InternalState) void {
+        const value = self.response_value orelse return;
+        self.response_value = null;
+        value.release();
+    }
+
     pub fn deinitState(self: *InternalState) void {
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_pin.release();
+        self.releaseResponseValue();
         // Before anything else: a fetch in flight, or its queued task, would
         // otherwise reach an instance that is going away.
         self.cancelFetch();
@@ -144,16 +158,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
-
-    // The isolate this XHR's script runs in.
-    //
-    // NOT `ctx.getEngineContextAs(Isolate)`: `engine_ctx` is a
-    // `Global<Context>*`, and that call just reinterprets it, so `internal
-    // .isolate` used to be the CONTEXT wearing an Isolate's type. Every use of
-    // it - `global.get(isolate)`, `v8_Undefined(isolate)` - was reading a
-    // Context as an Isolate.
-    const internal = getInternal(instance);
-    internal.isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
 
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()
@@ -319,49 +323,59 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 3: If this's response object is failure, then return null.
     if (xhr_state.response_object == .failure) return .{ .null = {} };
 
+    // Step 4: If this's response object is non-null, then return it - the
+    // same object every time. Borrowed: this XHR keeps holding it.
+    const internal = getInternal(instance);
+    if (internal.response_value) |value| return value.borrow();
+
     switch (xhr_state.response_type) {
-        // Step 8: the JSON response. `parse JSON from bytes`; a parse failure
-        // returns null rather than throwing.
+        // Step 8: the JSON response.
         .json => {
-            if (xhr_state.received_bytes.items.len == 0) return .{ .null = {} };
-            const engine = instance.ctx.getEngine() orelse return .{ .null = {} };
-            const engine_ctx = instance.ctx.getEngineContext() orelse return .{ .null = {} };
-            const parse = engine.parseJson orelse return .{ .null = {} };
-            const parsed = parse(engine_ctx, xhr_state.received_bytes.items) catch return .{ .null = {} };
-            return .{ .handle = .{ .ptr = parsed, .needs_disposal = true, .handle_scope = .global } };
+            // 8.2. If this's response's body is null, then return null. A
+            //      null body received no bytes, which 8.3's parse rejects -
+            //      the same null, without asking a response this XHR may
+            //      already have let go of its body.
+            // 8.3. Let jsonObject be the result of running parse JSON from
+            //      bytes on this's received bytes. If that threw an
+            //      exception, then return null.
+            var parse: JsonParse = .{ .realm = instance.ctx, .bytes = xhr_state.received_bytes.items };
+            const thrown = engine.completionOf(instance.ctx, JsonParse.steps, &parse) catch return .{ .null = {} };
+            if (thrown) |exception| {
+                exception.release();
+                return .{ .null = {} };
+            }
+            // 8.4. Set this's response object to jsonObject.
+            internal.response_value = parse.value orelse return .{ .null = {} };
         },
         // Step 5: the ArrayBuffer response. "Set this's response object to a
         // new ArrayBuffer object representing this's received bytes. If this
         // throws an exception, then set this's response object to failure and
         // return null."
         .arraybuffer => {
-            const engine = instance.ctx.getEngine() orelse return .{ .null = {} };
-            const engine_ctx = instance.ctx.getEngineContext() orelse return .{ .null = {} };
-            const create = engine.createArrayBuffer orelse return .{ .null = {} };
-            const buffer = create(engine_ctx, xhr_state.received_bytes.items) catch {
-                // The spec's "if this throws" branch: remember the failure, so
-                // a second read returns null at step 3 rather than retrying an
-                // allocation that has already failed once.
+            internal.response_value = engine.createArrayBuffer(instance.ctx, xhr_state.received_bytes.items) catch {
                 xhr_state.response_object = .failure;
                 return .{ .null = {} };
             };
-            return .{ .handle = .{ .ptr = buffer, .needs_disposal = true, .handle_scope = .global } };
         },
-        // Step 6: the Blob response.
-        //
-        // TODO: needs a Blob instance carrying the received bytes with its type
-        // set to the final MIME type. Returning the bytes as a string would be
-        // a worse answer than null, because script could not tell it apart from
-        // a text response.
+        // Step 6: "set this's response object to a new Blob object
+        // representing this's received bytes with type set to the result of
+        // get a final MIME type for this."
         .blob => {
-            _ = allocator;
-            log.debug("blob response type is not implemented", .{});
-            return .{ .null = {} };
+            const mime_type = try response_algo.finalMimeTypeBytes(allocator, xhr_state);
+            defer allocator.free(mime_type);
+            const blob = try blob_bytes.create(instance.ctx, xhr_state.received_bytes.items, mime_type);
+            internal.response_value = engine.retainValue(instance.ctx, .{ .instance = blob }) catch |err| {
+                blob.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(blob));
+                return err;
+            };
         },
         // Step 7: the document response, which needs the HTML/XML parser.
         .document => return .{ .null = {} },
         .empty, .text => unreachable, // handled by step 1
     }
+
+    // Step 9: Return this's response object.
+    return internal.response_value.?.borrow();
 }
 
 /// Getter for responseText
@@ -554,7 +568,7 @@ fn openSteps(
     const xhr_state = getXHRState(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
-    // settings object". Borrowed from the context entry - not ours to free.
+    // settings object". Borrowed from the realm - not ours to free.
     const base_url = relevantBaseURL(instance);
 
     // Step 12 fires readystatechange only "if this's state is not opened" -
@@ -585,60 +599,57 @@ fn openSteps(
 
     // Step 10 (with 11, which open_algo ran): Terminate this's fetch
     // controller. Nothing observable happens between the two.
-    getInternal(instance).cancelFetch();
+    const internal = getInternal(instance);
+    internal.cancelFetch();
+    // Step 11: "Set this's response object to null" - the object half of it;
+    // open_algo reset the rest.
+    internal.releaseResponseValue();
 
     // Step 12: If this's state is not opened, set it to opened and fire an
     // event named readystatechange at this.
     if (!was_opened) fireReadyStateChangeEvent(instance);
 }
 
+/// "Parse JSON from bytes", as a completion: the response getter returns
+/// null for the exception it throws rather than letting it propagate.
+const JsonParse = struct {
+    realm: runtime.Context,
+    bytes: []const u8,
+    /// OWNED, once parsed.
+    value: ?engine.Owned = null,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *JsonParse = @ptrCast(@alignCast(data.?));
+        self.value = try engine.parseJsonToValue(self.realm, self.bytes);
+    }
+};
+
 /// Is the current global object a Window?
 ///
 /// open() step 9 and the `timeout` and `responseType` setters restrict
 /// synchronous requests in a Window only - a worker may block. The current
-/// global object is the running realm's; its Instance sits in internal field
-/// 0 of the context's global, and names its own interface.
+/// global object is the current realm's, and names its own interface.
 fn currentGlobalIsWindow() bool {
-    const ffi = v8_engine.ffi;
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return false;
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return false;
-    defer ffi.v8_Context_Dispose(context);
-    const global = ffi.v8_Context_Global(context) orelse return false;
-    defer ffi.v8_Object_Dispose(global);
-    const raw = ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return false;
-    const global_instance: *runtime.Instance = @ptrCast(@alignCast(raw));
-    return std.mem.eql(u8, global_instance.vtable.name, "Window");
+    const current = engine.currentRealm() orelse return false;
+    const record = current.getRealm() orelse return false;
+    const raw = record.global_object orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    return std.mem.eql(u8, global.vtable.name, "Window");
 }
 
 /// This's relevant settings object's API base URL.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
-/// ## Where the page URL actually lives
+/// The realm's document URL: a Window's navigation records its document's
+/// URL there, and a worker its script URL, which is a worker's API base URL.
+/// (Not the Document's or the Location's: in a WPT [window] run those were
+/// measured as '' and 'about:blank'.)
 ///
-/// NOT on the Document and NOT on the Location. Both were measured in a WPT
-/// [window] run:
-///
-///     document.URL   = ''
-///     location.href  = 'about:blank'
-///
-/// `Context.loadHTML` records the URL in three places -
-/// `context_manager.setDocumentUrl`, `Context.url`, and the Window's origin -
-/// and `Context.setUrl`'s own comment says it does not reach Location
-/// ("Direct impl access would require Location.setHref which isn't currently
-/// exposed"). Nothing sets `Document`'s URL outside `DOMParser`, which reads it
-/// from the realm and so inherits the same emptiness.
-///
-/// The one place that IS populated is `context_manager`, whose comment says
-/// exactly what it is for: "Set the document URL in context_manager for fetch
-/// relative URL resolution". A worker context has no entry, which is correct -
-/// a worker's base URL is its script URL, which is a separate lookup.
-///
-/// Returns a BORROWED slice owned by the context entry, so the caller must not
-/// free it.
+/// Returns a BORROWED slice owned by the realm, so the caller must not free
+/// it.
 fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
-    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
-    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    const url = instance.ctx.documentUrl() orelse return null;
     if (url.len == 0) return null;
     return url;
 }
@@ -740,8 +751,11 @@ fn fireAt(
         webidl.Opt(bool).passed(false),
     ) catch return;
 
-    // Every listener, the event handlers among them.
-    _ = interfaces.EventTarget.call_dispatchEvent(target, event) catch |err| {
+    // Every listener, the event handlers among them. The user agent fires
+    // these, so they are trusted (DOM "fire an event": isTrusted true);
+    // dispatchEvent() is script's, and resets it. The target - this XHR or
+    // its upload object - is an EventTarget, this impl's ancestor.
+    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
     };
 
@@ -774,11 +788,8 @@ fn fireAt(
 /// cache first and frees regardless - which is the version this deliberately
 /// does not copy.
 fn releaseEventIfUnwrapped(event: *runtime.Instance, is_progress_event: bool) void {
-    const cache_storage = event.ctx.getV8WrapperCacheStorage() orelse return;
-    const cache: *v8_engine.WrapperCache = @ptrCast(@alignCast(cache_storage));
-
-    // Wrapped => V8 owns it from here.
-    if (cache.get(event) != null) return;
+    // Wrapped => the engine owns it from here.
+    if (engine.hasWrapper(event)) return;
 
     if (is_progress_event) {
         interfaces.ProgressEvent.deinit(event);
@@ -830,26 +841,32 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     const xhr_state = getXHRState(instance);
     const internal = getInternal(instance);
 
-    // Step 5: If one or more event listeners are registered on this's upload
-    // object, then set this's upload listener flag.
-    xhr_state.upload_listener_flag = uploadHasListeners(instance);
-
-    // Own the body for the life of the request: the conversion layer frees
-    // its copy when this returns, and an asynchronous request's fetch - a
-    // redirect re-sends it - runs long after. The body is THIS send()'s: a
-    // handler that runs during it can send again, with a body of its own.
+    // The argument, converted to (Document or XMLHttpRequestBodyInit)? as
+    // the binding would before the method's steps run - its ToString can run
+    // script - and, but for a Document, extracted. Owned for the life of the
+    // request: an asynchronous request's fetch - a redirect re-sends it -
+    // runs long after, and a handler that runs during this send() can send
+    // again, with a body of its own.
     const allocator = internal.allocator;
-    const owned_body: ?[]u8 = if (extractBodyBytes(instance, body)) |bytes|
-        allocator.dupe(u8, bytes) catch return error.OutOfMemory
-    else
-        null;
-    var body_taken = false;
-    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
+    var send_body = try SendBody.convert(instance, body, allocator);
+    defer if (send_body) |*b| b.deinit();
 
     installEventSink(instance);
 
-    // Steps 1-10, inline and synchronously observable.
+    // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
+    // and HEAD) gives back null.
+    const owned_body: ?[]u8 = if (send_body) |*b| b.takeBytes() else null;
+    var body_taken = false;
+    defer if (!body_taken) if (owned_body) |b| allocator.free(b);
     const effective_body = try send_algo.sendPrologue(xhr_state, owned_body);
+
+    // Step 4: the request body's Content-Type, in this's author request
+    // headers.
+    if (effective_body != null) if (send_body) |*b| try b.setContentType(xhr_state);
+
+    // Step 5: If one or more event listeners are registered on this's upload
+    // object, then set this's upload listener flag.
+    xhr_state.upload_listener_flag = uploadHasListeners(instance);
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
@@ -891,11 +908,6 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     pending.* = .{
         .allocator = allocator,
         .instance = instance,
-        .isolate = internal.isolate orelse v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-            allocator.destroy(pending);
-            request.deinit();
-            return error.InvalidStateError;
-        },
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
@@ -944,9 +956,6 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
 const PendingFetch = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
-    /// The XMLHttpRequest's isolate - a worker's is not the page's, and the
-    /// task can run from the page's loop.
-    isolate: *v8_engine.ffi.Isolate,
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// The fetch's outcome, from `done` until a task processes it.
     outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
@@ -1051,38 +1060,33 @@ const PendingFetch = struct {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
         self.task_queued = false;
         if (self.cancelled) return self.maybeFree();
-        const instance = self.instance;
-
         // A task runs from the event loop, not from script: it enters the
-        // realm itself - and in a worker, the worker's isolate.
-        const isolate = self.isolate;
-        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != isolate;
-        if (entered) v8_engine.ffi.v8_Isolate_Enter(isolate);
-        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(isolate);
-        {
-            const scope = v8_engine.JsScope.init(instance.ctx) orelse return self.maybeFree();
-            defer scope.deinit();
-            const state = getXHRState(instance);
-            if (self.outcome) |outcome| {
-                self.outcome = null;
-                self.processor = xhr.response.ResponseProcessor.init(state);
-                const pipe = send_algo.sendAsyncFinish(state, self.body, outcome, &self.processor.?) catch |err| blk: {
-                    log.debug("async send failed: {s}", .{@errorName(err)});
-                    break :blk null;
-                };
-                // A listener may have ended this request (abort(), open()).
-                if (!self.cancelled) {
-                    if (pipe) |p| {
-                        self.pipe = p;
-                        p.consumer = .{ .context = self, .notify = notify };
-                    } else self.finishRequest();
-                }
-            }
-            if (!self.cancelled) self.readBody(state);
-        }
+        // realm itself (a worker's, whose agent is not the page's) and ends
+        // as a task there does.
+        engine.runTaskInRealm(self.instance.ctx, taskSteps, self) catch {};
         self.maybeFree();
-        // In a worker, the task's end is the worker's to run.
-        @import("html").worker_v8_context.finishTaskIn(isolate);
+    }
+
+    /// The task's steps, in the XHR's realm.
+    fn taskSteps(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        const state = getXHRState(self.instance);
+        if (self.outcome) |outcome| {
+            self.outcome = null;
+            self.processor = xhr.response.ResponseProcessor.init(state);
+            const pipe = send_algo.sendAsyncFinish(state, self.body, outcome, &self.processor.?) catch |err| blk: {
+                log.debug("async send failed: {s}", .{@errorName(err)});
+                break :blk null;
+            };
+            // A listener may have ended this request (abort(), open()).
+            if (!self.cancelled) {
+                if (pipe) |p| {
+                    self.pipe = p;
+                    p.consumer = .{ .context = self, .notify = notify };
+                } else self.finishRequest();
+            }
+        }
+        if (!self.cancelled) self.readBody(state);
     }
 
     /// Feed the body that has arrived to processBodyChunk, and its end to
@@ -1183,19 +1187,16 @@ const PendingFetch = struct {
             f.terminateWith(.{ .kind = .network });
             self.fetch_holds = false;
         }
-        const isolate = self.isolate;
         defer self.maybeFree();
+        // The timer's task: in the XHR's realm, ended as a task there is.
+        engine.runTaskInRealm(instance.ctx, timeoutSteps, instance) catch {};
+    }
 
-        const entered = v8_engine.ffi.v8_Isolate_GetCurrent() != isolate;
-        if (entered) v8_engine.ffi.v8_Isolate_Enter(isolate);
-        defer if (entered) v8_engine.ffi.v8_Isolate_Exit(isolate);
-        {
-            const scope = v8_engine.JsScope.init(instance.ctx) orelse return;
-            defer scope.deinit();
-            var processor = xhr.response.ResponseProcessor.init(getXHRState(instance));
-            processor.handleTimeout();
-        }
-        @import("html").worker_v8_context.finishTaskIn(isolate);
+    /// The timeout steps, in the XHR's realm.
+    fn timeoutSteps(context: ?*anyopaque) void {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
+        var processor = xhr.response.ResponseProcessor.init(getXHRState(instance));
+        processor.handleTimeout();
     }
 
     /// Arm the timeout for a fetch that began at `started_ms`, `timeout_ms`
@@ -1257,35 +1258,109 @@ fn uploadHasListeners(instance: *runtime.Instance) bool {
     return false;
 }
 
-/// The bytes of the `body` argument.
-///
-/// Spec step 4 covers Document, Blob, BufferSource, FormData, URLSearchParams
-/// and USVString. Only the string form is handled here; the rest need the body
-/// extraction algorithm, and returning null for them sends no body rather than
-/// sending the wrong one.
-fn extractBodyBytes(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) ?[]const u8 {
-    if (!body.wasPassed()) return null;
-    const value = body.value orelse return null;
+/// send()'s `body`: the argument converted to (Document or
+/// XMLHttpRequestBodyInit)? (WebIDL 3.2.24) and, but for a Document, safely
+/// extracted (Fetch): the request body's bytes and bodyWithType's type.
+const SendBody = struct {
+    allocator: std.mem.Allocator,
+    kind: Kind,
+    /// The request body, owned until taken.
+    bytes: ?[]u8,
+    /// extractedContentType, owned, or null.
+    content_type: ?[]u8 = null,
 
-    return switch (value) {
-        .undefined, .null => null,
-        .string => |sv| if (sv.data.len > 0) sv.data else null,
-        .handle => |h| blk: {
-            // A JS string arrives as a handle when it was not converted up
-            // front. Anything else is a body type we cannot extract yet.
-            const engine = instance.ctx.getEngine() orelse break :blk null;
-            const engine_ctx = instance.ctx.getEngineContext() orelse break :blk null;
-            const is_string = engine.isString orelse break :blk null;
-            if (!is_string(h.ptr)) {
-                log.debug("send() body is a type whose extraction is not implemented", .{});
-                break :blk null;
-            }
-            const extract = engine.extractString orelse break :blk null;
-            break :blk extract(engine_ctx, h.ptr, instance.ctx.allocator) catch null;
-        },
-        else => null,
-    };
-}
+    const Kind = enum { usvstring, other };
+
+    fn deinit(self: *SendBody) void {
+        if (self.bytes) |b| self.allocator.free(b);
+        if (self.content_type) |t| self.allocator.free(t);
+    }
+
+    /// The request body, which is the caller's from here.
+    fn takeBytes(self: *SendBody) []u8 {
+        const b = self.bytes.?;
+        self.bytes = null;
+        return b;
+    }
+
+    /// Null for a null (or undefined) body, and - for now - a Document.
+    fn convert(instance: *runtime.Instance, argument: webidl.Opt(?runtime.JSValue), allocator: std.mem.Allocator) !?SendBody {
+        if (!argument.wasPassed()) return null;
+        const value = argument.value orelse return null;
+        const realm = instance.ctx;
+        switch (value) {
+            .undefined, .null => return null,
+            // A string primitive, as the binding converted it: WTF-8, a lone
+            // surrogate in its three-byte form. USVString makes each one
+            // U+FFFD.
+            .string => |text| {
+                const bytes = try allocator.dupe(u8, text.data);
+                infra.string.replaceLoneSurrogatesWtf8(bytes);
+                return try usvString(allocator, bytes);
+            },
+            .boolean, .number => return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator)),
+            .handle, .instance => {},
+        }
+        switch (engine.typeOf(realm, value)) {
+            .undefined, .null => return null,
+            else => {},
+        }
+        // A platform object of one of the union's interfaces is that member.
+        // Any other falls through to the string it converts to.
+        if (engine.convertToPlatformObject(realm, value)) |object| {
+            // TODO: a Document's request body is the document serialized,
+            // converted and UTF-8 encoded (step 4.2), and its Content-Type
+            // text/html or application/xml (4.6); until its serializer is
+            // reachable here, it sends no body, as before.
+            if (object.stateAs(interfaces.Document.State) != null) return null;
+            if (object.stateAs(interfaces.Blob.State) != null) return try extracted(allocator, .{ .blob = object });
+            if (object.stateAs(interfaces.FormData.State) != null) return try extracted(allocator, .{ .form_data = object });
+            if (object.stateAs(interfaces.URLSearchParams.State) != null) return try extracted(allocator, .{ .urlsearch_params = object });
+        }
+        // BufferSource: a copy of the bytes held by it; no type.
+        if (try engine.getCopyOfBufferSourceBytes(realm, value, allocator)) |bytes| {
+            return .{ .allocator = allocator, .kind = .other, .bytes = bytes };
+        }
+        // USVString: ToString, then each lone surrogate U+FFFD.
+        return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator));
+    }
+
+    /// A USVString body: its UTF-8 encoding, and text/plain;charset=UTF-8.
+    /// Takes `text`.
+    fn usvString(allocator: std.mem.Allocator, text: []u8) !SendBody {
+        errdefer allocator.free(text);
+        return .{
+            .allocator = allocator,
+            .kind = .usvstring,
+            .bytes = text,
+            .content_type = try allocator.dupe(u8, "text/plain;charset=UTF-8"),
+        };
+    }
+
+    /// Fetch "safely extract" a Blob, FormData or URLSearchParams body.
+    fn extracted(allocator: std.mem.Allocator, object: typedefs.XMLHttpRequestBodyInit) !SendBody {
+        var result = fetch_body.extract(allocator, .{ .xmlhttp_request_body_init = object }, false) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.TypeError => error.TypeError,
+        };
+        defer result.deinit();
+        const body = result.body orelse return error.TypeError;
+        var self: SendBody = .{ .allocator = allocator, .kind = .other, .bytes = try allocator.dupe(u8, body.getBytes()) };
+        self.content_type = result.content_type;
+        result.content_type = null;
+        return self;
+    }
+
+    /// send() steps 4.4-4.6: the Content-Type of this body, in `state`'s
+    /// author request headers.
+    fn setContentType(self: *const SendBody, state: *XMLHttpRequestState) !void {
+        const kind: send_algo.BodyKind = switch (self.kind) {
+            .usvstring => .usvstring,
+            .other => .other,
+        };
+        try send_algo.setRequestContentType(self.allocator, state, kind, self.content_type);
+    }
+};
 
 /// Operation: setRequestHeader
 ///

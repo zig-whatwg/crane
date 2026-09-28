@@ -15,10 +15,9 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const cookiestore = @import("cookiestore");
 
-// The Promise-returning operations build real V8 Promises, so this impl
-// reaches for the engine directly - the same seam Blob.text() uses.
-const v8_engine = @import("v8");
-const v8 = v8_engine.ffi;
+// The Promise-returning operations make their promises and values through
+// the engine protocol (cookie_values.zig).
+const cookie_values = @import("cookie_values.zig");
 
 const CookieStore = interfaces.CookieStore;
 const CookieJar = cookiestore.CookieJar;
@@ -185,150 +184,31 @@ pub fn nameFilter(name: runtime.USVString) ?[]const u8 {
 // returned. That is indistinguishable from an asynchronous jar to script: an
 // `await` still yields to the microtask queue.
 //
-// Handle ownership follows the house rule (AGENTS.md): every `v8_*` call
-// returning a pointer allocates a `Global<T>` the caller owns. Everything
-// acquired here is disposed except the `Global<Promise>` handed back, which
-// the return path in interface.zig consumes.
+// Every value is made in the current realm - the realm of the operation
+// called - through the engine protocol, and handed to the binding OWNED.
 // ============================================================================
-
-/// The current isolate and context, for the duration of one operation.
-const Realm = struct {
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-
-    fn enter() error{NoRealm}!Realm {
-        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoRealm;
-        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoRealm;
-        return .{ .isolate = isolate, .context = context };
-    }
-
-    /// `v8_Isolate_GetCurrentContext` allocated the Global we are holding.
-    fn exit(self: Realm) void {
-        v8.v8_Context_Dispose(self.context);
-    }
-
-    /// A settled promise carrying `value`, which the caller still owns.
-    fn resolve(self: Realm, value: *v8.Value) error{OutOfMemory}!runtime.JSValue {
-        const resolver = v8.v8_PromiseResolver_New(self.context) orelse return error.OutOfMemory;
-        defer v8.v8_PromiseResolver_Dispose(resolver);
-
-        const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.v8_PromiseResolver_Resolve(resolver, self.context, value);
-        return runtime.JSValue.fromPromise(@ptrCast(promise));
-    }
-
-    /// `Promise<undefined>` - what set() and delete() resolve with.
-    fn resolveUndefined(self: Realm) error{OutOfMemory}!runtime.JSValue {
-        const value = v8.v8_Undefined(self.isolate) orelse return error.OutOfMemory;
-        defer v8.v8_Value_Dispose(value);
-        return self.resolve(value);
-    }
-
-    /// `Promise<CookieListItem?>` resolving with null - get() found nothing.
-    fn resolveNull(self: Realm) error{OutOfMemory}!runtime.JSValue {
-        const value = v8.v8_Null(self.isolate) orelse return error.OutOfMemory;
-        defer v8.v8_Value_Dispose(value);
-        return self.resolve(value);
-    }
-
-    /// A rejected promise.
-    ///
-    /// Failures on this interface are rejections, never synchronous throws:
-    /// the WPT suite reaches for `promise_rejects_js(t, TypeError, ...)`
-    /// throughout, which only sees a promise.
-    fn rejectTypeError(self: Realm, message: []const u8) error{OutOfMemory}!runtime.JSValue {
-        const text = v8.v8_String_NewFromUtf8(
-            self.isolate,
-            message.ptr,
-            @intCast(message.len),
-        ) orelse return error.OutOfMemory;
-        defer v8.v8_String_Dispose(text);
-
-        const exception = v8.v8_Exception_TypeErrorInContext(self.context, text) orelse
-            return error.OutOfMemory;
-        defer v8.v8_Value_Dispose(exception);
-
-        const resolver = v8.v8_PromiseResolver_New(self.context) orelse return error.OutOfMemory;
-        defer v8.v8_PromiseResolver_Dispose(resolver);
-
-        const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
-        _ = v8.v8_PromiseResolver_Reject(resolver, self.context, exception);
-        return runtime.JSValue.fromPromise(@ptrCast(promise));
-    }
-
-    /// Set one own string property on `object`.
-    fn setString(self: Realm, object: *v8.Object, key: []const u8, value: []const u8) error{OutOfMemory}!void {
-        const key_str = v8.v8_String_NewFromUtf8(self.isolate, key.ptr, @intCast(key.len)) orelse
-            return error.OutOfMemory;
-        defer v8.v8_String_Dispose(key_str);
-
-        // An empty Zig slice has no usable `.ptr`, so the empty string gets its
-        // own constructor. Cookies with an empty name or value are real - see
-        // change_eventhandler_for_no_name_and_no_value.https.window.js.
-        const value_str = if (value.len > 0)
-            v8.v8_String_NewFromUtf8(self.isolate, value.ptr, @intCast(value.len)) orelse
-                return error.OutOfMemory
-        else
-            v8.v8_String_Empty(self.isolate) orelse return error.OutOfMemory;
-        defer v8.v8_String_Dispose(value_str);
-
-        _ = v8.v8_Object_Set(object, self.context, @ptrCast(key_str), @ptrCast(value_str));
-    }
-
-    /// A `CookieListItem` as script sees it: `{ name, value }`.
-    ///
-    /// https://cookiestore.spec.whatwg.org/#create-a-cookielistitem
-    ///
-    /// The IDL dictionary carries only `name` and `value`; the attribute-rich
-    /// form that `cookieListItem_attributes.https.any.js` expects (domain,
-    /// path, expires, secure, sameSite) is not in specs/idl/cookiestore.idl,
-    /// so it is not built here.
-    fn cookieListItem(self: Realm, item: CookieListItem) error{OutOfMemory}!*v8.Object {
-        const object = v8.v8_Object_NewInContext(self.context) orelse return error.OutOfMemory;
-        errdefer v8.v8_Object_Dispose(object);
-
-        try self.setString(object, "name", item.name);
-        try self.setString(object, "value", item.value);
-        return object;
-    }
-
-    /// A `CookieList` - a JS Array of CookieListItem objects.
-    fn cookieList(self: Realm, items: []const CookieListItem) error{OutOfMemory}!*v8.Array {
-        const array = v8.v8_Array_NewInContext(self.context, @intCast(items.len)) orelse
-            return error.OutOfMemory;
-        errdefer v8.v8_Array_Dispose(array);
-
-        for (items, 0..) |item, index| {
-            const object = try self.cookieListItem(item);
-            defer v8.v8_Object_Dispose(object);
-            _ = v8.v8_Array_Set(array, self.context, @intCast(index), @ptrCast(object));
-        }
-        return array;
-    }
-};
 
 /// Operation: get(name)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-get
 ///
 /// Resolves with a CookieListItem for the first matching cookie, or null.
 pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStore has no cookie jar");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
 
     // Step 4: run query cookies with url and name.
     var items = queryItems(internal, nameFilter(name)) catch
-        return realm.rejectTypeError("Failed to read cookies");
+        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
     // Step 5: resolve with the first item, or null when the list is empty.
-    if (items.items.len == 0) return realm.resolveNull();
+    if (items.items.len == 0) return cookie_values.resolvedWith(realm, runtime.JSValue.jsNull);
 
-    const object = try realm.cookieListItem(items.items[0]);
-    defer v8.v8_Object_Dispose(object);
-    return realm.resolve(@ptrCast(object));
+    const item = try cookie_values.listItem(realm, items.items[0]);
+    defer item.release();
+    return cookie_values.resolvedWith(realm, item.value);
 }
 
 /// Operation: getAll(name)
@@ -336,19 +216,18 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
 ///
 /// Resolves with a CookieList - every matching cookie.
 pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStore has no cookie jar");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
 
     var items = queryItems(internal, nameFilter(name)) catch
-        return realm.rejectTypeError("Failed to read cookies");
+        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
-    const array = try realm.cookieList(items.items);
-    defer v8.v8_Array_Dispose(array);
-    return realm.resolve(@ptrCast(array));
+    const list = try cookie_values.list(realm, items.items, internal.allocator);
+    defer list.release();
+    return cookie_values.resolvedWith(realm, list.value);
 }
 
 /// Operation: set(name, value)
@@ -357,14 +236,13 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
 /// Resolves with undefined once the cookie is stored, and rejects with a
 /// TypeError when the name/value pair fails validation.
 pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStore has no cookie jar");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
 
     if (!internal.is_secure_context) {
-        return realm.rejectTypeError("CookieStore.set requires a secure context");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore.set requires a secure context");
     }
 
     cookiestore.setCookie(internal.allocator, &internal.cookie_jar, internal.origin_host, .{
@@ -372,10 +250,10 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
         .value = value,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
-        else => realm.rejectTypeError("Invalid cookie name or value"),
+        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie name or value"),
     };
 
-    return realm.resolveUndefined();
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
 }
 
 /// Operation: delete(name)
@@ -384,20 +262,19 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
 /// Resolves with undefined. Deleting a cookie that is not there is not an
 /// error - cookieStore_delete_basic.https.any.js asserts exactly that.
 pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-    const realm = try Realm.enter();
-    defer realm.exit();
+    const realm = cookie_values.operationRealm(instance);
 
     const internal = getInternalState(instance) orelse
-        return realm.rejectTypeError("CookieStore has no cookie jar");
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
 
     cookiestore.deleteCookie(internal.allocator, &internal.cookie_jar, internal.origin_host, .{
         .name = name,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
-        else => realm.rejectTypeError("Invalid cookie name"),
+        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie name"),
     };
 
-    return realm.resolveUndefined();
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
 }
 
 // ============================================================================

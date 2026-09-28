@@ -22,6 +22,7 @@
 //!   *    /redirect-ftp     - 302, Location: ftp://127.0.0.1/ (not HTTP(S))
 //!   GET  /trickle/{n}      - n chunks of "chunk\n", 100ms apart, chunked
 //!   GET  /bad-chunk        - one good chunk, then a malformed one
+//!   GET  /big/{kib}        - kib KiB of "x", as fast as the peer reads
 //!
 //! WebSocket Endpoints:
 //!   /ws/echo               - Echo all messages back
@@ -194,6 +195,10 @@ pub const TestServer = struct {
         if (std.mem.startsWith(u8, path, "/trickle/")) {
             const count = std.fmt.parseInt(usize, path["/trickle/".len..], 10) catch 1;
             return sendTrickle(io, stream, @min(count, 50));
+        }
+        if (std.mem.startsWith(u8, path, "/big/")) {
+            const kib = std.fmt.parseInt(usize, path["/big/".len..], 10) catch 1;
+            return sendBig(io, stream, @min(kib, 64 * 1024));
         }
         if (std.mem.eql(u8, path, "/bad-chunk")) {
             try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nchunk\n\r\n");
@@ -633,6 +638,21 @@ pub const TestServer = struct {
         const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\nX-Test-Header: test-value\r\n\r\n", .{ status, status_text, content_type, content_length }) catch return error.ResponseTooLarge;
 
         try writeAllToStream(io, stream, response);
+    }
+
+    /// `kib` KiB of "x", as fast as the connection takes them - a peer that
+    /// stops reading holds the writes up.
+    fn sendBig(io: Io, stream: net.Stream, kib: usize) !void {
+        var head_buf: [256]u8 = undefined;
+        const head = std.fmt.bufPrint(&head_buf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n", .{kib * 1024}) catch return error.ResponseTooLarge;
+        try writeAllToStream(io, stream, head);
+        const block = [_]u8{'x'} ** (64 * 1024);
+        var left = kib * 1024;
+        while (left > 0) {
+            const n = @min(left, block.len);
+            try writeAllToStream(io, stream, block[0..n]);
+            left -= n;
+        }
     }
 
     /// `count` chunks of "chunk\n", chunked, 100ms apart.

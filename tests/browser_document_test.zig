@@ -1,7 +1,6 @@
 const std = @import("std");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
-const v8 = @import("v8");
 
 // NOTE: This test is disabled until issue whatwg-bnd80 is fixed.
 // V8 crashes with alignment errors when creating a context from a snapshot
@@ -51,32 +50,115 @@ test "document.getElementsByTagName available after Browser.init" {
         \\})()
     ;
 
-    const result = ctx.evaluateScript(script) catch |err| {
+    const result = ctx.evaluateScriptToString(script, allocator) catch |err| {
         std.debug.print("Script execution error: {}\n", .{err});
         return error.ScriptError;
     };
+    defer allocator.free(result);
+    std.debug.print("{s}\n", .{result});
 
-    const result_value = result orelse {
-        std.debug.print("FAILURE: Script returned null (likely threw an error)\n", .{});
-        return error.ScriptReturnedNull;
-    };
+    // The page has a Document interface and a document.
+    try std.testing.expect(std.mem.indexOf(u8, result, "typeof Document: function") != null);
+}
 
-    // Check if the result is true (meaning getElementsByTagName is a function)
-    const isolate = browser.isolate orelse {
-        std.debug.print("FAILURE: No isolate available\n", .{});
-        return error.NoIsolate;
-    };
-    const is_function = v8.ffi.v8_Value_BooleanValue(result_value, isolate);
-    // For string results, we need to convert the V8 string to Zig
-    const v8_ctx = ctx.v8_context orelse return error.NoContext;
-    if (v8.ffi.v8_Value_ToString(result_value, v8_ctx)) |str_value| {
-        var buf: [256]u8 = undefined;
-        const len = v8.ffi.v8_String_WriteUtf8(str_value, &buf, @intCast(buf.len));
-        const actual_len: usize = @intCast(len);
-        std.debug.print("document.__proto__: {s}\n", .{buf[0..actual_len]});
-    } else {
-        std.debug.print("Failed to convert result to string\n", .{});
-    }
+// execution-timing/084.html, then any next page. `frames[0].frameElement`
+// wraps the iframe element in the FRAME's realm, and the page removes it: the
+// element is then kept by that wrapper alone. The page's end ends the frame's
+// realm, whose wrapper cache frees the element, whose integration ends the
+// frame's realm - the one already ending. Ended twice, the realm's context
+// handle was released under the outer call's DetachGlobal (a misaligned-load
+// ABRT, deterministic after 084 in a sweep).
+test "a page whose written-into frame was removed ends cleanly when it navigates" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
 
-    try std.testing.expect(is_function);
+    const html =
+        \\<!DOCTYPE html>
+        \\<html><head><script>
+        \\  var eventOrder = [];
+        \\  function log(s) { eventOrder.push(s); }
+        \\</script></head>
+        \\<body>
+        \\<iframe src="about:blank"></iframe>
+        \\<script>
+        \\  log('inline script #1');
+        \\  function fireFooEvent(){
+        \\    var evt=document.createEvent('Event');
+        \\    evt.initEvent('foo', true, true);
+        \\    document.dispatchEvent(evt);
+        \\  }
+        \\  var doc=frames[0].document;
+        \\  doc.open( 'text/html' );
+        \\  doc.write( '<script>top.log("IFRAME script");top.document.addEventListener("foo", function(e){ top.log("event: "+e.type); }, false)<\/script>' );
+        \\  log('end script #1');
+        \\</script>
+        \\<script>
+        \\  fireFooEvent();
+        \\  frames[0].frameElement.parentNode.removeChild( frames[0].frameElement );
+        \\</script>
+        \\<script>
+        \\  fireFooEvent();
+        \\</script>
+        \\<script>
+        \\  log( 'inline script #2' );
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/execution-timing/084.html" });
+    _ = try browser.runEventLoopBlocking(50);
+
+    const result = try ctx.evaluateScriptToString("eventOrder.join()", allocator);
+    defer allocator.free(result);
+    // The page's own scripts ran, around the frame's removal.
+    try std.testing.expect(std.mem.startsWith(u8, result, "inline script #1,"));
+    try std.testing.expect(std.mem.endsWith(u8, result, ",inline script #2"));
+
+    try browser.navigate("about:blank", .window);
+    try browser.navigate("about:blank", .window);
+}
+
+// A realm's wrapper cache is torn down in hash order. A detached tree whose
+// root and children script has all touched - `cloneNode(true)`'s result and
+// the elements matched in it, as dom/nodes/Element-matches-init.js does in a
+// frame - has every node in the cache: a child freed on its own before its
+// root left the root's child list pointing at a freed NodeBase, and the
+// root's teardown walk read it (Element.deinit -> instance_bridge.getInstance
+// SEGV, flaky in sweeps after Element-webkitMatchesSelector.html). A node
+// with a parent is its tree's to free, never its wrapper cache's.
+test "a detached tree whose nodes were all wrapped ends cleanly with its realm" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html>
+        \\<html><body>
+        \\<iframe src="about:blank"></iframe>
+        \\<script>
+        \\  // One detached tree in this realm, one in the frame's: every node of
+        \\  // each wrapped, in the realm whose document made it.
+        \\  function build(doc) {
+        \\    var root = doc.createElement("div");
+        \\    for (var i = 0; i < 64; i++) {
+        \\      var child = root.appendChild(doc.createElement("span"));
+        \\      child.appendChild(doc.createElement("b"));
+        \\    }
+        \\    return root;
+        \\  }
+        \\  var here = build(document);
+        \\  var there = build(frames[0].document);
+        \\  var built = here.childNodes.length + there.querySelectorAll("b").length;
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/detached-trees.html" });
+    const result = try ctx.evaluateScriptToString("String(built)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("128", result);
+
+    try browser.navigate("about:blank", .window);
+    try browser.navigate("about:blank", .window);
 }

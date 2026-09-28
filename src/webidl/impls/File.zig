@@ -87,7 +87,7 @@ pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileNam
         }
         break :blk .transparent;
     };
-    const bytes = try BlobImpl.processBlobParts(ctx.allocator, fileBits, endings);
+    const bytes = try BlobImpl.processBlobParts(ctx, fileBits, endings);
     defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
     // Steps 3.1-3.2: the type - BlobData drops one with a character outside

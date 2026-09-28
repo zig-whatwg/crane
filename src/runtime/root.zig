@@ -157,6 +157,34 @@ pub const EngineError = @import("engine_interface.zig").EngineError;
 pub const MainThreadCallback = @import("engine_interface.zig").MainThreadCallback;
 pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfillCallback;
 pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
+pub const ErrorInfo = @import("engine_interface.zig").ErrorInfo;
+pub const ReportExceptionFn = @import("engine_interface.zig").ReportExceptionFn;
+pub const RealmSteps = @import("engine_interface.zig").RealmSteps;
+pub const configuredEngine = @import("engine_interface.zig").configuredEngine;
+pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEngine;
+// Lane regions for re-exports of each lane's Engine types.
+// ---- lane: page-realm ----
+pub const CallbackThis = @import("engine_interface.zig").CallbackThis;
+pub const WindowTimerHandler = @import("engine_interface.zig").WindowTimerHandler;
+pub const WindowOperations = @import("engine_interface.zig").WindowOperations;
+// ---- end lane: page-realm ----
+// ---- lane: runtime-impls ----
+pub const SimpleExceptionKind = @import("engine_interface.zig").SimpleExceptionKind;
+pub const DictionaryMember = @import("engine_interface.zig").DictionaryMember;
+pub const ArrayBufferViewDescription = @import("engine_interface.zig").ArrayBufferViewDescription;
+// ---- end lane: runtime-impls ----
+// ---- lane: engine-boundary ----
+pub const SerializedWithTransfer = @import("engine_interface.zig").SerializedWithTransfer;
+pub const TransferableState = @import("engine_interface.zig").TransferableState;
+pub const TransferableCheck = @import("engine_interface.zig").TransferableCheck;
+pub const Agent = @import("engine_interface.zig").Agent;
+pub const WorkerRealmOptions = @import("engine_interface.zig").WorkerRealmOptions;
+pub const WorkerRealm = @import("engine_interface.zig").WorkerRealm;
+pub const BuiltinSteps = @import("engine_interface.zig").BuiltinSteps;
+pub const BuiltinFunction = @import("engine_interface.zig").BuiltinFunction;
+pub const StringConversion = @import("engine_interface.zig").StringConversion;
+pub const StringRecordEntry = @import("engine_interface.zig").StringRecordEntry;
+// ---- end lane: engine-boundary ----
 pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
@@ -200,9 +228,19 @@ pub const getDescriptorPtr = binding_generator.getDescriptorPtr;
 // Timer interface - Host-agnostic timer support for setTimeout/clearTimeout
 // Each host (V8+libuv, etc.) provides its own implementation
 pub const timer = @import("timer.zig");
+/// The host's timer backend (setTimeout's and the event loop's): engine-neutral,
+/// needing only a monotonic clock.
+pub const native_timer = @import("native_timer.zig");
 pub const TimerId = timer.TimerId;
 pub const TimerCallback = timer.TimerCallback;
 pub const TimerInterface = timer.TimerInterface;
+/// The host's event loop, as a realm records it (ContextData.event_loop):
+/// what host algorithms queue their tasks on.
+pub const EventLoop = @import("event_loop").EventLoop;
+/// What an EventLoop queues: a task, a microtask (for a host that implements
+/// one - the Browser's).
+pub const EventLoopTask = @import("event_loop").Task;
+pub const EventLoopMicrotask = @import("event_loop").Microtask;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
 

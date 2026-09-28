@@ -23,6 +23,9 @@ const createMessagePortPair = message_port.createMessagePortPair;
 // Import MessagePort impl for initialization
 const MessagePortImpl = @import("MessagePort.zig");
 
+// A channel keeps the ports it has handed out alive for as long as it lives.
+const same_object = @import("same_object.zig");
+
 pub const State = MessageChannel.State;
 
 pub const ImplError = error{
@@ -48,6 +51,15 @@ pub const InternalState = struct {
     /// Flag indicating if port2 has been exposed to JavaScript (wrapped in V8)
     /// If true, GC owns the port's lifetime. If false, MessageChannel owns it.
     port2_exposed: bool = false,
+
+    /// The exposed ports, held for as long as the channel lives: `port1` and
+    /// `port2` are [SameObject], and the channel's state points at them where
+    /// V8 cannot see - so a port script reached only through its channel
+    /// (`channel.port2.postMessage(...)` with nothing else holding port2) was
+    /// collected while the channel lived, and the next `channel.port2` handed
+    /// out a freed slot. Blink traces both from MessageChannel::Trace.
+    port1_pin: same_object.Pin = .{},
+    port2_pin: same_object.Pin = .{},
 };
 
 /// Initialize instance (creates the instance)
@@ -99,6 +111,8 @@ pub fn deinit(instance: *runtime.Instance) void {
                 MessagePortInterface.deinit(state.own.port2);
             }
         }
+        internal.port1_pin.release();
+        internal.port2_pin.release();
         internal.allocator.destroy(internal);
     }
 
@@ -146,17 +160,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     state.own.port1 = port1_instance;
     state.own.port2 = port2_instance;
 
-    // Link the WebIDL ports to each other for message dispatch
-    // This allows postMessage on port1 to find port2's onmessage handler
-    const port1_state = port1_instance.getState(MessagePortInterface.State);
-    const port2_state = port2_instance.getState(MessagePortInterface.State);
-    if (port1_state.own._internal) |port1_internal| {
-        port1_internal.entangled_webidl_port = port2_instance;
-    }
-    if (port2_state.own._internal) |port2_internal| {
-        port2_internal.entangled_webidl_port = port1_instance;
-    }
-
     if (state.own._internal) |internal| {
         internal.initialized = true;
     }
@@ -171,6 +174,7 @@ pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Mark port1 as exposed to JavaScript - GC now owns its lifetime
     if (state.own._internal) |internal| {
         internal.port1_exposed = true;
+        internal.port1_pin.hold(state.own.port1);
     }
     return state.own.port1;
 }
@@ -182,6 +186,7 @@ pub fn get_port2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Mark port2 as exposed to JavaScript - GC now owns its lifetime
     if (state.own._internal) |internal| {
         internal.port2_exposed = true;
+        internal.port2_pin.hold(state.own.port2);
     }
     return state.own.port2;
 }

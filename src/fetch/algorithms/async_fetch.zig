@@ -235,7 +235,13 @@ pub const AsyncFetch = struct {
             self.cancelTransfer();
             return self.advance(self.job.resumeNetwork(NetworkError.OutOfMemory));
         };
-        source.producer = .{ .context = self, .cancel = stopProducing };
+        // A collected body is taken only at its end: pausing it would wait
+        // for a reader that never comes. A streamed one pauses while its
+        // readers fall behind.
+        source.producer = if (self.collect)
+            .{ .context = self, .cancel = stopProducing }
+        else
+            .{ .context = self, .cancel = stopProducing, .pause = pauseTransfer, .unpause = unpauseTransfer };
         self.source = source;
         const pipe = source.branch() catch {
             var h = head;
@@ -276,6 +282,17 @@ pub const AsyncFetch = struct {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
         self.source = null;
         self.cancelTransfer();
+    }
+
+    /// Every reader of the body is behind: stop reading from the socket.
+    fn pauseTransfer(context: *anyopaque) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        if (self.transfer) |transfer| self.scheduler.pause(transfer);
+    }
+
+    fn unpauseTransfer(context: *anyopaque) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        if (self.transfer) |transfer| self.scheduler.unpause(transfer);
     }
 
     fn cancelTransfer(self: *AsyncFetch) void {

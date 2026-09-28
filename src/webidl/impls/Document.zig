@@ -18,12 +18,14 @@
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const url_mod = @import("url");
 const Document = interfaces.Document;
 
 // Use shared InstanceRegistry utility for internal state management
@@ -32,6 +34,7 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
+const EventTargetImpl = @import("EventTarget.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
@@ -123,6 +126,13 @@ pub const InternalState = struct {
     is_initial_about_blank: bool = false,
     /// HTML "salvageable"; set false by "unload" (Crane keeps no bfcache).
     salvageable: bool = true,
+    /// HTML "destroy" has run: the document's browsing context is null. It
+    /// stays readable - script elsewhere may hold it - but has no view.
+    destroyed: bool = false,
+    /// HTML "about base URL": the document base URL of the document that
+    /// created it, or of the navigation's source document, for an
+    /// about:blank or about:srcdoc document; null otherwise. Owned.
+    about_base_url: ?[]u8 = null,
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
@@ -142,13 +152,11 @@ pub const InternalState = struct {
 
     // === HTML Document Properties ===
 
-    /// Document title (from <title> element or empty)
-    title: runtime.DOMString,
-
     /// Document dir (text direction: "ltr", "rtl", or "")
     dir: runtime.DOMString,
 
-    /// Document domain (for same-origin policy)
+    /// The document's origin's domain (HTML 7.1.1.2), serialized: what the
+    /// document.domain setter set. Empty while it is null. Owned.
     domain: []const u8,
 
     /// Document referrer (the URI of the page that linked to this page)
@@ -350,7 +358,6 @@ pub const InternalState = struct {
             .ranges = .empty,
             .node_iterators = .empty,
             // HTML properties
-            .title = runtime.DOMString.initEmpty(),
             .dir = runtime.DOMString.initEmpty(),
             .domain = "",
             .referrer = "",
@@ -435,6 +442,10 @@ pub const InternalState = struct {
         if (self.base_uri.len > 0) {
             self.allocator.free(self.base_uri);
         }
+        if (self.about_base_url) |url| {
+            self.allocator.free(url);
+            self.about_base_url = null;
+        }
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
@@ -448,7 +459,6 @@ pub const InternalState = struct {
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
-        self.title.deinit(self.allocator);
         self.dir.deinit(self.allocator);
         self.design_mode.deinit(self.allocator);
         self.fg_color.deinit(self.allocator);
@@ -609,7 +619,11 @@ pub fn init(
         .is_unloading = &lifecycleIsUnloading,
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
+        .destroy = &lifecycleDestroy,
+        .set_about_base_url = &lifecycleSetAboutBaseUrl,
+        .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
     });
+    @import("dom").document_origin.install(.{ .domain = &originDomain });
 
     return instance;
 }
@@ -620,12 +634,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Set the V8 wrapper for this Document (created in the Document's owning context).
-/// This should be called immediately after creating the Document, before returning
-/// it to any other context. The wrapper ensures cross-context access works correctly.
-pub fn setBoundV8Wrapper(instance: *runtime.Instance, v8_wrapper: *anyopaque) void {
+/// Set the engine's wrapper for this Document (created in the Document's
+/// owning realm). This should be called immediately after creating the
+/// Document, before returning it to any other realm. The wrapper ensures
+/// cross-realm access works correctly.
+pub fn setBoundV8Wrapper(instance: *runtime.Instance, wrapper: *anyopaque) void {
     if (getInternalState(instance)) |internal| {
-        internal.bound_v8_wrapper = v8_wrapper;
+        internal.bound_v8_wrapper = wrapper;
     }
 }
 
@@ -779,9 +794,7 @@ pub fn get_URL(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// context, not the current one: a parent reading `iframe.contentDocument.URL`
 /// must get the iframe's URL.
 fn navigatedUrl(instance: *runtime.Instance) ?[]const u8 {
-    const v8_engine = @import("v8");
-    const v8_context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return null;
-    const url = v8_engine.context_manager.getDocumentUrl(v8_context) orelse return null;
+    const url = instance.ctx.documentUrl() orelse return null;
     return if (url.len == 0) null else url;
 }
 
@@ -1032,13 +1045,111 @@ pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return interfaces.Window.get_location(window) catch null;
 }
 
-/// Getter for domain
-/// HTML §7.5.2 - Returns the document's domain
+/// HTML document.domain's getter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
 pub fn get_domain(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try instance.ctx.allocator.dupe(u8, internal.domain);
+    const allocator = instance.ctx.allocator;
+    // 1. "Let effectiveDomain be this's origin's effective domain."
+    // 2. "If effectiveDomain is null, then return the empty string."
+    // 3. "Return effectiveDomain, serialized." (The binding frees it.)
+    return (try effectiveDomain(instance, internal, allocator)) orelse try allocator.dupe(u8, "");
+}
+
+/// HTML "effective domain" of `document`'s origin, serialized: its domain
+/// when the document.domain setter set one, else its host; null for an
+/// opaque origin. OWNED by `allocator`.
+fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
+    if (internal.domain.len > 0) return try allocator.dupe(u8, internal.domain);
+    const serialized = (try serializedOrigin(document, internal, allocator)) orelse return null;
+    defer allocator.free(serialized);
+    const host = hostOfSerializedOrigin(serialized) orelse return null;
+    return try allocator.dupe(u8, host);
+}
+
+/// `document`'s origin, serialized - its window's (the relevant settings
+/// object's) when it has one, else its URL's - or null for an opaque origin.
+/// OWNED by `allocator`.
+fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
+    if (internal.default_view) |window| {
+        // The getter's string is the window realm's to free.
+        const serialized = try interfaces.Window.get_origin(window);
+        defer window.ctx.allocator.free(serialized);
+        if (std.mem.eql(u8, serialized, "null")) return null;
+        return try allocator.dupe(u8, serialized);
+    }
+    const url = try get_URL(document);
+    defer document.ctx.allocator.free(url);
+    const parsed = (interfaces.URL.call_static_parse(document, url, webidl.Opt(runtime.USVString).notPassed()) catch null) orelse
+        return null;
+    defer runtime.Instance.deinit(parsed);
+    const serialized = try interfaces.URL.get_origin(parsed);
+    defer parsed.ctx.allocator.free(serialized);
+    if (std.mem.eql(u8, serialized, "null")) return null;
+    return try allocator.dupe(u8, serialized);
+}
+
+/// The host of a tuple origin's serialization ("scheme://host[:port]"): an
+/// IPv6 address keeps its brackets. Null when it has no host.
+fn hostOfSerializedOrigin(serialized: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, serialized, "://") orelse return null) + 3;
+    const rest = serialized[start..];
+    if (rest.len == 0) return null;
+    if (rest[0] == '[') return rest[0 .. (std.mem.indexOfScalar(u8, rest, ']') orelse return null) + 1];
+    return rest[0 .. std.mem.indexOfScalar(u8, rest, ':') orelse rest.len];
+}
+
+/// HTML "is a registrable domain suffix of or is equal to":
+/// `host_suffix_string` against `original_host` (a host, serialized).
+fn isRegistrableDomainSuffixOfOrEqualTo(allocator: std.mem.Allocator, host_suffix_string: []const u8, original_host: []const u8) !bool {
+    // 1. "If hostSuffixString is the empty string, then return false."
+    if (host_suffix_string.len == 0) return false;
+    // 2-3. "Let hostSuffix be the result of parsing hostSuffixString. If
+    // hostSuffix is failure, then return false."
+    const host_suffix = url_mod.host_parser.parseHost(allocator, host_suffix_string, false, null) catch return false;
+    defer host_suffix.deinit(allocator);
+    const original = url_mod.host_parser.parseHost(allocator, original_host, false, null) catch return false;
+    defer original.deinit(allocator);
+    const suffix_serialized = try url_mod.host_serializer.serializeHost(allocator, host_suffix);
+    defer allocator.free(suffix_serialized);
+    const original_serialized = try url_mod.host_serializer.serializeHost(allocator, original);
+    defer allocator.free(original_serialized);
+
+    // 4. "If hostSuffix does not equal originalHost, then:"
+    if (!std.mem.eql(u8, suffix_serialized, original_serialized)) {
+        // 4.1. "If hostSuffix or originalHost is not a domain, then return
+        // false." (IP addresses.)
+        if (host_suffix != .domain or original != .domain) return false;
+        // 4.2. "If hostSuffix, prefixed by U+002E (.), does not match the end
+        // of originalHost, then return false."
+        if (!endsWithDotted(original_serialized, suffix_serialized)) return false;
+        // 4.3. "If hostSuffix equals hostSuffix's public suffix; or
+        // hostSuffix, prefixed by U+002E (.), matches the end of
+        // originalHost's public suffix, then return false."
+        const suffix_public = try url_mod.public_suffix.getPublicSuffix(allocator, host_suffix);
+        defer if (suffix_public) |p| allocator.free(p);
+        if (suffix_public) |p| {
+            if (std.mem.eql(u8, p, suffix_serialized)) return false;
+        }
+        const original_public = try url_mod.public_suffix.getPublicSuffix(allocator, original);
+        defer if (original_public) |p| allocator.free(p);
+        if (original_public) |p| {
+            if (endsWithDotted(p, suffix_serialized)) return false;
+        }
+    }
+    // 5. "Return true."
+    return true;
+}
+
+/// Whether `suffix`, prefixed by ".", matches the end of `host`.
+fn endsWithDotted(host: []const u8, suffix: []const u8) bool {
+    return host.len > suffix.len and std.mem.endsWith(u8, host, suffix) and host[host.len - suffix.len - 1] == '.';
+}
+
+/// dom.document_origin: `document`'s origin's domain, or null.
+fn originDomain(document: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(document) orelse return null;
+    return if (internal.domain.len > 0) internal.domain else null;
 }
 
 /// Getter for referrer
@@ -1113,81 +1224,104 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.DocumentReadyS
     return internal.ready_state;
 }
 
-/// Getter for title
-/// HTML §3.1.3 - Returns the document's title
+/// HTML `document.title`'s getter.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
-///
-/// For HTML documents: Returns the text content of the first <title> element
-/// in the document (in document order), with whitespace stripped and collapsed.
-/// Returns empty string if no <title> element exists.
 pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Step 1: If this is an HTML document, find the title element
-    // The title element is the first <title> element in document tree order
-    if (internal.doc_type == .html) {
-        // Find the first <title> element in the document
-        if (findTitleElement(instance)) |title_element| {
-            // Get the text content of the title element
-            if (try interfaces.Node.get_textContent(title_element)) |tc| {
-                var text_content = tc;
-                defer text_content.deinit(instance.ctx.allocator);
-                // Strip and collapse whitespace per spec
-                const stripped = stripAndCollapseWhitespace(instance.ctx.allocator, text_content.asSlice()) catch {
-                    return runtime.DOMString.initEmpty();
-                };
-                return runtime.DOMString.initOwned(stripped);
-            }
-        }
-        // No title element found - return empty string
-        return runtime.DOMString.initEmpty();
-    }
+    // Step 1: "If the document element is an SVG svg element, then let value
+    // be the child text content of the first SVG title element that is a
+    // child of the document element."
+    // Step 2: "Otherwise, let value be the child text content of the title
+    // element, or the empty string if the title element is null."
+    const source: ?*runtime.Instance = if (svgDocumentElement(instance)) |svg|
+        firstChildNamed(svg, svg_namespace, "title")
+    else
+        titleElementOf(instance);
+    const value = if (source) |element| try childTextContent(allocator, element) else try allocator.dupe(u8, "");
+    defer allocator.free(value);
 
-    // For non-HTML documents (XML, SVG), return the cached title
-    // (SVG documents have different title element semantics)
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.title.clone(instance.ctx.allocator);
+    // Steps 3-4: "Strip and collapse ASCII whitespace in value. Return value."
+    return runtime.DOMString.initOwned(try stripAndCollapseWhitespace(allocator, value));
 }
 
-/// Find the first <title> element in the document tree
-fn findTitleElement(document: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(document) orelse return null;
-    const ElementImpl = @import("Element.zig");
+const svg_namespace = "http://www.w3.org/2000/svg";
 
-    // Start from document element (usually <html>)
-    const doc_element = documentElementOf(document) orelse return null;
-
-    // Recursively search for the first <title> element
-    return findTitleElementInSubtree(doc_element, ElementImpl, internal.doc_type == .html);
+/// Whether `node` is an element in `namespace` whose local name is
+/// `local_name`.
+fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []const u8) bool {
+    if ((NodeImpl.getNodeType(node) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    const allocator = node.ctx.allocator;
+    var name = interfaces.Element.get_localName(node) catch return false;
+    defer name.deinit(allocator);
+    if (!std.mem.eql(u8, name.asSlice(), local_name)) return false;
+    var element_namespace = (interfaces.Element.get_namespaceURI(node) catch return false) orelse return false;
+    defer element_namespace.deinit(allocator);
+    return std.mem.eql(u8, element_namespace.asSlice(), namespace);
 }
 
-/// Recursively search for <title> element in subtree
-fn findTitleElementInSubtree(node: *runtime.Instance, comptime ElementImpl: type, is_html: bool) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if this is a <title> element
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const tag_name = elem_internal.local_name.asSlice();
-                const is_title = if (is_html)
-                    std.ascii.eqlIgnoreCase(tag_name, "title")
-                else
-                    std.mem.eql(u8, tag_name, "title");
-
-                if (is_title) {
-                    return c;
-                }
-            }
-
-            // Recursively search descendants
-            if (findTitleElementInSubtree(c, ElementImpl, is_html)) |found| {
-                return found;
-            }
-        }
-        child = NodeImpl.getNextSibling(c);
+/// The first child of `parent` that is an element in `namespace` named
+/// `local_name`, or null.
+fn firstChildNamed(parent: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(parent);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isElementNamed(c, namespace, local_name)) return c;
     }
     return null;
+}
+
+/// The document element, if it is an SVG `svg` element.
+fn svgDocumentElement(document: *runtime.Instance) ?*runtime.Instance {
+    const element = documentElementOf(document) orelse return null;
+    return if (isElementNamed(element, svg_namespace, "svg")) element else null;
+}
+
+/// HTML "the html element": the document element, if it is an html
+/// element.
+fn htmlElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    const element = documentElementOf(document) orelse return null;
+    return if (isElementNamed(element, html_namespace, "html")) element else null;
+}
+
+/// HTML "the head element": the first head element that is a child of the
+/// html element, if there is one, or null otherwise.
+fn headElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    return firstChildNamed(htmlElementOf(document) orelse return null, html_namespace, "head");
+}
+
+/// HTML "the title element": the first title element in the document, in
+/// tree order, if there is one, or null otherwise.
+fn titleElementOf(document: *runtime.Instance) ?*runtime.Instance {
+    return firstDescendantNamed(document, html_namespace, "title");
+}
+
+/// The first inclusive descendant of `root`'s children, in tree order, that
+/// is an element in `namespace` named `local_name`.
+fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        if (isElementNamed(c, namespace, local_name)) return c;
+        if (firstDescendantNamed(c, namespace, local_name)) |found| return found;
+    }
+    return null;
+}
+
+/// DOM "child text content": the concatenation of the data of all the Text
+/// node children of `node`, in tree order. OWNED by `allocator`.
+fn childTextContent(allocator: std.mem.Allocator, node: *runtime.Instance) ![]u8 {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer text.deinit(allocator);
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        // A CDATASection is a Text node too.
+        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        var data = try interfaces.CharacterData.get_data(c);
+        defer data.deinit(c.ctx.allocator);
+        try text.appendSlice(allocator, data.asSlice());
+    }
+    return text.toOwnedSlice(allocator);
 }
 
 /// Strip leading/trailing whitespace and collapse internal whitespace to single spaces
@@ -1271,39 +1405,12 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null; // No body or frameset found
 }
 
-/// Getter for head
-/// HTML §3.1.3 - Returns the head element (the first head child of html element)
+/// HTML `document.head`: the head element - the first head element that is
+/// a child of the html element, if there is one, or null otherwise.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-head
 pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Get document element (should be <html>)
-    const doc_element = documentElementOf(instance) orelse return null;
-
-    // Find first head child of the document element
-    const ElementImpl = @import("Element.zig");
-    var child = NodeImpl.getFirstChild(doc_element);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const tag_name = elem_internal.local_name.asSlice();
-                // Check for head (case-insensitive for HTML)
-                if (internal.doc_type == .html) {
-                    if (std.ascii.eqlIgnoreCase(tag_name, "head")) {
-                        return c;
-                    }
-                } else {
-                    if (std.mem.eql(u8, tag_name, "head")) {
-                        return c;
-                    }
-                }
-            }
-        }
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    return null; // No head element found
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return headElementOf(instance);
 }
 
 /// Helper: Create an HTMLCollection containing elements matching a single tag name
@@ -1441,13 +1548,17 @@ pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrS
 /// HTML §7.3.1 - Returns the Window object associated with the document, or null
 /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
 ///
-/// Returns the Window whose document is this Document, or null if none.
+/// "1. If this's browsing context is null, then return null. 2. Return this's
+/// browsing context's WindowProxy object." A document made without one
+/// (createHTMLDocument, DOMParser) has no view; a document that has been
+/// destroyed - unloaded by a navigation that replaced it, or its frame
+/// removed - has had its browsing context set to null ("destroy" step 7),
+/// though its Window, which it still names, may live on.
 pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
-    if (internal.default_view) |window| {
-        return @ptrCast(window);
-    }
-    return null;
+    if (internal.destroyed) return null;
+    const window = internal.default_view orelse return null;
+    return @ptrCast(window);
 }
 
 /// Set the default view (window) associated with this document.
@@ -1456,9 +1567,12 @@ pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowPro
 pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.default_view = window;
-    // The window aliases this document's wrapper from here on, so the wrapper
-    // cache holds it strongly (see wrapper_cache.holdStrong).
-    @import("v8").wrapper_cache_mod.holdStrong(instance);
+    // The window aliases this document's wrapper from here on - WebKit's
+    // `document` is a strong reference - so it is kept whatever script holds,
+    // until its realm ends. A document whose wrapper was collected under its
+    // window died on the next `document` access
+    // (custom-elements/connected-callbacks.html, SIGTRAP).
+    engine.keepPlatformObjectAlive(instance);
 }
 
 /// Getter for designMode
@@ -1772,20 +1886,42 @@ pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) a
     return setEventHandler(instance, "resume", value);
 }
 
-/// Setter for domain
-/// HTML §7.5.2 - Sets the document's domain (for same-origin policy relaxation)
+/// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
-/// Note: This is deprecated and has security implications
+///
+/// Deviation, stated: step 2's sandboxed document.domain browsing context
+/// flag is not read - a document here cannot see its browsing context's
+/// sandboxing flags. A sandboxed frame without allow-same-origin has an
+/// opaque origin and throws at step 4 anyway; one with allow-same-origin can
+/// set its domain, where the spec throws.
 pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = instance.ctx.allocator;
 
-    // Free old domain if it was allocated
-    if (internal.domain.len > 0) {
-        internal.allocator.free(internal.domain);
-    }
+    // 1. "If this's browsing context is null, then throw a SecurityError." A
+    // document has one here exactly when it has a window.
+    if (internal.default_view == null) return error.SecurityError;
 
-    // Clone the new domain value
-    internal.domain = internal.allocator.dupe(u8, value) catch return error.OutOfMemory;
+    // 3-4. "Let effectiveDomain be this's origin's effective domain. If
+    // effectiveDomain is null, then throw a SecurityError."
+    const effective = (try effectiveDomain(instance, internal, allocator)) orelse return error.SecurityError;
+    defer allocator.free(effective);
+
+    // 5. "If the given value is not a registrable domain suffix of and is not
+    // equal to effectiveDomain, then throw a SecurityError."
+    if (!try isRegistrableDomainSuffixOfOrEqualTo(allocator, value, effective)) return error.SecurityError;
+
+    // 6. "If the surrounding agent's agent cluster's is origin-keyed is true,
+    // then return." Crane's agent clusters are site-keyed
+    // (Window.originAgentCluster is false).
+
+    // 7. "Set this's origin's domain to the result of parsing the given
+    // value."
+    const host = url_mod.host_parser.parseHost(allocator, value, false, null) catch return error.SecurityError;
+    defer host.deinit(allocator);
+    const domain = try url_mod.host_serializer.serializeHost(internal.allocator, host);
+    if (internal.domain.len > 0) internal.allocator.free(internal.domain);
+    internal.domain = domain;
 }
 
 /// Setter for cookie
@@ -1864,14 +2000,64 @@ pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) anyerro
     };
 }
 
-/// Setter for title
-/// HTML §3.1.3 - Sets the document's title
+/// HTML `document.title`'s setter: the steps of the first matching
+/// condition.
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
 pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.title.deinit(internal.allocator);
-    internal.title = value.clone(internal.allocator) catch return error.OutOfMemory;
-    // TODO: Update the <title> element in the DOM if it exists
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+
+    const element: *runtime.Instance = if (svgDocumentElement(instance)) |svg| blk: {
+        // "If the document element is an SVG svg element":
+        // 1. "If there is an SVG title element that is a child of the
+        //    document element, let element be the first such element."
+        if (firstChildNamed(svg, svg_namespace, "title")) |title| break :blk title;
+        // 2. "Otherwise: let element be the result of creating an element
+        //    given the document element's node document, "title", and the
+        //    SVG namespace. Insert element as the first child of the
+        //    document element."
+        const title = try createTitle(instance, svg_namespace);
+        errdefer NodeImpl.deinitNodeByType(title);
+        _ = try interfaces.Node.call_insertBefore(svg, title, NodeImpl.getFirstChild(svg));
+        break :blk title;
+    } else if (documentElementInHtmlNamespace(instance)) blk: {
+        // "If the document element is in the HTML namespace":
+        // 2. "If the title element is non-null, let element be the title
+        //    element."
+        if (titleElementOf(instance)) |title| break :blk title;
+        // 1. "If the title element is null and the head element is null,
+        //    then return."
+        const head = headElementOf(instance) orelse return;
+        // 3. "Otherwise: let element be the result of creating an element
+        //    given the document element's node document, "title", and the
+        //    HTML namespace. Append element to the head element."
+        const title = try createTitle(instance, html_namespace);
+        errdefer NodeImpl.deinitNodeByType(title);
+        _ = try interfaces.Node.call_appendChild(head, title);
+        break :blk title;
+    } else {
+        // "Otherwise: do nothing."
+        return;
+    };
+
+    // "String replace all with the given value within element" - the
+    // textContent setter's steps for an element.
+    try interfaces.Node.set_textContent(element, value);
+}
+
+/// Whether the document element is in the HTML namespace.
+fn documentElementInHtmlNamespace(document: *runtime.Instance) bool {
+    const element = documentElementOf(document) orelse return false;
+    if ((NodeImpl.getNodeType(element) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    const allocator = element.ctx.allocator;
+    var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
+    defer namespace.deinit(allocator);
+    return std.mem.eql(u8, namespace.asSlice(), html_namespace);
+}
+
+/// "Create an element" given `document` (the document element's node
+/// document), "title" and `namespace`.
+fn createTitle(document: *runtime.Instance, namespace: []const u8) !*runtime.Instance {
+    return createAnElement(document, "title", namespace, null);
 }
 
 /// Setter for dir
@@ -2244,7 +2430,21 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // document's node navigable."
     @import("dom").content_navigables.stopLoading(instance);
 
-    // Steps 9-14: Remove all nodes from document
+    // Step 9: "For each shadow-including inclusive descendant node of
+    // document, erase all event listeners and handlers given node." (No
+    // shadow trees exist yet.)
+    eraseListenersOfTree(instance);
+
+    // Step 10: "If document is the associated Document of document's
+    // relevant global object, then erase all event listeners and handlers
+    // given document's relevant global object."
+    if (internal.default_view) |window| {
+        if ((interfaces.Window.get_document(window) catch null) == instance) {
+            EventTargetImpl.eraseAllEventListenersAndHandlers(window);
+        }
+    }
+
+    // Step 11: "Replace all with null within document."
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
@@ -2269,13 +2469,31 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     internal.write_buffer.clearRetainingCapacity();
 
     // Step 18: "Update the current document readiness of document to
-    // "loading"." Not implemented, stated: steps 9-10 (erase the listeners
-    // and handlers of the document and its window) and 14 (mute the iframe
-    // load event).
+    // "loading"." Not implemented, stated: step 14 (mute the iframe load
+    // event).
     updateReadiness(instance, ._loading_);
 
     // Return the document
     return instance;
+}
+
+/// document.open() step 9: "erase all event listeners and handlers" of
+/// `document` and each of its descendants, in tree order.
+fn eraseListenersOfTree(document: *runtime.Instance) void {
+    var node: ?*runtime.Instance = document;
+    while (node) |current| {
+        EventTargetImpl.eraseAllEventListenersAndHandlers(current);
+        if (NodeImpl.getFirstChild(current)) |first| {
+            node = first;
+            continue;
+        }
+        var cursor = current;
+        node = while (true) {
+            if (cursor == document) break null;
+            if (NodeImpl.getNextSibling(cursor)) |next| break next;
+            cursor = NodeImpl.getParent(cursor) orelse break null;
+        };
+    }
 }
 
 /// Operation: hasUnpartitionedCookieAccess
@@ -2662,91 +2880,114 @@ pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: run
     return pi;
 }
 
-/// Operation: createEvent
-/// DOM §4.6.1 - Creates a legacy event object
+/// DOM `createEvent(interface)` (legacy).
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createevent
-///
-/// This is a legacy API for creating events. New code should use event constructors instead.
-///
-/// Spec steps:
-/// 1. Let constructor be null
-/// 2. If interface is ASCII case-insensitive match for strings in table, set constructor
-/// 3. If constructor is null, throw "NotSupportedError"
-/// 4. If interface not exposed on relevant global object, throw "NotSupportedError"
-/// 5. Return result of creating an event given constructor
 pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
-    const interface_slice = interface.asSlice();
 
-    // Step 2: Check ASCII case-insensitive match against known event types
-    // Convert to lowercase for comparison
-    var lowercase_buf: [64]u8 = undefined;
-    if (interface_slice.len > lowercase_buf.len) {
-        return error.NotSupportedError;
-    }
+    // Steps 1-2: "Let constructor be null. If interface is an ASCII
+    // case-insensitive match for any of the strings in the first column in
+    // the following table, then set constructor to the interface in the
+    // second column on the same row as the matching string."
+    // Step 3: "If constructor is null, then throw a NotSupportedError."
+    const constructor = legacyEventInterface(interface.asSlice()) orelse return error.NotSupportedError;
 
-    for (interface_slice, 0..) |c, i| {
-        lowercase_buf[i] = std.ascii.toLower(c);
-    }
-    const lowercase_interface = lowercase_buf[0..interface_slice.len];
+    // Step 4: "If the interface indicated by constructor is not exposed on the
+    // relevant global object of this, then throw a NotSupportedError." Every
+    // interface in the table is exposed on Window here - TouchEvent too, since
+    // this engine exposes the legacy touch event APIs (`ontouchstart` is in
+    // document) - and a document's relevant global is a Window.
 
-    // Step 2: Match against known event type strings
-    // For now, we only support basic Event type
-    // Full spec requires: BeforeUnloadEvent, CompositionEvent, CustomEvent,
-    // DeviceMotionEvent, DeviceOrientationEvent, DragEvent, Event, FocusEvent,
-    // HashChangeEvent, KeyboardEvent, MessageEvent, MouseEvent, StorageEvent,
-    // TextEvent, TouchEvent, UIEvent
+    // Step 5: "Let event be the result of creating an event given
+    // constructor": its constructor with the dictionary undefined converts
+    // to - where it has one - and otherwise a new object of the interface.
+    // Steps 6-8 fall out of that: type is "", timeStamp is the current high
+    // resolution time, isTrusted is false.
+    const event = try createLegacyEvent(instance.ctx, constructor);
 
-    const is_event = std.mem.eql(u8, lowercase_interface, "event") or
-        std.mem.eql(u8, lowercase_interface, "events") or
-        std.mem.eql(u8, lowercase_interface, "htmlevents") or
-        std.mem.eql(u8, lowercase_interface, "svgevents");
-
-    const is_uievent = std.mem.eql(u8, lowercase_interface, "uievent") or
-        std.mem.eql(u8, lowercase_interface, "uievents");
-
-    const is_mouseevent = std.mem.eql(u8, lowercase_interface, "mouseevent") or
-        std.mem.eql(u8, lowercase_interface, "mouseevents");
-
-    const is_customevent = std.mem.eql(u8, lowercase_interface, "customevent");
-
-    // TODO: Add support for other event types when they're implemented:
-    // - KeyboardEvent, FocusEvent, TouchEvent, etc.
-
-    // Step 3: If constructor is null, throw "NotSupportedError"
-    if (!is_event and !is_uievent and !is_mouseevent and !is_customevent) {
-        return error.NotSupportedError;
-    }
-
-    // Step 4: Interface exposure check (skipped for now - all Event types are exposed)
-
-    // Step 5: Create an event
-    // For now, we create a basic Event for all types
-    // Proper implementation would create specific event subtypes (UIEvent, MouseEvent, etc.)
-    // Note: The created event is in an uninitialized state
-    // The caller must call initEvent() to initialize it - this matches legacy behavior per spec
-
-    // Create with empty type and default EventInit (not initialized)
-    const event_init = dictionaries.EventInit{
-        .bubbles = false,
-        .cancelable = false,
-        .composed = false,
-    };
-    // Use interface instead of impl (per Golden Rule #13)
-    const event = try interfaces.Event.call_constructor(instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
-
-    // Steps 6-8 fall out of constructing with an empty type: type is "",
-    // isTrusted is false, timeStamp is current high resolution time.
-
-    // Step 9: Unset event's initialized flag.
-    //
-    // The Event constructor SETS it, so without this the event created here is
-    // indistinguishable from `new Event("")` and `dispatchEvent` never throws -
-    // which is exactly what "If the event's initialized flag is not set, an
-    // InvalidStateError must be thrown" checks. `initEvent` sets it again.
+    // Step 9: "Unset event's initialized flag." Creating it SETS it, so
+    // without this the event is indistinguishable from `new Event("")` and
+    // dispatchEvent never throws - which is exactly what "If the event's
+    // initialized flag is not set, an InvalidStateError must be thrown"
+    // checks. initEvent() sets it again.
     EventImpl.setInitializedFlag(event, false);
 
+    // Step 10.
     return event;
+}
+
+/// The interfaces createEvent() can create.
+const LegacyEventInterface = enum {
+    BeforeUnloadEvent,
+    CompositionEvent,
+    CustomEvent,
+    DeviceMotionEvent,
+    DeviceOrientationEvent,
+    DragEvent,
+    Event,
+    FocusEvent,
+    HashChangeEvent,
+    KeyboardEvent,
+    MessageEvent,
+    MouseEvent,
+    StorageEvent,
+    TextEvent,
+    TouchEvent,
+    UIEvent,
+};
+
+/// createEvent() step 2's table: each string, and the interface it names.
+const legacy_event_table = [_]struct { []const u8, LegacyEventInterface }{
+    .{ "beforeunloadevent", .BeforeUnloadEvent },
+    .{ "compositionevent", .CompositionEvent },
+    .{ "customevent", .CustomEvent },
+    .{ "devicemotionevent", .DeviceMotionEvent },
+    .{ "deviceorientationevent", .DeviceOrientationEvent },
+    .{ "dragevent", .DragEvent },
+    .{ "event", .Event },
+    .{ "events", .Event },
+    .{ "focusevent", .FocusEvent },
+    .{ "hashchangeevent", .HashChangeEvent },
+    .{ "htmlevents", .Event },
+    .{ "keyboardevent", .KeyboardEvent },
+    .{ "messageevent", .MessageEvent },
+    .{ "mouseevent", .MouseEvent },
+    .{ "mouseevents", .MouseEvent },
+    .{ "storageevent", .StorageEvent },
+    .{ "svgevents", .Event },
+    .{ "textevent", .TextEvent },
+    .{ "touchevent", .TouchEvent },
+    .{ "uievent", .UIEvent },
+    .{ "uievents", .UIEvent },
+};
+
+/// The interface `name` names in createEvent()'s table - an ASCII
+/// case-insensitive match - or null.
+fn legacyEventInterface(name: []const u8) ?LegacyEventInterface {
+    for (legacy_event_table) |row| {
+        if (std.ascii.eqlIgnoreCase(name, row[0])) return row[1];
+    }
+    return null;
+}
+
+/// DOM "create an event" given `interface`, in `realm`, less its step 4
+/// (isTrusted stays false, as createEvent() wants it).
+fn createLegacyEvent(realm: runtime.Context, interface: LegacyEventInterface) anyerror!*runtime.Instance {
+    switch (interface) {
+        inline else => |tag| {
+            const Interface = @field(interfaces, @tagName(tag));
+            if (comptime @hasDecl(Interface, "call_constructor")) {
+                // Step 2: the dictionary the JavaScript value undefined
+                // converts to - the constructor's, not passed.
+                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".params[2].type.?;
+                return Interface.call_constructor(realm, runtime.DOMString.initEmpty(), Dictionary.notPassed());
+            } else {
+                // No constructor (BeforeUnloadEvent, TextEvent): a new object
+                // of the interface, with the Event defaults.
+                return Interface.init(realm.allocator, realm);
+            }
+        },
+    }
 }
 
 /// Operation: getBoxQuads
@@ -3648,10 +3889,14 @@ fn theEnd(instance: *runtime.Instance) void {
 /// readiness to "interactive"."
 fn lifecycleParsingStopped(document: *runtime.Instance) void {
     // A parser that runs outside script - the top-level one, loading a page -
-    // has no scope open, and readystatechange needs one.
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
-    defer scope.deinit();
-    updateReadiness(document, ._interactive_);
+    // is in no realm, and readystatechange's listeners run in the document's.
+    engine.runInRealm(document.ctx, becomeInteractive, document) catch |err| {
+        log.debug("readystatechange (interactive) not fired: {}", .{err});
+    };
+}
+
+fn becomeInteractive(data: ?*anyopaque) void {
+    updateReadiness(@ptrCast(@alignCast(data.?)), ._interactive_);
 }
 
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
@@ -3729,11 +3974,28 @@ fn lifecycleIsUnloading(document: *runtime.Instance) bool {
 /// cancels the event or sets its returnValue is recorded in the result's
 /// `prompt_requested` and changes nothing else, as in a browser whose user
 /// never interacted with the page.
-fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").document_lifecycle.BeforeUnloadResult {
+fn lifecycleFireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
+    var call: BeforeUnloadCall = .{ .document = document };
+    engine.runInRealm(document.ctx, BeforeUnloadCall.steps, &call) catch return .{};
+    return call.result;
+}
+
+const BeforeUnloadResult = @import("dom").document_lifecycle.BeforeUnloadResult;
+
+/// The steps to fire beforeunload, run in the document's realm.
+const BeforeUnloadCall = struct {
+    document: *runtime.Instance,
+    result: BeforeUnloadResult = .{},
+
+    fn steps(data: ?*anyopaque) void {
+        const call: *BeforeUnloadCall = @ptrCast(@alignCast(data.?));
+        call.result = fireBeforeUnload(call.document);
+    }
+};
+
+fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const internal = getInternal(document) orelse return .{};
     const window = (get_defaultView(document) catch null) orelse return .{};
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return .{};
-    defer scope.deinit();
 
     // Step 2: "Increase the document's unload counter by 1." Step 7 lowers
     // it again, however the event handlers leave.
@@ -3767,10 +4029,15 @@ fn lifecycleFireBeforeUnload(document: *runtime.Instance) @import("dom").documen
 /// Steps 16 and 18-20 (suspended timers, cleanup steps, destroy) are the
 /// navigable's: navigation clears the window's timers once this returns.
 fn lifecycleUnload(document: *runtime.Instance) void {
+    engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
+        log.debug("unload not run: {}", .{err});
+    };
+}
+
+fn unloadSteps(data: ?*anyopaque) void {
+    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
     const internal = getInternal(document) orelse return;
     const window = (get_defaultView(document) catch null) orelse return;
-    const scope = @import("v8").JsScope.init(document.ctx) orelse return;
-    defer scope.deinit();
 
     // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
     // lowers it after the unload event.
@@ -3797,6 +4064,46 @@ fn lifecycleUnload(document: *runtime.Instance) void {
     // Step 14.
     termination_nesting.leave();
     terminating = false;
+    // Step 19: "If oldDocument's salvageable state is false, then destroy
+    // oldDocument." Its handlers above still saw it fully active.
+    if (!internal.salvageable) lifecycleDestroy(document);
+}
+
+/// dom.document_lifecycle: HTML "destroy" `document` (§7.5.5), the steps
+/// that are the document's own. Step 2: "Set document's salvageable state to
+/// false." Step 7: "Set document's browsing context to null." Not modelled
+/// here, stated: steps 1 and 3-6 and 8-9 - its descendants' documents are
+/// the navigable's to destroy (they are destroyed first), its tasks are
+/// dropped by the event loop's fully-active check, and its message ports,
+/// fetches and worker owner sets are not tracked per document.
+fn lifecycleDestroy(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.salvageable = false;
+    internal.destroyed = true;
+}
+
+/// dom.document_lifecycle: set `document`'s about base URL (a copy).
+fn lifecycleSetAboutBaseUrl(document: *runtime.Instance, url: ?[]const u8) void {
+    const internal = getInternal(document) orelse return;
+    const copy: ?[]u8 = if (url) |u| internal.allocator.dupe(u8, u) catch return else null;
+    if (internal.about_base_url) |old| internal.allocator.free(old);
+    internal.about_base_url = copy;
+}
+
+/// dom.document_lifecycle: "fallback base URL" steps 1-2. "1. If document is
+/// an iframe srcdoc document, then: assert document's about base URL is
+/// non-null; return document's about base URL. 2. If document's URL matches
+/// about:blank and document's about base URL is non-null, then return
+/// document's about base URL." Crane has no separate srcdoc flag: a document
+/// at about:srcdoc is one.
+fn lifecycleAboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(document) orelse return null;
+    const about = internal.about_base_url orelse return null;
+    const url = get_URL(document) catch return null;
+    defer document.ctx.allocator.free(url);
+    const navigate_steps = @import("html_core").navigation.navigate_steps;
+    if (navigate_steps.matchesAboutSrcdoc(url) or navigate_steps.matchesAboutBlank(url)) return about;
+    return null;
 }
 
 /// Page Visibility "update the visibility state" of `document`.
@@ -3850,10 +4157,14 @@ fn runLifecycleTask(context: ?*anyopaque) void {
     defer task.allocator.destroy(task);
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
-    // A task runs from the event loop, not from V8, so it opens the scope and
-    // enters the context an event needs.
-    const scope = @import("v8").JsScope.init(task.target.ctx) orelse return;
-    defer scope.deinit();
+    // A task runs from the event loop, in no realm: it runs in the target's.
+    engine.runTaskInRealm(task.target.ctx, lifecycleTaskSteps, task) catch |err| {
+        log.debug("document lifecycle task not run: {}", .{err});
+    };
+}
+
+fn lifecycleTaskSteps(data: ?*anyopaque) void {
+    const task: *LifecycleTask = @ptrCast(@alignCast(data.?));
 
     // The event loop runs only a task whose document is fully active: a
     // navigation that replaced the document before its "the end" ran leaves

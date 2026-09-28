@@ -86,9 +86,12 @@ const CacheEntry = struct {
     /// onObjectFreed since the instance is already cleaned up.
     instance_already_cleaned: bool = false,
 
-    /// True while the wrapper is held strongly (no weak arm): the node has a
-    /// parent, or the document has a window. See installTreeHooks.
+    /// True while the wrapper is held strongly (no weak arm): some reason in
+    /// `shouldBeStrong` holds. Kept equal to it by `syncEntry`.
     strong: bool = false,
+
+    /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
+    holds: Holds = .{},
 
     /// Set to true when the cache is being destroyed. This allows pending
     /// weak callbacks to detect that they should skip cleanup because:
@@ -114,6 +117,30 @@ const CacheEntry = struct {
     /// callback ran - differs here even when vtable and state match.
     original_generation: u64,
 };
+
+/// Why a wrapper is held strongly, beyond what `engineOwns` reads off the
+/// instance itself. Orthogonal reasons: each is set and cleared by its own
+/// caller, and the wrapper is weak only when none remains (`shouldBeStrong`).
+/// Blink keeps these apart the same way - a document is reachable from its
+/// frame, while an ActiveScriptWrappable is kept by HasPendingActivity()
+/// (platform/bindings/active_script_wrappable_base.h) - so ending one reason
+/// never drops another.
+const Holds = packed struct {
+    /// A window's document (`holdStrong`): the window aliases the wrapper.
+    document: bool = false,
+    /// Pending activity (`holdForPendingActivity`): a running Worker, which
+    /// must outlive whatever script holds of it until it is terminated.
+    pending_activity: bool = false,
+};
+
+/// Whether `entry`'s wrapper must be held strongly: a caller's reason
+/// (`Holds`), or the engine owning the instance (a node in a tree, a window's
+/// document, Location or History, a streams-graph object). The default - no
+/// reason - is weak, and only then.
+fn shouldBeStrong(entry: *const CacheEntry) bool {
+    if (entry.holds.document or entry.holds.pending_activity) return true;
+    return engineOwns(entry.instance);
+}
 
 /// Dispose an entry's V8 handle, first dropping any alias to it.
 ///
@@ -176,17 +203,24 @@ fn slotReissued(entry: *const CacheEntry) bool {
 fn engineOwns(instance: *runtime.Instance) bool {
     if (isStreamsGraphObject(instance.vtable.name)) return true;
     if (isWindowOwned(instance)) return true;
-    const NodeImpl = @import("impls").Node;
-    if (NodeImpl.getInternalState(instance)) |node_internal| {
-        if (node_internal.node_base) |node_base| {
-            if (node_base.parent_node != null) return true;
-        }
-    }
+    if (treeOwns(instance)) return true;
     const DocumentImpl = @import("impls").Document;
     if (DocumentImpl.getInternalState(instance)) |doc_internal| {
         if (doc_internal.default_view != null) return true;
     }
     return false;
+}
+
+/// True for a node with a parent: its tree holds it - the parent's child list
+/// points at it - and only the tree's teardown may free it (Node.deinit walks a
+/// root's subtree). WebKit asserts the same in Node::~Node: a node is never
+/// destroyed while it has a parent. Anything that is not a node, and a node
+/// that is a root, answers false and is freed as before.
+pub fn treeOwns(instance: *runtime.Instance) bool {
+    const NodeImpl = @import("impls").Node;
+    const node_internal = NodeImpl.getInternalState(instance) orelse return false;
+    const node_base = node_internal.node_base orelse return false;
+    return node_base.parent_node != null;
 }
 
 /// A window's Location and History: the Window holds each in its own state,
@@ -275,7 +309,8 @@ fn onNodeRemoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").No
 }
 
 fn syncStrength(node: *@import("dom").NodeBase) void {
-    setStrong(instanceOfNode(node) orelse return, node.parent_node != null);
+    const entry = entryOf(instanceOfNode(node) orelse return) orelse return;
+    syncEntry(entry);
 }
 
 fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
@@ -292,15 +327,59 @@ fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
 /// LookupIterator::GetRootForNonJSReceiver on the next `document` access
 /// (custom-elements/connected-callbacks.html, SIGTRAP).
 pub fn holdStrong(instance: *runtime.Instance) void {
-    setStrong(instance, true);
+    const entry = entryOf(instance) orelse return;
+    entry.holds.document = true;
+    syncEntry(entry);
 }
 
-/// Hold or release `instance`'s wrapper, if its context's cache has one.
-fn setStrong(instance: *runtime.Instance, strong: bool) void {
-    const cache_storage = instance.ctx.getV8WrapperCacheStorage() orelse return;
-    const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-    if (cache.is_tearing_down) return;
+/// Blink's ActiveScriptWrappable: hold `instance`'s wrapper while it has
+/// pending activity - a running Worker, a timeout signal whose timer is
+/// pending - whatever script holds of it. Ended by `releasePendingActivity`.
+/// The activity can begin before script has seen the instance (a signal is
+/// made, and its timer armed, before the binding wraps it): the hold is then
+/// recorded against the instance and taken by its wrapper when it is made.
+pub fn holdForPendingActivity(instance: *runtime.Instance) void {
+    const cache = cacheOf(instance) orelse return;
+    if (cache.cache.get(instance)) |entry| {
+        entry.holds.pending_activity = true;
+        syncEntry(entry);
+        return;
+    }
+    cache.pending_before_wrap.put(cache.allocator, instance, runtime.SlabAllocator.generationOf(instance)) catch {};
+}
+
+/// `instance` has no pending activity any more (HasPendingActivity() turned
+/// false): its wrapper is collectable again, unless another reason holds it.
+/// Idempotent; a no-op for an instance never held this way.
+pub fn releasePendingActivity(instance: *runtime.Instance) void {
+    const cache = cacheOf(instance) orelse return;
+    _ = cache.pending_before_wrap.remove(instance);
     const entry = cache.cache.get(instance) orelse return;
+    if (!entry.holds.pending_activity) return;
+    entry.holds.pending_activity = false;
+    syncEntry(entry);
+}
+
+/// `instance`'s realm's cache, or null when it has none or it is being torn
+/// down.
+fn cacheOf(instance: *runtime.Instance) ?*WrapperCache {
+    const cache_storage = instance.ctx.getV8WrapperCacheStorage() orelse return null;
+    const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+    if (cache.is_tearing_down) return null;
+    return cache;
+}
+
+/// `instance`'s entry in its realm's cache, or null when it has no wrapper
+/// there or the cache is being torn down.
+fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
+    const cache = cacheOf(instance) orelse return null;
+    return cache.cache.get(instance);
+}
+
+/// Arm or disarm `entry`'s weak callback to match `shouldBeStrong` - the one
+/// path by which a wrapper's strength changes after it is made.
+fn syncEntry(entry: *CacheEntry) void {
+    const strong = shouldBeStrong(entry);
     if (entry.strong == strong) return;
     if (strong) {
         v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
@@ -319,6 +398,15 @@ fn setStrong(instance: *runtime.Instance, strong: bool) void {
 /// wraps it. Freeing it on the first wrapper's death left the other realm's
 /// wrapper, and the element's [SameObject] cache, on freed memory.
 threadlocal var live_caches: std.ArrayListUnmanaged(*WrapperCache) = .empty;
+
+/// The wrappers every live cache on this thread holds - every realm's - for
+/// the diagnostics tier (protocol.zig diagnosticCounters,
+/// `wrapper_cache_entries`).
+pub fn liveEntryCount() usize {
+    var total: usize = 0;
+    for (live_caches.items) |cache| total += cache.size();
+    return total;
+}
 
 /// Whether a live cache other than `except` holds a wrapper for this very
 /// instance - same slot, same generation.
@@ -507,6 +595,11 @@ pub const WrapperCache = struct {
     /// Whether this cache is in `live_caches`.
     registered: bool = false,
 
+    /// Pending-activity holds placed before the instance was wrapped
+    /// (`holdForPendingActivity`), by slab generation so a reissued address
+    /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
+    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+
     const Self = @This();
 
     /// Initialize a new wrapper cache
@@ -635,6 +728,19 @@ pub const WrapperCache = struct {
                 // 5. Yet another instance Z was allocated at same address
                 // 6. Cache deinit runs, entry.instance points to Z, not Y
                 log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*} orig_vtable={*} curr_vtable={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable });
+            } else if (treeOwns(entry.instance)) {
+                // A node still in a tree is the tree's to free, whatever
+                // realm's cache wrapped it. Freed here, in hash order, a child
+                // went before its detached root and the root's teardown walk
+                // read the freed child; and a parent document's node wrapped
+                // in a frame's realm went while the parent's tree still held
+                // it. Only the wrapper goes: the root's teardown frees the
+                // node - this cache's, if the root is wrapped here.
+                //
+                // The other order was already safe: a root freed first frees
+                // its children in Node.deinit, which marks each one's cleanup
+                // started, so a child's entry reached after its root is
+                // skipped above as `is_started`.
             } else if (wrappedElsewhere(entry.instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
             } else {
@@ -656,6 +762,7 @@ pub const WrapperCache = struct {
         log.debug("[wrapper_cache.deinit] Summary: processed={}, iframes={}, skipped_cleaned={}, skipped_started={}", .{ processed, iframe_count, skipped_cleaned, skipped_started });
         self.unregister();
         self.cache.deinit();
+        self.pending_before_wrap.deinit(self.allocator);
     }
 
     /// Clean up cache without calling onObjectFreed callbacks.
@@ -716,6 +823,7 @@ pub const WrapperCache = struct {
 
         self.unregister();
         self.cache.deinit();
+        self.pending_before_wrap.deinit(self.allocator);
     }
 
     /// Join `live_caches` - on first use, when this cache's address is
@@ -810,7 +918,11 @@ pub const WrapperCache = struct {
         // the way they do in WebKit and Blink. It goes weak when the node
         // becomes a root (installTreeHooks), and the teardown sweep frees it
         // otherwise.
-        if (engineOwns(instance)) {
+        // A pending-activity hold placed before the wrapper existed.
+        if (self.pending_before_wrap.fetchRemove(instance)) |held| {
+            if (held.value == entry.original_generation) entry.holds.pending_activity = true;
+        }
+        if (shouldBeStrong(entry)) {
             entry.strong = true;
         } else {
             v8.v8_Global_SetWeak(
