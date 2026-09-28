@@ -132,3 +132,15 @@ test "in an attribute value, a legacy name followed by an alphanumeric or = is l
     const p = body.first_child.?;
     try testing.expectEqualStrings("&notit; ¬x &amp=1 &c", p.attributes.toSlice()[0].value);
 }
+
+test "the character after a numeric character reference is kept" {
+    // The numeric character reference end state consumes nothing: entered
+    // after the ";", or reconsuming the character that ended the digits, it
+    // hands that character to the return state. The tokenizer consumed one
+    // more character to run the state, and dropped it: "&#65;x" read "A".
+    try expectBody("<p>&#65;x &#66x &#x43;y &#x44y</p>",
+        \\<p>
+        \\  "Ax Bx Cy Dy"
+        \\
+    );
+}

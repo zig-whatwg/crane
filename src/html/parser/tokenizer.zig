@@ -2593,13 +2593,16 @@ pub const Tokenizer = struct {
             self.character_reference_code +|= @intCast(char.getCodepoint().? - 0x57);
             return null;
         } else if (char.is(';')) {
-            self.state = .numeric_character_reference_end;
-            return null;
+            // "Switch to the numeric character reference end state" - which
+            // consumes nothing, so its steps run now.
+            return try self.numericCharacterReferenceEnd();
         } else {
             self.reportError(.missing_semicolon_after_character_reference);
+            // "Reconsume in the numeric character reference end state": it
+            // consumes nothing either, so the return state reconsumes this
+            // character after it.
             self.reconsume = true;
-            self.state = .numeric_character_reference_end;
-            return null;
+            return try self.numericCharacterReferenceEnd();
         }
     }
 
@@ -2612,18 +2615,33 @@ pub const Tokenizer = struct {
             self.character_reference_code +|= @intCast(char.getCodepoint().? - 0x30);
             return null;
         } else if (char.is(';')) {
-            self.state = .numeric_character_reference_end;
-            return null;
+            // "Switch to the numeric character reference end state" - which
+            // consumes nothing, so its steps run now.
+            return try self.numericCharacterReferenceEnd();
         } else {
             self.reportError(.missing_semicolon_after_character_reference);
+            // "Reconsume in the numeric character reference end state": it
+            // consumes nothing either, so the return state reconsumes this
+            // character after it.
             self.reconsume = true;
-            self.state = .numeric_character_reference_end;
-            return null;
+            return try self.numericCharacterReferenceEnd();
         }
     }
 
     /// §13.2.5.80 Numeric character reference end state
+    ///
+    /// The state consumes no input character: the states that switch to it run
+    /// its steps directly (`numericCharacterReferenceEnd`), so the character
+    /// after the reference - the one after ";", or the one that ended the
+    /// digits - is the return state's. Running it as an ordinary state
+    /// consumed one character to run it and dropped it ("&#65;x" read "A").
     fn numericCharacterReferenceEndState(self: *Tokenizer) !?Token {
+        self.reconsume = true;
+        return self.numericCharacterReferenceEnd();
+    }
+
+    /// The numeric character reference end state's steps.
+    fn numericCharacterReferenceEnd(self: *Tokenizer) !?Token {
         var code = self.character_reference_code;
 
         // Apply replacements per spec
