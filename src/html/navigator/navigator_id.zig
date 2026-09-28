@@ -151,12 +151,10 @@ fn getPlatformString(allocator: Allocator) ![]const u8 {
     return try allocator.dupe(u8, platform_str);
 }
 
-/// Get the user agent string.
+/// The user agent string: HTML's "default `User-Agent` value", which is
+/// Fetch's - the one fetch sends (fetch.internal.user_agent).
 fn getUserAgentString(allocator: Allocator) ![]const u8 {
-    // A reasonable default user agent string
-    // In production, this would be configurable
-    const user_agent = "Mozilla/5.0 (compatible; WHATWG-Zig/1.0)";
-    return try allocator.dupe(u8, user_agent);
+    return try allocator.dupe(u8, @import("fetch").internal.user_agent.default_user_agent);
 }
 
 // ============================================================================

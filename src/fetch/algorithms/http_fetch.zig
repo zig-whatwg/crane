@@ -567,15 +567,8 @@ fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest
     };
 }
 
-/// The environment default `User-Agent` value (Fetch: implementation
-/// defined; HTML's navigator.userAgent is to return it). The same per-OS
-/// string src/webidl/impls/Navigator.zig's userAgent getter returns.
-pub const default_user_agent = switch (@import("builtin").os.tag) {
-    .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) WhatWG-Zig/1.0",
-    .linux => "Mozilla/5.0 (X11; Linux x86_64) WhatWG-Zig/1.0",
-    .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WhatWG-Zig/1.0",
-    else => "Mozilla/5.0 WhatWG-Zig/1.0",
-};
+/// The environment default `User-Agent` value (internal/user_agent.zig).
+pub const default_user_agent = @import("../internal/user_agent.zig").default_user_agent;
 
 /// Fetch "append a request `Origin` header" for `request`: the value to
 /// append, or null when it appends none. OWNED.
