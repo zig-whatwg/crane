@@ -30,6 +30,9 @@ const engine = @import("engine");
 // Module script loading: the module map, graph fetching, linking, running.
 const module_script = @import("module_script.zig");
 
+// The request the script fetches build.
+const script_request = @import("script_request.zig");
+
 // "Report an exception": where a script's uncaught exception goes.
 const report_exception = @import("report_exception.zig");
 
@@ -142,6 +145,8 @@ pub fn prepareScriptElementWithLoader(
 const FetchedSource = struct {
     body: ?[]const u8,
     allocator: std.mem.Allocator,
+    /// The script's muted errors ("fetch a classic script" step 5.5).
+    muted: bool = false,
 
     fn deinit(self: *FetchedSource) void {
         if (self.body) |b| self.allocator.free(b);
@@ -149,15 +154,15 @@ const FetchedSource = struct {
     }
 };
 
-fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
+fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
     if (parserScriptLoaderFor(script_element)) |loader| {
         if (loader.load(loader.context, src)) |body| return .{ .body = body, .allocator = loader.allocator };
     }
-    var fetch_result = fetchExternalScript(allocator, url);
+    var fetch_result = fetchClassicScript(allocator, script_element, document, url);
     const body = fetch_result.body;
     fetch_result.body = null;
     fetch_result.deinit(allocator);
-    return .{ .body = body, .allocator = allocator };
+    return .{ .body = body, .allocator = allocator, .muted = fetch_result.muted };
 }
 
 /// The embedder's loader, if the parser is preparing `script_element` with
@@ -401,9 +406,11 @@ pub fn prepareScriptElement(
         // step, so a script that prepare returns from earlier (a type that is
         // no JavaScript MIME type, nomodule) is never fetched.
         const cached = if (allowed_by_csp) HTMLScriptElementImpl.getCachedSourceText(script_element) else null;
+        var muted_errors = false;
         if (cached == null and allowed_by_csp) {
-            var fetched = fetchClassicScriptSource(allocator, script_element, src, script_url);
+            var fetched = fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
             defer fetched.deinit();
+            muted_errors = fetched.muted;
             if (fetched.body) |body| {
                 HTMLScriptElementImpl.cacheSourceText(script_element, body) catch
                     return ScriptExecutionError.OutOfMemory;
@@ -412,7 +419,9 @@ pub fn prepareScriptElement(
 
         if (HTMLScriptElementImpl.getCachedSourceText(script_element)) |body| {
             if (allowed_by_csp) {
-                HTMLScriptElementImpl.setResult(script_element, .{ .script = ClassicScript.init(body, script_url) });
+                var script = ClassicScript.init(body, script_url);
+                script.muted_errors = muted_errors;
+                HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
             } else {
                 HTMLScriptElementImpl.setResult(script_element, .null);
             }
@@ -1262,17 +1271,17 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
-        var fetched = fetchExternalScript(allocator, url);
+        var fetched = fetchClassicScript(allocator, element, document, url);
         defer fetched.deinit(allocator);
         if (from_parser_end_tag) {
             // A parser-blocking script, whose result is in hand: run it now.
             const body = fetched.body orelse return fireErrorEvent(allocator, element);
-            runSvgScriptSource(document, element, body, url, url);
+            runSvgScriptSource(document, element, body, url, url, fetched.muted);
             fireLoadEvent(allocator, element);
         } else {
             // A script-inserted one runs from a task, as step 35's force-async
             // HTML scripts do.
-            queueSvgScriptRun(element, fetched.body, url);
+            queueSvgScriptRun(element, fetched.body, url, fetched.muted);
         }
         return;
     }
@@ -1281,7 +1290,7 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     // (step 34.1) as its base URL and the document's URL as its resource name.
     const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
     defer allocator.free(base_url);
-    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url);
+    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url, false);
 }
 
 /// A script-inserted external SVG script's run, queued: the element as
@@ -1292,6 +1301,8 @@ const QueuedSvgScript = struct {
     /// Null for a failed fetch: the task fires error.
     source: ?[]u8,
     url: []u8,
+    /// The script's muted errors.
+    muted: bool,
 
     fn destroy(self: *QueuedSvgScript) void {
         if (self.source) |b| std.heap.c_allocator.free(b);
@@ -1300,7 +1311,7 @@ const QueuedSvgScript = struct {
     }
 };
 
-fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8) void {
+fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8, muted: bool) void {
     const loop = element.ctx.getOptionalEventLoop() orelse return;
     const task = std.heap.c_allocator.create(QueuedSvgScript) catch return;
     task.* = .{
@@ -1311,6 +1322,7 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
             std.heap.c_allocator.destroy(task);
             return;
         },
+        .muted = muted,
     };
     loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
 }
@@ -1328,7 +1340,7 @@ fn runQueuedSvgScript(data: ?*anyopaque) void {
     const document = getNodeDocument(task.element) orelse return;
     const allocator = task.element.ctx.allocator;
     const source = task.source orelse return fireErrorEvent(allocator, task.element);
-    runSvgScriptSource(document, task.element, source, task.url, task.url);
+    runSvgScriptSource(document, task.element, source, task.url, task.url, task.muted);
     fireLoadEvent(allocator, task.element);
 }
 
@@ -1345,13 +1357,14 @@ fn scriptingEnabled(document: *runtime.Instance) bool {
 }
 
 /// Run `source` as a classic script for an SVG script element, with `url` as
-/// its resource name and `base_url` as its base URL: currentScript is the
-/// element while it runs (it is an HTMLOrSVGScriptElement), and clean-up's
-/// microtask checkpoint follows, as for an HTML script.
-fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8) void {
+/// its resource name, `base_url` as its base URL and `muted` as its muted
+/// errors: currentScript is the element while it runs (it is an
+/// HTMLOrSVGScriptElement), and clean-up's microtask checkpoint follows, as
+/// for an HTML script.
+fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
     const old_current_script = swapCurrentScript(document, element);
     defer _ = swapCurrentScript(document, old_current_script);
-    runClassicScriptText(element, document, source, url, base_url, false);
+    runClassicScriptText(element, document, source, url, base_url, muted);
 }
 
 // =============================================================================
@@ -2220,6 +2233,10 @@ const ExternalScriptFetchResult = struct {
     body: ?[]const u8,
     content_type: ?[]const u8,
     status: u16,
+    /// "fetch a classic script" step 5.5: "Let mutedErrors be true if response
+    /// was CORS-cross-origin, and false otherwise" - its type is "opaque" or
+    /// "opaqueredirect".
+    muted: bool = false,
     /// The response's URL - the last URL in its URL list, i.e. after
     /// redirects. Null when the response carried none.
     final_url: ?[]const u8,
@@ -2365,19 +2382,27 @@ fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
     return result;
 }
 
-/// Fetch an external script using the Fetch API
-/// This is a synchronous fetch for parser-blocking scripts
+/// HTML "fetch a classic script" for `element`, synchronously: Crane's
+/// fetch completes before this returns, so onComplete's result is the
+/// return value.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-script
 ///
 /// `body` is null exactly when "fetch a classic script" would hand its
 /// onComplete null: a network error or a status that is not an ok status. An
 /// ok response with an EMPTY body is a script - one that does nothing - and it
 /// still runs and still earns its element a load event, so it comes back as an
-/// empty owned slice rather than null. Treating it as a failure made every
-/// empty external script silently disappear.
+/// empty owned slice rather than null.
 ///
-/// Never fails: running out of memory while copying the response is reported
-/// the way the spec reports any other failed fetch, with a null body.
-fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) ExternalScriptFetchResult {
+/// Never fails: running out of memory is reported the way the spec reports any
+/// other failed fetch, with a null body.
+///
+/// Deviations, stated: step 4's "set up the classic script request" sets no
+/// cryptographic nonce, integrity metadata, parser metadata, referrer policy,
+/// render-blocking or priority; steps 5.2-5.4 decode as UTF-8, with no
+/// legacy encoding extraction; step 5.6's base URL is the request URL, not the
+/// response's.
+fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) ExternalScriptFetchResult {
     var result = ExternalScriptFetchResult{
         .body = null,
         .content_type = null,
@@ -2385,19 +2410,38 @@ fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) ExternalSc
         .final_url = null,
     };
 
-    // Use the fetch module to retrieve the script. A transport failure comes
-    // back IN-BAND as a network-error response (type error, status 0), which
-    // the ok-status check below rejects - see AGENTS.md on in-band failures.
-    const response = fetch.fetchSimple(allocator, url) catch |err| {
+    // Step 1: "Let request be the result of creating a potential-CORS request
+    // given url, "script", and CORS setting."
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch return result;
+    defer request.deinit();
+    script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 2: "Set request's client to settings object" - the element's node
+    // document's relevant settings object: Fetch reads what "populate request
+    // from client" puts on the request.
+    if (document) |doc| script_request.populateRequestFromClient(request, doc.ctx);
+    // Step 3: "Set request's initiator type to "script"."
+    request.initiator_type = .script;
+
+    // Step 5: "Fetch request". A network error - a transport failure, a CORS
+    // failure, or main fetch step 19's MIME type / nosniff blocking, which
+    // keys on destination "script" - comes back in-band, as a response of
+    // type "error".
+    var fetched = fetch.algorithms.fetch(allocator, request, .{}) catch |err| {
         log.debug("Fetch error for script {s}: {}", .{ url, err });
         return result;
     };
+    defer fetched.timing_info.deinit();
+    const response = fetched.response;
     defer response.deinit();
 
+    // Step 5.1: "If bodyBytes is null or failure, or response's status is not
+    // an ok status, then run onComplete given null".
+    if (response.response_type == .@"error") return result;
     result.status = response.status;
-
-    // An ok status is 200-299 (Fetch §2.2.3).
     if (response.status < 200 or response.status >= 300) return result;
+
+    // Step 5.5.
+    result.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
 
     if (response.header_list.getFirstValue("content-type")) |ct| {
         result.content_type = allocator.dupe(u8, ct) catch null;
