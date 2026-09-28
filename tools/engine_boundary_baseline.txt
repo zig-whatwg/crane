@@ -3,11 +3,6 @@
 # count rises or a new pair appears. After moving calls behind the Engine table
 # (src/runtime/engine_interface.zig), lower it with
 # `zig build lint-engine -- --update`. Never raise it by hand.
-src/html/script_execution.zig @import("v8") 3
-src/html/script_execution.zig @import("v8").engine 2
-src/html/script_execution.zig @import("v8").ffi 4
-src/html/script_execution.zig v8_Isolate_GetCurrent 1
-src/html/script_execution.zig v8_engine 9
 src/runtime/realm.zig v8_context 6
 src/webidl/impls/Element.zig @import("v8") 1
 src/webidl/impls/Element.zig @import("v8").pointer_tag 1
