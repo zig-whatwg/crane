@@ -54,15 +54,14 @@
 /// V8 C API FFI bindings
 pub const ffi = @import("ffi.zig");
 
-/// V8 Engine Interface (implements runtime.EngineInterface)
-/// Use this to create engine-agnostic contexts that work with V8
+/// V8 operations the adapter's files share (entering a realm, promise
+/// capabilities, structured serialization for storage).
 pub const engine = @import("engine.zig");
 
 /// The engine protocol's V8 side: in a V8 build `engine_impl` is this module,
 /// and src/runtime/engine_protocol.zig forwards every operation to
 /// `protocol`.
 pub const protocol = @import("protocol.zig");
-pub const v8_engine_interface = engine.v8_engine_interface;
 
 /// Type conversions between Zig and V8
 pub const conversions = @import("conversions.zig");
@@ -259,6 +258,19 @@ pub const populateRealmIntrinsics = realm_v8.populateIntrinsics;
 /// Worker realms: createWorkerRealm and the realm record it makes (tests reach
 /// `recordRealm` here).
 pub const worker_realm = @import("worker_realm.zig");
+
+/// The files behind the protocol's operations, for the adapter's own tests
+/// (tests/v8), which call V8's implementation of an operation directly.
+pub const page_realm = @import("page_realm.zig");
+pub const value_construction = @import("value_construction.zig");
+pub const value_operations = @import("value_operations.zig");
+pub const current_realm = @import("current_realm.zig");
+pub const array_buffer_views = @import("array_buffer_views.zig");
+pub const callback_interfaces = @import("callback_interfaces.zig");
+pub const observable_array = @import("observable_array.zig");
+pub const webidl_conversions = @import("webidl_conversions.zig");
+pub const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");
+pub const structured_serialization = @import("structured_serialization.zig");
 
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");

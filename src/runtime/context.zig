@@ -8,18 +8,18 @@
 //!
 //! The Context is a pointer to a ContextData struct that contains:
 //! - Logger: For console output (console.log, console.error, etc.)
-//! - Engine Interface: Abstract interface to JS engine (V8, JSC, etc.)
 //! - Engine Context: Opaque pointer to engine-specific context
 //! - Allocator: For memory management
 //!
 //! By using a pointer (`*ContextData`), we keep the Context small (8 bytes)
 //! which is important for passing through generated code.
 //!
-//! ## Engine Abstraction
+//! ## The engine
 //!
-//! The context holds an optional `EngineInterface` pointer which provides
-//! engine-agnostic operations like wrapping async iterators, creating promises,
-//! etc. This allows impl files to work with any JS engine without direct imports.
+//! A ContextData is a realm to the engine protocol (`@import("engine")`,
+//! src/runtime/engine_protocol.zig): every engine operation takes one and is
+//! dispatched statically to the adapter the build selected. The context
+//! itself holds no engine table.
 //!
 //! ## Usage
 //!
@@ -37,16 +37,14 @@
 //! // Use in namespace operations
 //! console.log(ctx, "Hello from WebIDL!");
 //!
-//! // For engine operations, check if engine is available
-//! if (ctx.getEngine()) |engine| {
-//!     const wrapped = try engine.wrapAsyncIterator(ctx.engine_ctx.?, iterator);
-//! }
+//! // Engine operations take the context as their realm
+//! const engine = @import("engine");
+//! const exception = try engine.createSimpleException(ctx, .TypeError, "no");
 //! ```
 
 const std = @import("std");
 const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
-const EngineInterface = @import("engine_interface.zig").EngineInterface;
 const infra = @import("infra");
 const timer_mod = @import("timer.zig");
 
@@ -165,9 +163,6 @@ pub const ContextData = struct {
     allocator: std.mem.Allocator,
     logger: Logger,
 
-    /// Abstract engine interface (provides engine-agnostic operations)
-    engine: ?*const EngineInterface,
-
     /// Engine-specific opaque context (V8 Isolate, JSC VM, etc.)
     engine_ctx: ?*anyopaque,
 
@@ -227,10 +222,6 @@ pub const ContextData = struct {
     /// Storage configuration
     storage_config: StorageConfig,
 
-    /// Internal: Engine-created event loop storage (if created during init)
-    /// This is owned by the context and must be cleaned up via engine interface
-    _engine_event_loop_storage: ?*anyopaque,
-
     /// V8 wrapper cache (optional, only used with V8 engine)
     /// Maintains 1:1 mapping between Zig instances and V8 wrappers for identity
     _v8_wrapper_cache_storage: ?*anyopaque,
@@ -255,18 +246,13 @@ pub const ContextData = struct {
         show_timestamp: bool = false,
         show_labels: bool = false,
 
-        /// Abstract engine interface
-        /// Provides engine-agnostic operations (async iterators, promises, etc.)
-        engine: ?*const EngineInterface = null,
-
         /// JS engine context (V8 Isolate, JSC VM, etc.)
         /// This is an opaque pointer to the engine-specific context
         engine_ctx: ?*anyopaque = null,
 
         /// Event loop for async operations
         /// Optional - only needed for async features like streams, promises
-        /// If not provided and engine supports it, engine will create one
-        /// If not provided and no engine, async operations will fail with error.NoEventLoop
+        /// If not provided, async operations will fail with error.NoEventLoop
         event_loop: ?event_loop_mod.EventLoop = null,
 
         /// Timer interface for setTimeout/clearTimeout
@@ -300,37 +286,16 @@ pub const ContextData = struct {
             .show_labels = options.show_labels,
         });
 
-        // Determine event loop:
-        // 1. If event_loop provided explicitly → use it
-        // 2. If engine can create one → use engine's event loop
-        // 3. Otherwise → no event loop (async operations will fail)
-        var engine_event_loop_storage: ?*anyopaque = null;
-        const ev_loop: ?event_loop_mod.EventLoop = if (options.event_loop) |el|
-            el
-        else if (options.engine) |engine| blk: {
-            if (engine.createEventLoop) |create_fn| {
-                if (options.engine_ctx) |engine_ctx| {
-                    const loop_ptr = create_fn(engine_ctx, allocator) catch break :blk null;
-                    engine_event_loop_storage = loop_ptr;
-                    // Engine must provide a way to get EventLoop from its storage
-                    // For now, we assume the engine stores it and we query later
-                    break :blk null; // TODO: Engine should return EventLoop directly
-                }
-            }
-            break :blk null;
-        } else null;
-
         return .{
             .allocator = allocator,
             .logger = logger,
-            .engine = options.engine,
             .engine_ctx = options.engine_ctx,
             .console_state = ConsoleState.init(allocator),
-            .event_loop = ev_loop,
+            // The host's event loop, or none (async operations then fail).
+            .event_loop = options.event_loop,
             .timer = options.timer,
             .storage_backend = options.storage_backend,
             .storage_config = options.storage_config orelse StorageConfig.forTesting(),
-            ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
             .realm_info = options.realm_info orelse RealmInfo.forTesting(),
             .realm = options.realm,
@@ -341,15 +306,6 @@ pub const ContextData = struct {
     pub fn deinit(self: *Self) void {
         // NOTE: V8 wrapper cache cleanup is handled by context_manager
         // before calling this function (to avoid circular module dependencies)
-
-        // Clean up engine-created event loop if we have one
-        if (self._engine_event_loop_storage) |loop_storage| {
-            if (self.engine) |engine| {
-                if (engine.destroyEventLoop) |destroy_fn| {
-                    destroy_fn(loop_storage, self.allocator);
-                }
-            }
-        }
 
         self.clearDocumentUrl();
         self.console_state.deinit(self.allocator);
@@ -396,14 +352,11 @@ pub const ContextData = struct {
         self._v8_wrapper_cache_storage = null;
     }
 
-    /// Check if this context has a JS engine
+    /// Whether an engine realm is behind this context: false for a context
+    /// made without one (the DOM's unit tests), and for a realm the adapter
+    /// has retired.
     pub fn hasEngine(self: *const Self) bool {
-        return self.engine != null and self.engine_ctx != null;
-    }
-
-    /// Get the abstract engine interface
-    pub fn getEngine(self: *const Self) ?*const EngineInterface {
-        return self.engine;
+        return self.engine_ctx != null;
     }
 
     /// Get the JS engine context (opaque pointer to V8 Isolate, JSC VM, etc.)
@@ -613,19 +566,14 @@ test "ContextData - basic initialization" {
 }
 
 test "ContextData - with engine context" {
-    const stub = @import("engine_interface.zig").stub_engine;
     var dummy_engine: u32 = 42;
     var ctx_data = try ContextData.init(testing.allocator, .{
-        .engine = &stub,
         .engine_ctx = @ptrCast(&dummy_engine),
     });
     defer ctx_data.deinit();
 
     try testing.expect(ctx_data.hasEngine());
-    const engine_ctx = ctx_data.getEngineContext();
-    try testing.expect(engine_ctx != null);
-    const engine = ctx_data.getEngine();
-    try testing.expect(engine != null);
+    try testing.expect(ctx_data.getEngineContext() != null);
 }
 
 test "Context - is a pointer" {

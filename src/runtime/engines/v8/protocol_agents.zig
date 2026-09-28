@@ -23,9 +23,8 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const isolate_templates = @import("isolate_templates.zig");
 const template_registry = @import("template_registry.zig");
-/// worker_realm.zig's agent operations, through the Engine table (see
-/// protocol.zig).
-const table = @import("engine.zig").v8_engine_interface;
+/// worker_realm.zig's agent operations.
+const worker_realm = @import("worker_realm.zig");
 
 const Context = engine.Context;
 const Agent = engine.Agent;
@@ -46,13 +45,9 @@ var engine_snapshot: ?[]const u8 = null;
 /// freezes its flags when the platform starts and cannot start again after
 /// it stops - and the snapshot agents may be made from.
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
-    if (ffi.v8_Platform_IsInitialized()) {
-        // A host already started it (the runtime flags then too): only the
-        // configured engine is recorded again.
-        snapshot_loader.registerConfiguredEngine();
-    } else {
-        snapshot_loader.initializePlatformForRuntime();
-    }
+    // A host that already started the platform set the runtime flags then
+    // too.
+    if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -137,7 +132,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         }
         // The engine is started by initializeEngine; a host that has not
         // called it gets the platform here, as worker_realm's agents do.
-        const agent = table.createAgent.?() catch |err| return support.protocolError(err);
+        const agent = worker_realm.createAgent() catch |err| return support.protocolError(err);
         break :blk @ptrCast(@alignCast(agent));
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);

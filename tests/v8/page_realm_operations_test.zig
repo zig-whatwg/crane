@@ -1,6 +1,7 @@
-//! The Engine table's page-realm operations, as V8 implements them
+//! Page-realm operations as V8 implements them
 //! (src/runtime/engines/v8/page_realm.zig): invokeCallbackFunction and
-//! installWindowOperations.
+//! installWindowOperations - and, from "protocol:" on, the engine protocol's
+//! operations bound to V8.
 //!
 //! The realm is registered with the context manager, as every Window realm
 //! is: the window's natives find the realm they were called in through it.
@@ -12,8 +13,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
-
-const engine = &v8.engine.v8_engine_interface;
 
 /// One isolate, context and realm for the whole file; V8 is never torn down
 /// here (see engine_realm_operations_test.zig).
@@ -83,8 +82,24 @@ const Reports = struct {
         self.had_value = info.error_value != null;
         if (self.run_inside) |source| {
             var ignored: Reports = .{};
-            engine.runClassicScript.?(realm_once.?, source, null, Reports.report, &ignored) catch {};
+            protocol.runClassicScript(realm_once.?, .{ .utf8 = source }, "", null, ignored.reporter()) catch {};
         }
+    }
+
+    /// The protocol's reporter, into `report`.
+    fn reporter(self: *Reports) protocol.Reporter {
+        return .{ .report = fromProtocol, .host = self };
+    }
+
+    fn fromProtocol(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const converted: runtime.ErrorInfo = .{
+            .message = info.message,
+            .filename = info.filename,
+            .lineno = info.lineno,
+            .colno = info.colno,
+            .error_value = if (info.error_value == .undefined) null else info.error_value,
+        };
+        report(host, &converted);
     }
 
     fn messageText(self: *const Reports) []const u8 {
@@ -92,9 +107,14 @@ const Reports = struct {
     }
 };
 
+/// Run `source` as a classic script (the protocol's runClassicScript), what
+/// it throws reported into the Reports returned.
 fn run(source: []const u8) !Reports {
     var reports: Reports = .{};
-    try engine.runClassicScript.?(try realm(), source, null, Reports.report, &reports);
+    protocol.runClassicScript(try realm(), .{ .utf8 = source }, "", null, reports.reporter()) catch |err| switch (err) {
+        error.ExceptionReported => {},
+        else => return err,
+    };
     return reports;
 }
 
@@ -109,7 +129,7 @@ test "a callback is invoked with its arguments and the realm's global as this" {
     defer ffi.v8_Value_Dispose(cb);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .global_this, &.{ .{ .number = 2 }, .{ .number = 3 } }, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .global_this, &.{ .{ .number = 2 }, .{ .number = 3 } }, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 5), try scriptInt("globalThis.sum"));
     try std.testing.expectEqual(@as(i32, 1), try scriptInt("globalThis.thisIsGlobal"));
     try std.testing.expectEqual(@as(usize, 0), reports.count);
@@ -122,9 +142,9 @@ test "a callback's this is undefined, or the value given" {
     defer ffi.v8_Value_Dispose(cb);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, -1), try scriptInt("globalThis.seenThis"));
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .{ .value = .{ .number = 7 } }, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .{ .value = .{ .number = 7 } }, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 7), try scriptInt("globalThis.seenThis"));
 }
 
@@ -136,7 +156,7 @@ test "more arguments than fit inline all arrive" {
 
     var reports: Reports = .{};
     const args = [_]runtime.JSValue{ .{ .number = 1 }, .{ .number = 2 }, .{ .number = 3 }, .{ .number = 4 }, .{ .number = 5 }, .{ .number = 6 } };
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &args, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &args, Reports.report, &reports);
     try std.testing.expectEqual(@as(i32, 6), try scriptInt("globalThis.argCount"));
     try std.testing.expectEqual(@as(i32, 6), try scriptInt("globalThis.last"));
 }
@@ -150,7 +170,7 @@ test "what a callback throws is reported, after the microtasks it queued" {
     // WebIDL: "clean up after running script" (the checkpoint) precedes the
     // report, so the report sees the microtask's effect.
     var reports: Reports = .{ .run_inside = "globalThis.order += 'r';" };
-    try engine.invokeCallbackFunction.?(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(cb), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(usize, 1), reports.count);
     try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "nope") != null);
     try std.testing.expect(reports.had_value);
@@ -163,10 +183,10 @@ test "a callback that is not callable is not called" {
     defer ffi.v8_Value_Dispose(object);
 
     var reports: Reports = .{};
-    try engine.invokeCallbackFunction.?(ctx, borrowed(object), .undefined, &.{}, Reports.report, &reports);
+    try v8.page_realm.invokeCallbackFunction(ctx, borrowed(object), .undefined, &.{}, Reports.report, &reports);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
     // A value that is no engine handle at all is a caller's mistake.
-    try std.testing.expectError(error.TypeError, engine.invokeCallbackFunction.?(ctx, .{ .number = 1 }, .undefined, &.{}, Reports.report, &reports));
+    try std.testing.expectError(error.TypeError, v8.page_realm.invokeCallbackFunction(ctx, .{ .number = 1 }, .undefined, &.{}, Reports.report, &reports));
 }
 
 // ============================================================================
@@ -203,18 +223,18 @@ fn testInitializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, 
     switch (handler) {
         .function => |h| {
             seen.function_handlers += 1;
-            engine.releaseValue.?(h);
+            v8.engine.v8ReleaseValue(h);
         },
         .string => |h| {
             const string: *ffi.String = @ptrCast(@alignCast(h.handle.ptr));
             const len: usize = @intCast(ffi.v8_String_Utf8Length(string));
             seen.string_len = @min(len, seen.string_source.len);
             _ = ffi.v8_String_WriteUtf8(string, &seen.string_source, @intCast(seen.string_len));
-            engine.releaseValue.?(h);
+            v8.engine.v8ReleaseValue(h);
         },
     }
     // Every argument is the host's to release.
-    for (arguments) |argument| engine.releaseValue.?(argument);
+    for (arguments) |argument| v8.engine.v8ReleaseValue(argument);
     return 41 + @as(i32, @intCast(seen.timers));
 }
 
@@ -226,7 +246,7 @@ fn testClearTimer(r: runtime.Context, id: i32) void {
 fn testRequestAnimationFrame(r: runtime.Context, callback: runtime.JSValue) u32 {
     seen.realm = r;
     seen.frames += 1;
-    engine.releaseValue.?(callback);
+    v8.engine.v8ReleaseValue(callback);
     return 9;
 }
 
@@ -247,7 +267,7 @@ const test_operations = runtime.WindowOperations{
 
 fn installed() !runtime.Context {
     const ctx = try realm();
-    try engine.installWindowOperations.?(ctx, &test_operations);
+    try v8.page_realm.installWindowOperations(ctx, &test_operations);
     seen = .{};
     return ctx;
 }

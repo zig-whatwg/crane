@@ -18,13 +18,10 @@
 //! pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) !void {
 //!     if (callback.isNullOrUndefined()) return;
 //!
-//!     // Get engine to invoke callback
-//!     const ctx = instance.ctx;
-//!     const engine = ctx.getEngine() orelse return error.NoEngine;
-//!
-//!     // Convert to engine-specific handle for invocation
-//!     const handle = callback.asEngineHandle() orelse return error.InvalidCallback;
-//!     try engine.invokeCallback(ctx.engine_ctx, handle, &.{});
+//!     // Engine operations take the value as it is, in a realm.
+//!     const engine = @import("engine");
+//!     if (!engine.isCallable(callback)) return error.TypeError;
+//!     _ = instance;
 //! }
 //! ```
 //!
@@ -43,8 +40,8 @@ const Instance = @import("instance.zig").Instance;
 /// type parameters. It provides type safety without coupling to a specific
 /// JavaScript engine.
 ///
-/// The engine-specific conversion happens at the boundary when calling
-/// engine operations through EngineInterface.
+/// The engine-specific conversion happens at the boundary, inside the engine
+/// protocol's operations (`@import("engine")`).
 pub const JSValue = union(enum) {
     /// JavaScript `undefined` value
     undefined: void,

@@ -206,11 +206,12 @@ pub const Instance = struct {
     pub fn releaseIfUnwrapped(instance: *Instance, generation: u64) void {
         const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
         if (SlabAllocator.generationOf(instance) != generation) return;
-        const engine = instance.ctx.getEngine() orelse return;
-        const getWrapper = engine.getWrapperForInstance orelse return;
-        const engine_ctx = instance.ctx.getEngineContext() orelse return;
-        const cache = instance.ctx.getV8WrapperCacheStorage() orelse return;
-        if (getWrapper(engine_ctx, cache, instance) != null) return;
+        // No engine realm behind it (a DOM unit test's context, a retired
+        // realm): nothing can have wrapped it, and nothing is known about who
+        // else holds it - leave it.
+        if (!instance.ctx.hasEngine()) return;
+        // Wrapped in its relevant realm (R28): the wrapper owns it.
+        if (@import("engine").hasWrapper(instance)) return;
         deinit(instance);
     }
 };

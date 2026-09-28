@@ -12,8 +12,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const engine = &v8.engine.v8_engine_interface;
-
 /// One isolate, context and realm for the file, as in
 /// engine_realm_operations_test.zig - V8 is never torn down here.
 var isolate_once: ?*ffi.Isolate = null;
@@ -31,7 +29,6 @@ fn realm() !runtime.Context {
     const r = try runtime.Realm.init(std.heap.page_allocator, .{ .v8_context = context, .isolate = i });
     const data = try std.heap.page_allocator.create(runtime.ContextData);
     data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
-        .engine = engine,
         .engine_ctx = context,
         .realm = r,
     });
@@ -87,10 +84,10 @@ fn asArgument(argument: *ffi.Value) !runtime.JSValue {
 test "a retained value is the caller's own handle, and outlives the one it came from" {
     const ctx = try realm();
     const object = try eval("globalThis.original = { tag: 5 }; globalThis.original");
-    const kept = try engine.retainValue.?(ctx, asValue(object));
+    const kept = try v8.value_operations.retainValue(ctx, asValue(object));
     // The argument stays the caller's: releasing it leaves the retained one.
     ffi.v8_Value_Dispose(object);
-    defer engine.releaseValue.?(kept);
+    defer v8.engine.v8ReleaseValue(kept);
     try std.testing.expect(kept == .handle);
     try std.testing.expect(kept.handle.needs_disposal);
     try std.testing.expectEqual(runtime.JSValue.EngineHandle.HandleScope.global, kept.handle.handle_scope);
@@ -100,18 +97,18 @@ test "a retained value is the caller's own handle, and outlives the one it came 
 
 test "primitives and strings are retained as values of the realm" {
     const ctx = try realm();
-    const number = try engine.retainValue.?(ctx, .{ .number = 42 });
-    defer engine.releaseValue.?(number);
+    const number = try v8.value_operations.retainValue(ctx, .{ .number = 42 });
+    defer v8.engine.v8ReleaseValue(number);
     try setGlobal("n", number.handle.ptr);
     try std.testing.expectEqual(@as(i32, 42), try evalInt("globalThis.n"));
 
-    const text = try engine.retainValue.?(ctx, runtime.JSValue.fromStringRef("abc"));
-    defer engine.releaseValue.?(text);
+    const text = try v8.value_operations.retainValue(ctx, runtime.JSValue.fromStringRef("abc"));
+    defer v8.engine.v8ReleaseValue(text);
     try setGlobal("s", text.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.s === 'abc' ? 1 : 0"));
 
-    const nothing = try engine.retainValue.?(ctx, runtime.JSValue.jsUndefined);
-    defer engine.releaseValue.?(nothing);
+    const nothing = try v8.value_operations.retainValue(ctx, runtime.JSValue.jsUndefined);
+    defer v8.engine.v8ReleaseValue(nothing);
     try setGlobal("u", nothing.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.u === undefined ? 1 : 0"));
 }
@@ -125,7 +122,7 @@ test "primitives and strings are retained as values of the realm" {
 fn throwFirstArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
-    engine.throwValue.?(data_once.?, asValue(argument)) catch {};
+    v8.value_operations.throwValue(data_once.?, asValue(argument)) catch {};
 }
 
 fn installNative(name: []const u8, callback: ffi.FunctionCallback) !void {
@@ -154,14 +151,14 @@ fn keepFirstArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
     const value = asArgument(argument) catch return;
-    kept_argument = engine.retainValue.?(data_once.?, value) catch null;
+    kept_argument = v8.value_operations.retainValue(data_once.?, value) catch null;
 }
 
 fn throwFirstArgumentAsBound(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
     const value = asArgument(argument) catch return;
-    engine.throwValue.?(data_once.?, value) catch {};
+    v8.value_operations.throwValue(data_once.?, value) catch {};
 }
 
 test "an argument as the binding hands it over is retained and thrown as itself" {
@@ -171,7 +168,7 @@ test "an argument as the binding hands it over is retained and thrown as itself"
     try std.testing.expectEqual(@as(i32, 0), try evalInt("globalThis.handed = { k: 1 }; keep(globalThis.handed); 0"));
     const kept = kept_argument orelse return error.NotKept;
     kept_argument = null;
-    defer engine.releaseValue.?(kept);
+    defer v8.engine.v8ReleaseValue(kept);
     try setGlobal("keptHanded", kept.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.keptHanded === globalThis.handed ? 1 : 0"));
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -184,7 +181,7 @@ test "throwing a value made from a Zig string" {
     _ = ctx;
     try installNative("throwText", struct {
         fn f(_: *const ffi.FunctionCallbackInfo) callconv(.c) void {
-            engine.throwValue.?(data_once.?, runtime.JSValue.fromStringRef("from zig")) catch {};
+            v8.value_operations.throwValue(data_once.?, runtime.JSValue.fromStringRef("from zig")) catch {};
         }
     }.f);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("(() => { try { throwText(); } catch (e) { return e === 'from zig' ? 1 : 0; } return -1; })()"));
@@ -225,7 +222,7 @@ test "an array of platform objects converts to their instances, in order" {
     try installPlatformObjects();
     const array = try eval("[b, a, b]");
     defer ffi.v8_Value_Dispose(array);
-    const list = try engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(array), std.testing.allocator);
+    const list = try v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(array), std.testing.allocator);
     defer std.testing.allocator.free(list);
     try std.testing.expectEqual(@as(usize, 3), list.len);
     try std.testing.expectEqual(&mock_instances[1], list[0]);
@@ -238,20 +235,20 @@ test "any iterable converts, not only an Array" {
     try installPlatformObjects();
     const set = try eval("new Set([a, b])");
     defer ffi.v8_Value_Dispose(set);
-    const list = try engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(set), std.testing.allocator);
+    const list = try v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(set), std.testing.allocator);
     defer std.testing.allocator.free(list);
     try std.testing.expectEqual(@as(usize, 2), list.len);
     try std.testing.expectEqual(&mock_instances[0], list[0]);
 
     const generated = try eval("(function* () { yield a; })()");
     defer ffi.v8_Value_Dispose(generated);
-    const one = try engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(generated), std.testing.allocator);
+    const one = try v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(generated), std.testing.allocator);
     defer std.testing.allocator.free(one);
     try std.testing.expectEqual(@as(usize, 1), one.len);
 
     const empty = try eval("[]");
     defer ffi.v8_Value_Dispose(empty);
-    const none = try engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(empty), std.testing.allocator);
+    const none = try v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(empty), std.testing.allocator);
     defer std.testing.allocator.free(none);
     try std.testing.expectEqual(@as(usize, 0), none.len);
 }
@@ -260,16 +257,16 @@ test "a non-object, a non-iterable, and a non-platform item are TypeErrors" {
     const ctx = try realm();
     try installPlatformObjects();
     const allocator = std.testing.allocator;
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfPlatformObjects.?(ctx, .{ .number = 1 }, allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfPlatformObjects.?(ctx, runtime.JSValue.jsNull, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, .{ .number = 1 }, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, runtime.JSValue.jsNull, allocator));
 
     const plain = try eval("({ length: 1, 0: a })");
     defer ffi.v8_Value_Dispose(plain);
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(plain), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(plain), allocator));
 
     const mixed = try eval("[a, {}]");
     defer ffi.v8_Value_Dispose(mixed);
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfPlatformObjects.?(ctx, asValue(mixed), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfPlatformObjects(ctx, asValue(mixed), allocator));
 }
 
 /// A native function that converts its argument, as an impl does, and
@@ -281,7 +278,7 @@ fn convertFirstArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
     const i = info.getIsolate();
     // As an impl gets it: the binding's form of the argument.
     const value = asArgument(argument) catch return;
-    const result: f64 = if (engine.convertToSequenceOfPlatformObjects.?(data_once.?, value, std.testing.allocator)) |list| blk: {
+    const result: f64 = if (v8.webidl_conversions.convertToSequenceOfPlatformObjects(data_once.?, value, std.testing.allocator)) |list| blk: {
         defer std.testing.allocator.free(list);
         break :blk @floatFromInt(list.len);
     } else |err| switch (err) {

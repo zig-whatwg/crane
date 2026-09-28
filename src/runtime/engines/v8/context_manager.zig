@@ -567,7 +567,6 @@ pub fn getOrCreateWithExternalEventLoop(
         .colored = false,
         .show_timestamp = false,
         .show_labels = false,
-        .engine = &v8_engine.v8_engine_interface,
         .engine_ctx = @ptrCast(v8_ctx),
         .timer = timer,
         .event_loop = event_loop,
@@ -730,7 +729,6 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .colored = false, // V8 callbacks shouldn't use colored output
         .show_timestamp = false,
         .show_labels = false,
-        .engine = &v8_engine.v8_engine_interface, // V8 engine interface for Promises etc.
         .engine_ctx = @ptrCast(entry_ctx), // Store V8 context as engine context
         .timer = timer_interface,
         .event_loop = event_loop_interface,

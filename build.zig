@@ -433,6 +433,28 @@ fn addModuleTestWithV8(
 /// their own, for a test compile whose graph holds no other binding - one
 /// file belongs to one module per compile, so two bindings of the facade
 /// cannot meet in one.
+/// A runtime module for a compile with no V8 in it, bound to the engine
+/// protocol over `adapter_root`: runtime_mod's imports except v8 and engine,
+/// and the facade the adapter makes (which imports this runtime).
+fn runtimeTier(
+    builder: *std.Build,
+    target: std.Build.ResolvedTarget,
+    runtime_mod: *std.Build.Module,
+    adapter_root: std.Build.LazyPath,
+) struct { runtime: *std.Build.Module, engine: *std.Build.Module } {
+    const tier = builder.createModule(.{
+        .root_source_file = runtime_mod.root_source_file,
+        .target = target,
+    });
+    for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
+        if (std.mem.eql(u8, import_name, "v8") or std.mem.eql(u8, import_name, "engine")) continue;
+        tier.addImport(import_name, dep);
+    }
+    const facade = engineProtocolBinding(builder, target, tier, adapter_root);
+    tier.addImport("engine", facade);
+    return .{ .runtime = tier, .engine = facade };
+}
+
 fn engineProtocolBinding(
     builder: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -1062,6 +1084,12 @@ pub fn build(b: *std.Build) void {
     engine_impl_mod.addImport("engine", engine_mod);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
+    // The runtime reaches the engine the way everything else does: an
+    // unwrapped instance asks engine.hasWrapper, [PutForwards] and
+    // [Replaceable] setters use its Set and DefineOwnProperty. The facade
+    // imports runtime, so this is a cycle - the same shape as facade and
+    // adapter.
+    runtime_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
@@ -2543,29 +2571,32 @@ pub fn build(b: *std.Build) void {
         // boundary leaves it. (runtime itself imports no v8 any more: its last
         // use, realm.zig's populateIntrinsics, moved into the adapter's
         // createWindowRealm.)
-        const runtime_tier_mod = b.createModule(.{
-            .root_source_file = runtime_mod.root_source_file,
-            .target = target,
-        });
-        for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
-            if (!std.mem.eql(u8, import_name, "v8")) runtime_tier_mod.addImport(import_name, dep);
-        }
+        //
+        // The runtime imports "engine" too, so a tier is a copy of runtime_mod
+        // bound to its own facade: every import of runtime_mod except v8 and
+        // engine, plus the facade the tier's adapter makes. A copy that kept
+        // runtime_mod's engine would reach the V8-bound facade a second way,
+        // and the facade's file cannot be in two modules of one compile.
+        const test_adapter_tier = runtimeTier(b, target, runtime_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        const runtime_tier_mod = test_adapter_tier.runtime;
+        const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
         // tier's test adapter. And each other adapter with no engine behind
         // it - the JavaScriptCore and QuickJS protocol roots, which nothing
         // else compiles while -Dengine=jsc|quickjs is not buildable - gets the
-        // protocol's tests in a compile of its own: compiling the facade
-        // against an adapter is what checks it against the protocol.
-        const test_adapter_engine_mod = engineProtocolBinding(b, target, runtime_tier_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        // protocol's tests in a compile of its own, with a runtime tier of its
+        // own: compiling the facade against an adapter is what checks it
+        // against the protocol.
         for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
+            const adapter_tier = runtimeTier(b, target, runtime_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter})));
             const conformance = b.addTest(.{
                 .name = b.fmt("engine_protocol_{s}", .{adapter}),
                 .root_module = b.createModule(.{
                     .root_source_file = b.path("tests/runtime/engine_protocol_test.zig"),
                     .target = target,
                     .imports = &.{
-                        .{ .name = "runtime", .module = runtime_tier_mod },
-                        .{ .name = "engine", .module = engineProtocolBinding(b, target, runtime_tier_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter}))) },
+                        .{ .name = "runtime", .module = adapter_tier.runtime },
+                        .{ .name = "engine", .module = adapter_tier.engine },
                     },
                 }),
             });

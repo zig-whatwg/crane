@@ -49,8 +49,9 @@
 //! Status: phase 3 step A - every operation of the design
 //! (tmp/plans/engine-protocol-design.md section 4) is declared and checked;
 //! adapters answer the ones not yet built with NotSupported, marked
-//! `TODO(protocol): implement` in the adapter. The runtime Engine table
-//! (src/runtime/engine_interface.zig) keeps serving existing callers.
+//! `TODO(protocol): implement` in the adapter. The runtime Engine table that
+//! came before it (engine_interface.zig, reached through ctx.getEngine()) is
+//! gone; the types it shared with the protocol are engine_types.zig's.
 
 const std = @import("std");
 const runtime = @import("runtime");

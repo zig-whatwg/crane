@@ -2,9 +2,9 @@
 //! runtime share: values the host and an engine adapter hand each other, and
 //! the callbacks the host supplies. No operations - those are the protocol's.
 //!
-//! They lived beside the runtime Engine table (src/runtime/engine_interface.zig),
-//! a struct of optional function pointers reached through `ctx.getEngine()`,
-//! which re-exports them while its last callers move onto the protocol.
+//! They lived beside the runtime Engine table (engine_interface.zig), a
+//! struct of optional function pointers reached through `ctx.getEngine()`.
+//! The table is gone: every operation is the protocol's.
 
 const std = @import("std");
 const JSValue = @import("js_value.zig").JSValue;

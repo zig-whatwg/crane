@@ -62,6 +62,7 @@ pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 // Engine-agnostic callback wrapper for callback interfaces
 // (EventListener, NodeFilter, XPathNSResolver)
 pub const CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
+pub const CallbackOperations = @import("callback_wrapper.zig").CallbackOperations;
 
 // Engine-agnostic JavaScript value type
 // Use this in impl files instead of v8.JSValue
@@ -91,7 +92,6 @@ pub const FrozenArray = types.FrozenArray;
 pub const sequence = types.sequence;
 pub const Promise = types.Promise;
 pub const ObservableArray = types.ObservableArray;
-pub const ObservableArrayExotic = @import("observable_array_exotic.zig");
 pub const record = types.record;
 
 // JavaScript built-in types (V8 provides these, we define Zig-side wrappers)
@@ -152,7 +152,6 @@ pub const initInternalStateRegistry = internal_state.initRegistry;
 
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
-pub const EngineInterface = @import("engine_interface.zig").EngineInterface;
 pub const EngineError = @import("engine_types.zig").EngineError;
 pub const MainThreadCallback = @import("engine_types.zig").MainThreadCallback;
 pub const PromiseFulfillCallback = @import("engine_types.zig").PromiseFulfillCallback;
@@ -160,8 +159,6 @@ pub const PromiseRejectCallback = @import("engine_types.zig").PromiseRejectCallb
 pub const ErrorInfo = @import("engine_types.zig").ErrorInfo;
 pub const ReportExceptionFn = @import("engine_types.zig").ReportExceptionFn;
 pub const RealmSteps = @import("engine_types.zig").RealmSteps;
-pub const configuredEngine = @import("engine_interface.zig").configuredEngine;
-pub const setConfiguredEngine = @import("engine_interface.zig").setConfiguredEngine;
 // Lane regions for re-exports of each lane's Engine types.
 // ---- lane: page-realm ----
 pub const CallbackThis = @import("engine_types.zig").CallbackThis;
@@ -186,7 +183,6 @@ pub const StringConversion = @import("engine_types.zig").StringConversion;
 pub const StringRecordEntry = @import("engine_types.zig").StringRecordEntry;
 // ---- end lane: engine-boundary ----
 pub const ForEachCallback = @import("engine_types.zig").ForEachCallback;
-pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers
 // Replaces direct use of engine_ctx: *anyopaque with structured type
@@ -194,14 +190,6 @@ pub const engine_context = @import("engine_context.zig");
 pub const EngineContext = engine_context.EngineContext;
 pub const EngineType = engine_context.EngineType;
 pub const OptionalEngineContext = engine_context.OptionalEngineContext;
-
-// Engine Binding abstraction (WebIDL binding generation)
-pub const engine_binding = @import("engine_binding.zig");
-pub const EngineBinding = engine_binding.EngineBinding;
-pub const BindingError = engine_binding.BindingError;
-pub const InterfaceBindingConfig = engine_binding.InterfaceBindingConfig;
-pub const TemplateHandle = engine_binding.TemplateHandle;
-pub const stub_binding = engine_binding.stub_binding;
 
 // WebIDL binding descriptor types
 pub const binding_types = @import("binding_types.zig");
@@ -221,9 +209,9 @@ pub const InterfaceBindingGenerator = binding_generator.InterfaceBindingGenerato
 pub const generateDescriptor = binding_generator.generateDescriptor;
 pub const getDescriptorPtr = binding_generator.getDescriptorPtr;
 
-// NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
-// It is NOT part of the runtime module to avoid circular dependencies.
-// Use @import("v8") to access V8 bindings and v8.engine for the EngineInterface.
+// NOTE: the JavaScript engine is reached through the engine protocol,
+// @import("engine") (src/runtime/engine_protocol.zig), bound by build.zig to
+// the adapter -Dengine= selects; V8's is src/runtime/engines/v8/.
 
 // Timer interface - Host-agnostic timer support for setTimeout/clearTimeout
 // Each host (V8+libuv, etc.) provides its own implementation
@@ -405,42 +393,12 @@ pub fn registerCleanupHook(hook: CleanupHookFn) void {
 ///   - property_name: Name of the property to set (e.g., "cssText")
 ///   - value: String value to assign
 ///
-/// Errors:
-///   - error.NoEngine if no JS engine is configured
-///   - error.TypeError if target cannot have properties set
-///   - error.OperationFailed if [[Set]] returns false
+/// Errors: the engine protocol's - NotSupported with no engine behind the
+/// realm, ExceptionPending when [[Set]] threw.
 pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value: DOMString) !void {
-    // Context is already *ContextData
-    const ctx = target.ctx;
-
-    // Get the engine interface
-    const engine = ctx.getEngine() orelse return error.NoEngine;
-
-    // Get the engine context
-    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
-
-    // Get the JS wrapper cache from context
-    const wrapper_cache = ctx.getV8WrapperCacheStorage() orelse return error.NoEngine;
-
-    // Get the getWrapperForInstance function
-    const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
-
-    // Get the JS wrapper for the target
-    const target_wrapper = getWrapper(
-        engine_ctx,
-        wrapper_cache,
-        target,
-    ) orelse {
-        // If no wrapper exists, the target hasn't been exposed to JS yet
-        // This shouldn't happen in normal [PutForwards] usage
-        return error.TypeError;
-    };
-
-    // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
-    const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
-    // Convert DOMString to slice for the engine interface
-    const value_slice = value.asSlice();
-    try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
+    // The platform object converts to its wrapper in its relevant realm
+    // (R28), which is where the forwarded [[Set]] runs.
+    try @import("engine").setProperty(target.ctx, .{ .instance = target }, property_name, JSValue.fromStringRef(value.asSlice()));
 }
 
 /// Set a property on a JSValue target using JavaScript [[Set]] semantics
@@ -450,35 +408,14 @@ pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value
 /// the assignment to a property on the attribute's current value.
 ///
 /// Arguments:
-///   - ctx_instance: A runtime.Instance used to obtain the engine context
-///   - target: The target JSValue (must be a handle to a V8 object)
+///   - ctx_instance: A runtime.Instance whose realm the [[Set]] runs in
+///   - target: The target JSValue (an object)
 ///   - property_name: Name of the property to set (e.g., "cssText")
 ///   - value: String value to assign
 ///
-/// Errors:
-///   - error.NoEngine if no JS engine is configured
-///   - error.TypeError if target is not an object handle
-///   - error.OperationFailed if [[Set]] returns false
+/// Errors: the engine protocol's - TypeError when `target` is not an object.
 pub fn setPropertyOnJSValue(ctx_instance: *Instance, target: JSValue, property_name: []const u8, value: DOMString) !void {
-    // Get context from the instance
-    const ctx = ctx_instance.ctx;
-
-    // Get the engine interface
-    const engine = ctx.getEngine() orelse return error.NoEngine;
-
-    // Get the engine context
-    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
-
-    // Extract the V8 object handle from the JSValue
-    const target_wrapper = switch (target) {
-        .handle => |h| h.ptr,
-        else => return error.TypeError, // JSValue must be a handle for [PutForwards]
-    };
-
-    // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
-    const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
-    const value_slice = value.asSlice();
-    try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
+    try @import("engine").setProperty(ctx_instance.ctx, target, property_name, JSValue.fromStringRef(value.asSlice()));
 }
 
 /// Define an own property on a runtime.Instance using JavaScript [[DefineOwnProperty]] semantics
@@ -492,48 +429,15 @@ pub fn setPropertyOnJSValue(ctx_instance: *Instance, target: JSValue, property_n
 /// Arguments:
 ///   - target: The target runtime.Instance (e.g., Window)
 ///   - property_name: Name of the property to define (e.g., "scrollX")
-///   - value: Any JavaScript value to assign
+///   - value: Any JavaScript value to assign, BORROWED
 ///
-/// Errors:
-///   - error.NoEngine if no JS engine is configured
-///   - error.TypeError if target cannot have properties defined
-///   - error.OperationFailed if [[DefineOwnProperty]] returns false
+/// Errors: the engine protocol's.
 pub fn defineOwnProperty(target: *Instance, property_name: []const u8, value: JSValue) !void {
-    // Context is already *ContextData
-    const ctx = target.ctx;
-
-    // Get the engine interface
-    const engine = ctx.getEngine() orelse return error.NoEngine;
-
-    // Get the engine context
-    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
-
-    // Get the JS wrapper cache from context
-    const wrapper_cache = ctx.getV8WrapperCacheStorage() orelse return error.NoEngine;
-
-    // Get the getWrapperForInstance function
-    const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
-
-    // Get the JS wrapper for the target
-    const target_wrapper = getWrapper(
-        engine_ctx,
-        wrapper_cache,
-        target,
-    ) orelse {
-        // If no wrapper exists, the target hasn't been exposed to JS yet
-        // This shouldn't happen in normal [Replaceable] usage
-        return error.TypeError;
-    };
-
-    // Use engine's defineOwnPropertyOnObject to define the property with [[DefineOwnProperty]] semantics
-    const defineProperty = engine.defineOwnPropertyOnObject orelse return error.NoEngine;
-
-    // Convert runtime.JSValue to engine-native value
-    // This properly handles all JSValue variants (undefined, null, boolean, number, string, handle, instance)
-    const convertValue = engine.convertJSValueToEngine orelse return error.NoEngine;
-    const value_ptr = convertValue(engine_ctx, value) catch return error.TypeError;
-
-    try defineProperty(engine_ctx, target_wrapper, property_name, value_ptr);
+    try @import("engine").defineOwnProperty(target.ctx, .{ .instance = target }, property_name, value, .{
+        .writable = true,
+        .enumerable = true,
+        .configurable = true,
+    });
 }
 
 // Standard library dependency
