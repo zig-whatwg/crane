@@ -912,6 +912,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
 - [Fewer crashes mean longer processes, and an old leak comes back as an OOM](docs/lessons/testing-fewer-crashes-mean-longer-processes-and-an-old-leak-comes-back-as-oom.md) - A drop in crashes can raise the peak heap. Compare retention per file, not crashes, before calling an OOM a regression.
 - [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
+- [A lane's A/B baseline is main, not its own last gate](docs/lessons/testing-a-lane-s-a-b-baseline-is-main-not-its-last-gate.md) - Compare a batch with the main it merges into; a chain of gate-to-gate A/Bs can be all green while the batch as a whole moved dozens of files to blocking.
 
 ### Debugging
 
