@@ -5,8 +5,8 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
 //!
-//! This module provides the bridge between the HTML parser and the V8 JavaScript
-//! engine for executing inline and external scripts.
+//! This module provides the bridge between the HTML parser and the JavaScript
+//! engine (the `engine` protocol) for executing inline and external scripts.
 //!
 //! ## Architecture Note (Golden Rule #12)
 //!
@@ -23,6 +23,9 @@ const std = @import("std");
 const log = std.log.scoped(.script_execution);
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+
+// The JavaScript engine, through its protocol: running scripts, realms.
+const engine = @import("engine");
 
 // Module script loading: the module map, graph fetching, linking, running.
 const module_script = @import("module_script.zig");
@@ -357,13 +360,17 @@ pub fn prepareScriptElement(
 
         switch (script_type) {
             .classic => {
-                // Step 34.2.1: Create a classic script. Its base URL here is
-                // the document's URL, not the document base URL: the script
-                // result keeps it as the resource name V8 compiles with, which
-                // is also the filename its errors report - the document's URL
-                // for an inline script. It is borrowed from the document, so
-                // it lives as long as the result.
-                const script = ClassicScript.init(source_text, documentUrl(doc, script_element));
+                // Step 34.2.1: Create a classic script with base URL - the
+                // document base URL now, kept by the script's [[HostDefined]]
+                // record, which the document owns, so it lives as long as the
+                // result. With no record, the document's URL, which the
+                // document keeps too. (Its errors report the document's URL
+                // as their filename: runClassicScript.)
+                const script_base_url = if (classicScriptRecord(doc, base_url)) |record|
+                    record.script.base_url
+                else
+                    documentUrl(doc, script_element);
+                const script = ClassicScript.init(source_text, script_base_url);
 
                 // Step 34.2.2: Mark as ready
                 HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
@@ -576,7 +583,7 @@ fn queueMarkAsReady(script_element: *runtime.Instance, document: *runtime.Instan
         .document_generation = runtime.SlabAllocator.generationOf(document),
         .allocator = ctx.allocator,
     };
-    task.keep.hold(script_element);
+    engine.keepPlatformObjectAlive(script_element);
     loop.queueTask(.{ .callback = &runQueuedMarkAsReady, .context = task, .drop = &dropQueuedMarkAsReady });
 }
 
@@ -592,13 +599,14 @@ fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance,
 /// The element sits in one of its document's script queues until this runs,
 /// and the spec's queue keeps it alive: a script removed from the tree before
 /// its result arrives still executes (or is skipped by execute step 2) and
-/// still leaves the queue. Crane's queues hold bare pointers, which V8 cannot
-/// see, so the task holds the element's wrapper strongly (`keep`) until it
-/// has run - otherwise a collection in between would leave a freed element in
-/// the queue for the next drain to execute. With the fetch already done, a
-/// script's task is queued in the order its element joined the in-order list,
-/// so by the time the task has run, everything ahead of the element has run
-/// too and the drain has taken it out of its queue.
+/// still leaves the queue. Crane's queues hold bare pointers, which the engine
+/// cannot see, so the element has pending activity until the task has run
+/// (`engine.keepPlatformObjectAlive`) - otherwise a collection in between
+/// would leave a freed element in the queue for the next drain to execute.
+/// With the fetch already done, a script's task is queued in the order its
+/// element joined the in-order list, so by the time the task has run,
+/// everything ahead of the element has run too and the drain has taken it out
+/// of its queue.
 ///
 /// The document is held as (address, slab generation), like
 /// `QueuedElementEvent`'s element: nothing keeps it alive while the task
@@ -610,10 +618,12 @@ const QueuedMarkAsReady = struct {
     document: *runtime.Instance,
     document_generation: u64,
     allocator: std.mem.Allocator,
-    keep: WrapperHold = .{},
 
     fn destroy(self: *QueuedMarkAsReady) void {
-        self.keep.release();
+        // The pending activity ends with the task - unless the element went
+        // anyway (its tree was freed), and its address is someone else's.
+        if (runtime.SlabAllocator.generationOf(self.element) == self.generation)
+            engine.releasePlatformObject(self.element);
         self.allocator.destroy(self);
     }
 };
@@ -624,37 +634,6 @@ fn dropQueuedMarkAsReady(data: ?*anyopaque) void {
     task.destroy();
 }
 
-/// A strong reference to one Instance's JavaScript wrapper - the shape of
-/// `impls/same_object.zig`'s Pin, which this module cannot import.
-const WrapperHold = struct {
-    handle: ?@import("v8").GlobalHandle = null,
-
-    /// Hold `instance`'s wrapper strongly, creating the wrapper if JavaScript
-    /// has not seen `instance` yet. Holds nothing when there is no isolate or
-    /// context to wrap in - a world with no collector to guard against.
-    ///
-    /// Enters the element's realm itself: preparation also runs from the
-    /// top-level parser, which has no scope open.
-    fn hold(self: *WrapperHold, instance: *runtime.Instance) void {
-        const v8 = @import("v8");
-        if (self.handle != null) return;
-        const scope = v8.JsScope.init(instance.ctx) orelse return;
-        defer scope.deinit();
-
-        // The wrapper cache's own Global - borrowed, never ours to dispose.
-        const name = v8.template_registry.getInstanceInterfaceName(instance);
-        const wrapper = v8.template_registry.wrapInstanceAsV8Object(instance, name, scope.isolate, scope.context) catch return;
-        // Our own Global to the same object, which `release` disposes.
-        const local = v8.ffi.v8_Global_Get(scope.isolate, @ptrCast(wrapper)) orelse return;
-        self.handle = v8.GlobalHandle.create(scope.isolate, local);
-    }
-
-    fn release(self: *WrapperHold) void {
-        if (self.handle) |handle| handle.dispose();
-        self.handle = null;
-    }
-};
-
 fn runQueuedMarkAsReady(data: ?*anyopaque) void {
     const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data orelse return));
     defer task.destroy();
@@ -662,13 +641,13 @@ fn runQueuedMarkAsReady(data: ?*anyopaque) void {
     if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
     if (runtime.SlabAllocator.generationOf(task.document) != task.document_generation) return;
 
-    // From the event loop: no HandleScope and no entered context until we
-    // open them, and executing a script and firing its load or error event
-    // need both. A null scope means the element's realm is gone.
-    const v8_engine = @import("v8");
-    const scope = v8_engine.JsScope.init(task.element.ctx) orelse return;
-    defer scope.deinit();
+    // A task of the element's realm: executing a script and firing its load
+    // or error event run in it. An error means the realm is gone.
+    engine.runTaskInRealm(task.element.ctx, markAsReadySteps, task) catch return;
+}
 
+fn markAsReadySteps(data: ?*anyopaque) void {
+    const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data.?));
     markReadyNow(task.allocator, task.element, task.document);
 }
 
@@ -899,11 +878,8 @@ pub fn executeScriptElement(
             // (We'll assume no shadow roots for now)
             doc_state.setCurrentScript(node_document, script_element);
 
-            // Step 6.3: Run the classic script
-            runClassicScript(script_element) catch |err| {
-                // Script execution error - log but don't propagate
-                log.debug("Script execution error: {}\n", .{err});
-            };
+            // Step 6.3: Run the classic script given by el's result.
+            runClassicScript(script_element, node_document, from_external);
 
             // Step 6.4: Set currentScript back to oldCurrentScript
             doc_state.setCurrentScript(node_document, old_current_script);
@@ -925,27 +901,13 @@ pub fn executeScriptElement(
         .null => {},
     }
 
-    // Step 7: Decrement counter was handled with defer above
-
-    // CRITICAL: Perform microtask checkpoint after script execution
+    // Step 7: Decrement counter was handled with defer above.
     //
-    // Per WHATWG HTML Standard §8.1.7.2 "Processing model", after each task
-    // (including script execution), we must "perform a microtask checkpoint".
-    //
-    // This is essential for MutationObserver callbacks, Promise reactions,
-    // and other microtasks that were queued during script execution.
-    // Without this checkpoint, microtasks would only run when the event loop
-    // next iterates, which breaks spec-compliant behavior where MutationObserver
-    // callbacks fire synchronously before the next script runs.
-    //
-    // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint
-    {
-        const v8_engine = @import("v8");
-        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-        if (isolate) |iso| {
-            v8_engine.ffi.v8_Isolate_PerformMicrotaskCheckpoint(iso);
-        }
-    }
+    // No microtask checkpoint here: "run a classic script" and "run a module
+    // script" end with "clean up after running script", which performs it
+    // when the JavaScript execution context stack is empty - and must not
+    // when this script was executed from inside another (appendChild from a
+    // script), which a checkpoint here did regardless.
 
     // Step 8: If el's from an external file is true, fire load event
     if (from_external) {
@@ -953,16 +915,18 @@ pub fn executeScriptElement(
     }
 }
 
-/// Run a classic script
+/// Run a classic script: el's result, in el's realm.
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 ///
-/// Compiles and runs through the V8 FFI directly rather than the engine
-/// interface's compileScript/runScript: those log a failure and return null,
-/// and "report an exception" needs the thrown VALUE (ErrorEvent.error) and the
-/// position V8 recorded for it. Their run result was also an owned Global the
-/// caller dropped - one leaked handle per script.
-fn runClassicScript(script_element: *runtime.Instance) !void {
-    const result = HTMLScriptElementImpl.getResult(script_element);
+/// Deviation, stated: the script runs in el's realm, not in the relevant realm
+/// of el's node document - the same realm unless el was adopted from another
+/// realm's document before it was prepared. Module scripts do the same
+/// (`moduleEnvironment`).
+fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instance, from_external: bool) void {
+    const script = switch (HTMLScriptElementImpl.getResult(script_element)) {
+        .script => |s| s,
+        else => return,
+    };
 
     // CRITICAL: Always use getCachedSourceText for the source.
     // The source_text in ClassicScript is a dangling pointer to memory freed
@@ -970,120 +934,145 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     // properly duplicated copy stored in the HTMLScriptElement's internal state.
     const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
 
-    // The script's base URL doubles as the resource name errors report as
-    // their filename: the document URL for an inline script, the script URL
-    // for an external one.
-    const source_url: ?[]const u8 = switch (result) {
-        .script => |s| if (s.base_url.len > 0) s.base_url else null,
-        else => null,
-    };
-
-    const ctx = script_element.ctx;
-    const engine_ctx = ctx.getEngineContext() orelse return; // no engine (unit tests)
-    const v8 = @import("v8");
-    const ffi = v8.ffi;
-    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
-
-    const scope = ffi.v8_HandleScope_New(isolate) orelse return;
-    defer ffi.v8_HandleScope_Dispose(scope);
-
-    const source_str = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
-    defer ffi.v8_String_Dispose(source_str);
-
-    runClassicSource(context, source_str, source_url, isMutedErrors(result));
+    // The resource name errors report as their filename: the script's URL for
+    // an external script (its base URL), the document's URL for an inline one.
+    const url = if (from_external) script.base_url else documentUrl(document, script_element);
+    runClassicScriptText(script_element, document, source, url, script.base_url, script.muted_errors);
 }
 
-/// Create a classic script from `source` and run it in `context`'s realm:
-/// "create a classic script" then "run a classic script" with rethrow errors
-/// false. `source_url` doubles as the resource name errors report as their
-/// filename. A parse error or a thrown exception is REPORTED for the realm's
-/// global; nothing is thrown to the caller.
-fn runClassicSource(context: *@import("v8").ffi.Context, source: *@import("v8").ffi.String, source_url: ?[]const u8, muted: bool) void {
-    const v8 = @import("v8");
-    const ffi = v8.ffi;
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // The Window whose realm this script runs in: the accessor for
-    // cross-origin checks while it runs, and the global it reports to.
-    const global = v8.context_manager.getWindowForContext(context);
-    if (global) |win| v8.context_manager.pushAccessorWindow(win);
-    defer if (global != null) v8.context_manager.popAccessorWindow();
-
-    // "Create a classic script": a script that does not parse has a parse
-    // error, which step 6 turns into the evaluation status.
-    const compiled = if (source_url) |url| blk: {
-        const name = ffi.v8_String_NewFromUtf8(isolate, url.ptr, @intCast(url.len)) orelse return;
-        defer ffi.v8_String_Dispose(name);
-        break :blk ffi.v8_Script_CompileWithOrigin_Safe(context, source, name);
-    } else ffi.v8_Script_Compile_Safe(context, source);
-    defer ffi.v8_FreeScriptCompileResult(compiled);
-
-    // Step 8.3.1: report an exception - the parse error (step 6), or what
-    // evaluating threw - while the result that owns its error information is
-    // still alive.
-    const window = global orelse return;
-    if (compiled.script) |script| {
-        defer ffi.v8_Script_Dispose(script);
-        // Step 7: ScriptEvaluation.
-        const run = ffi.v8_Script_Run_Safe(context, script);
-        defer ffi.v8_FreeScriptRunResult(run);
-        if (run.value) |value| ffi.v8_Global_Dispose(value);
-        if (run.error_info) |info| reportScriptException(window, info, muted);
-    } else if (compiled.error_info) |info| {
-        reportScriptException(window, info, muted);
-    }
-}
-
-/// The timer initialization steps' task, step 8.5, for a string handler:
-/// create a classic script from `source` - the handler converted by ToString
-/// when setTimeout or setInterval was called - with the settings object's API
-/// base URL, and run it. Errors are reported, never thrown.
+/// "Create a classic script" from `source` with `base_url`, and "run a classic
+/// script" with rethrow errors false, in the realm of `element` (an HTML or SVG
+/// script): the engine's operation, which prepares to run script, reports a
+/// parse error or a thrown exception through `reportClassicScriptError`, and
+/// cleans up after running script - the microtask checkpoint, when the
+/// JavaScript execution context stack is then empty. `url` is the script's
+/// resource name, the filename of what it throws.
 ///
-/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
-///
-/// Deviations, stated: step 8.5.3's EnsureCSPDoesNotBlockStringCompilation is
-/// not performed - nothing enforces CSP on eval() either - and the initiating
-/// script is not recorded, so step 8.5.7 never replaces the API base URL or
-/// the fetch options with that script's.
-pub fn runTimerHandlerString(context: *@import("v8").ffi.Context, source: *@import("v8").ffi.String) void {
-    const v8 = @import("v8");
-    const window = v8.context_manager.getWindowForContext(context) orelse return;
-    // Steps 8.5.4-8.5.6: the settings object's API base URL - for a Window,
-    // its document's base URL.
-    const document = interfaces.Window.get_document(window) catch null;
-    runClassicSource(context, source, documentUrl(document, window), false);
-}
-
-/// A classic script's muted errors flag (see `ClassicScript.muted_errors`).
-fn isMutedErrors(result: HTMLScriptElementImpl.ScriptResult) bool {
-    return switch (result) {
-        .script => |s| s.muted_errors,
-        else => false,
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
+fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
+    const realm = element.ctx;
+    // The script's [[HostDefined]]: what an import() in it resolves against.
+    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url)) |record| &record.script else null;
+    var host = ClassicScriptReport{ .realm = realm, .muted = muted };
+    engine.runClassicScript(realm, .{ .utf8 = source }, url, host_defined, .{
+        .report = reportClassicScriptError,
+        .host = &host,
+    }) catch |err| switch (err) {
+        // Step 8.3: thrown, and reported.
+        error.ExceptionReported => {},
+        else => log.debug("classic script not run: {}", .{err}),
     };
 }
 
-const ScriptExceptionReport = struct {
-    global: *runtime.Instance,
-    info: *const @import("v8").ffi.V8ErrorInfo,
+/// Who "run a classic script" step 8.3 reports to, and how: the global of the
+/// realm the script ran in - its settings object's - with the script's muted
+/// errors flag.
+const ClassicScriptReport = struct {
+    realm: runtime.Context,
     muted: bool,
 };
 
-/// Run a classic script step 8.3.1: report an exception given by the
-/// evaluation status's value for the script's global - with V8's automatic
-/// microtask checkpoints held off until the report is done, since the spec
-/// reports before "clean up after running script" performs the checkpoint.
-fn reportScriptException(global: *runtime.Instance, info: *const @import("v8").ffi.V8ErrorInfo, muted: bool) void {
-    var report = ScriptExceptionReport{ .global = global, .info = info, .muted = muted };
-    report_exception.withMicrotasksSuppressed(&runScriptExceptionReport, &report);
+/// `engine.Reporter.report` for classic scripts: "report an exception" for the
+/// script's global, with its muted errors flag. Step 2's error information is
+/// the engine's, extracted where the script threw.
+fn reportClassicScriptError(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const report: *const ClassicScriptReport = @ptrCast(@alignCast(host orelse return));
+    const window = windowOfRealm(report.realm) orelse return;
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = report_exception.reportErrorInfo(window, &extracted, .{ .muted = report.muted });
 }
 
-fn runScriptExceptionReport(data: ?*anyopaque) callconv(.c) void {
-    const report: *ScriptExceptionReport = @ptrCast(@alignCast(data orelse return));
-    _ = report_exception.reportException(report.global, report.info.exception, .{
-        .muted = report.muted,
-        .info = report.info,
-    });
+// =============================================================================
+// Classic scripts' [[HostDefined]]
+// =============================================================================
+
+/// A classic script's [[HostDefined]] in a Window realm (engine protocol
+/// R31): the `module_script.ClassicScript` an import() in the script names as
+/// its referrer (`ImportReferrer.script`), whose base URL the specifier
+/// resolves against (HostLoadImportedModule step 6).
+///
+/// HTML's classic script lives for as long as anything can still run it - a
+/// function it defined can call import() at any time - which the spec leaves
+/// to garbage collection. Crane keeps one record per base URL in the
+/// document's module map, under "classic:<base URL>", so it has the owner and
+/// the lifetime of the module scripts beside it (an inline module script is
+/// in no spec map either): the document frees it, through
+/// `disposeModuleMapEntry`. The engine keeps only the record's address, so
+/// `classicScriptBaseUrlOf` checks it against the records still alive before
+/// reading it; an import() from a function that outlived its document
+/// resolves against the realm's document base URL instead. (A freed record's
+/// address reused by a new one reads as the new one - a wrong base URL, never
+/// freed memory - as `module_script.scriptOf` accepts for module scripts.)
+const ClassicScriptRecord = struct {
+    /// First, so the engine's pointer to it is the record's.
+    script: module_script.ClassicScript,
+    /// Links in `live_classic_scripts`.
+    live_prev: ?*ClassicScriptRecord = null,
+    live_next: ?*ClassicScriptRecord = null,
+
+    fn destroy(self: *ClassicScriptRecord) void {
+        if (self.live_prev) |prev| prev.live_next = self.live_next else live_classic_scripts = self.live_next;
+        if (self.live_next) |next| next.live_prev = self.live_prev;
+        std.heap.c_allocator.free(self.script.base_url);
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
+/// Every ClassicScriptRecord that exists.
+var live_classic_scripts: ?*ClassicScriptRecord = null;
+
+const classic_script_key_prefix = "classic:";
+
+/// `document`'s classic script record for `base_url`, made (with its own copy
+/// of the URL) if it has none yet. Null when it cannot be made - the script
+/// then runs with no [[HostDefined]], and an import() in it resolves against
+/// the document's base URL.
+fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8) ?*ClassicScriptRecord {
+    const allocator = std.heap.c_allocator;
+    const map = documentModuleMap(document);
+    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, base_url }) catch return null;
+    defer allocator.free(key);
+    if (map.getFn(map.context, key)) |value| return @ptrCast(@alignCast(value));
+
+    const record = allocator.create(ClassicScriptRecord) catch return null;
+    record.* = .{ .script = .{ .base_url = allocator.dupe(u8, base_url) catch {
+        allocator.destroy(record);
+        return null;
+    } } };
+    record.live_next = live_classic_scripts;
+    if (live_classic_scripts) |head| head.live_prev = record;
+    live_classic_scripts = record;
+    if (!map.putFn(map.context, key, record)) {
+        record.destroy();
+        return null;
+    }
+    return record;
+}
+
+/// The base URL of the classic script whose [[HostDefined]] `host_defined`
+/// is, while its record exists.
+fn classicScriptBaseUrlOf(host_defined: *anyopaque) ?[]const u8 {
+    var it = live_classic_scripts;
+    while (it) |record| : (it = record.live_next) {
+        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.base_url;
+    }
+    return null;
+}
+
+/// The document's module map dispose function: its classic script records,
+/// and its module scripts.
+fn disposeModuleMapEntry(value: *anyopaque) void {
+    var it = live_classic_scripts;
+    while (it) |record| : (it = record.live_next) {
+        if (@as(*anyopaque, @ptrCast(record)) == value) return record.destroy();
+    }
+    module_script.disposeEntry(value);
 }
 
 // =============================================================================
@@ -1113,7 +1102,7 @@ fn documentModuleMapGet(context: *anyopaque, key: []const u8) ?*anyopaque {
 
 fn documentModuleMapPut(context: *anyopaque, key: []const u8, value: *anyopaque) bool {
     const document: *runtime.Instance = @ptrCast(@alignCast(context));
-    doc_state.setModuleDisposeFunction(document, &module_script.disposeEntry);
+    doc_state.setModuleDisposeFunction(document, &disposeModuleMapEntry);
     doc_state.setModule(document, key, value) catch return false;
     return true;
 }
@@ -1126,10 +1115,6 @@ fn documentResolveImport(context: *anyopaque, specifier: []const u8, base_url: [
 /// Distinguishes the map keys of inline module scripts. Process-wide, so a key
 /// is never reused, even across documents.
 var next_inline_module_id: u64 = 0;
-
-/// The engine protocol, for this section's module scripts (the rest of this
-/// file still reaches V8 directly).
-const engine = @import("engine");
 
 /// The module loading environment for a script element's node document.
 fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
@@ -1227,7 +1212,7 @@ fn loadImportedModule(
     // handler's, eval's or a timer string's [[ScriptOrModule]] is null.
     const base: ImportBase = switch (referrer) {
         .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .url = script.base_url } else .document,
-        .script => |host_defined| .{ .url = module_script.classicScriptBaseUrl(host_defined) },
+        .script => |host_defined| if (classicScriptBaseUrlOf(host_defined)) |url| .{ .url = url } else .document,
         .realm => .document,
     };
     loadImport(realm, base, specifier, type_attribute, request);
@@ -1754,11 +1739,11 @@ fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
 /// `Document`'s `base_uri` field is written by nothing in the tree - it is
 /// initialised to "" in `InternalState.init` and never assigned - and
 /// `internal.url` may still read "about:blank". The URL the document was
-/// actually fetched from lives on the context entry, put there by
-/// `setDocumentUrl` during navigation. Reading `base_uri` alone made every
-/// relative `src` on a dynamically-inserted script resolve to itself, so the
-/// fetch went to a bare path with no origin and failed; an absolute URL in the
-/// same position worked, which is what isolated it.
+/// actually fetched from lives on its realm (`runtime.Context.documentUrl`),
+/// put there by `setDocumentUrl` during navigation. Reading `base_uri` alone
+/// made every relative `src` on a dynamically-inserted script resolve to
+/// itself, so the fetch went to a bare path with no origin and failed; an
+/// absolute URL in the same position worked, which is what isolated it.
 ///
 /// Not the document BASE URL: that honours `<base>` (`documentBaseUrlAlloc`).
 fn documentUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) []const u8 {
@@ -1771,10 +1756,8 @@ fn documentUrl(document: ?*runtime.Instance, script_element: *runtime.Instance) 
         }
     }
 
-    const engine_ctx = script_element.ctx.engine_ctx orelse return "";
-    const v8_engine = @import("v8");
-    const v8_ctx: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    return v8_engine.context_manager.getDocumentUrl(v8_ctx) orelse "";
+    // The URL the element's realm records for its document.
+    return script_element.ctx.documentUrl() orelse "";
 }
 
 /// The document base URL, as a copy owned by `allocator`, or null when it
@@ -1884,14 +1867,13 @@ fn runQueuedErrorEvent(data: ?*anyopaque) void {
     // The element was collected and its slot reissued: nobody is left to hear it.
     if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
 
-    // A task runs from the event loop, not from V8, so there is no HandleScope
-    // and no entered context unless we open them - and wrapping the event for
-    // a listener without one is a V8 CHECK (SIGTRAP), not an error return.
-    // A null scope means the element's context is gone.
-    const v8_engine = @import("v8");
-    const scope = v8_engine.JsScope.init(task.element.ctx) orelse return;
-    defer scope.deinit();
+    // An element task: it runs in the element's realm. An error means the
+    // realm is gone, and nobody is left to hear the event.
+    engine.runTaskInRealm(task.element.ctx, errorEventSteps, task) catch return;
+}
 
+fn errorEventSteps(data: ?*anyopaque) void {
+    const task: *QueuedElementEvent = @ptrCast(@alignCast(data.?));
     fireErrorEvent(task.allocator, task.element);
 }
 
@@ -2702,50 +2684,52 @@ fn fireAtScriptElement(
     script_element: *runtime.Instance,
     event_type: []const u8,
 ) void {
-    const ctx = script_element.ctx;
-
+    _ = allocator;
     // Callers include the parser - executeScriptsWhenParsingFinished runs a
-    // deferred script and fires its load event from loadHTML, not from V8 -
-    // so there may be no HandleScope and no entered context. Dispatch wraps
-    // the event for its listeners, and a handle created with no scope is a
-    // V8 fatal error in HandleScope::Extend: 5 CRASHes in one worklist sweep,
-    // four of them render-blocking files with a deferred script. A nested
-    // scope costs nothing when the caller did have one. Null: the context is
-    // gone and nobody is left to hear the event.
-    const scope = @import("v8").JsScope.init(ctx) orelse return;
-    defer scope.deinit();
+    // deferred script and fires its load event from loadHTML, not from script
+    // or a task - so the element's realm may not be current. Dispatch wraps
+    // the event for its listeners in it (5 CRASHes in one worklist sweep, four
+    // of them render-blocking files with a deferred script, when nothing
+    // entered it). An error: the realm is gone, and nobody is left to hear the
+    // event.
+    var fire = ScriptElementEvent{ .element = script_element, .event_type = event_type };
+    engine.runInRealm(script_element.ctx, fireAtScriptElementSteps, &fire) catch return;
+}
 
+const ScriptElementEvent = struct {
+    element: *runtime.Instance,
+    event_type: []const u8,
+};
+
+fn fireAtScriptElementSteps(data: ?*anyopaque) void {
+    const fire: *const ScriptElementEvent = @ptrCast(@alignCast(data.?));
     const event = interfaces.Event.call_constructor(
-        ctx,
-        runtime.DOMString.initInterned(event_type),
+        fire.element.ctx,
+        runtime.DOMString.initInterned(fire.event_type),
         .{ .was_passed = true, .value = .{
             .bubbles = false,
             .cancelable = false,
             .composed = false,
         } },
     ) catch |err| {
-        log.debug("Failed to create {s} event: {any}", .{ event_type, err });
+        log.debug("Failed to create {s} event: {any}", .{ fire.event_type, err });
         return;
     };
     // Deliberately no `defer deinit`. A listener that runs can hand the event to
-    // script, and V8 then holds a wrapper for it; freeing it here would be a
-    // use-after-free the moment the handler kept a reference. Nor is it freed
-    // with the context: nothing sweeps a context's Instances, and the
+    // script, and the engine then holds a wrapper for it; freeing it here would
+    // be a use-after-free the moment the handler kept a reference. Nor is it
+    // freed with the context: nothing sweeps a context's Instances, and the
     // DebugAllocator reported one leak per external script. So the event is
     // released after dispatch unless something wrapped it.
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
 
-    // Fired by the user agent, not by script.
-    impls.Event.setIsTrusted(event, true);
-
-    // Fired by the user agent, so trusted (DOM 2.10).
-    _ = @import("dom").fire_event.dispatchTrusted(script_element, event) catch |err| {
-        log.debug("Failed to dispatch {s} event: {any}", .{ event_type, err });
+    // Fired by the user agent, so trusted (DOM 2.10): dispatchTrusted sets
+    // isTrusted.
+    _ = @import("dom").fire_event.dispatchTrusted(fire.element, event) catch |err| {
+        log.debug("Failed to dispatch {s} event: {any}", .{ fire.event_type, err });
         return;
     };
-
-    _ = allocator;
 }
 
 /// Fire an error event on a script element

@@ -12,16 +12,17 @@ const Allocator = std.mem.Allocator;
 /// A header is a tuple that consists of a name and value.
 /// Spec: https://fetch.spec.whatwg.org/#concept-header
 pub const Header = struct {
-    /// Header name (lowercased per spec's "header name lowercasing")
+    /// Header name, in the case it was given: a header list compares names
+    /// byte-case-insensitively and keeps their case (Fetch "append" reuses
+    /// the case of a name already in the list); only "sort and combine"
+    /// lowercases them.
     name: []const u8,
     /// Header value
     value: []const u8,
 
-    /// Create a header with owned copies of name and value
-    /// Name is lowercased per Fetch spec "header name lowercasing"
+    /// Create a header with owned copies of name and value.
     pub fn init(allocator: Allocator, name: []const u8, value: []const u8) !Header {
-        // Per Fetch spec: header names must be lowercased
-        const owned_name = try std.ascii.allocLowerString(allocator, name);
+        const owned_name = try allocator.dupe(u8, name);
         errdefer allocator.free(owned_name);
         const owned_value = try allocator.dupe(u8, value);
         return .{
@@ -504,18 +505,26 @@ test "HeaderList: append and contains" {
     try std.testing.expect(!list.contains("Accept"));
 }
 
-test "HeaderList: append normalizes header names to lowercase" {
+test "HeaderList: append keeps a name's case, reusing the case of one already in the list" {
     const allocator = std.testing.allocator;
     var list = HeaderList.init(allocator);
     defer list.deinit();
 
     try list.append("Content-Type", "text/html");
-    try list.append("CONTENT-TYPE", "text/plain"); // should be normalized to lowercase
+    // Fetch "append" step 1: "If list contains name, then set name to the
+    // first such header's name."
+    try list.append("CONTENT-TYPE", "text/plain");
+    try list.append("X-Custom", "1");
 
-    try std.testing.expectEqual(@as(usize, 2), list.len());
-    // Per Fetch spec, header names are normalized to lowercase
-    try std.testing.expectEqualStrings("content-type", list.entries.items[0].name);
-    try std.testing.expectEqualStrings("content-type", list.entries.items[1].name);
+    try std.testing.expectEqual(@as(usize, 3), list.len());
+    try std.testing.expectEqualStrings("Content-Type", list.entries.items[0].name);
+    try std.testing.expectEqualStrings("Content-Type", list.entries.items[1].name);
+    try std.testing.expectEqualStrings("X-Custom", list.entries.items[2].name);
+    // Sort and combine lowercases.
+    var sorted = try list.sortAndCombine(allocator);
+    defer sorted.deinit();
+    try std.testing.expectEqualStrings("content-type", sorted.entries.items[0].name);
+    try std.testing.expectEqualStrings("x-custom", sorted.entries.items[1].name);
 }
 
 test "HeaderList: get combines values with comma-space" {

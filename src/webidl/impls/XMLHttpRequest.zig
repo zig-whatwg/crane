@@ -38,6 +38,7 @@ const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const infra = @import("infra");
+const encoding = @import("encoding");
 
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
@@ -405,11 +406,24 @@ pub fn get_responseText(instance: *runtime.Instance) anyerror!runtime.USVString 
 
     if (xhr_state.received_bytes.items.len == 0) return "";
 
-    // OWNED, not borrowed: the interface layer frees what a USVString getter
-    // returns, and `received_bytes.items` belongs to an ArrayList.
-    //
-    // TODO: decode using the final charset rather than assuming UTF-8.
-    return try instance.ctx.allocator.dupe(u8, xhr_state.received_bytes.items);
+    // Text response steps 2-3: the label - the final encoding's, or an XML
+    // response's declared one.
+    const allocator = instance.ctx.allocator;
+    const label = try response_algo.textResponseEncodingLabel(allocator, xhr_state);
+    defer if (label) |l| allocator.free(l);
+    // 4. If charset is null, then set charset to UTF-8 (as for a label that
+    //    names no encoding: "get a final encoding" steps 6-7).
+    const charset = if (label) |l| encoding.getEncoding(l) orelse &encoding.encoding.UTF_8 else &encoding.encoding.UTF_8;
+    // 5. Return the result of running decode on xhr's received bytes using
+    //    charset - a BOM overrides it. OWNED, as UTF-8: the interface layer
+    //    frees what a USVString getter returns.
+    const code_units = encoding.hooks.decode(allocator, xhr_state.received_bytes.items, charset) catch return error.OutOfMemory;
+    defer allocator.free(code_units);
+    // A decoder's output is scalar values: no surrogate is unpaired.
+    return std.unicode.utf16LeToUtf8Alloc(allocator, code_units) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => unreachable,
+    };
 }
 
 /// Getter for responseXML

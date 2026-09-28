@@ -843,6 +843,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A legacy entry point reads what its protocol hook must be given](docs/lessons/architecture-a-legacy-entry-point-reads-what-its-protocol-hook-must-be-given.md) - The old path's inputs are the new path's preconditions - diff them before the switch, and name the files that will show it.
 - [A realm switch inside a task is runInRealm, not prepareToRunScript](docs/lessons/architecture-a-realm-switch-is-runinrealm-not-preparetorunscript.md) - `JsScope` translates to `runInRealm`/`runTaskInRealm`; `prepareToRunScript` is for running script, and around event dispatch it silently moves microtask checkpoints.
 - [A realm's end can reach its own end](docs/lessons/architecture-a-realm-s-end-can-reach-its-own-end.md) - Any teardown that frees wrapped objects can be re-entered by one of them: carry the re-entrancy guard over when replacing a teardown path, and bisect a sweep prefix before reading the crashing file.
+- [Only "clean up after running script" checkpoints](docs/lessons/architecture-only-clean-up-after-running-script-checkpoints.md) - A checkpoint needs the spec's condition (an empty execution context stack), not a call site; one after every script is one inside some other script.
 
 ### Spec Compliance
 
@@ -865,6 +866,9 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A pending exception is not an abrupt completion](docs/lessons/spec-compliance-a-pending-exception-is-not-an-abrupt-completion.md) - Wherever the spec reads a completion instead of writing "?", run the step under engine.completionOf.
 - [A repeating timer keeps the id script holds](docs/lessons/spec-compliance-a-repeating-timer-keeps-the-id-script-holds.md) - Whatever script holds must outlive the scheduler's handles; a reschedule updates the value, never the key.
 - [An honest accessor exposes what a lenient check hid](docs/lessons/spec-compliance-an-honest-accessor-exposes-what-a-lenient-check-hid.md) - A security check that suddenly fails correct pages was usually passing everything before; test it with a pair that must pass and a pair that must fail.
+- [A state that queues tokens has emitted them](docs/lessons/spec-compliance-a-state-that-queues-tokens-has-emitted-them.md) - A token queued is a token emitted: the queue drains before the next state runs and before end of file, or order and text are lost.
+- [Read ahead, consume only what matched](docs/lessons/spec-compliance-read-ahead-consume-only-what-matched.md) - Match by looking ahead, not by consuming and restoring; restoring for one caller loses text for every other.
+- [A state that consumes nothing cannot be dispatched like one that does](docs/lessons/spec-compliance-a-state-that-consumes-nothing-cannot-be-dispatched-like-one-that-does.md) - Check each state's first step: one that does not consume must not be reached through a loop that consumes for it.
 
 ### Codegen
 
@@ -908,6 +912,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [With synchronous fetches, no ordering model satisfies every timing test](docs/lessons/testing-with-synchronous-fetches-no-ordering-model-satisfies-every-timing-test.md) - When timing tests contradict each other under a synchronous engine, choose the common case and write the deviation down.
 - [Fewer crashes mean longer processes, and an old leak comes back as an OOM](docs/lessons/testing-fewer-crashes-mean-longer-processes-and-an-old-leak-comes-back-as-oom.md) - A drop in crashes can raise the peak heap. Compare retention per file, not crashes, before calling an OOM a regression.
 - [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
+- [A lane's A/B baseline is main, not its own last gate](docs/lessons/testing-a-lane-s-a-b-baseline-is-main-not-its-last-gate.md) - Compare a batch with the main it merges into; a chain of gate-to-gate A/Bs can be all green while the batch as a whole moved dozens of files to blocking.
 
 ### Debugging
 

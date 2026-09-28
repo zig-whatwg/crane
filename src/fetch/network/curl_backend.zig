@@ -737,6 +737,19 @@ pub const Transfer = struct {
         return self.ctx.head_end != null;
     }
 
+    /// The transfer ended with its header block still open - no empty line
+    /// after the last field, the connection closed instead: the block ends
+    /// there, as browsers read it (an HTTP/1.0 server, a raw .asis
+    /// resource). True when that leaves a response to hand on - a block
+    /// that starts with a status line.
+    pub fn endHeadersAtClose(self: *Transfer) bool {
+        if (self.ctx.head_end != null) return true;
+        const block = self.ctx.raw_headers.items[self.ctx.block_start..];
+        if (statusOfBlock(block) == null) return false;
+        self.ctx.head_end = self.ctx.raw_headers.items.len;
+        return true;
+    }
+
     /// The response so far, once `headersComplete`: status, headers, final
     /// URL and timing, and no body - that follows through `takeBody`. The
     /// response is the caller's.

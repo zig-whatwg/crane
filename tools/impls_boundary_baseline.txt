@@ -99,10 +99,9 @@ src/html/script_execution.zig Document.setModule 1
 src/html/script_execution.zig Document.setModuleDisposeFunction 1
 src/html/script_execution.zig Document.setPendingParsingBlockingScript 2
 src/html/script_execution.zig Element.getInternal 2
-src/html/script_execution.zig Event.setIsTrusted 1
 src/html/script_execution.zig HTMLScriptElement.ClassicScript 1
 src/html/script_execution.zig HTMLScriptElement.ModuleScript 1
-src/html/script_execution.zig HTMLScriptElement.ScriptResult 5
+src/html/script_execution.zig HTMLScriptElement.ScriptResult 4
 src/html/script_execution.zig HTMLScriptElement.ScriptType 1
 src/html/script_execution.zig HTMLScriptElement.cacheSourceText 2
 src/html/script_execution.zig HTMLScriptElement.clearForceAsync 1
@@ -221,7 +220,6 @@ src/webidl/impls/EventTarget.zig Event.setIsTrusted 6
 src/webidl/impls/EventTarget.zig Event.setRelatedTarget 6
 src/webidl/impls/EventTarget.zig Event.setTarget 6
 src/webidl/impls/FileList.zig File.createFromBytes 4
-src/webidl/impls/FileReader.zig Blob.getInternal 4
 src/webidl/impls/FileReaderSync.zig Blob.InternalState 1
 src/webidl/impls/FileReaderSync.zig Blob.getInternal 1
 src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
