@@ -396,3 +396,79 @@ test "the character after a numeric character reference is kept" {
         \\
     );
 }
+
+/// The whole document, html5lib style: two spaces per level.
+fn expectDocument(input: []const u8, expected: []const u8) !void {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, input);
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    try builder.parse();
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    var child = builder.document.first_child;
+    while (child) |c| : (child = c.next_sibling) try serializeNode(allocator, &out, c, 0);
+    try testing.expectEqualStrings(expected, out.items);
+}
+
+test "indentation inside head is a character token per space, and stays in head" {
+    // "in head": "A character token that is one of U+0009 CHARACTER TABULATION,
+    // U+000A LINE FEED (LF), U+000C FORM FEED (FF), U+000D CARRIAGE RETURN
+    // (CR), or U+0020 SPACE: Insert the character." The tokenizer batches a
+    // run of text into one token; a run that began with spaces was taken
+    // for "anything else", which popped the head and put the rest in a body.
+    try expectDocument("<head>\n    <title>x</title>\n    <link></head><body>",
+        \\<html>
+        \\  <head>
+        \\    "
+        \\    "
+        \\    <title>
+        \\      "x"
+        \\    "
+        \\    "
+        \\    <link>
+        \\  <body>
+        \\
+    );
+}
+
+test "whitespace before a frameset leaves frameset-ok alone, so the frameset is inserted" {
+    try expectDocument("<head>\n  <title>t</title>\n</head>\n  <frameset></frameset>",
+        \\<html>
+        \\  <head>
+        \\    "
+        \\  "
+        \\    <title>
+        \\      "t"
+        \\    "
+        \\"
+        \\  "
+        \\  "
+        \\  <frameset>
+        \\
+    );
+}
+
+test "leading whitespace before head is ignored, and the text after it is body text" {
+    // html5lib tests19: "<html> a <frameset></frameset>".
+    try expectDocument("<html> a <frameset></frameset>",
+        \\<html>
+        \\  <head>
+        \\  <body>
+        \\    "a "
+        \\
+    );
+}
+
+test "in frameset, whitespace in a run of text is inserted and the rest ignored" {
+    // "in frameset": whitespace characters are inserted; "Anything else: Parse
+    // error. Ignore the token." - per character, so a run's spaces survive.
+    try expectDocument("<frameset> a b </frameset>",
+        \\<html>
+        \\  <head>
+        \\  <frameset>
+        \\    "   "
+        \\
+    );
+}

@@ -566,6 +566,15 @@ pub const Tokenizer = struct {
         if (current_cp >= 0x80 or current_cp == 0x0D or current_cp == 0x0A) {
             return .{ .data = &.{}, .len = 0 };
         }
+        // Nor if it is whitespace: a run never begins with it. Most insertion
+        // modes treat a whitespace character token apart from any other ("in
+        // head": insert it; "before head": ignore it; "in body": insert it
+        // without clearing frameset-ok), and take a text run for "anything
+        // else" by its first character. Indentation begun as a run popped the
+        // head, and cleared frameset-ok ahead of a <frameset>.
+        if (current_cp == 0x09 or current_cp == 0x0C or current_cp == 0x20) {
+            return .{ .data = &.{}, .len = 0 };
+        }
 
         // Scan ahead from current input position for more text characters
         var end_pos = self.input.position;

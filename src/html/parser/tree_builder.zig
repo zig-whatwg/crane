@@ -3303,10 +3303,7 @@ pub const TreeBuilder = struct {
                 }
                 // Stop parsing
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, ignore with error
-                self.reportError(.invalid_first_character_of_tag_name);
-            },
+            .text_run => |text_run| try self.processRunPerCharacter(text_run.data, handleInFramesetMode),
         }
     }
 
@@ -3351,10 +3348,7 @@ pub const TreeBuilder = struct {
             .eof => {
                 // Stop parsing
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, ignore with error
-                self.reportError(.invalid_first_character_of_tag_name);
-            },
+            .text_run => |text_run| try self.processRunPerCharacter(text_run.data, handleAfterFramesetMode),
         }
     }
 
@@ -3433,11 +3427,21 @@ pub const TreeBuilder = struct {
             .eof => {
                 // Stop parsing
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, ignore with error
-                self.reportError(.invalid_first_character_of_tag_name);
-            },
+            .text_run => |text_run| try self.processRunPerCharacter(text_run.data, handleAfterAfterFramesetMode),
         }
+    }
+
+    /// A text run in a mode that stays put on "anything else" - "in
+    /// frameset", "after frameset", "after after frameset" ignore it - while
+    /// inserting whitespace: the run's characters one token each, so the
+    /// whitespace after its first character is inserted and the rest ignored.
+    /// (Text runs are ASCII, so each byte is a code point.)
+    fn processRunPerCharacter(
+        self: *TreeBuilder,
+        data: []const u8,
+        comptime handler: fn (*TreeBuilder, Token) Allocator.Error!void,
+    ) Allocator.Error!void {
+        for (data) |byte| try handler(self, .{ .character = byte });
     }
 
     // =========================================================================
