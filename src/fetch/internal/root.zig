@@ -43,6 +43,8 @@ pub const canSet = guards.canSet;
 pub const canDelete = guards.canDelete;
 pub const canGet = guards.canGet;
 
+pub const origins = @import("origins.zig");
+
 pub const body = @import("body.zig");
 pub const body_pipe = @import("body_pipe.zig");
 pub const BodyPipe = body_pipe.BodyPipe;
@@ -125,6 +127,7 @@ pub const cloneResponseBody = body_cloning.cloneResponseBody;
 pub const cloneResponseBodyOrThrow = body_cloning.cloneResponseBodyOrThrow;
 
 test {
+    _ = origins;
     _ = header_list;
     _ = validation;
     _ = parsing;

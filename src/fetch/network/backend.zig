@@ -123,6 +123,11 @@ pub const NetworkRequest = struct {
     cert_options: CertVerifyOptions = .{},
     /// Enable verbose logging (for debugging)
     verbose: bool = false,
+    /// Header values the request owns, which `headers` points into - those
+    /// fetch adds to the request it sends, such as the `Origin`
+    /// HTTP-network-or-cache fetch appends. `http_fetch.freeNetworkRequest`
+    /// frees each, and the list.
+    owned_values: []const []const u8 = &.{},
 
     pub const Header = struct {
         name: []const u8,

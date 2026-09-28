@@ -430,7 +430,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             }
 
             // Step 4: responseObject is the result of creating a Response
-            // object given response, "immutable" and relevantRealm.
+            // object given response, "immutable" and relevantRealm - the
+            // filtered response main fetch made, which is all script sees.
+            response.applyFilter();
             const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
                 response.deinit();
                 return self.rejectTypeError("Failed to fetch");
@@ -696,6 +698,13 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // may not, so it fetches a clone: nothing script can observe tells the
     // two apart, since the fetch changes only request's current URL.
     const fetched_request = try request.clone();
+    // Fetch "fetch" step 13: "If request's origin is "client", then set
+    // request's origin to request's client's origin" - this global's
+    // settings object's.
+    if (fetched_request.origin == .client) setClientOrigin(instance, fetched_request) catch {
+        fetched_request.deinit();
+        return error.OutOfMemory;
+    };
     const call = allocator.create(Call) catch {
         fetched_request.deinit();
         return error.OutOfMemory;
@@ -744,6 +753,17 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // Step 13.
     return p.take();
+}
+
+/// Set `request`'s origin to `global`'s settings object's origin,
+/// serialized. A global with no settings leaves it "client".
+fn setClientOrigin(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
+    const settings = global_settings.of(global) orelse return;
+    const origin = settings.origin(global) catch return;
+    defer global.ctx.allocator.free(origin);
+    // An origin the global does not know yet stays "client".
+    if (origin.len == 0) return;
+    try request.setOrigin(origin);
 }
 
 fn rejectWithTypeError(realm: runtime.Context, capability: *engine.PromiseCapability, message: []const u8) void {
