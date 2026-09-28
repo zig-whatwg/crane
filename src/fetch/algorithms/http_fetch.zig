@@ -439,6 +439,17 @@ pub fn httpNetworkOrCacheFetchStart(
         }
     }
 
+    // HTTP-network fetch, step 8.3: "If connection is an HTTP/1.x
+    // connection, request's body is non-null, and request's body's source is
+    // null, then return a network error." A body with no source was made
+    // from a ReadableStream, and cannot be sent twice; only HTTP/2 and later
+    // send one. Every connection here is HTTP/1.x: this libcurl is built
+    // without HTTP/2.
+    if (request.body) |b| switch (b) {
+        .bytes => {},
+        .body => |body| if (body.source == .none) return .{ .response = try internal_response.networkError(allocator) },
+    };
+
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
     const network_request = buildNetworkRequest(allocator, request) catch {
         return HttpFetchError.OutOfMemory;

@@ -953,6 +953,119 @@ pub fn finalMimeTypeBytes(allocator: std.mem.Allocator, state: *const XMLHttpReq
     return mimesniff.serializeMimeTypeToBytes(allocator, extracted);
 }
 
+/// The label a text response decodes with - "get a text response" steps
+/// 2-3 - for the caller to get an encoding from (steps 4-5: failure, or no
+/// label, is UTF-8, and a BOM overrides it). OWNED; null for none.
+///
+/// Spec: https://xhr.spec.whatwg.org/#text-response
+pub fn textResponseEncodingLabel(allocator: std.mem.Allocator, state: *const XMLHttpRequestState) !?[]u8 {
+    // 2. Let charset be the result of get a final encoding for xhr.
+    if (try finalEncodingLabel(allocator, state)) |label| return label;
+    // 3. If xhr's response type is the empty string, charset is null, and
+    //    the result of get a final MIME type for xhr is an XML MIME type,
+    //    then use the rules set forth in the XML specifications to determine
+    //    the encoding - its XML declaration's encoding.
+    if (state.response_type != .empty) return null;
+    const final_mime = try finalMimeTypeBytes(allocator, state);
+    defer allocator.free(final_mime);
+    if (!isXmlMimeType(final_mime)) return null;
+    const declared = xmlDeclarationEncoding(state.received_bytes.items) orelse return null;
+    return try allocator.dupe(u8, declared);
+}
+
+/// XHR "get a final encoding", up to its label (steps 1-5): the override MIME
+/// type's charset if it has one, else the response MIME type's. OWNED; null
+/// for none.
+///
+/// Spec: https://xhr.spec.whatwg.org/#final-charset
+pub fn finalEncodingLabel(allocator: std.mem.Allocator, state: *const XMLHttpRequestState) !?[]u8 {
+    // 4. If xhr's override MIME type's parameters["charset"] exists, then set
+    //    label to it.
+    if (state.override_mime_type) |override| {
+        if (parameterIndex(override, "charset")) |i| return try isomorphicEncode(allocator, override.parameters.entries.items()[i].value);
+    }
+    // 2. Let responseMIME be the result of get a response MIME type for xhr.
+    //    (text/xml, when extracting fails, has no charset.)
+    // 3. If responseMIME's parameters["charset"] exists, then set label to it.
+    const response = state.response orelse return null;
+    var response_mime = (try extractMimeType(allocator, &response.header_list)) orelse return null;
+    defer response_mime.deinit();
+    const i = parameterIndex(response_mime, "charset") orelse return null;
+    return try isomorphicEncode(allocator, response_mime.parameters.entries.items()[i].value);
+}
+
+/// A MIME type string's value, as the bytes it was isomorphic-decoded from.
+fn isomorphicEncode(allocator: std.mem.Allocator, text: []const u16) ![]u8 {
+    const bytes = try allocator.alloc(u8, text.len);
+    for (text, bytes) |c, *b| b.* = @truncate(c);
+    return bytes;
+}
+
+/// MIME Sniffing's XML MIME type, over a serialized MIME type: its essence
+/// ends in "+xml", or is text/xml or application/xml.
+fn isXmlMimeType(serialized: []const u8) bool {
+    const essence = serialized[0 .. std.mem.indexOfScalar(u8, serialized, ';') orelse serialized.len];
+    return std.mem.endsWith(u8, essence, "+xml") or std.mem.eql(u8, essence, "text/xml") or std.mem.eql(u8, essence, "application/xml");
+}
+
+/// The encoding an XML declaration at the start of `bytes` names (XML 1.0
+/// 4.3.3: `<?xml ... encoding='name' ...?>`), or null.
+fn xmlDeclarationEncoding(bytes: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, bytes, "<?xml")) return null;
+    const end = std.mem.indexOf(u8, bytes, "?>") orelse return null;
+    const declaration = bytes[0..end];
+    const at = std.mem.indexOf(u8, declaration, "encoding") orelse return null;
+    var i = at + "encoding".len;
+    while (i < declaration.len and (declaration[i] == ' ' or declaration[i] == '\t' or declaration[i] == '\r' or declaration[i] == '\n')) i += 1;
+    if (i >= declaration.len or declaration[i] != '=') return null;
+    i += 1;
+    while (i < declaration.len and (declaration[i] == ' ' or declaration[i] == '\t' or declaration[i] == '\r' or declaration[i] == '\n')) i += 1;
+    if (i >= declaration.len or (declaration[i] != '"' and declaration[i] != '\'')) return null;
+    const quote = declaration[i];
+    const close = std.mem.indexOfScalarPos(u8, declaration, i + 1, quote) orelse return null;
+    return declaration[i + 1 .. close];
+}
+
+test "an XML declaration's encoding" {
+    try std.testing.expectEqualStrings("windows-1252", xmlDeclarationEncoding("<?xml version='1.0' encoding='windows-1252'?><x/>").?);
+    try std.testing.expectEqualStrings("UTF-8", xmlDeclarationEncoding("<?xml version=\"1.0\" encoding = \"UTF-8\" ?>").?);
+    try std.testing.expect(xmlDeclarationEncoding("<?xml version='1.0'?><x encoding='no'/>") == null);
+    try std.testing.expect(xmlDeclarationEncoding("<x/>") == null);
+}
+
+fn labelFor(content_type: ?[]const u8, override: ?[]const u8, response_type: ResponseType, body: []const u8) !?[]u8 {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    const response = try fetch_mod.internal.InternalResponse.init(allocator);
+    if (content_type) |t| try response.header_list.append("Content-Type", t);
+    state.setResponse(response);
+    if (override) |o| state.override_mime_type = (try mimesniff.parseMimeType(allocator, o)).?;
+    state.response_type = response_type;
+    try state.received_bytes.appendSlice(allocator, body);
+    return textResponseEncodingLabel(allocator, &state);
+}
+
+fn expectLabel(expected: ?[]const u8, content_type: ?[]const u8, override: ?[]const u8, response_type: ResponseType, body: []const u8) !void {
+    const label = try labelFor(content_type, override, response_type, body);
+    defer if (label) |l| std.testing.allocator.free(l);
+    if (expected) |e| try std.testing.expectEqualStrings(e, label orelse return error.NoLabel) else try std.testing.expect(label == null);
+}
+
+test "a text response's label: the override's charset, the response's, an XML declaration's, or none" {
+    const xml = "<?xml version='1.0' encoding='windows-1252'?><x/>";
+    try expectLabel("windows-1252", "text/plain;charset=windows-1252", null, .empty, "");
+    try expectLabel(null, "text/plain", null, .empty, "");
+    try expectLabel("shift_jis", "text/plain;charset=windows-1252", "text/plain;charset=shift_jis", .text, "");
+    // The response's charset stands when the override has none.
+    try expectLabel("windows-1252", "text/plain;charset=windows-1252", "text/plain", .text, "");
+    // An XML response with no charset is sniffed - for responseType "" only.
+    try expectLabel("windows-1252", "application/xml", null, .empty, xml);
+    try expectLabel(null, "application/xml", null, .text, xml);
+    try expectLabel(null, "text/html", null, .empty, xml);
+    try expectLabel("utf-8", "application/xml;charset=utf-8", null, .empty, xml);
+}
+
 fn extractedFrom(values: []const []const u8) !?[]const u8 {
     const allocator = std.testing.allocator;
     var headers = fetch_mod.internal.HeaderList.init(allocator);

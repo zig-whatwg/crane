@@ -10,14 +10,14 @@
 //! - BlobData internal structure: ✅ Complete
 //! - FileData internal structure: ✅ Complete
 //! - FileListData internal structure: ✅ Complete
-//! - FileReaderData internal structure: ✅ Complete
 //! - BlobURLStore: ✅ Complete
 //! - Algorithms:
 //!   - slice-blob: ✅ Complete
 //!   - process-blob-parts: ✅ Complete
 //!   - convert-line-endings-to-native: ✅ Complete
-//!   - package-data: ✅ Complete
-//!   - read-operation: ✅ Complete (sync placeholder)
+//!   - package-data: ✅ Complete (FileReaderSync; FileReader's read operation
+//!     and its package data are the impl's, src/webidl/impls/FileReader.zig,
+//!     which the engine and the event loop are reachable from)
 //!
 //! ## Usage
 //!
@@ -69,19 +69,6 @@ pub const FileData = @import("file_internals.zig").FileData;
 /// Internal data storage for FileList objects.
 /// A read-only list of File objects.
 pub const FileListData = @import("file_list_internals.zig").FileListData;
-
-/// Internal data storage for FileReader objects.
-/// Manages the state machine for async file reading.
-pub const FileReaderData = @import("file_reader_internals.zig").FileReaderData;
-
-/// FileReader state constants.
-pub const FileReaderState = @import("file_reader_internals.zig").FileReaderState;
-
-/// The type of read operation for FileReader.
-pub const ReadType = @import("file_reader_internals.zig").ReadType;
-
-/// Result of a FileReader read operation.
-pub const ReadResult = @import("file_reader_internals.zig").ReadResult;
 
 /// Global blob URL store for createObjectURL/revokeObjectURL.
 pub const BlobURLStore = @import("blob_url_store.zig").BlobURLStore;
@@ -186,15 +173,6 @@ pub const algorithms = struct {
 
     /// Package data result.
     pub const PackageResult = @import("algorithms/package_data.zig").PackageResult;
-
-    /// Start a read operation on a FileReader.
-    pub const startReadOperation = @import("algorithms/read_operation.zig").startReadOperation;
-
-    /// Abort an in-progress read operation.
-    pub const abortReadOperation = @import("algorithms/read_operation.zig").abortReadOperation;
-
-    /// Read operation error types.
-    pub const ReadError = @import("algorithms/read_operation.zig").ReadError;
 };
 
 // ============================================================================
@@ -209,7 +187,6 @@ test {
     _ = @import("blob_internals.zig");
     _ = @import("file_internals.zig");
     _ = @import("file_list_internals.zig");
-    _ = @import("file_reader_internals.zig");
     _ = @import("blob_url_store.zig");
 
     // Algorithms
@@ -217,5 +194,4 @@ test {
     _ = @import("algorithms/process_blob_parts.zig");
     _ = @import("algorithms/line_endings.zig");
     _ = @import("algorithms/package_data.zig");
-    _ = @import("algorithms/read_operation.zig");
 }

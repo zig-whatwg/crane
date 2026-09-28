@@ -1681,6 +1681,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     mimesniff_mod.addImport("infra", infra_mod);
+    impls_mod.addImport("mimesniff", mimesniff_mod); // FileReader's package data parses a Blob's type
 
     // File API module (W3C File API - Blob, File, FileReader)
     const file_mod = b.addModule("file", .{
