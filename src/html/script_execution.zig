@@ -529,11 +529,16 @@ fn handleScriptScheduling(
             doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
             markReady(script_element);
         } else {
-            // 35.5: the pending parsing-blocking script. The parser would run
-            // it the moment it is ready to be parser-executed, and it already
-            // is - so this is that moment.
+            // 35.5: "Set el's parser document's pending parsing-blocking
+            // script to el", and - its fetch being done - ready to be
+            // parser-executed. The parser runs it once the script end tag's
+            // steps are over: at once for a script in the document's own
+            // markup, but after the enclosing script has finished for one that
+            // script's document.write() inserted, which is what sets the
+            // parser pause flag and stops the nested parse
+            // (parser_script_execution.runPendingParsingBlockingScripts).
             markReady(script_element);
-            _ = executeScriptElement(allocator, script_element) catch {};
+            setPendingParsingBlockingScript(parser_document orelse doc, script_element);
         }
         return true;
     }
@@ -547,7 +552,7 @@ fn handleScriptScheduling(
         if (node_document) |doc| {
             if (doc_state.hasStyleSheetBlockingScripts(doc)) {
                 markReady(script_element);
-                doc_state.setPendingParsingBlockingScript(doc, script_element);
+                setPendingParsingBlockingScript(parser_document orelse doc, script_element);
                 return true;
             }
         }
@@ -651,28 +656,41 @@ fn markAsReadySteps(data: ?*anyopaque) void {
     markReadyNow(task.allocator, task.element, task.document);
 }
 
-/// Execute pending parser-blocking script if ready
-/// Called by the parser after processing tokens
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#pending-parsing-blocking-script
+/// The parser's pending parsing-blocking script loop, one turn: if the
+/// document's pending parsing-blocking script is ready to be parser-executed,
+/// unset it and execute it. Returns whether one ran.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag
+/// ("Otherwise: While the pending parsing-blocking script is not null: 1. Let
+///  the script be the pending parsing-blocking script. 2. Set the pending
+///  parsing-blocking script to null. ... 8. Execute the script element the
+///  script.")
 pub fn executePendingParserBlockingScript(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
-) void {
-    const pending_script = doc_state.getPendingParsingBlockingScript(document) orelse return;
+) bool {
+    const pending_script = pendingParsingBlockingScript(document) orelse return false;
 
-    // Check if the script is ready to execute
-    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) {
-        // Script is not ready yet (still fetching or waiting for dependencies)
-        return;
-    }
+    // "Spin the event loop until the parser's Document has no style sheet that
+    // is blocking scripts and the script's ready to be parser-executed is
+    // true." Fetches complete at preparation, so a pending script is ready.
+    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) return false;
 
-    // Clear pending parsing-blocking script
-    doc_state.setPendingParsingBlockingScript(document, null);
+    setPendingParsingBlockingScript(document, null);
 
-    // Execute the script
     _ = executeScriptElement(allocator, pending_script) catch |err| {
-        log.debug("Parser-blocking script execution error: {}\n", .{err});
+        log.debug("Parser-blocking script execution error: {}", .{err});
     };
+    return true;
+}
+
+/// The document's pending parsing-blocking script, if any.
+pub fn pendingParsingBlockingScript(document: *runtime.Instance) ?*runtime.Instance {
+    return doc_state.getPendingParsingBlockingScript(document);
+}
+
+fn setPendingParsingBlockingScript(document: *runtime.Instance, script: ?*runtime.Instance) void {
+    doc_state.setPendingParsingBlockingScript(document, script);
 }
 
 /// Execute all scripts that should run when document finishes parsing
@@ -1721,10 +1739,15 @@ fn isJavaScriptMimeType(mime_type: []const u8) bool {
     return false;
 }
 
-/// Check if element is connected to a document
+/// DOM "connected": the element's shadow-including root is a document.
+///
+/// Spec: https://dom.spec.whatwg.org/#connected
+/// Not "has a node document" - every node has one. Reading it that way let
+/// "prepare the script element" step 7 go on for a script in a detached tree:
+/// the HTML fragment parser prepared each script it converted into its
+/// DocumentFragment, which set it running when the fragment was inserted.
 fn isConnected(element: *runtime.Instance) bool {
-    // An element is connected if it has an owner document
-    return getNodeDocument(element) != null;
+    return interfaces.Node.get_isConnected(element) catch false;
 }
 
 /// Get the node's owner document

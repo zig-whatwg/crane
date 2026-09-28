@@ -688,50 +688,6 @@ pub const TreeBuilder = struct {
         return self.input_stream_manager;
     }
 
-    /// Check if the parser supports document.write().
-    ///
-    /// HTML Standard §8.4: document.write() is only supported when there is an
-    /// active parser with an insertion point.
-    pub fn supportsDocumentWrite(self: *const TreeBuilder) bool {
-        if (self.input_stream_manager) |stream| {
-            return stream.hasInsertionPoint();
-        }
-        return false;
-    }
-
-    /// Insert content via document.write() into the input stream.
-    ///
-    /// HTML Standard §8.4.3: "The document write steps"
-    /// This inserts the given text into the input stream at the current insertion point.
-    ///
-    /// Returns error if document.write() is not supported (no InputStreamManager or
-    /// no insertion point).
-    pub fn insertDocumentWriteContent(self: *TreeBuilder, content: []const u8) !void {
-        const stream = self.input_stream_manager orelse return error.NotSupported;
-        try stream.insert(content);
-    }
-
-    /// Check if there is an active insertion point.
-    ///
-    /// HTML Standard §13.2.3.1: The insertion point is the position in the input stream
-    /// where document.write() content is inserted.
-    pub fn hasInsertionPoint(self: *const TreeBuilder) bool {
-        if (self.input_stream_manager) |stream| {
-            return stream.hasInsertionPoint();
-        }
-        return false;
-    }
-
-    /// Clear the insertion point (called when parsing completes or is aborted).
-    ///
-    /// HTML Standard: After parsing completes, the insertion point is undefined,
-    /// and subsequent document.write() calls will perform destructive writes.
-    pub fn clearInsertionPoint(self: *TreeBuilder) void {
-        if (self.input_stream_manager) |stream| {
-            stream.clearInsertionPoint();
-        }
-    }
-
     /// Free all resources.
     pub fn deinit(self: *TreeBuilder) void {
         // Free all nodes (document tree)
@@ -797,11 +753,22 @@ pub const TreeBuilder = struct {
         // Whatever stops the loop, the adapter hears the last run of text.
         defer self.flushPendingText();
         while (true) {
+            // "If the parser pause flag is set, the tokenizer will abort
+            // immediately" - a nested invocation (document.write's) stops
+            // here, and the outer one resumes when the script that paused it
+            // has returned.
+            if (self.parser_pause_flag) return;
+
             // The markup declaration open state asks whether the adjusted
             // current node is foreign before it opens a CDATA section.
             self.tokenizer.allow_cdata = self.adjustedCurrentNodeIsForeign();
             const token = try self.tokenizer.nextToken();
             if (token == null) {
+                // The readable input ran out with more to come: the insertion
+                // point document.write()'s characters are processed to, or
+                // input not yet written. Not the end of the input.
+                if (self.tokenizer.suspended) return;
+
                 // The tokenizer signals end of input by returning NULL, not by
                 // emitting an EOF token - so breaking here skipped tree
                 // construction's EOF work entirely, and the `.eof` branch of
@@ -1360,9 +1327,13 @@ pub const TreeBuilder = struct {
         if (!self.scripting_enabled) return;
         self.flushPendingText();
         const callback = self.script_execution_callback orelse return;
+        if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
         self.script_nesting_level += 1;
+        self.parser_pause_flag = true;
         callback(script_element, self.script_execution_context);
         self.script_nesting_level -|= 1;
+        if (self.script_nesting_level == 0) self.parser_pause_flag = false;
+        if (self.input_stream_manager) |stream| stream.popInsertionPoint();
     }
 
     // =========================================================================
@@ -2258,18 +2229,25 @@ pub const TreeBuilder = struct {
 
                     // 3-4. Execute the script (via callback)
                     // HTML Standard: If scripting is enabled for the Document, then:
+                    // - Let the old insertion point have the same value as
+                    //   the current insertion point; let the insertion point
+                    //   be just before the next input character.
                     // - Increment script nesting level
-                    // - Prepare the script element
-                    // - Decrement script nesting level
+                    // - Prepare the script element (and, at this stage, run
+                    //   the pending parsing-blocking script - the callback's)
+                    // - Decrement script nesting level; at zero, unset the
+                    //   parser pause flag
+                    // - Restore the old insertion point.
                     if (self.scripting_enabled) {
                         if (script_element) |script| {
                             self.flushPendingText();
                             if (self.script_execution_callback) |callback| {
+                                if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
-                                if (self.script_nesting_level > 0) {
-                                    self.script_nesting_level -= 1;
-                                }
+                                self.script_nesting_level -|= 1;
+                                if (self.script_nesting_level == 0) self.parser_pause_flag = false;
+                                if (self.input_stream_manager) |stream| stream.popInsertionPoint();
                             }
                         }
                     }

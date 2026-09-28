@@ -68,7 +68,6 @@ const NodeImpl = impls.Node;
 const ElementImpl = impls.Element;
 const DocumentImpl = impls.Document;
 const DocumentTypeImpl = impls.DocumentType;
-const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 
 // WebIDL types
@@ -380,10 +379,7 @@ pub const DomTreeAdapter = struct {
         // For script elements, mark as parser-inserted
         // Check tag name since element is now created via factory
         const is_script = std.mem.eql(u8, local_name, "script") and is_html_namespace;
-        if (is_script) {
-            HTMLScriptElementImpl.setParserDocument(element, self.document);
-            HTMLScriptElementImpl.clearForceAsync(element);
-        }
+        if (is_script) dom.script_elements.markParserInserted(element, self.document);
 
         // "Append each attribute in the given token to element."
         for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);

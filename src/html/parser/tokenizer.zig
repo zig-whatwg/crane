@@ -45,7 +45,9 @@ pub const Tokenizer = struct {
     /// Input stream (for static input mode).
     input: InputStream,
 
-    /// Input stream manager (for dynamic input mode with document.write() support).
+    /// The input stream this tokenizer reads, when document.write() can insert
+    /// into it (see `InputStreamManager.attach`); `input` is then a view of
+    /// its buffer.
     /// When non-null, this takes precedence over the static input.
     input_stream_manager: ?*InputStreamManager,
 
@@ -89,6 +91,10 @@ pub const Tokenizer = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
     allow_cdata: bool = false,
 
+    /// The last `nextToken` returned null because the readable input ran out
+    /// with more to come (`waitingForInput`), not because of EOF.
+    suspended: bool = false,
+
     /// Error callback.
     error_callback: ?ParseErrorCallback,
 
@@ -121,24 +127,32 @@ pub const Tokenizer = struct {
     /// HTML Standard §13.2.3: The input stream supports dynamic insertion of content
     /// via document.write() during script execution. This method configures the
     /// tokenizer to use an InputStreamManager instead of a static input stream.
+    ///
+    /// The tokenizer reads the stream through its ordinary InputStream, whose
+    /// data is a view of the stream's buffer: call `stream_manager.attach` with
+    /// the tokenizer's final address before reading, and the stream keeps the
+    /// view current as document.write() inserts.
     pub fn initWithStreamManager(allocator: Allocator, stream_manager: *InputStreamManager) Tokenizer {
-        return Tokenizer{
-            .allocator = allocator,
-            .input = InputStream.init(""), // Unused when stream_manager is set
-            .input_stream_manager = stream_manager,
-            .state = .data,
-            .return_state = .data,
-            .current_token = null,
-            .temporary_buffer = infra.List(u8).init(allocator),
-            .last_start_tag_name = null,
-            .character_reference_code = 0,
-            .token_queue = infra.List(Token).init(allocator),
-            .token_queue_head = 0,
-            .reconsume = false,
-            .current_char = .eof,
-            .error_callback = null,
-            .error_context = null,
-        };
+        var tokenizer = init(allocator, stream_manager.readable());
+        tokenizer.input_stream_manager = stream_manager;
+        return tokenizer;
+    }
+
+    /// The byte offset of the next input character - where "the insertion
+    /// point is just before the next input character" puts it.
+    pub fn nextInputPosition(self: *const Tokenizer) usize {
+        return self.input.position;
+    }
+
+    /// Out of readable input with more to come: the stream ends at the
+    /// insertion point document.write() is being processed to, or the parser
+    /// is waiting for input that has not arrived. The tokenizer stops before
+    /// consuming another character and keeps its state; the next call to
+    /// `nextToken` resumes from there.
+    fn waitingForInput(self: *const Tokenizer) bool {
+        if (self.input.position < self.input.data.len) return false;
+        const stream = self.input_stream_manager orelse return false;
+        return !stream.endIsEof();
     }
 
     /// Get the input stream manager (if using dynamic input mode).
@@ -158,129 +172,59 @@ pub const Tokenizer = struct {
 
     /// Consume the next character from the input source.
     fn consumeNextChar(self: *Tokenizer) InputCharacter {
-        if (self.input_stream_manager) |stream| {
-            // Dynamic input mode - use InputStreamManager
-            if (stream.getNextChar()) |cp| {
-                return InputCharacter{ .codepoint = cp };
-            }
-            return .eof;
-        } else {
-            // Static input mode - use InputStream
-            return self.input.consume();
-        }
+        return self.input.consume();
     }
 
     /// Peek at the next character without consuming.
     fn peekNextChar(self: *Tokenizer) InputCharacter {
-        if (self.input_stream_manager) |stream| {
-            // Save state for InputStreamManager
-            const saved_logical = stream.logical_position;
-            const saved_original = stream.original_position;
-            const saved_active = stream.active_insertion_index;
-            const saved_line = stream.line;
-            const saved_col = stream.column;
-            const saved_cr = stream.last_was_cr;
-
-            // Get the next character
-            const result = if (stream.getNextChar()) |cp|
-                InputCharacter{ .codepoint = cp }
-            else
-                InputCharacter.eof;
-
-            // Restore state
-            stream.logical_position = saved_logical;
-            stream.original_position = saved_original;
-            stream.active_insertion_index = saved_active;
-            stream.line = saved_line;
-            stream.column = saved_col;
-            stream.last_was_cr = saved_cr;
-
-            return result;
-        } else {
-            return self.input.peek();
-        }
+        return self.input.peek();
     }
 
     /// Check if at end of input.
     fn isAtEnd(self: *const Tokenizer) bool {
-        if (self.input_stream_manager) |stream| {
-            return stream.isAtEnd();
-        } else {
-            return self.input.isAtEnd();
-        }
+        return self.input.isAtEnd();
     }
 
-    /// Get remaining bytes (only for static input - batch optimization).
+    /// Get remaining bytes (batch optimization).
     fn getRemaining(self: *const Tokenizer) usize {
-        if (self.input_stream_manager != null) {
-            // Batch optimization not supported for dynamic input
-            return 0;
-        }
         return self.input.remaining();
     }
 
-    /// Get input data pointer (only for static input - batch optimization).
+    /// Get input data (batch optimization).
     fn getInputData(self: *const Tokenizer) []const u8 {
-        if (self.input_stream_manager != null) {
-            // Batch optimization not supported for dynamic input
-            return &[_]u8{};
-        }
         return self.input.data;
     }
 
-    /// Get current input position (only for static input - batch optimization).
+    /// Get current input position (batch optimization).
     fn getInputPosition(self: *const Tokenizer) usize {
-        if (self.input_stream_manager != null) {
-            return 0;
-        }
         return self.input.position;
     }
 
-    /// Set input position and column (only for static input - batch optimization).
+    /// Set input position and column (batch optimization).
     fn setInputPositionAndColumn(self: *Tokenizer, position: usize, column_delta: u32) void {
-        if (self.input_stream_manager == null) {
-            self.input.position = position;
-            self.input.column += column_delta;
-        }
+        self.input.position = position;
+        self.input.column += column_delta;
     }
 
     /// Check if input matches string case-insensitively (for static input).
     fn inputMatchesAsciiCaseInsensitive(self: *Tokenizer, expected: []const u8) bool {
-        if (self.input_stream_manager != null) {
-            // Not supported for dynamic input - return false
-            return false;
-        }
         return self.input.matchesAsciiCaseInsensitive(expected);
     }
 
     /// Check if input matches string exactly (for static input).
     fn inputMatchesCaseSensitive(self: *Tokenizer, expected: []const u8) bool {
-        if (self.input_stream_manager != null) {
-            // Not supported for dynamic input - return false
-            return false;
-        }
         return self.input.matchesCaseSensitive(expected);
     }
 
     /// Consume if input matches string case-insensitively (for static input).
     fn inputConsumeAsciiCaseInsensitive(self: *Tokenizer, expected: []const u8) bool {
-        if (self.input_stream_manager != null) {
-            // Not supported for dynamic input - return false
-            return false;
-        }
         return self.input.consumeAsciiCaseInsensitive(expected);
     }
 
     /// Consume N characters (for static input).
     fn inputConsumeN(self: *Tokenizer, n: usize) void {
-        if (self.input_stream_manager) |stream| {
-            for (0..n) |_| {
-                _ = stream.getNextChar();
-            }
-        } else {
-            for (0..n) |_| {
-                _ = self.input.consume();
-            }
+        for (0..n) |_| {
+            _ = self.input.consume();
         }
     }
 
@@ -318,12 +262,18 @@ pub const Tokenizer = struct {
         // If we have queued tokens, return one using O(1) head index
         if (self.token_queue_head < self.token_queue.len) return try self.dequeueToken();
 
+        self.suspended = false;
+
         // Process states until we emit a token
         while (true) {
             // Get next character (or reconsume)
             if (self.reconsume) {
                 self.reconsume = false;
             } else {
+                if (self.waitingForInput()) {
+                    self.suspended = true;
+                    return null;
+                }
                 self.current_char = self.consumeNextChar();
             }
 
@@ -536,13 +486,10 @@ pub const Tokenizer = struct {
     /// that don't require special handling (no <, &, NULL, or CRLF).
     /// Returns a slice into the input buffer (zero-copy).
     ///
-    /// Note: Batch optimization is disabled for dynamic input (InputStreamManager)
-    /// because the input may change during parsing via document.write().
+    /// The slice is valid until document.write() next inserts into the
+    /// stream (which can move its buffer): the tree builder copies a text
+    /// run into its node before any script can run.
     fn batchDataStateCharacters(self: *Tokenizer) struct { data: []const u8, len: usize } {
-        // Batch optimization is not supported for dynamic input
-        if (self.input_stream_manager != null) {
-            return .{ .data = &.{}, .len = 0 };
-        }
 
         // Get the current character's position in the raw input
         // We need to figure out where in the raw input the current char started
@@ -2863,11 +2810,6 @@ pub const Tokenizer = struct {
     ///
     /// Returns the number of bytes consumed from input (including current char).
     fn batchAppendAttributeValue(self: *Tokenizer, quote: u8) struct { consumed: usize } {
-        // Batch optimization is not supported for dynamic input
-        if (self.input_stream_manager != null) {
-            return .{ .consumed = 0 };
-        }
-
         // Get the raw input data starting at current position
         // Note: We've already consumed current_char, so we're looking at remaining input
         const remaining = self.input.remaining();

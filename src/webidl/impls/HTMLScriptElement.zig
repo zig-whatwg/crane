@@ -247,6 +247,11 @@ pub fn init(
     dom_module.cloning_steps.install(&cloningSteps);
     // And a connected one whose src is set prepares itself again.
     dom_module.attribute_change_steps.install("script", &attributeChangeSteps);
+    // The parsers set its parser document, force async and already started.
+    dom_module.script_elements.install(.{
+        .mark_parser_inserted = &markParserInsertedStep,
+        .mark_already_started = &markAlreadyStartedStep,
+    });
 
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -905,6 +910,23 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     const source = getInternal(node) orelse return;
     const target = getInternal(copy) orelse return;
     target.already_started = source.already_started;
+}
+
+/// dom.script_elements: "Set the element's parser document to the Document,
+/// and set the element's force async to false."
+fn markParserInsertedStep(element: *runtime.Instance, parser_document: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+    internal.parser_document = parser_document;
+    internal.force_async = false;
+}
+
+/// dom.script_elements: "set the script element's already started to true"
+/// (the HTML fragment parsing algorithm's scripts).
+fn markAlreadyStartedStep(element: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+    internal.already_started = true;
 }
 
 /// The attribute change steps HTML defines for script elements, and the
