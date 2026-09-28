@@ -80,6 +80,9 @@ pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
 pub fn requestGarbageCollection(_: *Agent) void {}
+// TODO(protocol): JSGarbageCollect(ctx) once the adapter keeps a context per
+// agent; nothing to hint until then.
+pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
@@ -132,8 +135,8 @@ pub fn runInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
 pub fn runTaskInRealm(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
-pub fn performMicrotaskCheckpoint(_: Context) Error!void {}
-pub fn queueMicrotask(_: Context, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
+pub fn performMicrotaskCheckpoint(_: *Agent) Error!void {}
+pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {

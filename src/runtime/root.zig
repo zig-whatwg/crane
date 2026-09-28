@@ -228,12 +228,19 @@ pub const getDescriptorPtr = binding_generator.getDescriptorPtr;
 // Timer interface - Host-agnostic timer support for setTimeout/clearTimeout
 // Each host (V8+libuv, etc.) provides its own implementation
 pub const timer = @import("timer.zig");
+/// The host's timer backend (setTimeout's and the event loop's): engine-neutral,
+/// needing only a monotonic clock.
+pub const native_timer = @import("native_timer.zig");
 pub const TimerId = timer.TimerId;
 pub const TimerCallback = timer.TimerCallback;
 pub const TimerInterface = timer.TimerInterface;
 /// The host's event loop, as a realm records it (ContextData.event_loop):
 /// what host algorithms queue their tasks on.
 pub const EventLoop = @import("event_loop").EventLoop;
+/// What an EventLoop queues: a task, a microtask (for a host that implements
+/// one - the Browser's).
+pub const EventLoopTask = @import("event_loop").Task;
+pub const EventLoopMicrotask = @import("event_loop").Microtask;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
 

@@ -10,7 +10,7 @@
 //! - `clearTimeout` cancels a pending timer
 //!
 //! Each host provides its own implementation. For V8 this is
-//! engines/v8/native_timer.zig, which needs only a monotonic clock.
+//! native_timer.zig, which needs only a monotonic clock.
 //! Future hosts can use their native timer facilities.
 //!
 //! ## Usage (Legacy anyopaque API)

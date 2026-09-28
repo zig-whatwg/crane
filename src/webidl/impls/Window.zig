@@ -21,6 +21,7 @@ const std = @import("std");
 const log = std.log.scoped(.window);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -32,6 +33,7 @@ const Window = interfaces.Window;
 // Import parent class impl for initialization chain
 // Window inherits from EventTarget per WebIDL
 const EventTargetImpl = @import("EventTarget.zig");
+const same_object = @import("same_object.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
 
@@ -135,8 +137,18 @@ pub const InternalState = struct {
     location: ?*runtime.Instance = null,
     history: ?*runtime.Instance = null,
     navigator: ?*runtime.Instance = null,
+    /// Keeps a Navigator this Window made itself (`get_navigator`) alive for
+    /// the Window's life; see `same_object.zig`.
+    navigator_pin: same_object.Pin = .{},
+    /// The navigation API ([SameObject]), made on first use and kept alive
+    /// for the Window's life the same way.
+    navigation: ?*runtime.Instance = null,
+    navigation_pin: same_object.Pin = .{},
     performance: ?*runtime.Instance = null,
     custom_elements: ?*runtime.Instance = null,
+    /// Keeps the CustomElementRegistry alive for the Window's life, as
+    /// LocalDOMWindow::Trace visits custom_elements_.
+    custom_elements_pin: same_object.Pin = .{},
 
     /// BarProp instances (lazily created)
     locationbar: ?*runtime.Instance = null,
@@ -158,6 +170,14 @@ pub const InternalState = struct {
     /// HTML Standard § 12.2.2 (sessionStorage), § 12.2.3 (localStorage)
     local_storage: ?*runtime.Instance = null,
     session_storage: ?*runtime.Instance = null,
+    /// Keep both Storage objects alive for the Window's life - they are its
+    /// Document's local and session storage holders - as Blink's
+    /// DOMWindowStorage::Trace visits local_storage_ and session_storage_.
+    /// Unheld, a collection freed the Storage under these pointers and the
+    /// next read wrapped whatever the slab had put there: `sessionStorage`
+    /// read undefined.
+    local_storage_pin: same_object.Pin = .{},
+    session_storage_pin: same_object.Pin = .{},
     local_storage_backend: ?*WebStorage = null,
     session_storage_backend: ?*WebStorage = null,
 
@@ -222,9 +242,14 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // The popups first: each integration destroys its navigable's context
-        // (a child of this window's, and already gone if this window's page is
-        // being torn down - destroyChildContext runs once per context).
+        self.navigator_pin.release();
+        self.navigation_pin.release();
+        self.custom_elements_pin.release();
+        self.local_storage_pin.release();
+        self.session_storage_pin.release();
+        // The popups first: each integration ends its navigable's realm (a
+        // child of this window's, and already gone if this window's page is
+        // being torn down - destroyWindowRealm ends a realm once).
         for (self.auxiliary_navigables.items) |integration| {
             integration.deinit();
             self.allocator.destroy(integration);
@@ -380,6 +405,8 @@ pub fn init(
 ) !*runtime.Instance {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
+    // A frame's host binds the Window to the global its realm made here.
+    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
     // The WindowOrWorkerGlobalScope mixin reads a window's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
@@ -505,12 +532,10 @@ fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Deinitialize Window instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Mark as cleaned up in V8 wrapper cache to prevent double-free
-    // Window is in the wrapper cache, and context_manager.deinit cleans up Window
-    // before calling wrapper_cache.deinit. Without this marker, wrapper_cache
-    // would try to call deinit again.
-    const context_manager = @import("v8").context_manager;
-    context_manager.markInstanceCleanedUp(instance);
+    // The host is freeing the Window: its wrapper must not free it again.
+    // The realm's teardown frees the Window before the wrapper cache's, which
+    // would otherwise run this deinit a second time.
+    engine.platformObjectDestroyed(instance);
 
     // Clean up Window's own internal state
     const state = instance.getState(State);
@@ -627,9 +652,9 @@ pub fn setActiveWindowOnBrowsingContext(bc_ptr: *anyopaque, window_ptr: *anyopaq
 
 /// Set the V8 global object that this Window IS bound to (for cross-realm support)
 /// Called by context_manager.createWindowBoundToGlobal().
-pub fn setBoundV8Global(instance: *runtime.Instance, v8_global: *anyopaque) void {
+pub fn setBoundV8Global(instance: *runtime.Instance, global: *anyopaque) void {
     if (getInternal(instance)) |internal| {
-        internal.bound_v8_global = v8_global;
+        internal.bound_v8_global = global;
     }
 }
 
@@ -761,63 +786,92 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // This check is essential for sandbox security: sandboxed iframes without
     // allow-same-origin have opaque origins ("null") that never match the parent's
     // origin, so `parent.document` must throw SecurityError.
-    const v8 = @import("v8");
-    const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-
-    // Get the accessor Window for cross-origin security checks.
     //
-    // V8's context stack doesn't work correctly for cross-context property access:
-    // when accessing `parent.document` from an iframe, V8 enters the parent's context
-    // for the property access, making GetEnteredOrMicrotaskContext return the wrong context.
-    //
-    // We use a Zig-level accessor stack that is pushed/popped by script execution.
-    // This correctly tracks which Window is executing JavaScript code.
-    //
-    // If no accessor is on the stack, fall back to V8's current context.
-    // This handles:
-    // - Native/internal calls (no JavaScript on the stack)
-    // - Callbacks where we haven't pushed the accessor
-    const accessor_window: ?*runtime.Instance = v8.context_manager.getCurrentAccessorWindow() orelse blk: {
-        // No accessor on stack - fall back to V8's current context
-        const current_ctx = v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse break :blk null;
-        defer v8.ffi.v8_Context_Dispose(current_ctx);
-        break :blk v8.context_manager.getWindowForContext(current_ctx);
-    };
+    // The accessor is the window whose script reads `document`: the
+    // incumbent realm's (the realm of the script that made the call - the
+    // getter itself runs in this window's realm, so the current realm is not
+    // it), or with no script on the stack the current realm's. Neither - an
+    // internal call - is allowed below.
+    const accessor_window: ?*runtime.Instance = windowOfRealm(engine.incumbentRealm() orelse engine.currentRealm());
 
     // Safety check: if accessing own document (same Window), always allow.
     // This handles initialization cases where the entered context might not
     // be fully set up, but the access is clearly same-origin (self-access).
     if (accessor_window) |aw| {
-        if (aw == instance) {
-            // Accessing own document - always allowed
-            return internal.document orelse error.NotImplemented;
-        }
-    }
-
-    // Cross-origin check for accessing other Window's document
-    const accessor_origin: []const u8 = if (accessor_window) |aw|
-        if (getInternal(aw)) |aw_internal| effectiveOrigin(aw, aw_internal) else "null"
-    else
-        // No accessor window at all - likely internal call, allow access
-        effectiveOrigin(instance, internal);
-
-    // Get this Window's origin (target origin)
-    const target_origin = effectiveOrigin(instance, internal);
-
-    // Cross-origin check:
-    // - If accessor has opaque origin ("null"), it's always cross-origin (except self-access handled above)
-    // - If target has opaque origin ("null"), it's always cross-origin
-    // - Otherwise, compare origin strings
-    const is_same_origin = !std.mem.eql(u8, accessor_origin, "null") and
-        !std.mem.eql(u8, target_origin, "null") and
-        std.mem.eql(u8, accessor_origin, target_origin);
-
-    if (!is_same_origin) {
-        // Cross-origin access to document is blocked per spec.
+        if (aw == instance) return internal.document orelse error.NotImplemented;
+        // IsPlatformObjectSameOrigin: the accessor's origin and this window's
+        // must be same origin-domain - which document.domain can make two
+        // different origins.
+        if (!sameOriginDomain(aw, instance)) return error.SecurityError;
+    } else if (std.mem.eql(u8, effectiveOrigin(instance, internal), "null")) {
+        // No accessor window at all - an internal call - reaches a window
+        // with an opaque origin only from itself.
         return error.SecurityError;
     }
 
     return internal.document orelse error.NotImplemented;
+}
+
+/// HTML "same origin-domain" for two windows' origins - their documents'.
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
+fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
+    const a_internal = getInternal(a) orelse return false;
+    const b_internal = getInternal(b) orelse return false;
+    const a_origin = effectiveOrigin(a, a_internal);
+    const b_origin = effectiveOrigin(b, b_internal);
+    // 1. "If A and B are the same opaque origin, then return true." An
+    // opaque origin serializes as "null", which does not say which one it
+    // is: two different windows are not known to share one.
+    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
+    // 2. "If A and B are both tuple origins, run these substeps:"
+    const a_domain = originDomainOf(a, a_internal, 0);
+    const b_domain = originDomainOf(b, b_internal, 0);
+    // 2.1. "If A and B's schemes are identical, and their domains are
+    // identical and non-null, then return true."
+    if (a_domain != null and b_domain != null) {
+        return std.mem.eql(u8, schemeOf(a_origin), schemeOf(b_origin)) and std.mem.eql(u8, a_domain.?, b_domain.?);
+    }
+    // 2.2. "Otherwise, if A and B are same origin and their domains are
+    // identical and null, then return true."
+    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a_origin, b_origin);
+    // 3. "Return false."
+    return false;
+}
+
+/// The domain of the origin of `window`'s document, or null. A document
+/// whose origin is its creator's - about:blank, about:srcdoc, a javascript:
+/// URL's result (inheritsCreatorOrigin) - shares that origin, and so its
+/// domain: setting document.domain in one of the two documents affects both
+/// (HTML: the origin is aliased). Its creator's is read - the parent's for a
+/// frame, the opener's for a popup. Deviation, stated: the setter run in the
+/// aliasing document itself sets only that document's domain.
+fn originDomainOf(window: *runtime.Instance, internal: *InternalState, depth: u8) ?[]const u8 {
+    const document = internal.document orelse return null;
+    if (depth < 16 and documentInheritsCreatorOrigin(document)) {
+        const bc = internal.browsing_context;
+        if (bc.parent orelse bc.opener) |creator_bc| {
+            if (creator_bc.getActiveWindow()) |ptr| {
+                const creator: *runtime.Instance = @ptrCast(@alignCast(ptr));
+                if (creator != window) {
+                    if (getInternal(creator)) |creator_internal| return originDomainOf(creator, creator_internal, depth + 1);
+                }
+            }
+        }
+    }
+    return @import("dom").document_origin.domain(document);
+}
+
+/// Whether `document`'s URL is one whose document takes its creator's origin.
+fn documentInheritsCreatorOrigin(document: *runtime.Instance) bool {
+    const url = interfaces.Document.get_URL(document) catch return false;
+    // The getter clones into the document's context allocator.
+    defer document.ctx.allocator.free(url);
+    return url.len == 0 or inheritsCreatorOrigin(url);
+}
+
+/// The scheme of a tuple origin's serialization.
+fn schemeOf(serialized: []const u8) []const u8 {
+    return serialized[0 .. std.mem.indexOf(u8, serialized, "://") orelse serialized.len];
 }
 
 /// Getter for name - The window's target name
@@ -832,8 +886,13 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns the Location object for this window.
 pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Location instance lazily
-    return internal.location orelse error.NotImplemented;
+    if (internal.location) |location| return location;
+    // HTML 7.2.1: every Window has a Location object. One the host did not
+    // make with the Window is made now, in the Window's realm - its relevant
+    // global is this Window (Location.init reads it from the realm record).
+    const location = try interfaces.Location.init(internal.allocator, instance.ctx);
+    internal.location = location;
+    return location;
 }
 
 /// Getter for history
@@ -871,11 +930,20 @@ pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for navigation
 /// Per spec: Returns the Navigation object for this window.
+///
+/// "Each Window has an associated navigation API, which is a Navigation
+/// object. Upon creation of the Window object, its navigation API must be set
+/// to a new Navigation object created in the Window object's relevant
+/// realm." Made on first use here - nothing can observe the difference -
+/// and held through the Window (`same_object.Pin`), as Blink traces
+/// navigation_ from LocalDOMWindow.
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Navigation instance lazily
-    _ = internal;
-    return error.NotImplemented;
+    if (internal.navigation) |navigation| return navigation;
+    const navigation = try interfaces.Navigation.init(internal.allocator, instance.ctx);
+    internal.navigation = navigation;
+    internal.navigation_pin.hold(navigation);
+    return navigation;
 }
 
 /// Getter for customElements
@@ -908,6 +976,7 @@ pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instanc
     );
 
     internal.custom_elements = registry;
+    internal.custom_elements_pin.hold(registry);
     return registry;
 }
 
@@ -1129,10 +1198,21 @@ fn containerOf(window: *runtime.Instance) ?*runtime.Instance {
 
 /// Getter for navigator
 /// Per spec: Returns the Navigator object for this window.
+///
+/// [SameObject]: the page's Window is given its Navigator by the browser
+/// context; a frame's or popup's Window - and the Window a navigation left
+/// behind, which script in its realm still reaches - makes its own on first
+/// use, in its own realm. The Window holds that one's wrapper strongly
+/// (`same_object.Pin`, released in deinit), as Blink traces navigator_ from
+/// LocalDOMWindow: a weak wrapper would let a collection free the Navigator
+/// under this pointer.
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create Navigator instance lazily
-    return internal.navigator orelse error.NotImplemented;
+    if (internal.navigator) |navigator| return navigator;
+    const navigator = try interfaces.Navigator.init(internal.allocator, instance.ctx);
+    internal.navigator = navigator;
+    internal.navigator_pin.hold(navigator);
+    return navigator;
 }
 
 /// Getter for clientInformation - Same as navigator
@@ -1470,8 +1550,14 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
         return storage_instance;
     }
 
-    // Get the browsing context ID for session storage scoping
-    const context_id = internal.browsing_context.id;
+    // Storage "obtain a session storage bottle map": the session storage
+    // shed is the top-level traversable's, and in it the storage key - the
+    // origin - picks the shelf. So every same-origin document of one tab
+    // shares it: a frame and its parent, and the Windows a frame's
+    // navigations make one after another. Keyed on the browsing context
+    // itself, as it was, each frame had its own. Not modelled, stated: a
+    // popup's traversable starting with a copy of its opener's shed.
+    const context_id = internal.browsing_context.getTop().id;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
@@ -1501,6 +1587,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // Cache both
     internal.session_storage_backend = backend;
     internal.session_storage = storage_instance;
+    internal.session_storage_pin.hold(storage_instance);
 
     return storage_instance;
 }
@@ -1544,6 +1631,7 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     // Cache both
     internal.local_storage_backend = backend;
     internal.local_storage = storage_instance;
+    internal.local_storage_pin.hold(storage_instance);
 
     return storage_instance;
 }
@@ -1696,14 +1784,9 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
     // Step 2: the incumbent settings object. Its global - the posting window,
     // not the target - supplies the event's origin and source (steps 8.2 and
-    // 8.3). The entered context is the caller's: the iframe's, for
-    // `parent.postMessage(...)`.
-    const v8 = @import("v8");
-    const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const incumbent_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(v8_isolate) orelse
-        v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(incumbent_ctx);
-    const source_window = v8.context_manager.getWindowForContext(incumbent_ctx);
+    // 8.3): the iframe's, for `parent.postMessage(...)`.
+    const incumbent = engine.incumbentRealm() orelse engine.currentRealm() orelse return error.InvalidStateError;
+    const source_window = windowOfRealm(incumbent);
     const source_origin: []const u8 = if (source_window) |sw|
         if (getInternal(sw)) |sw_internal| effectiveOrigin(sw, sw_internal) else "null"
     else
@@ -1716,7 +1799,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Step 7: StructuredSerializeWithTransfer(message, transfer). Rethrow any
     // exceptions - which the serializer has already thrown, as the spec's
     // DataCloneError or as whatever script threw mid-walk.
-    var serialized = try SerializedMessage.serialize(allocator, message);
+    var serialized = try SerializedMessage.serialize(engine.currentRealm() orelse incumbent, allocator, message);
     errdefer serialized.deinit(allocator);
 
     const origin = try allocator.dupe(u8, source_origin);
@@ -1825,43 +1908,27 @@ const SerializedMessage = union(enum) {
     number: f64,
     /// Owned.
     string: []const u8,
-    /// V8's wire format, malloc'd by the serializer.
-    bytes: []u8,
+    /// The engine's serialization of an object, OWNED (the allocator).
+    serialized: engine.SerializedWithTransfer,
 
-    /// Step 7. Primitives and strings arrive already converted; an object goes
-    /// through V8's serializer, which throws the DataCloneError itself.
-    fn serialize(allocator: Allocator, value: runtime.JSValue) !SerializedMessage {
+    /// Step 7, in `realm`. Primitives and strings arrive already converted;
+    /// an object goes through the engine's serializer, which throws the
+    /// DataCloneError itself.
+    fn serialize(realm: runtime.Context, allocator: Allocator, value: runtime.JSValue) !SerializedMessage {
         return switch (value) {
             .undefined => .undefined,
             .null => .null,
             .boolean => |b| .{ .boolean = b },
             .number => |n| .{ .number = n },
             .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-            .handle => |h| blk: {
-                const v8 = @import("v8");
-                var no_transfer: [1]*v8.ffi.Value = undefined;
-                var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-                var size: usize = 0;
-                var code: c_int = 0;
-                const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
-                    @ptrCast(@alignCast(h.ptr)),
-                    &no_transfer,
-                    0,
-                    &size,
-                    &no_buffers,
-                    &code,
-                ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
-                break :blk .{ .bytes = bytes[0..size] };
-            },
-            // A platform object the binding handed over unwrapped. None is
-            // [Serializable] here yet.
-            .instance => error.DataCloneError,
+            // TODO: step 6 - the transfer list; none is passed yet.
+            .handle, .instance => .{ .serialized = try engine.structuredSerializeWithTransfer(realm, value, &.{}, noTransferables, null, allocator) },
         };
     }
 
-    /// Step 8.4, into the realm the caller has entered. The value is OWNED - a
-    /// string or a Global - and `createPostMessageEvent` takes it.
-    fn deserialize(self: *SerializedMessage) !runtime.JSValue {
+    /// Step 8.4, into `realm`. The value is OWNED - a string, or the
+    /// engine's - and `createPostMessageEvent` takes it.
+    fn deserialize(self: *SerializedMessage, realm: runtime.Context) !runtime.JSValue {
         switch (self.*) {
             .undefined => return runtime.JSValue.jsUndefined,
             .null => return runtime.JSValue.jsNull,
@@ -1871,13 +1938,9 @@ const SerializedMessage = union(enum) {
                 self.* = .undefined; // moved into the value
                 return .{ .string = .{ .data = s, .owned = true } };
             },
-            .bytes => |b| {
-                const v8 = @import("v8");
-                const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-                var code: c_int = 0;
-                const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
-                    return error.DataCloneError;
-                return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
+            .serialized => |serialized| {
+                const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers);
+                return value.take();
             },
         }
     }
@@ -1885,7 +1948,7 @@ const SerializedMessage = union(enum) {
     fn deinit(self: *SerializedMessage, allocator: Allocator) void {
         switch (self.*) {
             .string => |s| allocator.free(s),
-            .bytes => |b| @import("v8").ffi.v8_Free_SerializedBuffer(b.ptr),
+            .serialized => |*serialized| serialized.deinit(allocator),
             else => {},
         }
         self.* = .undefined;
@@ -1895,11 +1958,16 @@ const SerializedMessage = union(enum) {
     fn release(allocator: Allocator, value: runtime.JSValue) void {
         switch (value) {
             .string => |s| if (s.owned) allocator.free(s.data),
-            .handle => |h| @import("v8").ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
+            .handle => (engine.Owned{ .value = value }).release(),
             else => {},
         }
     }
 };
+
+/// No platform object is transferable yet (step 6 is a TODO).
+fn noTransferables(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
+    return .not_transferable;
+}
 
 /// A posted message waiting for its task: everything step 8 closes over.
 ///
@@ -1945,14 +2013,17 @@ fn runPostedMessage(context: ?*anyopaque) void {
     // Step 8.1.
     if (!posted.target_origin.admits(effectiveOrigin(target, internal))) return;
 
-    // A task runs from the event loop, not from V8: there is no HandleScope
-    // and no entered context unless it opens them, and wrapping the event for
-    // a listener without them is a V8 CHECK (SIGTRAP), not an error. Entering
-    // the TARGET's context also makes it the realm step 8.4 deserializes into.
-    // A null scope means that context is gone.
-    const v8 = @import("v8");
-    const scope = v8.JsScope.init(target.ctx) orelse return;
-    defer scope.deinit();
+    // The task runs in the TARGET's realm, the realm step 8.4 deserializes
+    // into. An error means that realm is gone.
+    engine.runTaskInRealm(target.ctx, deliverPostedMessage, posted) catch |err| {
+        log.debug("posted message not delivered: {}", .{err});
+    };
+}
+
+/// Steps 8.3-8.7, in the target's realm.
+fn deliverPostedMessage(data: ?*anyopaque) void {
+    const posted: *PostedMessage = @ptrCast(@alignCast(data.?));
+    const target = posted.target;
 
     // Step 8.3.
     const source: ?*runtime.Instance = if (posted.source) |sw|
@@ -1961,18 +2032,17 @@ fn runPostedMessage(context: ?*anyopaque) void {
         null;
 
     // Steps 8.4-8.5. A value that will not deserialize is a messageerror.
-    const data = posted.message.deserialize() catch {
+    const message = posted.message.deserialize(target.ctx) catch {
         fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, source);
         return;
     };
 
     // Step 8.7.
-    fireMessageEvent(target, "message", data, posted.origin, source);
+    fireMessageEvent(target, "message", message, posted.origin, source);
 }
 
 /// Fire `event_type` at `target` as a MessageEvent that takes `data`.
 fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, source: ?*runtime.Instance) void {
-    const v8 = @import("v8");
     const MessageEventImpl = @import("MessageEvent.zig");
     const event = MessageEventImpl.createPostMessageEvent(target.ctx.allocator, target.ctx, event_type, data, origin, source) catch {
         SerializedMessage.release(target.ctx.allocator, data);
@@ -1990,10 +2060,7 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
     // `await new Promise(r => addEventListener("message", r))` then read the
     // event after it was gone.
     if (runtime.SlabAllocator.generationOf(event) != generation) return;
-    if (event.ctx.getV8WrapperCacheStorage()) |cache_storage| {
-        const cache: *v8.WrapperCache = @ptrCast(@alignCast(cache_storage));
-        if (cache.get(event) != null) return;
-    }
+    if (engine.hasWrapper(event)) return;
     runtime.Instance.deinit(event);
 }
 
@@ -2186,8 +2253,8 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
             fn wrapper(ctx: ?*anyopaque, deadline: *event_loop.IdleDeadline) void {
                 _ = ctx;
                 _ = deadline;
-                // In full implementation: invoke the JS callback via V8
-                // v8.callFunction(callback, deadline_wrapper);
+                // In full implementation: invoke the JS callback with the
+                // deadline (engine.invokeCallbackFunction).
             }
         }.wrapper,
         @ptrCast(@constCast(&callback)), // Store callback reference
@@ -2410,16 +2477,18 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedP
     return null;
 }
 
-/// The entry global object, when it is a window: the window of the context
-/// V8 entered to run the current script.
+/// The entry global object, when it is a window: the global of the entry
+/// realm (engine.entryRealm).
 fn entryWindow() ?*runtime.Instance {
-    const v8 = @import("v8");
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return null;
-    const context = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse return null;
-    defer v8.ffi.v8_Context_Dispose(context);
-    const window = v8.context_manager.getWindowForContext(context) orelse return null;
-    if (window.stateAs(State) == null) return null;
-    return window;
+    return windowOfRealm(engine.entryRealm());
+}
+
+/// `realm`'s global object, when it is a Window.
+fn windowOfRealm(realm: ?runtime.Context) ?*runtime.Instance {
+    const record = (realm orelse return null).getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(State) == null) return null;
+    return global;
 }
 
 /// `url` parsed against `document`'s base URL, serialized; owned. Failure is

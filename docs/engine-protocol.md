@@ -101,6 +101,15 @@ realm first.
   in its relevant realm, `instance.ctx`, whichever realm the operation
   entered. A platform object has one wrapper, made in the realm it was
   created in.
+- **Frames:** `createWindowRealm` with `parent` set makes a navigable's realm
+  under its parent's - an iframe's, or a popup's under its opener's. It
+  shares the parent's engine-level access (V8's security token; the
+  WindowProxy's cross-origin checks stay the host's), is entered only for
+  the calls that run in it (it is made while the parent's script runs), and
+  ends before its parent does if it has not already. A parentless realm is
+  the agent's entered realm for its life. A realm whose WindowProxy went on
+  to a later one (`window_proxy_of`) is severed from its Window at its end:
+  a function of it that script still holds finds no Window, not a freed one.
 
 ## 4. Capabilities
 
@@ -141,9 +150,9 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 | Area | Operations |
 |---|---|
-| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `requestGarbageCollection` (testing only) |
+| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `requestGarbageCollection` (testing only) |
 | Realms | `createWindowRealm`, `destroyWindowRealm`, `createWorkerRealm`, `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
-| Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint`, `queueMicrotask`, `extractErrorInformation` |
+| Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's), `extractErrorInformation` |
 | Modules [module_scripts] | `parseModule`, `parseJSONModule`, `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
 | Callbacks (WebIDL) | `invokeCallbackFunction`, `callUserObjectOperation`, `isCallable`, `takeCallbackFunction` / `takeCallbackInterface` (transitional) |
 | ECMAScript values | `getProperty`, `setProperty`, `defineOwnProperty`, `hasProperty`, `typeOf`, `sameValue`, `toBoolean`, `retainValue`, `releaseValue`, `throwValue`, `completionOf`, `parseJsonToValue`, `serializeJsonToBytes` |
@@ -212,10 +221,11 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
 - **`takeCallbackFunction` / `takeCallbackInterface`** untag the binding's
   callback values until codegen types callback parameters as
   `CallbackFunction` / `CallbackInterface`.
-- **The legacy entry-point shims**: until Browser creates its agent with
-  `createAgent`, the page's agent has no HostHooks installed, and
-  rejected_promises.zig and script_execution.zig carry V8 shims (marked
-  `TODO(protocol)`) that forward V8's own callbacks into the same host code.
+- **Worker import()**: the page's agent comes from `createAgent` with both
+  hook sets, but a worker's agent still comes from the table's
+  `createAgent`, so context_manager keeps registering its own import()
+  handler - skipped, by engine.zig's guard, on an agent with
+  `loadImportedModule`. Both go when worker agents move to `createAgent`.
 - **Ownership flags**: `runtime.JSValue`'s handle arm still carries
   `needs_disposal` and a `.local` / `.global` tag. A `.handle` is always a
   Global the engine made, whatever the tag; the protocol's types, not the

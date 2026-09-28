@@ -480,14 +480,16 @@ streams_js.
 - **V8 pattern**: `v8_Isolate_GetCurrent() orelse { run now }` +
   `v8_Isolate_EnqueueMicrotask(isolate, @ptrCast(&cb), ctx)` with a
   `callconv(.c)` trampoline.
-- **Protocol**: `engine.queueMicrotask(realm, steps, data) Error!void`; the
-  realm names the agent.
+- **Protocol**: `engine.queueMicrotask(agent, steps, data) Error!void` - the
+  surrounding agent's queue; a realm's is `realm.agent` (null when no engine
+  is behind it).
 - **Ownership**: `data` BORROWED until the steps run; a microtask still queued
   at agent teardown is dropped (so allocate `data` so that dropping it leaks
   nothing important, or tie it to the realm).
 - **Pitfalls**:
-  - The caller must have a realm (MutationObserver's notify microtask: its
-    caller passes the target's `ctx`).
+  - The caller names the agent through a realm of it (MutationObserver's
+    notify microtask: its caller passes the target's `ctx`, and its
+    `agent` is the queue). The steps run with no realm entered.
   - The steps run later: anything they reach may be gone. Hold an Instance as
     (address, slab generation) and check `SlabAllocator.generationOf` first
     (IntersectionObserver's microtask).
@@ -499,7 +501,8 @@ streams_js.
 
 ```zig
 // after
-engine.queueMicrotask(realm, mutationMicrotask, ctx) catch |err| {
+const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, ctx) else error.NotSupported;
+queued catch |err| {
     allocator.destroy(ctx);
     switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -513,7 +516,8 @@ engine.queueMicrotask(realm, mutationMicrotask, ctx) catch |err| {
 
 Seen in: script_execution, Context, gc_bench, Browser.
 
-- **Protocol**: `engine.performMicrotaskCheckpoint(realm) Error!void`.
+- **Protocol**: `engine.performMicrotaskCheckpoint(agent) Error!void` - an
+  event loop's, and so an agent's (`realm.agent`).
 - **Pitfalls**: HTML "clean up after running script" checkpoints only when
   the JavaScript execution context stack is empty - gate on
   `!engine.hasRunningScript(agent)` or use `cleanUpAfterRunningScript`; an

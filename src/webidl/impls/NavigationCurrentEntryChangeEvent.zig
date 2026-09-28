@@ -1,4 +1,10 @@
 //! Implementation for NavigationCurrentEntryChangeEvent interface
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigationcurrententrychangeevent-interface
+//!
+//! The currententrychange event the navigation API fires when its current
+//! entry changes: navigationType - "push", "replace", "traverse", or null
+//! for updateCurrentEntry() - and from, the entry that was current.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,7 +13,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const clock = @import("clock");
 const NavigationCurrentEntryChangeEvent = interfaces.NavigationCurrentEntryChangeEvent;
+const same_object = @import("same_object.zig");
 
 pub const State = NavigationCurrentEntryChangeEvent.State;
 
@@ -15,11 +24,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Keeps `from` alive for as long as the event is: script can hold the
+/// event after the navigation API has let that entry go (same_object.zig).
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    from_pin: same_object.Pin = .{},
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -28,39 +38,65 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: the Event part, its cloned type and inherited
+/// internal state. `from` is borrowed - the navigation API keeps its entries.
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.from_pin.release();
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    interfaces.Event.deinit(instance);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Constructor: DOM "inner event creation steps" for the Event part, then
+/// navigationType and from from the dictionary.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigationCurrentEntryChangeEventInit) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(ctx.allocator, State, &NavigationCurrentEntryChangeEvent.vtable, ctx);
     errdefer deinit(instance);
+    const state = instance.getState(State);
+    const init_dict = eventInitDict;
+    // What deinit reads, should anything below fail.
+    state.base.own.type = runtime.DOMString.initEmpty();
+    state.own._internal = null;
 
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
+    state.base.own.type = try @"type".clone(ctx.allocator);
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    state.base.own.isTrusted = false;
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = 0; // NONE
+    state.base.own.bubbles = init_dict.base.bubbles orelse false;
+    state.base.own.cancelable = init_dict.base.cancelable orelse false;
+    state.base.own.composed = init_dict.base.composed orelse false;
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
 
+    state.own.navigationType = init_dict.navigationType;
+    state.own.from = init_dict.from;
+    const internal = try ctx.allocator.create(InternalState);
+    internal.* = .{ .allocator = ctx.allocator };
+    state.own._internal = internal;
+    internal.from_pin.hold(init_dict.from);
+
+    // The inherited Event internal state and its initialized flag: without
+    // them dispatchEvent throws InvalidStateError.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
     return instance;
 }
 
 /// Getter for navigationType
 pub fn get_navigationType(instance: *runtime.Instance) anyerror!?enums.NavigationType {
-    _ = instance;
-    return null;
+    return instance.getState(State).own.navigationType;
 }
 
 /// Getter for from
 pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.from;
 }

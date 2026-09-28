@@ -370,7 +370,7 @@ pub fn main(init: std.process.Init) !void {
     try browser.navigate("about:blank", .window);
 
     const page = browser.current_context orelse return error.NoContext;
-    const realm = page.realm orelse return error.NoRealm;
+    if (page.realm == null) return error.NoRealm;
 
     heap_agent = page.agent;
 
@@ -426,7 +426,7 @@ pub fn main(init: std.process.Init) !void {
             // the first pass has cleared what referenced them, and a single
             // collection would under-report what the engine can actually reclaim.
             engine.requestGarbageCollection(page.agent);
-            engine.performMicrotaskCheckpoint(realm) catch {};
+            engine.performMicrotaskCheckpoint(page.agent) catch {};
             engine.requestGarbageCollection(page.agent);
         }
 

@@ -827,6 +827,162 @@ test "protocol: a Window realm made and ended leaves no global handle behind" {
     }
 }
 
+/// A frame's Window realm, made as a frame's is: from inside its parent's
+/// running script (engine.runInRealm), with the parent named.
+const FrameRealm = struct {
+    host: WindowHost = .{},
+    parent: runtime.Context,
+    global_this: protocol.GlobalThis = .new_window_proxy,
+    made: ?runtime.Context = null,
+    failed: ?anyerror = null,
+    /// The entry realm just after the frame's realm was made, still inside
+    /// the parent's steps.
+    entry_after: ?runtime.Context = null,
+
+    fn make(self: *FrameRealm) !runtime.Context {
+        try protocol.runInRealm(self.parent, steps, self);
+        if (self.failed) |err| return err;
+        return self.made.?;
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *FrameRealm = @ptrCast(@alignCast(data.?));
+        self.made = protocol.createWindowRealm(&.{
+            .agent = @ptrCast(isolate_once.?),
+            .allocator = std.heap.c_allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://example.test",
+            .global_this = self.global_this,
+            .parent = self.parent,
+            .create_global_object = WindowHost.createGlobalObject,
+            .host = &self.host,
+        }) catch |err| {
+            self.failed = err;
+            return;
+        };
+        self.entry_after = protocol.entryRealm();
+    }
+};
+
+test "protocol: a frame's realm is made inside its parent's script and not left entered" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    // The parent's steps went on in the parent's realm: the frame's context
+    // was entered only while it was made.
+    try std.testing.expectEqual(parent, frame_realm.entry_after.?);
+    try std.testing.expectEqual(parent, protocol.entryRealm().?);
+    try std.testing.expectEqual(@as(usize, 1), frame_realm.host.made);
+    try expectEval(frame, "globalThis instanceof Window && self === globalThis", "true");
+}
+
+test "protocol: a frame's realm shares its parent's security token" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    try expectEval(frame, "globalThis.fromFrame = 7; fromFrame", "7");
+    const frame_global = try evalOwned(frame, "globalThis");
+    defer frame_global.release();
+    try setGlobal(parent, "frameWindow", frame_global.value);
+    // V8 lets script through to another context's global proxy only when the
+    // two share a security token; the WindowProxy checks are the host's.
+    try expectEval(parent, "frameWindow.fromFrame", "7");
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+}
+
+test "protocol: ending a parent's realm ends its frames' realms first" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    var nested_realm: FrameRealm = .{ .parent = frame };
+    const nested = try nested_realm.make();
+
+    protocol.destroyWindowRealm(parent);
+    // Retired, every one: each may only be compared now.
+    try std.testing.expect(nested.engine_ctx == null);
+    try std.testing.expect(frame.engine_ctx == null);
+    try std.testing.expect(parent.engine_ctx == null);
+}
+
+test "protocol: a frame's realm whose WindowProxy went on is severed from its Window at its end" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    // A function of the old realm that reads its Window through its global.
+    const reader = try evalOwned(old, "(function () { return typeof name; })");
+    defer reader.release();
+
+    // The navigation's new Window, behind the same WindowProxy; the old realm
+    // ends, and its Window with it.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    defer protocol.destroyWindowRealm(new);
+    protocol.destroyWindowRealm(old);
+
+    // The old global no longer names the freed Window: reading a Window member
+    // through it is a TypeError, not a read of freed memory.
+    try setGlobal(parent, "reader", reader.value);
+    try expectEval(parent, "(() => { try { reader(); return 'read'; } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(parent, "delete globalThis.reader", "true");
+}
+
+test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame);
+
+    // One microtask queued in each realm, from no script: nothing runs them
+    // until the agent's checkpoint, which runs both.
+    const Ran = struct {
+        count: usize = 0,
+        fn steps(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.count += 1;
+        }
+    };
+    var ran: Ran = .{};
+    try protocol.queueMicrotask(parent.agent.?, Ran.steps, &ran);
+    try protocol.queueMicrotask(frame.agent.?, Ran.steps, &ran);
+    try std.testing.expectEqual(@as(usize, 0), ran.count);
+    try protocol.performMicrotaskCheckpoint(parent.agent.?);
+    try std.testing.expectEqual(@as(usize, 2), ran.count);
+}
+
+test "protocol: notifyMemoryPressure critical collects what a realm that ended held" {
+    _ = try realm();
+    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const baseline = liveContexts();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    try expectEval(w, "globalThis.kept = [globalThis, self]; kept.length", "2");
+    protocol.destroyWindowRealm(w);
+    // What the page held is garbage now: the host asks for it back.
+    protocol.notifyMemoryPressure(agent, .critical);
+    var count: usize = 0;
+    ffi.v8_Isolate_GetContextCounts(isolate_once.?, &count, null);
+    if (count != baseline) {
+        std.debug.print("native contexts: {d} before, {d} after the realm ended and memory pressure\n", .{ baseline, count });
+        return error.RealmKeptAlive;
+    }
+    // A moderate hint collects nothing it must not, and returns.
+    protocol.notifyMemoryPressure(agent, .moderate);
+}
+
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
     // Two realms made here: the context manager names a realm by where its
     // context is, and a full collection (liveContexts, in earlier tests) can
@@ -1086,6 +1242,26 @@ const AgentRealm = struct {
         ffi.v8_Context_Dispose(self.context);
     }
 };
+
+test "protocol: an agent ended while another isolate is entered leaves that isolate's realms working" {
+    const base = try realm();
+    const no_hooks: protocol.HostHooks = .{};
+    // Made with its per-isolate state (templates, allocator, ShadowRealm
+    // support), and a realm made and ended in it.
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
+    {
+        const in_agent = try AgentRealm.make(agent);
+        defer in_agent.end();
+        try expectEval(in_agent.realm, "typeof ShadowRealm === 'function' || typeof ShadowRealm === 'undefined'", "true");
+    }
+    // Ended while this file's isolate is the entered one: only its own
+    // isolate's state goes, not the thread's (the context manager keeps this
+    // file's realm).
+    protocol.destroyAgent(agent);
+    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
+    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+}
 
 test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" {
     _ = try realm();
@@ -1382,7 +1558,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     const m = try parsed(try protocol.parseModule(r, "export const value = 7; globalThis.metaUrl = import.meta.url; import('./n.js');", module_script.url, &module_script));
     defer protocol.releaseModuleRecord(m);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .module = m });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     // (Read through the protocol: globalInt reads the file's own agent.)
     try expectEval(r, "globalThis.done", "7");
     // HostGetImportMetaProperties: the host's module script's URL.
@@ -1398,7 +1574,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.runClassicScript(r, .{ .utf8 = "import('./x.js', { with: { type: 'json' } }).catch((e) => { globalThis.failed = e; });" }, "https://example.test/s.js", &classic_script, reports.reporter());
     try std.testing.expect(!host.type_attribute_was_null);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .failure = .{ .number = 5 } });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     try expectEval(r, "globalThis.failed", "5");
 
     // An event handler's function has no [[ScriptOrModule]]: the referrer is
@@ -1422,7 +1598,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     try protocol.runClassicScript(r, .{ .utf8 = "handler().catch(() => {});" }, "", null, reports.reporter());
     try std.testing.expect(host.referrer.? == .realm);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .failure = .{ .number = 2 } });
-    try protocol.performMicrotaskCheckpoint(r);
+    try protocol.performMicrotaskCheckpoint(r.agent.?);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
 

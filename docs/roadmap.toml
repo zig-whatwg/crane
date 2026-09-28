@@ -117,6 +117,7 @@ spec's tasks, and session history exists for features to build on."""
 areas = ["html/browsers/browsing-the-web/", "html/browsers/history/", "html/semantics/links/", "html/browsers/windows/", "navigation-api/"]
 progress = [
   "f03633d6a - frame and popup navigation runs as the spec's tasks (beforeunload, fetch via AsyncFetch, commit); frames delay their container's load event; unload/pagehide fire; markup <iframe src> navigates (navigation lane, increment 1)",
+  "8f9eb9371, 88f09482e, 05a30200a, 4797fefa0, dd792cb0f (merged 505cfb9e3) - the about base URL, document.open() erases listeners, sessionStorage per traversable, document.domain sets the origin domain, a destroyed document's defaultView is null, and the Window keeps its Storage and CustomElementRegistry alive (navigation lane, increment 3)",
 ]
 
   [[infra.items]]
@@ -161,6 +162,14 @@ progress = [
   [[infra.items]]
   name = "XHR and navigation fetch through the same path"
   status = "doing"
+
+  [[infra.items]]
+  name = "HTTP/2 over ALPN, with nghttp2 built by build.zig (never a system library: it would break the static aarch64-ios link)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "HTTP/3 through Alt-Svc: ngtcp2 + nghttp3 built by build.zig, on a QUIC-capable TLS backend (ngtcp2 cannot use mbedTLS - BoringSSL or OpenSSL 3.5+, chosen by measurement); WPT tests it only through webtransport/, so fetch over HTTP/3 needs crane tests; then WebTransport"
+  status = "todo"
 
 [[infra]]
 id = "origins"
@@ -218,6 +227,8 @@ progress = [
   "d1d200b40 - ES module scripts onto the protocol; import() and import.meta through the host's module hooks",
   "f404a62d3 - migration set Z (streams glue, canvas, the WPT runner, snapshot tooling) onto the protocol; completionOf; worker realm records",
   "2c10d00d1, 828f5e5fe, 14c9b6709 - the last table-only impls onto the protocol (composedPath, PointerEvent, the form and image tasks, TextEncoder, NodeFilter); a reported callback exception located at its throw site; the observers report through reportErrorInfo",
+  "c21d276cf - a string's lone surrogates survive the protocol's own copy of it (engine-boundary lane)",
+  "3b710e930, 1248c3fa5, 0deed5ad3, e014e7fc0, 639478ab1, d75fcb45a, 53188e412 (merged 505cfb9e3) - navigation lane: Browser, Node, Document, Window, Location, EventTarget, HTMLIFrameElement and the navigation API on the protocol; frames' realms come from createWindowRealm and context_manager's child contexts are deleted; the microtask checkpoint and queueMicrotask are the agent's; a realm's wrapper cache leaves a node in a tree to its tree",
 ]
 
   [[infra.items]]
@@ -242,7 +253,7 @@ progress = [
 
   [[infra.items]]
   name = "The paused lanes' held files move onto the protocol when their lanes resume; navigation's Browser creates its agent with createAgent, retiring the legacy host-hook shims"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "The runtime Engine table (engine_interface.zig, ctx.getEngine()) is deleted, once its last callers have moved"

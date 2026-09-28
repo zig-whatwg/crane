@@ -151,7 +151,8 @@ test "operations that make or run nothing answer NotSupported, and ones that can
     try std.testing.expectEqual(@as(?engine.Context, null), engine.entryRealm());
     try std.testing.expectEqual(@as(?[]u8, null), engine.borrowArrayBufferBytes(realm, runtime.JSValue.jsUndefined));
     // Nothing to check out: no microtasks without an engine.
-    try engine.performMicrotaskCheckpoint(realm);
+    var agent_storage: u8 = 0;
+    try engine.performMicrotaskCheckpoint(@ptrCast(&agent_storage));
 }
 
 test "the Agent a realm records is the one the protocol's agent operations take" {

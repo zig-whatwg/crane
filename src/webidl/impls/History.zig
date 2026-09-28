@@ -34,6 +34,10 @@ const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
+const engine = @import("engine");
+const navigation_entries = @import("navigation_entries.zig");
+const log = std.log.scoped(.history);
+const history_documents = @import("history_documents.zig");
 
 pub const State = History.State;
 
@@ -61,14 +65,14 @@ pub const InternalState = struct {
     /// twice gives the same object.
     state_entry: u64 = 0,
     state_value: ?runtime.JSValue = null,
-    /// Every deserialized state's Global, released with the History: an
-    /// event or script may hold one past the entry that made it.
-    state_handles: std.ArrayListUnmanaged(*anyopaque) = .empty,
+    /// Every state deserialized, kept (OWNED) until the History goes:
+    /// `state_value` borrows the latest, and an event or script may still
+    /// hold an earlier one past the entry that made it.
+    state_values: std.ArrayListUnmanaged(engine.Owned) = .empty,
 
     pub fn deinit(self: *InternalState) void {
-        const v8 = @import("v8");
-        for (self.state_handles.items) |handle| v8.ffi.v8_Global_Dispose(@ptrCast(@alignCast(handle)));
-        self.state_handles.deinit(self.allocator);
+        for (self.state_values.items) |value| value.release();
+        self.state_values.deinit(self.allocator);
     }
 };
 
@@ -97,6 +101,13 @@ pub fn init(
     // Store internal state
     const state = instance.getState(StateType);
     state.own._internal = internal;
+
+    // The navigation API's traverseTo(), back(), forward() and reload() run
+    // this traversal too.
+    @import("dom").history_traversal.install(.{
+        .traverse_to_step = &traverseWindowToStep,
+        .reload = &reloadWindow,
+    });
 
     return instance;
 }
@@ -134,19 +145,12 @@ fn activeNavigable(internal: *InternalState) ?*BrowsingContext {
 /// The URL of `document`, owned by `allocator`; "about:blank" when it has
 /// none.
 fn documentUrl(document: *runtime.Instance, allocator: Allocator) ![]u8 {
-    const url = interfaces.Document.get_URL(document) catch return allocator.dupe(u8, "about:blank");
-    defer document.ctx.allocator.free(url);
-    return allocator.dupe(u8, if (url.len == 0) "about:blank" else url);
-}
-
-/// BrowsingContext.ensureHistoryEntries's `url_of`.
-fn documentUrlOf(document: *anyopaque, allocator: Allocator) anyerror![]u8 {
-    return documentUrl(@ptrCast(@alignCast(document)), allocator);
+    return history_documents.urlOf(document, allocator);
 }
 
 /// The traversable's history, with entries for `bc` and its ancestors.
 fn ensureEntries(bc: *BrowsingContext) !*joint_history.JointHistory {
-    return bc.ensureHistoryEntries(&documentUrlOf);
+    return bc.ensureHistoryEntries(&history_documents.infoOf);
 }
 
 // =============================================================================
@@ -198,70 +202,15 @@ fn stateValue(internal: *InternalState, entry: *joint_history.Entry) !runtime.JS
     if (internal.state_value) |value| {
         if (internal.state_entry == entry.id) return value;
     }
-    const value = try deserialize(internal, entry.state);
+    // Restored in the History's relevant realm - its window's.
+    const owned = try navigation_entries.deserialize(internal.window.?.ctx, entry.state);
+    internal.state_values.append(internal.allocator, owned) catch {
+        owned.release();
+        return error.OutOfMemory;
+    };
     internal.state_entry = entry.id;
-    internal.state_value = value;
-    return value;
-}
-
-// =============================================================================
-// StructuredSerializeForStorage / StructuredDeserialize
-// =============================================================================
-
-/// StructuredSerializeForStorage(`value`): a primitive or string as it is,
-/// an object through V8's serializer (which throws the DataCloneError).
-fn serialize(allocator: Allocator, value: runtime.JSValue) !joint_history.SerializedState {
-    return switch (value) {
-        .undefined => .undefined,
-        .null => .null,
-        .boolean => |b| .{ .boolean = b },
-        .number => |n| .{ .number = n },
-        .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-        .handle => |h| blk: {
-            const v8 = @import("v8");
-            var no_transfer: [1]*v8.ffi.Value = undefined;
-            var no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var size: usize = 0;
-            var code: c_int = 0;
-            const bytes = v8.ffi.v8_Value_StructuredSerializeWithTransfer(
-                @ptrCast(@alignCast(h.ptr)),
-                &no_transfer,
-                0,
-                &size,
-                &no_buffers,
-                &code,
-            ) orelse return if (code == 3) error.ExceptionPending else error.DataCloneError;
-            defer v8.ffi.v8_Free_SerializedBuffer(bytes);
-            break :blk .{ .bytes = try allocator.dupe(u8, bytes[0..size]) };
-        },
-        // A platform object the binding handed over unwrapped: none is
-        // [Serializable] here yet.
-        .instance => error.DataCloneError,
-    };
-}
-
-/// StructuredDeserialize(`state`) in the current realm. An object's Global
-/// is kept by the History (`state_handles`); a string is copied.
-fn deserialize(internal: *InternalState, state: joint_history.SerializedState) !runtime.JSValue {
-    return switch (state) {
-        .undefined => runtime.JSValue.jsUndefined,
-        .null => runtime.JSValue.jsNull,
-        .boolean => |b| runtime.JSValue.fromBoolean(b),
-        .number => |n| runtime.JSValue.fromNumber(n),
-        .string => |s| .{ .string = .{ .data = s, .owned = false } },
-        .bytes => |b| blk: {
-            const v8 = @import("v8");
-            const no_buffers: [1]v8.ffi.ArrayBufferTransferData = undefined;
-            var code: c_int = 0;
-            const value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(b.ptr, b.len, &no_buffers, 0, &code) orelse
-                return error.DataCloneError;
-            internal.state_handles.append(internal.allocator, @ptrCast(value)) catch {
-                v8.ffi.v8_Global_Dispose(value);
-                return error.OutOfMemory;
-            };
-            break :blk runtime.JSValue.fromHandleNonOwning(@ptrCast(value));
-        },
-    };
+    internal.state_value = owned.borrow();
+    return owned.borrow();
 }
 
 // =============================================================================
@@ -285,14 +234,36 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         // navigable the engine has no navigation for - the top-level page -
         // is not reloaded, stated.
         const window = internal.window orelse return;
-        const document = try interfaces.Window.get_document(window);
-        if (@import("dom").document_lifecycle.isUnloading(document)) return;
-        const history = try ensureEntries(bc);
-        const entry = history.currentEntry(bc.id) orelse return;
-        @import("dom").navigables.traverseNavigable(@ptrCast(bc), entry.id, entry.url, entry.resource);
+        reloadNavigable(window, bc);
         return;
     }
-    queueTraversal(internal, bc.getTop(), delta_val);
+    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val });
+}
+
+/// HTML "reload" `bc`'s navigable: its current entry, repopulated - a
+/// traversal of the navigable to the entry it is on. Not while its document
+/// is unloading (reload step 1).
+fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
+    const document = interfaces.Window.get_document(window) catch return;
+    if (@import("dom").document_lifecycle.isUnloading(document)) return;
+    const history = ensureEntries(bc) catch return;
+    const entry = history.currentEntry(bc.id) orelse return;
+    @import("dom").navigables.traverseNavigable(@ptrCast(bc), entry.id, entry.url, entry.resource);
+}
+
+/// dom.history_traversal: reload `window`'s navigable.
+fn reloadWindow(window: *runtime.Instance) void {
+    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    reloadNavigable(window, bc);
+}
+
+/// dom.history_traversal: queue a traversal of `window`'s traversable to
+/// `step` (the navigation API's "perform a navigation API traversal").
+fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
+    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    const history_instance = interfaces.Window.get_history(window) catch return;
+    const internal = getInternal(history_instance) orelse return;
+    queueTraversal(internal, bc.getTop(), .{ .step = step });
 }
 
 /// Operation: back - "go(-1)".
@@ -329,7 +300,8 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
     const allocator = internal.allocator;
 
     // Step 3: "Let serializedData be StructuredSerializeForStorage(data)."
-    var serialized = try serialize(allocator, data);
+    // Rethrown: a DataCloneError not yet thrown is the binding's to throw.
+    var serialized = try navigation_entries.serialize(engine.currentRealm() orelse window.ctx, allocator, data);
     errdefer serialized.deinit(allocator);
 
     // Step 4: "Let newURL be document's URL."
@@ -425,39 +397,54 @@ fn urlAndHistoryUpdate(
     handling: joint_history.HistoryHandling,
 ) !void {
     const history = try ensureEntries(bc);
-    try history.commitSameDocument(bc.id, new_url, serialized, handling);
+    // The new entry's navigation API state is a fresh one (the URL and
+    // history update steps do not carry it over).
+    try history.commitSameDocument(bc.id, new_url, serialized, handling, .undefined);
     // Step 7: "Restore the history object state" - the next read deserializes
     // the new entry's state.
     internal.state_value = null;
     // Step 8: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
+    // Step 9: "Update the navigation API entries for a same-document
+    // navigation given document's relevant global object's navigation API,
+    // newEntry, and historyHandling."
+    @import("dom").navigation_api.sameDocumentNavigation(window, switch (handling) {
+        .push => .push,
+        .replace => .replace,
+    });
 }
 
-/// Set the URL of `window`'s associated Document - which its context's
-/// record holds, and its Location reads.
+/// Set the URL of `window`'s associated Document - which its realm records,
+/// and its Location reads.
 fn setDocumentUrl(window: *runtime.Instance, url: []const u8) void {
-    const v8 = @import("v8");
-    const engine_ctx = window.ctx.engine_ctx orelse return;
-    v8.context_manager.setDocumentUrl(@ptrCast(@alignCast(engine_ctx)), url) catch {};
+    window.ctx.setDocumentUrl(url) catch |err| log.warn("history: the document URL was not recorded: {s}", .{@errorName(err)});
 }
 
 // =============================================================================
 // Traversal
 // =============================================================================
 
+/// Where a traversal goes: `delta` used steps away from the current one
+/// ("traverse the history by a delta"), or to a given step (the navigation
+/// API's traversals).
+const Target = union(enum) {
+    delta: i32,
+    step: u32,
+};
+
 /// A traversal waiting on the traversable's session history traversal queue.
 const Traversal = struct {
     top_id: u64,
-    delta: i32,
+    target: Target,
     allocator: Allocator,
 };
 
-/// "Traverse the history by a delta": append session history traversal
-/// steps - a task, here - that apply the step `delta` away.
-fn queueTraversal(internal: *InternalState, top: *BrowsingContext, delta: i32) void {
+/// Append session history traversal steps - a task, here - that apply the
+/// step `target` names.
+fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target) void {
     const window = internal.window orelse return;
     const task = internal.allocator.create(Traversal) catch return;
-    task.* = .{ .top_id = top.id, .delta = delta, .allocator = internal.allocator };
+    task.* = .{ .top_id = top.id, .target = target, .allocator = internal.allocator };
     const loop = window.ctx.getOptionalEventLoop() orelse return runTraversal(task);
     loop.queueTask(.{ .callback = &runTraversal, .context = task, .drop = &dropTraversal });
 }
@@ -496,7 +483,10 @@ fn runTraversal(context: ?*anyopaque) void {
     for (tree.items) |bc| _ = ensureEntries(bc) catch {};
 
     // Steps 2-4: the target step.
-    const target = history.stepByDelta(task.delta) orelse return;
+    const target = switch (task.target) {
+        .delta => |delta| history.stepByDelta(delta) orelse return,
+        .step => |step| step,
+    };
 
     // Step 6: the navigables that change, parents first.
     var changes: std.ArrayListUnmanaged(Change) = .empty;
@@ -550,10 +540,28 @@ fn runTraversal(context: ?*anyopaque) void {
 /// the fragment changed.
 fn sameDocumentTraversal(bc: *BrowsingContext, old_url: []const u8, entry: *joint_history.Entry) void {
     const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return));
+    // The traversal task switches into each changed navigable's realm.
+    var traversal: SameDocumentTraversal = .{ .window = window, .old_url = old_url, .entry = entry };
+    engine.runInRealm(window.ctx, SameDocumentTraversal.steps, &traversal) catch |err| {
+        log.debug("history: same-document traversal not applied: {s}", .{@errorName(err)});
+    };
+}
+
+/// sameDocumentTraversal's steps, in the window's realm.
+const SameDocumentTraversal = struct {
+    window: *runtime.Instance,
+    old_url: []const u8,
+    entry: *joint_history.Entry,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *SameDocumentTraversal = @ptrCast(@alignCast(data.?));
+        applySameDocumentEntry(self.window, self.old_url, self.entry);
+    }
+};
+
+fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry: *joint_history.Entry) void {
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    const scope = @import("v8").JsScope.init(window.ctx) orelse return;
-    defer scope.deinit();
 
     // Copied: popstate's handlers can push entries, which moves them.
     const allocator = internal.allocator;
@@ -564,6 +572,9 @@ fn sameDocumentTraversal(bc: *BrowsingContext, old_url: []const u8, entry: *join
     // 6.3: "Restore the history object state given document and entry."
     internal.state_value = null;
     const state = stateValue(internal, entry) catch runtime.JSValue.jsNull;
+    // 6.4.1: "Update the navigation API entries for a same-document
+    // navigation given navigation, entry, and "traverse"" - before popstate.
+    @import("dom").navigation_api.sameDocumentNavigation(window, .traverse);
     // 6.4.3: popstate, with the state.
     const event = interfaces.PopStateEvent.call_constructor(
         window.ctx,
@@ -627,8 +638,12 @@ fn runHashChange(context: ?*anyopaque) void {
     const task: *HashChange = @ptrCast(@alignCast(context orelse return));
     defer task.destroy();
     if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
-    const scope = @import("v8").JsScope.init(task.window.ctx) orelse return;
-    defer scope.deinit();
+    // A global task of the window: it runs in the window's realm.
+    engine.runTaskInRealm(task.window.ctx, fireHashChange, task) catch |err| log.debug("history: hashchange not fired: {s}", .{@errorName(err)});
+}
+
+fn fireHashChange(data: ?*anyopaque) void {
+    const task: *HashChange = @ptrCast(@alignCast(data.?));
     const event = interfaces.HashChangeEvent.call_constructor(
         task.window.ctx,
         runtime.DOMString.initInterned("hashchange"),

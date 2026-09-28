@@ -47,8 +47,23 @@ const WindowRealmState = struct {
     /// end must not detach it again.
     window_proxy_handed_on: bool = false,
     /// The realm's context is entered for its life - until it ends, or until
-    /// a realm that takes over its WindowProxy is entered in its place.
+    /// a realm that takes over its WindowProxy is entered in its place. Never
+    /// for a realm with a parent (a frame's), which is made while its parent's
+    /// script runs.
     context_entered: bool = true,
+    /// The parent navigable's realm (WindowRealmOptions.parent), or null.
+    parent: ?Context = null,
+    /// The realms made with this one as their parent that have not ended:
+    /// they end first when this one does.
+    children: std.ArrayListUnmanaged(Context) = .empty,
+    /// The realm's Window, which the host made (create_global_object).
+    window: ?*engine.Instance = null,
+    /// This realm's global object, once its WindowProxy went on to a later
+    /// realm (window_proxy_handed_on): held weakly - empty once V8 collects
+    /// it - to sever it from this realm's Window at the end. A function of
+    /// this realm that script still holds looks its globals up on it, and the
+    /// WindowProxy no longer reaches it.
+    retired_global: ?*ffi.Value = null,
     allocator: std.mem.Allocator,
 };
 
@@ -121,7 +136,14 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             const old_context = contextOf(old) orelse return error.OperationFailed;
             reused_proxy = ffi.v8_Context_Global(old_context) orelse return error.OperationFailed;
             const old_state = window_realms.get(old);
-            if (old_state == null or !old_state.?.window_proxy_handed_on) ffi.v8_Context_DetachGlobal(old_context);
+            if (old_state == null or !old_state.?.window_proxy_handed_on) {
+                // The old global object, behind the proxy until the detach:
+                // the old realm's end severs it from its Window. V8's V1
+                // GetPrototype on a global proxy answers the hidden global
+                // object (only V1 SetPrototype must never be used on one).
+                if (old_state) |state| state.retired_global = retiredGlobalOf(reused_proxy.?);
+                ffi.v8_Context_DetachGlobal(old_context);
+            }
             if (old_state) |state| {
                 state.window_proxy_handed_on = true;
                 // The new realm is entered in the old one's place: V8 exits
@@ -167,8 +189,20 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template);
         break :blk made orelse return error.OperationFailed;
     };
+    // A frame's realm (one with a parent) takes its parent's security token:
+    // V8 lets script reach another context's global proxy only with the same
+    // token, and the WindowProxy's cross-origin checks are the host's.
+    const parent_context: ?*ffi.Context = if (options.parent) |parent| contextOf(parent) orelse return error.OperationFailed else null;
+    if (parent_context) |pc| {
+        // Owned, and copied by SetSecurityToken. By default the token is the
+        // parent's global object, so a kept handle would keep the page alive.
+        if (ffi.v8_Context_GetSecurityToken(pc)) |token| {
+            defer ffi.v8_Value_Dispose(token);
+            ffi.v8_Context_SetSecurityToken(context, token);
+        }
+    }
     // The page's context stays entered while it lives; destroyWindowRealm
-    // exits it.
+    // exits it. A frame's is entered only while it is made (below).
     ffi.v8_Context_Enter(context);
     var registered = false;
     errdefer {
@@ -188,8 +222,11 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     if (restored) {
         // The snapshot has the interfaces; the adapter's template registry
         // still has to learn them, or a wrapped Document gets the wrong
-        // prototype.
-        interface_bindings.registerAllTemplatesOnly(isolate, context, .eager);
+        // prototype. A frame's realm builds only the interface objects its
+        // script reads (.lazy_follows, as context_manager's child contexts
+        // did): every one of ~1,260 costs a frame ~25 ms and ~2.8 MB, and a
+        // frame-heavy page makes dozens.
+        interface_bindings.registerAllTemplatesOnly(isolate, context, if (options.parent != null) .lazy_follows else .eager);
     } else {
         interface_bindings.initializeBindingsWithGlobalTemplate(isolate, context);
     }
@@ -233,11 +270,80 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .origin = if (options.origin) |o| allocator.dupe(u8, o) catch return error.OutOfMemory else null,
         .is_platform_object_same_origin = options.is_platform_object_same_origin,
         .host = options.host,
+        .parent = options.parent,
+        .window = window,
         .allocator = allocator,
     };
     errdefer if (state.origin) |o| allocator.free(o);
+    const parent_state: ?*WindowRealmState = if (options.parent) |parent| window_realms.get(parent) else null;
+    if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
+    errdefer if (parent_state) |ps| removeChild(ps, realm);
     window_realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+
+    if (options.parent != null) {
+        // A frame's window gets the window operations its parent's has.
+        page_realm.defineOnFrame(isolate, context);
+        // Made while the parent's script runs: its context leaves the stack
+        // now, and is entered for each call that runs in it.
+        ffi.v8_Context_Exit(context);
+        state.context_entered = false;
+        if (entered_isolate) {
+            ffi.v8_Isolate_Exit(isolate);
+            state.entered_isolate = false;
+        }
+    }
     return realm;
+}
+
+/// `proxy`'s hidden global object, as a weak handle (empty once collected).
+fn retiredGlobalOf(proxy: *ffi.Object) ?*ffi.Value {
+    const value = ffi.v8_Object_GetPrototype(proxy) orelse return null;
+    if (!ffi.v8_Value_IsObject(value)) {
+        ffi.v8_Global_Dispose(value);
+        return null;
+    }
+    ffi.v8_Global_SetWeak(@ptrCast(value), null, &retiredGlobalCollected);
+    return value;
+}
+
+/// A retired global object was collected: its weak handle is empty now,
+/// which is all the realm's end needs to know.
+fn retiredGlobalCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
+
+/// Clear `window` from `global` and the prototype objects behind it (the
+/// placeholder, WindowProperties) before the Window is freed: a Window member
+/// read through them is then an illegal invocation, not a read of freed
+/// memory.
+fn severWindow(global: *ffi.Object, window: *engine.Instance) void {
+    clearWindowField(global, window);
+    var links: [3]?*ffi.Value = .{ null, null, null };
+    defer for (links) |link| {
+        if (link) |value| ffi.v8_Value_Dispose(value);
+    };
+    var current: *ffi.Object = global;
+    for (&links) |*slot| {
+        const proto = ffi.v8_Object_GetPrototypeV2(current) orelse return;
+        slot.* = proto;
+        if (!ffi.v8_Value_IsObject(proto)) return;
+        const object: *ffi.Object = @ptrCast(proto);
+        clearWindowField(object, window);
+        current = object;
+    }
+}
+
+fn clearWindowField(object: *ffi.Object, window: *engine.Instance) void {
+    if (ffi.v8_Object_InternalFieldCount(object) < 1) return;
+    const ptr = ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return;
+    if (@intFromPtr(ptr) != @intFromPtr(window)) return;
+    ffi.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+}
+
+fn removeChild(state: *WindowRealmState, child: Context) void {
+    for (state.children.items, 0..) |c, i| {
+        if (c != child) continue;
+        _ = state.children.swapRemove(i);
+        return;
+    }
 }
 
 /// The agent's Window interface template, made and registered - EventTarget
@@ -341,18 +447,66 @@ fn bindWindowToGlobal(
     }
 }
 
+/// A realm whose end is under way on this thread: a stack, one node per
+/// destroyWindowRealm frame, innermost first.
+const EndingRealm = struct {
+    realm: Context,
+    next: ?*const EndingRealm,
+};
+threadlocal var ending_realms: ?*const EndingRealm = null;
+
+fn isEnding(realm: Context) bool {
+    var node = ending_realms;
+    while (node) |n| : (node = n.next) {
+        if (n.realm == realm) return true;
+    }
+    return false;
+}
+
 /// The end of a Window realm (Blink's LocalWindowProxy::DisposeContext order).
 pub fn destroyWindowRealm(realm: Context) void {
+    // A realm ends once, and its end can reach itself: the context manager's
+    // teardown frees what the realm's wrapper cache holds, and a removed
+    // iframe element wrapped only here (`frames[0].frameElement`) takes its
+    // integration with it - whose cleanup is this realm's end. The inner call
+    // does nothing; the outer one finishes. Blink's
+    // LocalWindowProxy::DisposeContext likewise returns unless its lifecycle
+    // is still kContextIsInitialized.
+    if (isEnding(realm)) return;
+    const ending: EndingRealm = .{ .realm = realm, .next = ending_realms };
+    ending_realms = &ending;
+    defer ending_realms = ending.next;
+
+    // Its frames' realms that are still alive end first.
+    if (window_realms.get(realm)) |s| {
+        while (s.children.pop()) |child| destroyWindowRealm(child);
+        s.children.deinit(std.heap.c_allocator);
+    }
     const state = if (window_realms.fetchRemove(realm)) |kv| kv.value else null;
     defer if (state) |s| {
         if (s.origin) |o| s.allocator.free(o);
+        if (s.retired_global) |g| ffi.v8_Global_Dispose(g);
         s.allocator.destroy(s);
+    };
+    if (state) |s| if (s.parent) |parent| {
+        if (window_realms.get(parent)) |ps| removeChild(ps, realm);
     };
     const context = contextOf(realm) orelse return;
     const isolate: *ffi.Isolate = if (state) |s| s.isolate else @ptrCast(@alignCast(ffi.v8_Isolate_GetCurrent() orelse return));
 
-    // The window operations this realm installed end with it.
+    // The window operations this realm installed end with it; a frame's
+    // window gives up its timers.
     page_realm.endWindowOperations(realm);
+    if (state) |s| if (s.parent != null) page_realm.frameWindowDestroyed(realm);
+
+    // A global object whose WindowProxy went on to a later realm is not
+    // reached through the context any more: sever it from the Window the
+    // context manager is about to free.
+    if (state) |s| if (s.retired_global) |g| {
+        if (!ffi.v8_Global_IsEmpty(g) and ffi.v8_Value_IsObject(g)) {
+            if (s.window) |window| severWindow(@ptrCast(g), window);
+        }
+    };
 
     // 1. The context manager first: it tears down the Window, its document and
     // its frames, and retires the realm - which from here on has no engine

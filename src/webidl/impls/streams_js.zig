@@ -286,7 +286,8 @@ pub fn queueMicrotask(realm: Realm, comptime Ctx: type, ctx: *Ctx, comptime call
             callback(@ptrCast(@alignCast(data.?)));
         }
     };
-    engine.queueMicrotask(realm.ctx, Steps.run, ctx) catch {
+    const queued: engine.Error!void = if (realm.ctx.agent) |agent| engine.queueMicrotask(agent, Steps.run, ctx) else error.NotSupported;
+    queued catch {
         // No agent to queue on (a realm with no engine behind it): run the
         // steps now. Later than a microtask would be never happens, so the
         // read loop they continue does not stall; the cost is that they run

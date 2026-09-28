@@ -369,6 +369,14 @@ pub const EngineOptions = struct {
     snapshot: ?[]const u8 = null,
 };
 
+/// How hard the host wants memory back (notifyMemoryPressure).
+pub const MemoryPressure = enum {
+    /// Collect what is cheap to find, when convenient.
+    moderate,
+    /// Collect everything that can be collected, now: a page was let go.
+    critical,
+};
+
 /// HTML "obtain an agent".
 pub const AgentOptions = struct {
     /// [[CanBlock]] - honoured where `can_block_control`.
@@ -380,6 +388,9 @@ pub const AgentOptions = struct {
     hooks: *const HostHooks,
     /// Passed to every hook.
     host: ?*anyopaque = null,
+    /// What the engine allocates for the agent itself (its caches, what
+    /// destroyAgent frees), BORROWED for the agent's life.
+    allocator: std.mem.Allocator = std.heap.c_allocator,
 };
 
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook
@@ -445,6 +456,14 @@ pub const WindowRealmOptions = struct {
     /// The realm's origin, serialized; null for an opaque one.
     origin: ?[]const u8 = null,
     global_this: GlobalThis = .new_window_proxy,
+    /// The realm of the navigable's parent - an iframe's container document's
+    /// window, or a popup's opener - or null for a top-level one. A realm
+    /// with a parent shares its engine-level access with it (V8's security
+    /// token; the WindowProxy checks are the host's), ends when the parent
+    /// ends if it has not already, and - made while the parent's script runs -
+    /// is entered only for the calls that run in it. A realm without one
+    /// stays the agent's entered realm for its life.
+    parent: ?Context = null,
     /// HTML "create a new realm", the customization for the global object:
     /// the host makes the realm's Window. `global_this` is BORROWED until
     /// destroyWindowRealm: the host's Window may keep it as the global it is
@@ -589,6 +608,14 @@ pub inline fn requestGarbageCollection(agent: *Agent) void {
     impl.requestGarbageCollection(agent);
 }
 
+/// The host wants `agent`'s memory back: it has just let go of what a page
+/// held (a navigation's old realm, a removed frame's), which is garbage now,
+/// or it is short of memory. The engine collects as `level` asks. No spec
+/// observes it; every engine answers, doing what it can.
+pub inline fn notifyMemoryPressure(agent: *Agent, level: MemoryPressure) void {
+    impl.notifyMemoryPressure(agent, level);
+}
+
 // ============================================================================
 // 4.2 Realms
 // ============================================================================
@@ -706,18 +733,21 @@ pub inline fn runTaskInRealm(realm: Context, steps: RealmSteps, data: ?*anyopaqu
     return impl.runTaskInRealm(realm, steps, data);
 }
 
-/// HTML "perform a microtask checkpoint" for `realm`'s agent. Where the engine
-/// lacks `microtask_checkpoint_control` it drains on its own, and this does
-/// nothing.
-pub inline fn performMicrotaskCheckpoint(realm: Context) Error!void {
-    return impl.performMicrotaskCheckpoint(realm);
+/// HTML "perform a microtask checkpoint" for `agent` - an event loop's, and
+/// an event loop is an agent's: its microtask queue is the agent's, whichever
+/// realm queued each microtask. Where the engine lacks
+/// `microtask_checkpoint_control` it drains on its own, and this does nothing.
+pub inline fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    return impl.performMicrotaskCheckpoint(agent);
 }
 
-/// HTML "queue a microtask": `steps(data)` at `realm`'s agent's next
-/// checkpoint. `data` BORROWED until then; a microtask still queued when the
-/// agent is torn down is dropped.
-pub inline fn queueMicrotask(realm: Context, steps: RealmSteps, data: ?*anyopaque) Error!void {
-    return impl.queueMicrotask(realm, steps, data);
+/// HTML "queue a microtask": `steps(data)` at `agent`'s next checkpoint -
+/// the surrounding agent's event loop's microtask queue, whichever realm the
+/// caller is in. `data` BORROWED until then; a microtask still queued when
+/// the agent is torn down is dropped. The steps run with no realm entered:
+/// what needs one enters it (runInRealm).
+pub inline fn queueMicrotask(agent: *Agent, steps: RealmSteps, data: ?*anyopaque) Error!void {
+    return impl.queueMicrotask(agent, steps, data);
 }
 
 /// HTML "report an exception" step 2, "extract error information" from a
