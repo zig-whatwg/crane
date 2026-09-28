@@ -10,7 +10,7 @@
 //! Migrated from: webidl/src/dom/element.zig
 
 const std = @import("std");
-const v8 = @import("v8");
+const engine = @import("engine");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -35,9 +35,6 @@ const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
-
-// Import pointer_tag for V8 pointer untagging (via v8 module)
-const pointer_tag = @import("v8").pointer_tag;
 
 pub const State = Element.State;
 
@@ -2998,83 +2995,71 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
     const target: *runtime.Instance = if (forwards_to_window) window else instance;
 
-    const engine_ctx = instance.ctx.getEngineContext() orelse return;
-    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
-    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
-    defer v8.ffi.v8_HandleScope_Dispose(scope);
-
-    const template_registry = v8.template_registry;
-    const target_obj = template_registry.wrapInstanceAsV8Object(
-        target,
-        template_registry.getInstanceInterfaceName(target),
-        isolate,
-        context,
-    ) catch return;
+    // The settings object is the document's (step 3.5), and the handler is
+    // compiled and set in its realm. A realm with no engine behind it (a DOM
+    // unit test) runs no script, so there is no handler to compile: every
+    // engine error below leaves the content attribute a plain attribute.
+    const realm = document.ctx;
+    const target_value: runtime.JSValue = .{ .instance = target };
 
     // "localName is the name of an event handler content attribute on
     // element": the target exposes an event handler IDL attribute of that name.
-    var name_buf: [64]u8 = undefined;
-    if (local_name.len >= name_buf.len) return;
-    @memcpy(name_buf[0..local_name.len], local_name);
-    name_buf[local_name.len] = 0;
-    const name_z: [*:0]const u8 = @ptrCast(&name_buf);
-    if (!v8.ffi.v8_Object_Has(context, target_obj, name_z)) return;
-
-    const key = v8.ffi.v8_String_NewFromUtf8(isolate, local_name.ptr, @intCast(local_name.len)) orelse return;
-    defer v8.ffi.v8_String_Dispose(key);
+    if (!(engine.hasProperty(realm, target_value, local_name) catch return)) return;
 
     // Step 3: deactivate. The IDL attribute set to null clears the handler.
     const body = value orelse {
-        const null_value = v8.ffi.v8_Null(isolate) orelse return;
-        defer v8.ffi.v8_Global_Dispose(null_value);
-        _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), null_value);
+        engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
         return;
     };
 
-    // Getting the current value of the event handler, step 3.9: the scope is
-    // the global environment, then - for an element's handler - the document
-    // and the element itself. A Window's handler (a body's onload) gets none.
+    // Getting the current value of the event handler, step 3: the function,
+    // compiled in the settings object's realm. Its scope (3.9) is the global
+    // environment, then - for an element's handler - the document and the
+    // element itself; a Window's handler (a body's onload) gets neither.
     // TODO: the form owner's object environment between the two.
-    var scopes: [2]?*v8.ffi.Object = .{ null, null };
-    var scope_count: c_int = 0;
-    if (!forwards_to_window) {
-        scopes[0] = template_registry.wrapInstanceAsV8Object(
-            document,
-            template_registry.getInstanceInterfaceName(document),
-            isolate,
-            context,
-        ) catch return;
-        scopes[1] = target_obj;
-        scope_count = 2;
-    }
-
-    var error_info: ?*v8.ffi.V8ErrorInfo = null;
-    const function = v8.ffi.v8_CompileEventHandler(
-        context,
-        local_name.ptr,
-        @intCast(local_name.len),
-        body.ptr,
-        @intCast(body.len),
-        forwards_to_window and std.mem.eql(u8, local_name, "onerror"),
-        &scopes,
-        scope_count,
-        &error_info,
-    ) orelse {
-        // Step 3.7: a body that does not parse leaves the handler null.
-        // TODO: report the SyntaxError to the global once "report an
-        // exception" dispatches ErrorEvents.
-        v8.ffi.v8_FreeErrorInfo(error_info);
-        const null_value = v8.ffi.v8_Null(isolate) orelse return;
-        defer v8.ffi.v8_Global_Dispose(null_value);
-        _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), null_value);
+    // The script's URL is the document's (OWNED: the getter's copy).
+    const url = interfaces.Document.get_URL(document) catch return;
+    defer document.ctx.allocator.free(url);
+    const source: engine.EventHandlerSource = .{
+        .body = body,
+        .name = local_name,
+        .url = url,
+        // Where the attribute is, for errors: not recorded.
+        .lineno = 0,
+        .parameters = if (forwards_to_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
+        .document = if (forwards_to_window) null else document,
+        .form_owner = null,
+        .element = if (forwards_to_window) null else instance,
+    };
+    // Step 3.7: a body that does not parse is reported for the settings
+    // object's global (the reporter), and leaves the handler null.
+    const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return;
+    const function = compiled orelse {
+        engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
         return;
     };
-    defer v8.ffi.v8_Global_Dispose(function);
+    defer function.release();
 
     // Step 3.12: the handler's value is the function - through the IDL
     // attribute, which stores it exactly as `element.onload = fn` would.
-    _ = v8.ffi.v8_Object_Set(target_obj, context, @ptrCast(key), function);
+    engine.setProperty(realm, target_value, local_name, function.value) catch {};
+}
+
+/// HTML "report an exception" for the global of the realm the engine names -
+/// an event handler's settings object's - or else `host`'s.
+fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const fallback: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse fallback;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 /// Trigger image loading when src attribute changes on an img element
@@ -3181,36 +3166,35 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSVa
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // "Return the qualified names of the attributes in this's attribute list,
-    // in order; otherwise a new list." A sequence<DOMString> is a real array:
-    // an impl's return value is the JavaScript value, as in
-    // URLSearchParams.getAll.
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const scope = v8.ffi.v8_HandleScope_New(isolate) orelse return error.OutOfMemory;
-    defer v8.ffi.v8_HandleScope_Dispose(scope);
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidStateError;
-    defer v8.ffi.v8_Context_Dispose(context);
-
-    // A Global<Array> the caller owns; the JSValue carries it to the binding.
-    const array = v8.ffi.v8_Array_New(isolate, @intCast(internal.getAttributeCount()));
-    errdefer v8.ffi.v8_Value_Dispose(@ptrCast(array));
-
-    var iter = internal.attributeIterator();
-    var index: u32 = 0;
-    while (iter.next()) |entry| : (index += 1) {
-        // The qualified name: "prefix:localName", or the local name alone.
-        const qualified_name = if (entry.prefix) |prefix|
-            try std.fmt.allocPrint(internal.allocator, "{s}:{s}", .{ prefix, entry.local_name })
-        else
-            entry.local_name;
-        defer if (entry.prefix != null) internal.allocator.free(qualified_name);
-
-        // A Global the caller owns; `Set` takes its own reference.
-        const name = v8.ffi.v8_String_NewFromUtf8(isolate, qualified_name.ptr, @intCast(qualified_name.len)) orelse return error.OutOfMemory;
-        defer v8.ffi.v8_Value_Dispose(@ptrCast(name));
-        _ = v8.ffi.v8_Array_Set(array, context, index, @ptrCast(name));
+    // in order; otherwise a new list." A sequence<DOMString> is a new Array
+    // of the current realm: an impl's return value is the JavaScript value,
+    // as in URLSearchParams.getAll.
+    const allocator = internal.allocator;
+    const values = try allocator.alloc(runtime.JSValue, internal.getAttributeCount());
+    defer allocator.free(values);
+    // The qualified names made here ("prefix:localName"); a local name alone
+    // is BORROWED from the attribute list for the call.
+    var made: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (made.items) |name| allocator.free(name);
+        made.deinit(allocator);
     }
 
-    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    var iter = internal.attributeIterator();
+    var index: usize = 0;
+    while (iter.next()) |entry| : (index += 1) {
+        const qualified_name: []const u8 = if (entry.prefix) |prefix| name: {
+            try made.ensureUnusedCapacity(allocator, 1);
+            const joined = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ prefix, entry.local_name });
+            made.appendAssumeCapacity(joined);
+            break :name joined;
+        } else entry.local_name;
+        values[index] = runtime.JSValue.fromStringRef(qualified_name);
+    }
+
+    // OWNED, handed to the binding.
+    const array = try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, values[0..index]);
+    return array.take();
 }
 
 /// Operation: attachShadow
@@ -3258,51 +3242,6 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     internal.shadow_root = shadow_root;
 
     return shadow_root;
-}
-
-/// Parse ShadowRootMode from V8 value
-fn parseShadowRootMode(ptr: *const anyopaque) enums.ShadowRootMode {
-    // The V8 conversion layer passes enum values as strings via anyopaque pointer
-    // For now, try to extract the string and match
-
-    // Check if this is a V8 string value
-    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
-    if (v8.ffi.v8_Value_IsString(v8_value)) {
-        // Get string length and content
-        const str_len = v8.ffi.v8_Value_StringLength_Raw(ptr);
-        if (str_len > 0 and str_len <= 10) {
-            var buf: [10]u8 = undefined;
-            const written = v8.ffi.v8_Value_StringWriteUtf8_Raw(ptr, &buf, @intCast(str_len));
-            if (written > 0) {
-                const mode_str = buf[0..@intCast(written)];
-                if (std.mem.eql(u8, mode_str, "closed")) {
-                    return ._closed_;
-                }
-            }
-        }
-    }
-    // Default to open
-    return ._open_;
-}
-
-/// Parse SlotAssignmentMode from V8 value
-fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
-    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
-    if (v8.ffi.v8_Value_IsString(v8_value)) {
-        const str_len = v8.ffi.v8_Value_StringLength_Raw(ptr);
-        if (str_len > 0 and str_len <= 10) {
-            var buf: [10]u8 = undefined;
-            const written = v8.ffi.v8_Value_StringWriteUtf8_Raw(ptr, &buf, @intCast(str_len));
-            if (written > 0) {
-                const mode_str = buf[0..@intCast(written)];
-                if (std.mem.eql(u8, mode_str, "manual")) {
-                    return ._manual_;
-                }
-            }
-        }
-    }
-    // Default to named
-    return ._named_;
 }
 
 /// Operation: requestPointerLock
