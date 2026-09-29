@@ -848,6 +848,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A function-pointer table hides dead code](docs/lessons/architecture-a-function-pointer-table-hides-dead-code.md) - An entry in a dispatch table is not a caller; to know what runs, count the calls of the table's fields, not the references to its functions.
 - [A step deferred to a loop dies with the loop](docs/lessons/architecture-a-step-deferred-to-a-loop-dies-with-the-loop.md) - Every step deferred to a timer needs an answer for the loop ending first: whoever ends the loop runs what is still armed on it, under the same conditions the timer would have had.
 - [An agent's role is recorded when it is made](docs/lessons/architecture-an-agent-s-role-is-recorded-when-it-is-made.md) - Record a role when it is taken; a predicate over teardown-time state is answered by whoever happens to be tearing down.
+- [State set around a call is seen by everything the call runs](docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md) - A value set around a call is visible to every callee, including ones working on other objects; key it to the object it is for, not to the time it is set.
 
 ### Spec Compliance
 
@@ -874,6 +875,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Read ahead, consume only what matched](docs/lessons/spec-compliance-read-ahead-consume-only-what-matched.md) - Match by looking ahead, not by consuming and restoring; restoring for one caller loses text for every other.
 - [A state that consumes nothing cannot be dispatched like one that does](docs/lessons/spec-compliance-a-state-that-consumes-nothing-cannot-be-dispatched-like-one-that-does.md) - Check each state's first step: one that does not consume must not be reached through a loop that consumes for it.
 - [A referrer is a record, not a resource name](docs/lessons/spec-compliance-a-referrer-is-a-record-not-a-resource-name.md) - Carry the spec's record across the engine boundary; reconstructing a referrer from the string the engine holds works only until the string and the record disagree, and for inline scripts they always did.
+- [A batched token must not hide what the spec reads per character](docs/lessons/spec-compliance-a-batched-token-must-not-hide-what-the-spec-reads-per-character.md) - When a fast path batches what the spec processes one unit at a time, write down the property every consumer relies on, and make the producer guarantee it.
 
 ### Codegen
 

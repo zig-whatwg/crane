@@ -500,6 +500,26 @@ pub const InputStream = struct {
         return matches;
     }
 
+    /// Check if the next characters match a string exactly (case-sensitive).
+    pub fn matchesCaseSensitive(self: *InputStream, expected: []const u8) bool {
+        const saved_pos = self.position;
+        const saved_line = self.line;
+        const saved_col = self.column;
+        const saved_cr = self.last_was_cr;
+        defer {
+            self.position = saved_pos;
+            self.line = saved_line;
+            self.column = saved_col;
+            self.last_was_cr = saved_cr;
+        }
+
+        for (expected) |expected_char| {
+            const cp = self.consume().getCodepoint() orelse return false;
+            if (cp != expected_char) return false;
+        }
+        return true;
+    }
+
     /// Consume characters that match a string (case-insensitive).
     /// Returns true if consumed, false if not matched.
     pub fn consumeAsciiCaseInsensitive(self: *InputStream, expected: []const u8) bool {

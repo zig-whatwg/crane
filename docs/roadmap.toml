@@ -228,6 +228,8 @@ progress = [
   "f404a62d3 - migration set Z (streams glue, canvas, the WPT runner, snapshot tooling) onto the protocol; completionOf; worker realm records",
   "2c10d00d1, 828f5e5fe, 14c9b6709 - the last table-only impls onto the protocol (composedPath, PointerEvent, the form and image tasks, TextEncoder, NodeFilter); a reported callback exception located at its throw site; the observers report through reportErrorInfo",
   "c21d276cf - a string's lone surrogates survive the protocol's own copy of it (engine-boundary lane)",
+  "7423457f9, 991373fec, ff17c8591 (merged 659f28649, 4ee159b9b) - scripting lane: classic scripts through engine.runClassicScript (R31); the window agent's module hooks and import() in a ShadowRealm; the legacy import() handler deleted",
+  "bc392d1c2..eaff8f879 (merged 6f94e66a5) - scripting lane: the runtime Engine table deleted (the runtime tier calls the protocol); Realm.v8_context/isolate renamed; worker realms end with their Browser; an agent records its host role when made",
   "3b710e930, 1248c3fa5, 0deed5ad3, e014e7fc0, 639478ab1, d75fcb45a, 53188e412 (merged 505cfb9e3) - navigation lane: Browser, Node, Document, Window, Location, EventTarget, HTMLIFrameElement and the navigation API on the protocol; frames' realms come from createWindowRealm and context_manager's child contexts are deleted; the microtask checkpoint and queueMicrotask are the agent's; a realm's wrapper cache leaves a node in a tree to its tree",
 ]
 
@@ -257,11 +259,11 @@ progress = [
 
   [[infra.items]]
   name = "The runtime Engine table (engine_interface.zig, ctx.getEngine()) is deleted, once its last callers have moved"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Typed ownership through runtime: JSValue's handle arm loses needs_disposal and the .local/.global tag for the protocol's types, and runtime types carry no V8 names (Realm.isolate -> agent, Realm.v8_context -> engine_realm) - after the paused lanes merge, since held files read them"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Codegen types callback parameters as the protocol's CallbackFunction and CallbackInterface, retiring the transitional takeCallbackFunction and takeCallbackInterface operations"

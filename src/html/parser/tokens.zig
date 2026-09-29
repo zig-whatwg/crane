@@ -776,6 +776,12 @@ pub const Token = union(enum) {
 
 /// A batch of text characters, stored as a slice into the input.
 /// This is a zero-copy optimization - the slice points directly to the input buffer.
+///
+/// Its first character is never whitespace (the tokenizer emits whitespace
+/// that would begin a run as a character token), so an insertion mode that
+/// sends "anything else" elsewhere may take the run for one of those; what
+/// follows it is processed in the mode it lands in. Characters after the
+/// first can be whitespace.
 pub const TextRun = struct {
     /// Slice of UTF-8 bytes from the input buffer.
     /// Valid for the lifetime of the tokenizer's input.
