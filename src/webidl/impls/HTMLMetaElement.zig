@@ -93,7 +93,9 @@ fn ensureInsertionStepsRegistered() void {
 /// Content-Security-Policy) do nothing here.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "meta")) return;
+    // Brand-checked by the instance's state, not by `node.node_name`: an
+    // element's NodeBase name is set only where its own init sets it (an
+    // iframe's, a script's), and is empty for a meta element.
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(node) orelse return));
     if (instance.stateAs(State) == null) return;
     // "Inserted into a document": the insertion steps ran for it and it is
