@@ -140,6 +140,17 @@ fn initWorkerTimerStorage(allocator: Allocator) void {
     }
 }
 
+/// Free the timer map once no worker is left on this thread. Every context
+/// in it belongs to a host whose end cancels and frees it (`cancelWorkerTimers`),
+/// so the map is empty by then; nothing else ever freed its table, which a
+/// leak check reported at exit after any file whose worker set a timer.
+fn releaseWorkerTimerStorage() void {
+    const map = if (worker_timer_contexts) |*m| m else return;
+    if (map.count() != 0) return;
+    map.deinit();
+    worker_timer_contexts = null;
+}
+
 /// Release a timer context and the handler it holds.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
     ctx.callback.release();
@@ -1103,6 +1114,7 @@ pub const WorkerHost = struct {
     fn free(self: *Self) void {
         removeLive(self);
         removeHost(self);
+        if (hosts.items.len == 0) releaseWorkerTimerStorage();
         forgetSharedScope(self);
         if (self.shared) |*shared| shared.deinit(self.allocator);
         self.cancelConnects();
