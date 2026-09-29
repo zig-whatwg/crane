@@ -2490,10 +2490,15 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
                 installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
             }
             // The rules start from this's navigable; sourceDocument navigates.
-            const this_document = interfaces.Window.get_document(instance) catch source_document;
+            const this_document = interfaces.Window.get_document(this) catch source_document;
             navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener, .current_document = this_document });
         }
-        return if (noopener) null else getWindowProxy(instance);
+        // Step 18: "Return targetNavigable's active WindowProxy" - this's,
+        // its parent's or its top's.
+        if (noopener) return null;
+        if (std.ascii.eqlIgnoreCase(target_str, "_parent")) return (interfaces.Window.get_parent(this) catch null) orelse getWindowProxy(this);
+        if (std.ascii.eqlIgnoreCase(target_str, "_top")) return (interfaces.Window.get_top(this) catch null) orelse getWindowProxy(this);
+        return getWindowProxy(this);
     }
 
     // A name an open popup carries is that popup - any popup of the pages
@@ -2513,7 +2518,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
             installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
         }
-        const this_document = interfaces.Window.get_document(instance) catch source_document;
+        const this_document = interfaces.Window.get_document(this) catch source_document;
         if (navigables.findByName(this_document, target_str)) |frame_window| {
             // Step 16.1: navigate it, then (step 18) return its WindowProxy.
             if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document });
