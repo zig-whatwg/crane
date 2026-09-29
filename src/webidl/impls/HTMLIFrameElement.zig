@@ -1899,13 +1899,23 @@ fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
 /// ancestors show a document whose URL equals `url` without fragments.
 ///
 /// Deviation, on purpose: the spec refuses the first match (any inclusive
-/// ancestor showing `url` returns null). Every engine allows one level of
-/// self-reference and refuses the second: WebKit's
+/// ancestor showing `url` returns null). The shipping engines allow one
+/// level of self-reference and refuse the second: WebKit's
 /// HTMLFrameOwnerElement::isProhibitedSelfReference ("We allow one level of
 /// self-reference because some websites depend on that, but we don't allow
-/// more than one"), and Blink and Gecko alike. WPT relies on it - the
-/// feature-policy helpers embed the test page in itself
-/// (xhr/xmlhttprequest-sync-default-feature-policy.sub.html hung on it).
+/// more than one"), Blink's frame URL check the same way (wpt.fyi's Edge
+/// run of src-repeated-in-ancestor.html is 1/4, as Crane's is), and Gecko's
+/// nsFrameLoader::CheckForRecursiveLoad (MAX_SAME_URL_CONTENT_FRAMES 2).
+/// WPT relies on it - the feature-policy helpers embed the test page in
+/// itself, and xhr/xmlhttprequest-sync-default-feature-policy.sub.html hung
+/// under the literal rule.
+///
+/// The known cost: html/semantics/embedded-content/the-iframe-element/
+/// src-repeated-in-ancestor.html tests the literal rule, and three of its
+/// four subtests (an iframe set to the page's own URL, with or without a
+/// fragment, directly or through an intermediate frame) fail here as they
+/// do in Blink. No whatwg/html issue on the difference was found
+/// (2026-09-29).
 fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     if (navigate_steps.matchesAboutBlank(url)) return false;
     const NodeImpl = @import("Node.zig");
