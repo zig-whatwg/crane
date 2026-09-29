@@ -682,6 +682,9 @@ const Navigation = struct {
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
+    /// The user navigated from the browser's UI (userInvolvement "browser
+    /// UI"), which no self-referential URL bound applies to.
+    browser_initiated: bool = false,
     /// A javascript: URL's String result and the URL its document takes,
     /// between evaluating it and committing it. Owned.
     javascript_result: ?[]u8 = null,
@@ -905,6 +908,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .history_handling = history_handling,
         .initial_insertion = options.initial_insertion,
         .traversal_entry = options.traversal_entry,
+        .browser_initiated = options.user_involvement == .browser_ui,
     };
     if (options.srcdoc) |html| {
         record.srcdoc = allocator.dupe(u8, html) catch {
@@ -1040,6 +1044,24 @@ fn startFetch(record: *Navigation) void {
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
+    // Deviation, stated: a frame's navigation to a URL that two of its
+    // ancestors already show, fragments excluded, is canceled here, as the
+    // request would start - the frame keeps the document it has. HTML bounds
+    // nesting only for an iframe's src attribute ("shared attribute
+    // processing steps" step 3); a navigation script starts in a frame to its
+    // own page's URL nests without end in the spec, and no load event above
+    // it ever fires. This is Chromium's bound
+    // (NavigationRequest::IsSelfReferentialURL, checked in WillStartRequest):
+    // one level of self-reference is allowed, about: URLs and navigations
+    // from the browser's UI are exempt. Gecko bounds the same pages by frame
+    // depth instead (nsFrameLoader::CheckForRecursiveLoad, 10).
+    // Chromium also exempts POST, which frame navigations here never are,
+    // and checks each redirect's target too (WillRedirectRequest); the fetch
+    // here follows redirects itself, so only the URL navigated to is checked.
+    if (!record.browser_initiated and isSelfReferential(record.integration, url)) {
+        return cancelSelfReferential(record);
+    }
+
     const scheme = navigate_steps.schemeOf(url);
     if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https")) {
         const request = navigation_fetch.navigationRequest(allocator, url, .{
@@ -1074,6 +1096,43 @@ fn startFetch(record: *Navigation) void {
         .redirect = .follow,
     }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
     queueNavigationTask(record.integration, record.id, &runCommit);
+}
+
+/// Whether two or more of `integration`'s ancestor navigables show a
+/// document whose URL equals `url` with fragments excluded. about: URLs
+/// never do. A popup has no ancestors.
+fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
+    if (std.mem.eql(u8, navigate_steps.schemeOf(url), "about")) return false;
+    const container: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return false));
+    const NodeImpl = @import("Node.zig");
+    const allocator = integration.allocator;
+    var document = NodeImpl.getOwnerDocument(container);
+    var found = false;
+    var depth: usize = 0;
+    while (document) |doc| : (depth += 1) {
+        if (depth > 64) return false;
+        const doc_url = documentUrlOf(doc, allocator) catch return false;
+        defer allocator.free(doc_url);
+        if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
+            if (found) return true;
+            found = true;
+        }
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
+        const parent_container = dom_module.navigable_container.of(window) orelse return false;
+        document = NodeImpl.getOwnerDocument(parent_container);
+    }
+    return false;
+}
+
+/// A self-referential navigation canceled before its request: no document,
+/// as for a 204 - the navigation ends, and with it the delay it put on the
+/// container document's load event.
+fn cancelSelfReferential(record: *Navigation) void {
+    const integration = record.integration;
+    log.debug("[navigation] canceled a self-referential frame navigation to {s}", .{record.url});
+    if (isOngoing(integration, record.id)) integration.ongoing_navigation = .none;
+    endNavigation(record.id);
+    endLoadDelay(integration);
 }
 
 /// A response made of `html`, as a fetch would have answered it.
