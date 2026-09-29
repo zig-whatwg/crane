@@ -2174,14 +2174,58 @@ fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[
     if (activeDocumentOf(integration)) |document| {
         if (!document_lifecycle.isCompletelyLoaded(document)) behavior = .replace;
     }
-    // Step 4: navigate, using element's node document.
+    // Deviation, stated, matching Chrome and Safari (crbug.com/1248444;
+    // navigate-cross-origin-iframe-to-same-url-with-fragment-fire-load-event):
+    // a fragment navigation of a cross-origin frame through its element
+    // fires the element's load event, as a cross-document one would - its
+    // absence would tell the container that the frame is still on that URL.
     const NodeImpl = @import("Node.zig");
+    const container_document = NodeImpl.getOwnerDocument(element);
+    const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
+    // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
-        .source_document = NodeImpl.getOwnerDocument(element),
+        .source_document = container_document,
         .history_behavior = behavior,
         .srcdoc = srcdoc,
         .initial_insertion = initial_insertion,
     });
+    if (load_for_fragment) queueIframeLoadEventSteps(element);
+}
+
+/// Whether navigating `integration`'s navigable to `url` from its container
+/// document is a fragment navigation of a document of another origin.
+fn crossOriginFragmentNavigation(integration: *IFrameIntegration, container_document: ?*runtime.Instance, url: []const u8, has_resource: bool) bool {
+    const active = activeDocumentOf(integration) orelse return false;
+    const container = container_document orelse return false;
+    const active_url = documentUrlOf(active, integration.allocator) catch return false;
+    defer integration.allocator.free(active_url);
+    if (!navigate_steps.isFragmentNavigation(url, active_url, has_resource)) return false;
+    const container_url = documentUrlOf(container, integration.allocator) catch return false;
+    defer integration.allocator.free(container_url);
+    // Only two tuple origins are compared: an about:blank or srcdoc
+    // document's is inherited, and counts as its container's.
+    const a = tupleOriginOf(active_url) orelse return false;
+    const b = tupleOriginOf(container_url) orelse return false;
+    return !std.mem.eql(u8, a, b);
+}
+
+/// The iframe load event steps for `element`, in a task.
+fn queueIframeLoadEventSteps(element: *runtime.Instance) void {
+    const timer = element.ctx.getOptionalTimer() orelse return;
+    const Task = struct {
+        element: *runtime.Instance,
+        generation: u64,
+        allocator: std.mem.Allocator,
+        fn run(data: ?*anyopaque) void {
+            const task: *@This() = @ptrCast(@alignCast(data orelse return));
+            defer task.allocator.destroy(task);
+            if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
+            runIframeLoadEventSteps(task.element);
+        }
+    };
+    const task = element.ctx.allocator.create(Task) catch return;
+    task.* = .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .allocator = element.ctx.allocator };
+    if (timer.setTimeout(0, Task.run, task) == 0) task.allocator.destroy(task);
 }
 
 /// Fire a load event on the iframe element.
