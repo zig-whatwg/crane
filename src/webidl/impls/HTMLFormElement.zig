@@ -672,9 +672,14 @@ fn submitForm(form: *runtime.Instance) !void {
     defer if (action_attribute) |a| allocator.free(a);
     const action: []const u8 = if (action_attribute) |a| (if (a.len > 0) a else document_url) else document_url;
 
-    // Steps 14-15: parse it relative to the document. (The document's
-    // encoding does not reach the URL parser; see encoding-parse.)
-    var base = basic_parser.parse(allocator, document_url, null) catch null;
+    // Steps 14-15: "encoding-parsing a URL given action, relative to
+    // submitter's node document" - its document base URL, which for an
+    // about:blank document is its creator's (an initial about:blank frame's
+    // form has no other). (The document's encoding does not reach the URL
+    // parser; see encoding-parse.)
+    const base_url = interfaces.Node.get_baseURI(document) catch null;
+    defer if (base_url) |b| document.ctx.allocator.free(b);
+    var base = basic_parser.parse(allocator, base_url orelse document_url, null) catch null;
     defer if (base) |*b| b.deinit();
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
