@@ -1,10 +1,14 @@
 # Architecture: A codegen-stub `init` silently produces a stateless node
 
 **Date**: 2026-09-22
-**Lesson**: `CDATASection.zig` and `ProcessingInstruction.zig` still had the
-generated stub `init` - `runtime.Instance.init(...)` plus `// TODO: Initialize
-your instance state here if needed` - so they never chained through
-`CharacterDataImpl.init` -> `NodeImpl.init` -> `EventTargetImpl.init`.
+**Lesson**: A codegen-stub `init` or constructor produces an object with no
+state, and it fails much later, somewhere else, as `InvalidStateError`. Nodes:
+`CDATASection.zig` and `ProcessingInstruction.zig` still had the generated stub
+`init` - `runtime.Instance.init(...)` plus `// TODO: Initialize your instance
+state here if needed` - so they never chained through `CharacterDataImpl.init`
+-> `NodeImpl.init` -> `EventTargetImpl.init`. Events: 93 Event subclasses (UIEvent,
+KeyboardEvent, SubmitEvent, ...) still have the stub constructor, so dispatching
+one throws.
 
 **Why**: An impl's `init` IS the inheritance chain. Skipping it produces an
 instance with the right vtable and the right `State` type - so it wraps, it
