@@ -959,7 +959,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // active document is not the initial about:blank. (A traversal's
     // navigation fired its event in the traversal.) Canceled, or
     // intercepted - which made it same-document - and it ends here.
-    if (options.traversal_entry == 0 and options.srcdoc == null and active != null and
+    // A srcdoc navigation is one too: its URL is about:srcdoc, and "about"
+    // is a fetch scheme (navigate-event/navigate-to-srcdoc).
+    if (options.traversal_entry == 0 and active != null and
         options.user_involvement != .browser_ui and
         initiatorSameOrigin(options.source_document, active_url, allocator) and
         !document_lifecycle.isInitialAboutBlank(active.?) and
