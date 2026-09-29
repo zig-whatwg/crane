@@ -41,6 +41,18 @@ pub fn parseURL(
     return basic_parser.parse(allocator, input, base);
 }
 
+/// Parse a URL string given `encoding`, the encoding its query is
+/// percent-encoded after encoding with (URL "URL parser" with an encoding;
+/// HTML "encoding-parse a URL" passes the document's).
+pub fn parseURLWithEncoding(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    base: ?*const URLRecord,
+    encoding: *const basic_parser.Encoding,
+) !URLRecord {
+    return basic_parser.parseWithEncoding(allocator, input, base, encoding);
+}
+
 /// Preprocess URL input string per spec
 ///
 /// Steps:

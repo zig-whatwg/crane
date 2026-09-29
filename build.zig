@@ -1989,6 +1989,9 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
+    // HTML "determining the character encoding": the transport layer's charset
+    // is the charset parameter of the Content-Type, parsed as a MIME type.
+    html_core_mod.addImport("mimesniff", mimesniff_mod);
     // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
     html_core_mod.addImport("origin", url_origin_mod_internal);
     html_core_mod.addImport("basic_parser", url_basic_parser_mod);
