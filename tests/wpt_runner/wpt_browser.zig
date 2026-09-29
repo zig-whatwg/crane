@@ -316,6 +316,9 @@ pub const WptBrowser = struct {
         // optional is now explicit rather than incidental.
         var phase: ?clock.Timer = clock.Timer.start();
 
+        // Each test file starts with an empty cookie jar, as runTest's do.
+        self.browser.cookie_jar.clear();
+
         // Navigate to test URL with skip_load so we can inject testharness first
         try self.browser.navigateWithOptions(test_url, context_type, .{
             .skip_load = true,
