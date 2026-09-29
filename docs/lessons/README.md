@@ -123,6 +123,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Worker object can live in a worker's realm](architecture-a-worker-object-can-live-in-a-worker-s-realm.md) - Deliver to an object as a task of its own realm (`runTaskInRealm`); `runInRealm` is only for a step inside a task already running.
 - [Wait for all settles a microtask after its last promise](architecture-wait-for-all-settles-a-microtask-after-its-last-promise.md) - When a spec's promise combinator has an observable order, check what the browsers build it from: Promise.all(...).then(...) is one tick later than "run the steps when the last one settles".
 - [What a method returns must outlive the script it runs](architecture-what-a-method-returns-must-outlive-the-script-it-runs.md) - Anything a method creates, hands to code that can run script, and reads afterwards must be held by the method for that whole span.
+- [An element's NodeBase name is empty unless its impl sets it](architecture-an-element-s-nodebase-name-is-empty-unless-its-impl-sets-it.md) - Before filtering NodeBase nodes by `node_name`, check that the element's impl sets it; a brand check on the owner instance needs no name at all.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -152,6 +153,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A special operation with an identifier is also a regular operation](spec-compliance-a-special-operation-with-an-identifier-is-also-a-regular-operation.md) - Filter operations by whether they have an identifier, never by the special keyword; a keyword list is wrong by default for the keyword nobody needed yet.
 - [An API that exists but never settles hangs its suite](spec-compliance-an-api-that-exists-but-never-settles-hangs-its-suite.md) - Before exposing an API whose promises and events depend on machinery not yet built, count what waits on them: an object that exists and never settles is worse than one that is missing.
 - [HTML bounds frame nesting only for src; browsers bound script navigations too](spec-compliance-html-bounds-frame-nesting-only-for-src.md) - A file whose subtests all pass while it times out is waiting for a load event; when the spec has no bound on a recursion, take a shipping engine's and say so.
+- ["UTF-8 decode" never fails](spec-compliance-utf-8-decode-never-fails.md) - Where the spec decodes, decode; validation is a different algorithm with a different name.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
