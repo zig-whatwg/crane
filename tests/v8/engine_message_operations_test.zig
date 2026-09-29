@@ -12,7 +12,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const engine = &v8.engine.v8_engine_interface;
 const allocator = std.testing.allocator;
 
 /// Two realms in one isolate - sender and receiver - for the whole file.
@@ -29,9 +28,9 @@ fn setup() !void {
     _ = ffi.v8_HandleScope_New(i);
     for (&contexts, &realms) |*context, *data| {
         context.* = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .v8_context = context.*, .isolate = i });
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
         const d = try std.heap.page_allocator.create(runtime.ContextData);
-        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = engine, .engine_ctx = context.*, .realm = r });
+        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
         data.* = d;
     }
     ffi.v8_Context_Enter(contexts[0]);
@@ -107,12 +106,12 @@ const List = struct {
     fn of(code: []const u8) !List {
         const array = try eval(0, code);
         errdefer ffi.v8_Value_Dispose(array);
-        const items = try engine.convertToSequenceOfObjects.?(realms[0], asValue(array), allocator);
+        const items = try v8.webidl_conversions.convertToSequenceOfObjects(realms[0], asValue(array), allocator);
         return .{ .array = array, .items = items };
     }
 
     fn deinit(self: List) void {
-        for (self.items) |item| engine.releaseValue.?(item);
+        for (self.items) |item| v8.engine.v8ReleaseValue(item);
         allocator.free(self.items);
         ffi.v8_Value_Dispose(self.array);
     }
@@ -136,8 +135,8 @@ test "a non-object item or a non-iterable is a TypeError" {
     try setup();
     const mixed = try eval(0, "[{}, 1]");
     defer ffi.v8_Value_Dispose(mixed);
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfObjects.?(realms[0], asValue(mixed), allocator));
-    try std.testing.expectError(error.TypeError, engine.convertToSequenceOfObjects.?(realms[0], runtime.JSValue.jsUndefined, allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfObjects(realms[0], asValue(mixed), allocator));
+    try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToSequenceOfObjects(realms[0], runtime.JSValue.jsUndefined, allocator));
 }
 
 // ----------------------------------------------------------------------------
@@ -149,8 +148,8 @@ test "a frozen array holds each platform object's wrapper, and is frozen" {
     try installPorts();
     // The mock instances have no wrapper cache: the array made of none is
     // what is pinned here, and the empty list MessageEvent.ports uses most.
-    const empty = try engine.createFrozenArrayOfPlatformObjects.?(realms[1], &.{});
-    defer engine.releaseValue.?(empty);
+    const empty = try v8.value_operations.createFrozenArrayOfPlatformObjects(realms[1], &.{});
+    defer v8.engine.v8ReleaseValue(empty);
     try std.testing.expect(empty.handle.needs_disposal);
     try setGlobal(1, "ports", empty.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(1, "Array.isArray(ports) && ports.length === 0 && Object.isFrozen(ports) ? 1 : 0"));
@@ -169,7 +168,7 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
     const transfer = try List.of("[buf]");
     defer transfer.deinit();
 
-    var result = try engine.structuredSerializeWithTransfer.?(realms[0], asValue(value), transfer.items, checkPorts, null, allocator);
+    var result = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], asValue(value), transfer.items, checkPorts, null, allocator);
     defer result.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 1), result.array_buffers.len);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, result.array_buffers[0]);
@@ -177,8 +176,8 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
     // The sender's buffer is detached.
     try std.testing.expectEqual(@as(i32, 0), try evalInt(0, "buf.byteLength"));
 
-    const clone = try engine.structuredDeserializeWithTransfer.?(realms[1], result.serialized, result.array_buffers);
-    defer engine.releaseValue.?(clone);
+    const clone = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], result.serialized, result.array_buffers);
+    defer v8.engine.v8ReleaseValue(clone);
     try std.testing.expect(clone.handle.needs_disposal);
     try setGlobal(1, "v", clone.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(1,
@@ -190,10 +189,10 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
 test "primitives serialize too" {
     try setup();
     const empty: []const runtime.JSValue = &.{};
-    var number = try engine.structuredSerializeWithTransfer.?(realms[0], .{ .number = 42 }, empty, checkPorts, null, allocator);
+    var number = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 42 }, empty, checkPorts, null, allocator);
     defer number.deinit(allocator);
-    const back = try engine.structuredDeserializeWithTransfer.?(realms[1], number.serialized, &.{});
-    defer engine.releaseValue.?(back);
+    const back = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], number.serialized, &.{});
+    defer v8.engine.v8ReleaseValue(back);
     try setGlobal(1, "n", back.handle.ptr);
     try std.testing.expectEqual(@as(i32, 42), try evalInt(1, "n"));
 }
@@ -206,15 +205,15 @@ test "a duplicate or detached buffer, and a non-transferable entry, are DataClon
 
     const twice = try List.of("[d, d]");
     defer twice.deinit();
-    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeWithTransfer.?(realms[0], asValue(value), twice.items, checkPorts, null, allocator));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredSerializeWithTransfer(realms[0], asValue(value), twice.items, checkPorts, null, allocator));
 
     const detached = try List.of("[gone]");
     defer detached.deinit();
-    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeWithTransfer.?(realms[0], asValue(value), detached.items, checkPorts, null, allocator));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredSerializeWithTransfer(realms[0], asValue(value), detached.items, checkPorts, null, allocator));
 
     const plain = try List.of("[{}]");
     defer plain.deinit();
-    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeWithTransfer.?(realms[0], asValue(value), plain.items, checkPorts, null, allocator));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredSerializeWithTransfer(realms[0], asValue(value), plain.items, checkPorts, null, allocator));
     // Nothing was detached by the failures.
     try std.testing.expectEqual(@as(i32, 4), try evalInt(0, "d.byteLength"));
 }
@@ -225,7 +224,7 @@ test "a transferable platform object is handed back, asked about with the caller
     var marker: u8 = 0;
     const transfer = try List.of("[p]");
     defer transfer.deinit();
-    var result = try engine.structuredSerializeWithTransfer.?(realms[0], .{ .number = 1 }, transfer.items, checkPorts, &marker, allocator);
+    var result = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 1 }, transfer.items, checkPorts, &marker, allocator);
     defer result.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 1), result.platform_objects.len);
     try std.testing.expectEqual(&mock_ports[0], result.platform_objects[0]);
@@ -234,10 +233,10 @@ test "a transferable platform object is handed back, asked about with the caller
     // Detached (q), and the same object twice, are DataCloneErrors.
     const detached = try List.of("[q]");
     defer detached.deinit();
-    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeWithTransfer.?(realms[0], .{ .number = 1 }, detached.items, checkPorts, null, allocator));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 1 }, detached.items, checkPorts, null, allocator));
     const twice = try List.of("[p, p]");
     defer twice.deinit();
-    try std.testing.expectError(error.DataCloneError, engine.structuredSerializeWithTransfer.?(realms[0], .{ .number = 1 }, twice.items, checkPorts, null, allocator));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 1 }, twice.items, checkPorts, null, allocator));
 }
 
 /// A native that serializes its argument as postMessage does, returning 1,
@@ -251,7 +250,7 @@ fn serializeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     // `.handle` tagged `.local` whose pointer is the argument's Global).
     var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, contexts[0], argument) catch return;
     defer value.deinit(allocator);
-    const result: f64 = if (engine.structuredSerializeWithTransfer.?(realms[0], value, empty, checkPorts, null, allocator)) |r| blk: {
+    const result: f64 = if (v8.structured_serialization.structuredSerializeWithTransfer(realms[0], value, empty, checkPorts, null, allocator)) |r| blk: {
         var owned = r;
         owned.deinit(allocator);
         break :blk 1;
@@ -290,5 +289,5 @@ test "what serialization throws - a getter, a DataCloneError DOMException - is p
 
 test "bytes that do not deserialize are a DataCloneError" {
     try setup();
-    try std.testing.expectError(error.DataCloneError, engine.structuredDeserializeWithTransfer.?(realms[1], "not serialized", &.{}));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], "not serialized", &.{}));
 }

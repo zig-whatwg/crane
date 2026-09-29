@@ -1,7 +1,6 @@
 //! The engine protocol's test adapter: module `engine_impl` for the runtime
 //! tier's tests (build.zig, "Runtime tests"), which bind the protocol here
-//! and link no JavaScript engine. What the runtime Engine table's
-//! `stub_engine` is to code that still reaches the table.
+//! and link no JavaScript engine.
 //!
 //! Every operation is explicit (AGENTS.md, "The engine boundary"):
 //! NotSupported where it can fail, and the answer "nothing" where it cannot -

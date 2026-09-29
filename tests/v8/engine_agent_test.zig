@@ -1,4 +1,4 @@
-//! The Engine table's agent operations, as V8 implements them: a realm is
+//! Agent operations as V8 implements them (worker_realm.zig): a realm is
 //! entered with ITS agent, whichever agent is current; and createAgent,
 //! destroyAgent, hasRunningScript, hasPendingEngineWork, runEngineTasks.
 //!
@@ -14,8 +14,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
-
-const engine = &v8.engine.v8_engine_interface;
+const protocol = @import("engine");
 
 /// Two isolates, each with a context and a realm over it, for the whole file.
 /// The first stays entered - "the page's"; the second is "the worker's", and
@@ -42,7 +41,7 @@ fn setup() !void {
     ffi.v8_Isolate_Exit(w);
 
     const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = engine, .engine_ctx = context });
+    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
     // What the context manager records for every realm it registers.
     data.agent = @ptrCast(w);
 
@@ -60,7 +59,7 @@ const Seen = struct {
 fn observe(data: ?*anyopaque) void {
     const seen: *Seen = @ptrCast(@alignCast(data.?));
     seen.current = ffi.v8_Isolate_GetCurrent();
-    seen.running = engine.hasRunningScript.?(@ptrCast(worker.?));
+    seen.running = v8.worker_realm.hasRunningScript(@ptrCast(worker.?));
 }
 
 test "a task fired into a realm from another agent runs with the realm's agent entered" {
@@ -68,14 +67,14 @@ test "a task fired into a realm from another agent runs with the realm's agent e
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
 
     var seen: Seen = .{};
-    try engine.runTaskInRealm.?(worker_realm.?, observe, &seen);
+    try v8.engine.v8RunTaskInRealm(worker_realm.?, observe, &seen);
     try std.testing.expectEqual(worker, seen.current);
     try std.testing.expect(seen.running);
     // And the page's is current again after.
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
 
     var sync: Seen = .{};
-    try engine.runInRealm.?(worker_realm.?, observe, &sync);
+    try v8.engine.v8RunInRealm(worker_realm.?, observe, &sync);
     try std.testing.expectEqual(worker, sync.current);
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
 }
@@ -84,16 +83,17 @@ test "script runs in the realm's agent, not the current one" {
     try setup();
     const Reports = struct {
         count: usize = 0,
-        fn report(host: ?*anyopaque, _: *const runtime.ErrorInfo) void {
+        fn report(host: ?*anyopaque, _: *const protocol.ErrorInfo) void {
             const self: *@This() = @ptrCast(@alignCast(host.?));
             self.count += 1;
         }
     };
     var reports: Reports = .{};
-    try engine.runClassicScript.?(worker_realm.?, "globalThis.inWorker = 41 + 1;", null, Reports.report, &reports);
+    const reporter: protocol.Reporter = .{ .report = Reports.report, .host = &reports };
+    try protocol.runClassicScript(worker_realm.?, .{ .utf8 = "globalThis.inWorker = 41 + 1;" }, "", null, reporter);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
     // The value is in the worker's context: read it there.
-    try engine.runClassicScript.?(worker_realm.?, "if (globalThis.inWorker !== 42) throw new Error('not here');", null, Reports.report, &reports);
+    try protocol.runClassicScript(worker_realm.?, .{ .utf8 = "if (globalThis.inWorker !== 42) throw new Error('not here');" }, "", null, reporter);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
     // Not in the page's.
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
@@ -101,18 +101,18 @@ test "script runs in the realm's agent, not the current one" {
 
 test "an agent with no script on the stack is not running any" {
     try setup();
-    try std.testing.expect(!engine.hasRunningScript.?(@ptrCast(worker.?)));
+    try std.testing.expect(!v8.worker_realm.hasRunningScript(@ptrCast(worker.?)));
     // The current agent is, as far as V8 can tell.
-    try std.testing.expect(engine.hasRunningScript.?(@ptrCast(page.?)));
+    try std.testing.expect(v8.worker_realm.hasRunningScript(@ptrCast(page.?)));
 }
 
 test "a new agent is made and disposed, and an idle one has no engine work" {
     try setup();
-    const agent = try engine.createAgent.?();
-    try std.testing.expect(!engine.hasRunningScript.?(agent));
-    try std.testing.expect(!engine.hasPendingEngineWork.?(agent));
-    try std.testing.expect(!engine.runEngineTasks.?(agent));
+    const agent = try v8.worker_realm.createAgent();
+    try std.testing.expect(!v8.worker_realm.hasRunningScript(agent));
+    try std.testing.expect(!v8.worker_realm.hasPendingEngineWork(agent));
+    try std.testing.expect(!v8.worker_realm.runEngineTasks(agent));
     // Neither left the new agent entered.
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
-    engine.destroyAgent.?(agent);
+    v8.worker_realm.destroyAgent(agent);
 }

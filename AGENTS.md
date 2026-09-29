@@ -522,12 +522,12 @@ everything else                      `const engine = @import("engine");`, runtim
    implementation, entries in the JavaScriptCore, QuickJS and test adapters
    (`error.NotSupported` where they cannot answer), a tests/v8 test with values
    made the way the binding makes them, and its line in docs/engine-protocol.md.
-7. **The runtime Engine table is transitional.** `runtime.EngineInterface`
-   (src/runtime/engine_interface.zig, reached through `ctx.getEngine()`)
-   predates the protocol. Nothing new calls it and nothing is added to it; it
-   is deleted when its last callers - the paused lanes' held files among them -
-   have moved. The lint below does not count table calls:
-   `grep -rn 'getEngine()' src tools` does.
+7. **The runtime Engine table is gone** (deleted with the final cleanup, f84096c88).
+   Nothing reaches the engine through a function-pointer table: the runtime
+   tier itself imports `engine` and calls the protocol (releasing an unwrapped
+   instance is `engine.hasWrapper`, [PutForwards] is the protocol's Set). Do
+   not bring a table back to break an import cycle - the runtime <-> engine
+   cycle is the same shape as the facade <-> adapter one and builds.
 8. **Existing debt is paid file by file.** Editing a file that makes direct V8
    calls or table calls means moving that file onto the protocol in the same
    change, by its recipes.
@@ -848,6 +848,10 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A realm's end can reach its own end](docs/lessons/architecture-a-realm-s-end-can-reach-its-own-end.md) - Any teardown that frees wrapped objects can be re-entered by one of them: carry the re-entrancy guard over when replacing a teardown path, and bisect a sweep prefix before reading the crashing file.
 - [Only "clean up after running script" checkpoints](docs/lessons/architecture-only-clean-up-after-running-script-checkpoints.md) - A checkpoint needs the spec's condition (an empty execution context stack), not a call site; one after every script is one inside some other script.
 - [A per-agent hook serves every realm kind in the agent](docs/lessons/architecture-a-per-agent-hook-serves-every-realm-kind-in-the-agent.md) - Before installing a hook per agent, list every kind of realm the agent can hold (Window, frame, ShadowRealm, worklet) and give each one a path through it, or a deliberate rejection.
+- [A function-pointer table hides dead code](docs/lessons/architecture-a-function-pointer-table-hides-dead-code.md) - An entry in a dispatch table is not a caller; to know what runs, count the calls of the table's fields, not the references to its functions.
+- [A step deferred to a loop dies with the loop](docs/lessons/architecture-a-step-deferred-to-a-loop-dies-with-the-loop.md) - Every step deferred to a timer needs an answer for the loop ending first: whoever ends the loop runs what is still armed on it, under the same conditions the timer would have had.
+- [An agent's role is recorded when it is made](docs/lessons/architecture-an-agent-s-role-is-recorded-when-it-is-made.md) - Record a role when it is taken; a predicate over teardown-time state is answered by whoever happens to be tearing down.
+- [State set around a call is seen by everything the call runs](docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md) - A value set around a call is visible to every callee, including ones working on other objects; key it to the object it is for, not to the time it is set.
 
 ### Spec Compliance
 
@@ -874,6 +878,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Read ahead, consume only what matched](docs/lessons/spec-compliance-read-ahead-consume-only-what-matched.md) - Match by looking ahead, not by consuming and restoring; restoring for one caller loses text for every other.
 - [A state that consumes nothing cannot be dispatched like one that does](docs/lessons/spec-compliance-a-state-that-consumes-nothing-cannot-be-dispatched-like-one-that-does.md) - Check each state's first step: one that does not consume must not be reached through a loop that consumes for it.
 - [A referrer is a record, not a resource name](docs/lessons/spec-compliance-a-referrer-is-a-record-not-a-resource-name.md) - Carry the spec's record across the engine boundary; reconstructing a referrer from the string the engine holds works only until the string and the record disagree, and for inline scripts they always did.
+- [A batched token must not hide what the spec reads per character](docs/lessons/spec-compliance-a-batched-token-must-not-hide-what-the-spec-reads-per-character.md) - When a fast path batches what the spec processes one unit at a time, write down the property every consumer relies on, and make the producer guarantee it.
 
 ### Codegen
 
@@ -947,3 +952,4 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Build after each lane merge - two clean merges can make a broken tree](docs/lessons/workflow-build-after-each-lane-merge.md) - "Each branch is green" says nothing about their merge.
 - [lint-impls counts every usage once per local alias](docs/lessons/workflow-lint-impls-counts-every-usage-once-per-alias.md) - Before binding a non-ancestor impl in one more function, count the file's existing bindings.
 - [Stopping a chat job means stopping its build runner](docs/lessons/workflow-stopping-a-chat-job-means-stopping-its-build-runner.md) - A chat job is stopped when nothing is left running in its mirror's directory; the orphaned build runner is the one that keeps going.
+- [Before deleting an API, grep for the field as well as its accessor](docs/lessons/workflow-grep-for-the-field-not-only-its-accessor.md) - A deletion's blast radius is every reference to the storage, not every call of its getter: grep for the field, the type and the initialiser before you scope the work.

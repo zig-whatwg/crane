@@ -7,8 +7,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const engine = &v8.engine.v8_engine_interface;
-
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
@@ -22,7 +20,7 @@ fn realm() !runtime.Context {
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine = engine, .engine_ctx = context });
+    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
     data.agent = @ptrCast(i);
     isolate_once = i;
     context_once = context;
@@ -68,7 +66,7 @@ const Recorder = struct {
                 self.text_len = @min(s.data.len, self.text.len);
                 @memcpy(self.text[0..self.text_len], s.data[0..self.text_len]);
             },
-            .handle => self.callable = engine.isCallable.?(arg),
+            .handle => self.callable = v8.worker_realm.isCallable(arg),
             else => {},
         };
         return runtime.JSValue.fromNumber(@floatFromInt(args.len * 10));
@@ -80,7 +78,7 @@ var recorder_function: runtime.BuiltinFunction = .{ .steps = Recorder.steps, .da
 
 test "a built-in is an own property of the global, with its length, and sees its arguments" {
     const ctx = try realm();
-    try engine.defineBuiltinFunction.?(ctx, "record", 2, &recorder_function);
+    try v8.worker_realm.defineBuiltinFunction(ctx, "record", 2, &recorder_function);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("Object.getOwnPropertyDescriptor(globalThis, 'record').writable && record.length === 2 ? 1 : 0"));
     try std.testing.expectEqual(@as(i32, 40), try evalInt("record(1, 'txt', function () {}, undefined)"));
     try std.testing.expectEqual(@as(usize, 1), recorder.calls);
@@ -102,7 +100,7 @@ var failing_function: runtime.BuiltinFunction = .{ .steps = failing, .data = nul
 
 test "an error from a built-in's steps is thrown as WebIDL throws an impl's" {
     const ctx = try realm();
-    try engine.defineBuiltinFunction.?(ctx, "fails", 0, &failing_function);
+    try v8.worker_realm.defineBuiltinFunction(ctx, "fails", 0, &failing_function);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("(() => { try { fails(); } catch (e) { return e instanceof TypeError ? 1 : 0; } return -1; })()"));
 }
 
@@ -110,11 +108,11 @@ test "isCallable" {
     _ = try realm();
     const function = try eval("(() => 1)");
     defer ffi.v8_Value_Dispose(function);
-    try std.testing.expect(engine.isCallable.?(asValue(function)));
+    try std.testing.expect(v8.worker_realm.isCallable(asValue(function)));
     const object = try eval("({})");
     defer ffi.v8_Value_Dispose(object);
-    try std.testing.expect(!engine.isCallable.?(asValue(object)));
-    try std.testing.expect(!engine.isCallable.?(.{ .number = 1 }));
+    try std.testing.expect(!v8.worker_realm.isCallable(asValue(object)));
+    try std.testing.expect(!v8.worker_realm.isCallable(.{ .number = 1 }));
 }
 
 test "isCallable of an argument as the binding hands it over" {
@@ -124,9 +122,9 @@ test "isCallable of an argument as the binding hands it over" {
     const function = try eval("(function () {})");
     defer ffi.v8_Value_Dispose(function);
     const argument = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, function);
-    try std.testing.expect(engine.isCallable.?(argument));
+    try std.testing.expect(v8.worker_realm.isCallable(argument));
     const object = try eval("({ notCallable: true })");
     defer ffi.v8_Value_Dispose(object);
     const not_callable = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, object);
-    try std.testing.expect(!engine.isCallable.?(not_callable));
+    try std.testing.expect(!v8.worker_realm.isCallable(not_callable));
 }

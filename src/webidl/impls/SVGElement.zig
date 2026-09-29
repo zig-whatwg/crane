@@ -9,6 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const SVGElement = interfaces.SVGElement;
+const ElementImpl = @import("Element.zig");
 
 pub const State = SVGElement.State;
 
@@ -22,22 +23,23 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
+/// Initialize instance: an SVG element is an Element, so its state is made
+/// through the chain Element -> Node -> EventTarget. (A codegen stub's
+/// `runtime.Instance.init` made a node with no Element or Node state, which
+/// every operation on it reads.)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return ElementImpl.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance, through its ancestors' impls: EventTarget's side
+/// tables are freed by its deinit.
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    ElementImpl.deinit(instance);
 }
 
 /// Getter for className

@@ -30,6 +30,9 @@ const engine = @import("engine");
 // Module script loading: the module map, graph fetching, linking, running.
 const module_script = @import("module_script.zig");
 
+// The request the script fetches build.
+const script_request = @import("script_request.zig");
+
 // "Report an exception": where a script's uncaught exception goes.
 const report_exception = @import("report_exception.zig");
 
@@ -94,6 +97,81 @@ pub const ScriptExecutionError = error{
     NotConnected,
     OutOfMemory,
 };
+
+/// An embedder's loader for the external classic scripts a parser prepares:
+/// given the src attribute's value, their source (allocated with `allocator`),
+/// or null for a network error. The WPT runner has one, which serves
+/// testharness.js once. A parser sets it around its "prepare the script
+/// element" call (`withParserScriptLoader`), and prepare consults it at its
+/// fetch step - never before: prefetching at the end tag fetched scripts that
+/// prepare then declined to run (html/syntax/speculative-parsing/generated/
+/// document-write/script-src-unsupported-type).
+pub const ParserScriptLoader = struct {
+    context: ?*anyopaque,
+    load: *const fn (context: ?*anyopaque, src: []const u8) ?[]const u8,
+    allocator: std.mem.Allocator,
+};
+
+/// The loader, and the one element it serves: the script the parser is
+/// preparing. Preparing that script can run script - a parser-inserted
+/// inline script executes inside its prepare - which inserts and prepares
+/// other script elements, and those are fetched as any script-inserted script
+/// is: relative to the document base URL, data: URLs included.
+const ScopedParserScriptLoader = struct {
+    element: *runtime.Instance,
+    loader: ParserScriptLoader,
+};
+
+threadlocal var parser_script_loader: ?ScopedParserScriptLoader = null;
+
+/// "Prepare the script element" for a parser whose embedder loads its
+/// external classic scripts with `loader`.
+pub fn prepareScriptElementWithLoader(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    loader: ?ParserScriptLoader,
+) ScriptExecutionError!bool {
+    const saved = parser_script_loader;
+    parser_script_loader = if (loader) |l| .{ .element = script_element, .loader = l } else null;
+    defer parser_script_loader = saved;
+    return prepareScriptElement(allocator, script_element);
+}
+
+/// An external classic script's source, owned by `allocator`: the
+/// embedder's loader for the parser preparing it, when it has one and it
+/// answers, else "fetch a classic script" for `url` - a data: URL, which the
+/// WPT runner's loader resolves as a path (html/semantics/scripting-1/
+/// the-script-element/data-url.html), is fetched. Null body: a network error.
+const FetchedSource = struct {
+    body: ?[]const u8,
+    allocator: std.mem.Allocator,
+    /// The script's muted errors ("fetch a classic script" step 5.5).
+    muted: bool = false,
+
+    fn deinit(self: *FetchedSource) void {
+        if (self.body) |b| self.allocator.free(b);
+        self.body = null;
+    }
+};
+
+fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
+    if (parserScriptLoaderFor(script_element)) |loader| {
+        if (loader.load(loader.context, src)) |body| return .{ .body = body, .allocator = loader.allocator };
+    }
+    var fetch_result = fetchClassicScript(allocator, script_element, document, url);
+    const body = fetch_result.body;
+    fetch_result.body = null;
+    fetch_result.deinit(allocator);
+    return .{ .body = body, .allocator = allocator, .muted = fetch_result.muted };
+}
+
+/// The embedder's loader, if the parser is preparing `script_element` with
+/// one.
+fn parserScriptLoaderFor(script_element: *runtime.Instance) ?ParserScriptLoader {
+    const scoped = parser_script_loader orelse return null;
+    if (scoped.element != script_element) return null;
+    return scoped.loader;
+}
 
 /// Prepare the script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
@@ -177,7 +255,7 @@ pub fn prepareScriptElement(
 
     // Step 18: If scripting is disabled for el, then return
     if (node_document) |doc| {
-        if (!doc_state.isScriptingEnabled(doc)) {
+        if (!scriptingEnabled(doc)) {
             return false;
         }
     }
@@ -322,12 +400,18 @@ pub fn prepareScriptElement(
             return handleScriptScheduling(allocator, script_element, parser_document, script_type);
         }
 
-        // Content the parser's script loader already fetched is used as-is.
+        // Content already cached for the element is used as-is. Otherwise the
+        // embedder's loader for the parser preparing this script, when it has
+        // one, stands in for "fetch a classic script" - here, at the fetch
+        // step, so a script that prepare returns from earlier (a type that is
+        // no JavaScript MIME type, nomodule) is never fetched.
         const cached = if (allowed_by_csp) HTMLScriptElementImpl.getCachedSourceText(script_element) else null;
+        var muted_errors = false;
         if (cached == null and allowed_by_csp) {
-            var fetch_result = fetchExternalScript(allocator, script_url);
-            defer fetch_result.deinit(allocator);
-            if (fetch_result.body) |body| {
+            var fetched = fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
+            defer fetched.deinit();
+            muted_errors = fetched.muted;
+            if (fetched.body) |body| {
                 HTMLScriptElementImpl.cacheSourceText(script_element, body) catch
                     return ScriptExecutionError.OutOfMemory;
             }
@@ -335,7 +419,9 @@ pub fn prepareScriptElement(
 
         if (HTMLScriptElementImpl.getCachedSourceText(script_element)) |body| {
             if (allowed_by_csp) {
-                HTMLScriptElementImpl.setResult(script_element, .{ .script = ClassicScript.init(body, script_url) });
+                var script = ClassicScript.init(body, script_url);
+                script.muted_errors = muted_errors;
+                HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
             } else {
                 HTMLScriptElementImpl.setResult(script_element, .null);
             }
@@ -529,11 +615,16 @@ fn handleScriptScheduling(
             doc_state.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
             markReady(script_element);
         } else {
-            // 35.5: the pending parsing-blocking script. The parser would run
-            // it the moment it is ready to be parser-executed, and it already
-            // is - so this is that moment.
+            // 35.5: "Set el's parser document's pending parsing-blocking
+            // script to el", and - its fetch being done - ready to be
+            // parser-executed. The parser runs it once the script end tag's
+            // steps are over: at once for a script in the document's own
+            // markup, but after the enclosing script has finished for one that
+            // script's document.write() inserted, which is what sets the
+            // parser pause flag and stops the nested parse
+            // (parser_script_execution.runPendingParsingBlockingScripts).
             markReady(script_element);
-            _ = executeScriptElement(allocator, script_element) catch {};
+            setPendingParsingBlockingScript(parser_document orelse doc, script_element);
         }
         return true;
     }
@@ -547,7 +638,7 @@ fn handleScriptScheduling(
         if (node_document) |doc| {
             if (doc_state.hasStyleSheetBlockingScripts(doc)) {
                 markReady(script_element);
-                doc_state.setPendingParsingBlockingScript(doc, script_element);
+                setPendingParsingBlockingScript(parser_document orelse doc, script_element);
                 return true;
             }
         }
@@ -651,28 +742,41 @@ fn markAsReadySteps(data: ?*anyopaque) void {
     markReadyNow(task.allocator, task.element, task.document);
 }
 
-/// Execute pending parser-blocking script if ready
-/// Called by the parser after processing tokens
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#pending-parsing-blocking-script
+/// The parser's pending parsing-blocking script loop, one turn: if the
+/// document's pending parsing-blocking script is ready to be parser-executed,
+/// unset it and execute it. Returns whether one ran.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag
+/// ("Otherwise: While the pending parsing-blocking script is not null: 1. Let
+///  the script be the pending parsing-blocking script. 2. Set the pending
+///  parsing-blocking script to null. ... 8. Execute the script element the
+///  script.")
 pub fn executePendingParserBlockingScript(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
-) void {
-    const pending_script = doc_state.getPendingParsingBlockingScript(document) orelse return;
+) bool {
+    const pending_script = pendingParsingBlockingScript(document) orelse return false;
 
-    // Check if the script is ready to execute
-    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) {
-        // Script is not ready yet (still fetching or waiting for dependencies)
-        return;
-    }
+    // "Spin the event loop until the parser's Document has no style sheet that
+    // is blocking scripts and the script's ready to be parser-executed is
+    // true." Fetches complete at preparation, so a pending script is ready.
+    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) return false;
 
-    // Clear pending parsing-blocking script
-    doc_state.setPendingParsingBlockingScript(document, null);
+    setPendingParsingBlockingScript(document, null);
 
-    // Execute the script
     _ = executeScriptElement(allocator, pending_script) catch |err| {
-        log.debug("Parser-blocking script execution error: {}\n", .{err});
+        log.debug("Parser-blocking script execution error: {}", .{err});
     };
+    return true;
+}
+
+/// The document's pending parsing-blocking script, if any.
+pub fn pendingParsingBlockingScript(document: *runtime.Instance) ?*runtime.Instance {
+    return doc_state.getPendingParsingBlockingScript(document);
+}
+
+fn setPendingParsingBlockingScript(document: *runtime.Instance, script: ?*runtime.Instance) void {
+    doc_state.setPendingParsingBlockingScript(document, script);
 }
 
 /// Execute all scripts that should run when document finishes parsing
@@ -872,17 +976,15 @@ pub fn executeScriptElement(
     switch (script_type) {
         .classic => {
             // Step 6.1: Let oldCurrentScript be document's currentScript
-            const old_current_script = doc_state.getCurrentScript(node_document);
-
             // Step 6.2: If el's root is not a shadow root, set currentScript to el
             // (We'll assume no shadow roots for now)
-            doc_state.setCurrentScript(node_document, script_element);
+            const old_current_script = swapCurrentScript(node_document, script_element);
 
             // Step 6.3: Run the classic script given by el's result.
             runClassicScript(script_element, node_document, from_external);
 
             // Step 6.4: Set currentScript back to oldCurrentScript
-            doc_state.setCurrentScript(node_document, old_current_script);
+            _ = swapCurrentScript(node_document, old_current_script);
         },
         .module => {
             // Step 6 "module": document's currentScript is null while a module
@@ -1073,6 +1175,196 @@ fn disposeModuleMapEntry(value: *anyopaque) void {
         if (@as(*anyopaque, @ptrCast(record)) == value) return record.destroy();
     }
     module_script.disposeEntry(value);
+}
+
+// =============================================================================
+// SVG script elements
+// =============================================================================
+
+const xlink_namespace = "http://www.w3.org/1999/xlink";
+const script_elements = @import("dom").script_elements;
+
+/// `element`'s script element state - parser-inserted, already started - if
+/// it is an SVG script element (SVGScriptElement keeps it; the hook reaches
+/// it).
+fn svgScriptState(element: *runtime.Instance) ?*script_elements.ScriptFlags {
+    return script_elements.svgFlags(element);
+}
+
+/// Whether `element` is an SVG script element.
+pub fn isSvgScriptElement(element: *runtime.Instance) bool {
+    return svgScriptState(element) != null;
+}
+
+/// An SVG script became connected, or its children changed while connected:
+/// HTML's post-connection and children-changed steps, which prepare a script
+/// that is not parser-inserted.
+pub fn svgScriptInsertionOrChildrenChanged(allocator: std.mem.Allocator, element: *runtime.Instance) void {
+    const state = svgScriptState(element) orelse return;
+    if (state.parser_inserted or state.already_started) return;
+    if (!isConnected(element)) return;
+    prepareSvgScriptElement(allocator, element, false);
+}
+
+/// "Process the SVG script element according to the SVG rules" - the parser's
+/// end-tag step for an SVG script.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
+/// ("An end tag whose tag name is "script", if the current node is an SVG
+/// script element")
+pub fn processSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance) void {
+    prepareSvgScriptElement(allocator, element, true);
+}
+
+/// "Prepare the script element" for an SVG script.
+///
+/// SVG 2 §15.2: "A script element is equivalent to the script element in
+/// HTML", so this is HTML's algorithm with SVG's differences - Blink runs its
+/// SVGScriptElement through the same ScriptLoader as HTMLScriptElement. Its URL
+/// is its `href`, or the deprecated `xlink:href`, never `src`; and it has no
+/// async or defer. So an external script the parser meets is fetched and run
+/// at its end tag, as a parser-blocking HTML script is; one inserted by script
+/// is fetched at insertion and run from a task, as a force-async HTML script
+/// is.
+///
+/// Deviation, stated: type="module" is not supported for SVG.
+fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool) void {
+    const state = svgScriptState(element) orelse return;
+    // Step 1.
+    if (state.already_started) return;
+    // Steps 2-3: the parser document is let go of; step 14 restores it.
+    const parser_inserted = state.parser_inserted or from_parser_end_tag;
+    state.parser_inserted = false;
+
+    const href = getAttributeNS(element, null, "href") orelse getAttributeNS(element, xlink_namespace, "href");
+
+    // Step 5: child text content. Step 6: no href and no source - return
+    // before "already started", so text added later runs it.
+    const source = getChildTextContent(allocator, element) catch return;
+    defer if (source.len > 0) allocator.free(source);
+    if (href == null and source.len == 0) return;
+
+    // Step 7.
+    if (!isConnected(element)) return;
+
+    // Steps 8-13: the type. A JavaScript MIME type, or none, is classic.
+    if (determineScriptType(element) != .classic) return;
+
+    // Step 14.
+    if (parser_inserted) state.parser_inserted = true;
+    // Step 15.
+    state.already_started = true;
+
+    // Step 18.
+    const document = getNodeDocument(element) orelse return;
+    if (!scriptingEnabled(document)) return;
+
+    if (href) |raw| {
+        // Step 33.3: an empty URL queues an element task to fire error at the
+        // element - and fetches nothing: resolved, "" is the document's own
+        // URL, which ran the page as script (execution-timing/137).
+        if (raw.len == 0) return queueErrorEventTask(element);
+        // Step 33.5: the URL, relative to the document base URL. Step 33.6:
+        // failure queues the error event too.
+        const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+        defer allocator.free(base_url);
+        const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
+        defer element.ctx.allocator.free(url);
+
+        var fetched = fetchClassicScript(allocator, element, document, url);
+        defer fetched.deinit(allocator);
+        if (from_parser_end_tag) {
+            // A parser-blocking script, whose result is in hand: run it now.
+            const body = fetched.body orelse return fireErrorEvent(allocator, element);
+            runSvgScriptSource(document, element, body, url, url, fetched.muted);
+            fireLoadEvent(allocator, element);
+        } else {
+            // A script-inserted one runs from a task, as step 35's force-async
+            // HTML scripts do.
+            queueSvgScriptRun(element, fetched.body, url, fetched.muted);
+        }
+        return;
+    }
+
+    // Step 36.3: an inline script runs immediately, with the document base URL
+    // (step 34.1) as its base URL and the document's URL as its resource name.
+    const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
+    defer allocator.free(base_url);
+    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url, false);
+}
+
+/// A script-inserted external SVG script's run, queued: the element as
+/// (address, slab generation), the fetched source (owned), and its URL.
+const QueuedSvgScript = struct {
+    element: *runtime.Instance,
+    generation: u64,
+    /// Null for a failed fetch: the task fires error.
+    source: ?[]u8,
+    url: []u8,
+    /// The script's muted errors.
+    muted: bool,
+
+    fn destroy(self: *QueuedSvgScript) void {
+        if (self.source) |b| std.heap.c_allocator.free(b);
+        std.heap.c_allocator.free(self.url);
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
+fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8, muted: bool) void {
+    const loop = element.ctx.getOptionalEventLoop() orelse return;
+    const task = std.heap.c_allocator.create(QueuedSvgScript) catch return;
+    task.* = .{
+        .element = element,
+        .generation = runtime.SlabAllocator.generationOf(element),
+        .source = if (body) |b| std.heap.c_allocator.dupe(u8, b) catch null else null,
+        .url = std.heap.c_allocator.dupe(u8, url) catch {
+            std.heap.c_allocator.destroy(task);
+            return;
+        },
+        .muted = muted,
+    };
+    loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
+}
+
+fn dropQueuedSvgScript(data: ?*anyopaque) void {
+    const task: *QueuedSvgScript = @ptrCast(@alignCast(data orelse return));
+    task.destroy();
+}
+
+fn runQueuedSvgScript(data: ?*anyopaque) void {
+    const task: *QueuedSvgScript = @ptrCast(@alignCast(data orelse return));
+    defer task.destroy();
+    // The element was collected and its slot reissued: nobody is left to run.
+    if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
+    const document = getNodeDocument(task.element) orelse return;
+    const allocator = task.element.ctx.allocator;
+    const source = task.source orelse return fireErrorEvent(allocator, task.element);
+    runSvgScriptSource(document, task.element, source, task.url, task.url, task.muted);
+    fireLoadEvent(allocator, task.element);
+}
+
+/// Set `document`'s currentScript to `script`, returning what it was.
+fn swapCurrentScript(document: *runtime.Instance, script: ?*runtime.Instance) ?*runtime.Instance {
+    const old = doc_state.getCurrentScript(document);
+    doc_state.setCurrentScript(document, script);
+    return old;
+}
+
+/// "Scripting is enabled" for `document`.
+fn scriptingEnabled(document: *runtime.Instance) bool {
+    return doc_state.isScriptingEnabled(document);
+}
+
+/// Run `source` as a classic script for an SVG script element, with `url` as
+/// its resource name, `base_url` as its base URL and `muted` as its muted
+/// errors: currentScript is the element while it runs (it is an
+/// HTMLOrSVGScriptElement), and clean-up's microtask checkpoint follows, as
+/// for an HTML script.
+fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
+    const old_current_script = swapCurrentScript(document, element);
+    defer _ = swapCurrentScript(document, old_current_script);
+    runClassicScriptText(element, document, source, url, base_url, muted);
 }
 
 // =============================================================================
@@ -1600,16 +1892,19 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
-    if (ElementImpl.getInternal(element)) |internal| {
-        return internal.findAttribute(null, name) != null;
-    }
-    return false;
+    return getAttributeNS(element, null, name) != null;
 }
 
-/// Generic attribute getter
+/// Generic attribute getter, for an attribute in no namespace.
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
+    return getAttributeNS(element, null, name);
+}
+
+/// The value of `element`'s attribute with this namespace and local name.
+/// Borrowed from the element's attribute list: valid until it changes.
+fn getAttributeNS(element: *runtime.Instance, namespace: ?[]const u8, name: []const u8) ?[]const u8 {
     if (ElementImpl.getInternal(element)) |internal| {
-        if (internal.findAttribute(null, name)) |attr| {
+        if (internal.findAttribute(namespace, name)) |attr| {
             return attr.value;
         }
     }
@@ -1721,10 +2016,15 @@ fn isJavaScriptMimeType(mime_type: []const u8) bool {
     return false;
 }
 
-/// Check if element is connected to a document
+/// DOM "connected": the element's shadow-including root is a document.
+///
+/// Spec: https://dom.spec.whatwg.org/#connected
+/// Not "has a node document" - every node has one. Reading it that way let
+/// "prepare the script element" step 7 go on for a script in a detached tree:
+/// the HTML fragment parser prepared each script it converted into its
+/// DocumentFragment, which set it running when the fragment was inserted.
 fn isConnected(element: *runtime.Instance) bool {
-    // An element is connected if it has an owner document
-    return getNodeDocument(element) != null;
+    return interfaces.Node.get_isConnected(element) catch false;
 }
 
 /// Get the node's owner document
@@ -1933,6 +2233,10 @@ const ExternalScriptFetchResult = struct {
     body: ?[]const u8,
     content_type: ?[]const u8,
     status: u16,
+    /// "fetch a classic script" step 5.5: "Let mutedErrors be true if response
+    /// was CORS-cross-origin, and false otherwise" - its type is "opaque" or
+    /// "opaqueredirect".
+    muted: bool = false,
     /// The response's URL - the last URL in its URL list, i.e. after
     /// redirects. Null when the response carried none.
     final_url: ?[]const u8,
@@ -2078,19 +2382,27 @@ fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
     return result;
 }
 
-/// Fetch an external script using the Fetch API
-/// This is a synchronous fetch for parser-blocking scripts
+/// HTML "fetch a classic script" for `element`, synchronously: Crane's
+/// fetch completes before this returns, so onComplete's result is the
+/// return value.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-script
 ///
 /// `body` is null exactly when "fetch a classic script" would hand its
 /// onComplete null: a network error or a status that is not an ok status. An
 /// ok response with an EMPTY body is a script - one that does nothing - and it
 /// still runs and still earns its element a load event, so it comes back as an
-/// empty owned slice rather than null. Treating it as a failure made every
-/// empty external script silently disappear.
+/// empty owned slice rather than null.
 ///
-/// Never fails: running out of memory while copying the response is reported
-/// the way the spec reports any other failed fetch, with a null body.
-fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) ExternalScriptFetchResult {
+/// Never fails: running out of memory is reported the way the spec reports any
+/// other failed fetch, with a null body.
+///
+/// Deviations, stated: step 4's "set up the classic script request" sets no
+/// cryptographic nonce, integrity metadata, parser metadata, referrer policy,
+/// render-blocking or priority; steps 5.2-5.4 decode as UTF-8, with no
+/// legacy encoding extraction; step 5.6's base URL is the request URL, not the
+/// response's.
+fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) ExternalScriptFetchResult {
     var result = ExternalScriptFetchResult{
         .body = null,
         .content_type = null,
@@ -2098,19 +2410,38 @@ fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) ExternalSc
         .final_url = null,
     };
 
-    // Use the fetch module to retrieve the script. A transport failure comes
-    // back IN-BAND as a network-error response (type error, status 0), which
-    // the ok-status check below rejects - see AGENTS.md on in-band failures.
-    const response = fetch.fetchSimple(allocator, url) catch |err| {
+    // Step 1: "Let request be the result of creating a potential-CORS request
+    // given url, "script", and CORS setting."
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch return result;
+    defer request.deinit();
+    script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 2: "Set request's client to settings object" - the element's node
+    // document's relevant settings object: Fetch reads what "populate request
+    // from client" puts on the request.
+    if (document) |doc| script_request.populateRequestFromClient(request, doc.ctx);
+    // Step 3: "Set request's initiator type to "script"."
+    request.initiator_type = .script;
+
+    // Step 5: "Fetch request". A network error - a transport failure, a CORS
+    // failure, or main fetch step 19's MIME type / nosniff blocking, which
+    // keys on destination "script" - comes back in-band, as a response of
+    // type "error".
+    var fetched = fetch.algorithms.fetch(allocator, request, .{}) catch |err| {
         log.debug("Fetch error for script {s}: {}", .{ url, err });
         return result;
     };
+    defer fetched.timing_info.deinit();
+    const response = fetched.response;
     defer response.deinit();
 
+    // Step 5.1: "If bodyBytes is null or failure, or response's status is not
+    // an ok status, then run onComplete given null".
+    if (response.response_type == .@"error") return result;
     result.status = response.status;
-
-    // An ok status is 200-299 (Fetch §2.2.3).
     if (response.status < 200 or response.status >= 300) return result;
+
+    // Step 5.5.
+    result.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
 
     if (response.header_list.getFirstValue("content-type")) |ct| {
         result.content_type = allocator.dupe(u8, ct) catch null;

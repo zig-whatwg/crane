@@ -27,21 +27,18 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const infra = @import("infra");
 
-// HTTP fetch for external scripts
-const fetch = @import("fetch");
-
 // HTML parser types
 const html_core = @import("html_core");
 const TreeBuilder = html_core.parser.TreeBuilder;
 const TreeNode = html_core.parser.TreeNode;
 const Tokenizer = html_core.parser.Tokenizer;
+const Namespace = html_core.parser.Namespace;
 
 // Script execution
 const script_execution = @import("script_execution.zig");
 
 // DOM implementation access for internal state
 const impls = @import("impls");
-const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
 
 // DOM internals for document_element setting
@@ -114,263 +111,123 @@ pub const ParserScriptContext = struct {
         self.script_loader_ctx = loader_ctx;
     }
 
-    /// Load an external script by URL.
-    ///
-    /// If a custom script loader is set, tries that first. If the loader returns null,
-    /// falls back to HTTP fetch like a real browser would.
-    ///
-    /// Relative URLs are resolved against the base URL.
-    ///
-    /// Returns null if loading fails.
-    pub fn loadExternalScript(self: *ParserScriptContext, url: []const u8) ?[]const u8 {
-        // Try custom loader first if provided
-        if (self.script_loader_fn) |loader_fn| {
-            if (loader_fn(self.script_loader_ctx, url)) |content| {
-                return content;
-            }
-            // Custom loader returned null - fall through to HTTP fetch
-        }
-
-        // Resolve relative URLs against base URL
-        const resolved_url = resolveScriptUrl(self.allocator, url, self.base_url) orelse {
-            log.debug("Failed to resolve script URL: {s}\n", .{url});
-            return null;
-        };
-        defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
-
-        // Default: HTTP fetch like a real browser
-        return fetchScriptViaHttp(self.allocator, resolved_url);
-    }
-
     /// Get the DOM element for a TreeNode (if it has been converted).
     pub fn getDomElement(self: *const ParserScriptContext, tree_node: *TreeNode) ?*runtime.Instance {
         return self.tree_node_to_dom_map.get(tree_node);
     }
 };
 
-/// Parser script execution callback.
-///
-/// This function is invoked by the tree builder when a `</script>` end tag is encountered.
-/// It retrieves the corresponding DOM HTMLScriptElement and executes the script via V8.
+/// The tree builder's script callback: what the parser does at a script's
+/// end tag, between the steps that raise and lower its script nesting level.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag
-///
-/// The steps are:
-/// 1. Get the DOM HTMLScriptElement from the tree node via the adapter
-/// 2. Get script content from the tree node's text content
-/// 3. Check if it's an external script (queue for loading) or inline (execute)
-/// 4. Execute inline script via V8
+/// "An end tag whose tag name is "script"": ... "prepare the script element".
+/// ... "At this stage, if the pending parsing-blocking script is not null,
+/// then: if the script nesting level is not zero, set the parser pause flag to
+/// true, and abort the processing of any nested invocations of the tokenizer;
+/// otherwise run the pending parsing-blocking script" - see
+/// `runPendingParsingBlockingScripts`.
+/// And, for an SVG script (the "in foreign content" end tag): "process the SVG
+/// script element".
 pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) void {
     const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return));
+    if (!ctx.scripting_enabled) return;
 
-    // Check if scripting is enabled
-    if (!ctx.scripting_enabled) {
+    const script_element = ctx.getDomElement(script_tree_node) orelse return;
+
+    if (isSvgScript(script_tree_node)) {
+        script_execution.processSvgScriptElement(ctx.allocator, script_element);
         return;
     }
 
-    // Step 1: Get DOM HTMLScriptElement from tree node via adapter
-    const script_element = ctx.getDomElement(script_tree_node) orelse {
-        // Script element hasn't been converted to DOM yet - this can happen
-        // if the DOM adapter hasn't processed this node.
+    // The embedder's loader, when it has one, is what "prepare the script
+    // element" fetches a parser-inserted classic script's src with (the WPT
+    // runner has one, to keep testharness.js from loading twice) - at its
+    // fetch step, so only a script it would fetch anyway is loaded. What the
+    // loader returns is used as-is, EMPTY included (an empty script still
+    // runs and fires load); null is a network error, which executing the
+    // element turns into the error event.
+    const loader: ?script_execution.ParserScriptLoader = if (ctx.script_loader_fn != null) .{
+        .context = ctx,
+        .load = &loadForPrepare,
+        .allocator = ctx.allocator,
+    } else null;
+    _ = script_execution.prepareScriptElementWithLoader(ctx.allocator, script_element, loader) catch {};
+
+    runPendingParsingBlockingScripts(ctx);
+}
+
+/// `ParserScriptLoader.load` for a ParserScriptContext: its embedder's
+/// loader. Null - the loader has no answer - leaves the fetch to "fetch a
+/// classic script", which builds the request the spec's way.
+fn loadForPrepare(context: ?*anyopaque, src: []const u8) ?[]const u8 {
+    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return null));
+    const loader_fn = ctx.script_loader_fn orelse return null;
+    return loader_fn(ctx.script_loader_ctx, src);
+}
+
+/// The script end-tag steps' pending parsing-blocking script handling.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag
+/// "If the script nesting level is not zero: Set the parser pause flag to
+///  true, and abort the processing of any nested invocations of the tokenizer,
+///  yielding control back to the caller." - a script document.write()
+///  inserted waits for the script that wrote it to finish. "Otherwise: While
+///  the pending parsing-blocking script is not null: ... Let the insertion
+///  point be just before the next input character. Increment the parser's
+///  script nesting level by one. ... Execute the script element the script.
+///  Decrement the parser's script nesting level by one. If the parser's script
+///  nesting level is zero (which it always should be at this point), then set
+///  the parser pause flag to false. Let the insertion point be undefined
+///  again."
+///
+/// This runs inside the end-tag steps, before they lower the nesting level
+/// they raised - so the spec's "not zero" is more than one here, and the level
+/// the loop sets (one) is the one already in effect. The insertion point is
+/// set again for each script: the pending script may be one a nested write
+/// inserted, whose end tag the tokenizer has passed, and the characters
+/// written after it wait just after the tokenizer - where the script's own
+/// document.write() must insert (document-write/script_013). The end-tag
+/// steps restore the old insertion point after this returns.
+fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
+    if (script_execution.pendingParsingBlockingScript(ctx.document) == null) return;
+    if (ctx.tree_builder.script_nesting_level > 1) {
+        ctx.tree_builder.parser_pause_flag = true;
         return;
-    };
-
-    // Step 2: Get script content from tree node's child text nodes
-    // The tree builder creates text nodes as children, not in the element's own text_content
-    const script_content = getScriptTextContent(script_tree_node);
-
-    // Step 3: Check for src attribute (external script)
-    const src_attr = getScriptSrcAttribute(script_tree_node);
-
-    if (src_attr) |src_url| {
-        HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
-
-        // Hand the element whatever the loader fetched, EMPTY included: an
-        // empty script is still a script, which runs (doing nothing) and still
-        // fires load at its element.
-        //
-        // Whether or not the loader succeeded, the element goes through
-        // "prepare the script element". That is where an empty or unparseable
-        // src queues its error event, and where a failed fetch becomes a null
-        // result that executing the element turns into one. Returning early
-        // here - as this did on every failure - meant no error event could
-        // ever fire for a parser-inserted script, and a page waiting on one
-        // hung. The spec has no path on which a script with a src is dropped
-        // without either load or error.
-        if (src_url.len > 0) {
-            if (ctx.loadExternalScript(src_url)) |external_content| {
-                defer ctx.allocator.free(external_content);
-                HTMLScriptElementImpl.cacheSourceText(script_element, external_content) catch return;
-            }
-        }
-
-        setInsertionPointForScript(ctx);
-        defer clearInsertionPointAfterScript(ctx);
-
-        _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
-        return;
     }
-
-    // Step 4: Inline script - execute via script_execution module
-
-    // Mark as parser-inserted
-    HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
-
-    // Cache the source text from the tree node. An EMPTY script is still
-    // prepared: "prepare the script element" nulls its parser document (step
-    // 3) before returning at step 6, which leaves it a script that is neither
-    // parser-inserted nor started - one that runs when text is later put in
-    // it (the script children changed steps). Skipping the preparation left it
-    // parser-inserted for good, so it never could.
-    if (script_content.len > 0) {
-        HTMLScriptElementImpl.cacheSourceText(script_element, script_content) catch {
-            return;
-        };
+    while (true) {
+        if (ctx.tree_builder.input_stream_manager) |stream| stream.setInsertionPointAtNextInputCharacter();
+        if (!script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document)) break;
+        ctx.tree_builder.parser_pause_flag = false;
     }
-
-    // Set the insertion point before script execution
-    // This allows document.write() to insert content at the correct position
-    setInsertionPointForScript(ctx);
-    defer clearInsertionPointAfterScript(ctx);
-
-    // Execute the script via the standard preparation path
-    // This handles CSP checks, script type determination, etc.
-    _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
 }
 
-/// Get the src attribute from a script tree node.
-fn getScriptSrcAttribute(tree_node: *TreeNode) ?[]const u8 {
-    const attrs = tree_node.attributes.toSlice();
-    for (attrs) |attr| {
-        if (std.mem.eql(u8, attr.name, "src")) {
-            return attr.value;
-        }
-    }
-    return null;
-}
+// =============================================================================
+// Attributes from the parser
+// =============================================================================
 
-/// Get text content from a script element's child text nodes.
-/// The tree builder creates text nodes as children, not in the element's own text_content.
-fn getScriptTextContent(tree_node: *TreeNode) []const u8 {
-    // First check if there's a single child text node (common case)
-    if (tree_node.first_child) |first| {
-        if (first.node_type == .text) {
-            // If there's only one child and it's a text node, return its content directly
-            if (first.next_sibling == null) {
-                return first.text_content.toSlice();
-            }
-        }
-    }
-
-    // If no children or not a text node, check the element's own text_content
-    // (fallback for edge cases)
-    return tree_node.text_content.toSlice();
-}
-
-/// Set the insertion point for document.write() during script execution.
+/// "Create an element for the token" step: "Append each attribute in the
+/// given token to element" - DOM "append an attribute", with the namespace
+/// and prefix "adjust foreign attributes" gave it, and no validation: an
+/// attribute name the tokenizer produced is one the element holds, whether or
+/// not setAttribute() would accept it (`<div a"b>`), and an `xlink:href` on
+/// SVG is the attribute `href` in the XLink namespace, which setAttribute()
+/// could not make.
 ///
-/// Per HTML Standard, the insertion point is set to just before the next input character
-/// when a script is about to be executed during parsing.
-fn setInsertionPointForScript(ctx: *ParserScriptContext) void {
-    // The tree builder maintains a reference to the tokenizer which has the input stream.
-    // We set the insertion point to the current position in the input stream.
-    //
-    // Note: For full document.write() support during parsing, we need to:
-    // 1. Get the current position from the tokenizer's input stream
-    // 2. Set that as the insertion point
-    // 3. When document.write() is called, insert content at that position
-    //
-    // For now, we note that this is where integration would happen.
-    _ = ctx;
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
+    dom.element_attributes.append(element, .{
+        .namespace = if (attr.namespace) |ns| ns.uri() else null,
+        .prefix = attr.prefix,
+        .local_name = attr.name,
+        .value = attr.value,
+    }) catch |err| log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
 }
 
-/// Clear the insertion point after script execution.
-fn clearInsertionPointAfterScript(ctx: *ParserScriptContext) void {
-    _ = ctx;
-}
-
-// =============================================================================
-// URL Resolution for Scripts
-// =============================================================================
-
-/// Resolve a script URL against a base URL.
-///
-/// If the URL is already absolute (starts with http:// or https://), returns it as-is.
-/// If the URL is relative (starts with /), resolves it against the base URL's origin.
-/// Otherwise, resolves it relative to the base URL's path.
-fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8) ?[]const u8 {
-    // Already absolute URL
-    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-        return url;
-    }
-
-    // No base URL - can't resolve
-    if (base_url.len == 0) {
-        return null;
-    }
-
-    // Extract origin from base URL (scheme + host + optional port)
-    // e.g., "http://localhost:8000/path/to/doc.html" -> "http://localhost:8000"
-    const origin_end = blk: {
-        // Find end of scheme
-        const scheme_end = std.mem.indexOf(u8, base_url, "://") orelse return null;
-        const after_scheme = base_url[scheme_end + 3 ..];
-
-        // Find end of authority (host:port)
-        if (std.mem.indexOf(u8, after_scheme, "/")) |slash_pos| {
-            break :blk scheme_end + 3 + slash_pos;
-        } else {
-            break :blk base_url.len;
-        }
-    };
-
-    const origin = base_url[0..origin_end];
-
-    // URL starts with / - resolve against origin
-    if (std.mem.startsWith(u8, url, "/")) {
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ origin, url }) catch null;
-    }
-
-    // Relative URL - resolve against base path
-    // e.g., base="http://localhost/path/to/doc.html", url="script.js" -> "http://localhost/path/to/script.js"
-    const base_path = base_url[origin_end..];
-    const last_slash = std.mem.lastIndexOf(u8, base_path, "/") orelse 0;
-    const dir_path = base_path[0 .. last_slash + 1];
-
-    return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ origin, dir_path, url }) catch null;
-}
-
-// =============================================================================
-// HTTP Script Fetching (Default Browser Behavior)
-// =============================================================================
-
-/// Fetch an external script via HTTP, like a real browser.
-///
-/// This is the default behavior when no custom script loader is provided.
-/// It uses the Fetch API to retrieve scripts from URLs.
-fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
-
-    // Use the fetch module to retrieve the script
-    const response = fetch.fetchSimple(allocator, url) catch |err| {
-        log.debug("HTTP fetch error for script {s}: {}\n", .{ url, err });
-        return null;
-    };
-    defer response.deinit();
-
-    // Check for successful response (2xx status)
-    if (response.status < 200 or response.status >= 300) {
-        log.debug("HTTP {d} fetching script {s}\n", .{ response.status, url });
-        return null;
-    }
-
-    // Extract body content
-    if (response.body) |resp_body| {
-        if (resp_body.data.items.len > 0) {
-            return allocator.dupe(u8, resp_body.data.items) catch null;
-        }
-    } else {}
-
-    return null;
+/// The SVG script end-tag step's "process the SVG script element", or the
+/// HTML script callback: which one `tree_node` is.
+pub fn isSvgScript(tree_node: *const TreeNode) bool {
+    return tree_node.namespace == .svg and tree_node.hasTagName("script");
 }
 
 // =============================================================================
@@ -396,6 +253,14 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     adapter.onTextContentChanged(tree_node) catch {};
+}
+
+/// Static callback wrapper for an attribute added to an element the adapter
+/// already made. Passed to tree_builder.setDomAdapterAttributeCallback().
+pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const element = adapter.node_map.get(tree_node) orelse return;
+    appendParsedAttribute(element, attr.*);
 }
 
 // =============================================================================
@@ -556,7 +421,7 @@ pub const DomTreeAdapter = struct {
         const element = if (is_html)
             try createHTMLElement(self.allocator, self.ctx, local_name)
         else
-            try interfaces.Element.init(self.allocator, self.ctx);
+            try createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name);
 
         // Set up the element (local name, namespace, attributes)
         const NodeImpl = impls.Node;
@@ -581,20 +446,12 @@ pub const DomTreeAdapter = struct {
         // Set owner document
         node_document.set(element, self.document) catch {};
 
-        // For script elements, mark as parser-inserted
-        const is_script = std.mem.eql(u8, local_name, "script") and is_html;
-        if (is_script) {
-            HTMLScriptElementImpl.setParserDocument(element, self.document);
-            HTMLScriptElementImpl.clearForceAsync(element);
-        }
+        // A script element - HTML's, or an SVG script, whose insertion and
+        // children-changed steps wait for its end tag too - is
+        // parser-inserted.
+        if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
 
-        // Add attributes
-        const attrs = tree_node.attributes.toSlice();
-        for (attrs) |attr| {
-            const name_str = runtime.DOMString.initInterned(attr.name);
-            const value_str = runtime.DOMString.initInterned(attr.value);
-            interfaces.Element.call_setAttribute(element, name_str, value_str) catch {};
-        }
+        for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 
         return element;
     }
@@ -668,6 +525,25 @@ pub fn createHTMLElement(
     return switch (html_core.element_interface.forLocalName(local_name)) {
         inline else => |which| @field(interfaces, @tagName(which)).init(allocator, ctx),
     };
+}
+
+/// Create an element the parser met in foreign content - in the SVG or MathML
+/// namespace - with the interface its local name and namespace call for.
+///
+/// Deviation, stated: of the SVG element interfaces only SVGScriptElement is
+/// made (its `type`, and the script element state it keeps); every other
+/// foreign element is a plain Element (TODO: the rest of SVG's interfaces,
+/// SVGElement for the unknown ones, and MathMLElement).
+pub fn createForeignElement(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    namespace: Namespace,
+    local_name: []const u8,
+) !*runtime.Instance {
+    if (namespace == .svg and std.mem.eql(u8, local_name, "script")) {
+        return interfaces.SVGScriptElement.init(allocator, ctx);
+    }
+    return interfaces.Element.init(allocator, ctx);
 }
 
 // =============================================================================

@@ -15,10 +15,6 @@
 //!   operation that cannot fail, panics - and is marked
 //!   `TODO(protocol): implement - design <section>` (grep for it; step B of
 //!   the plan fills them in by area).
-//!
-//! The worker and agent operations reach worker_realm.zig through the runtime
-//! Engine table's comptime-known entries - direct calls - while the
-//! engine-boundary lane is changing that file.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -45,8 +41,8 @@ const protocol_realms = @import("protocol_realms.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 const support = @import("protocol_support.zig");
 
-/// For the worker and agent operations only (see above).
-const table = v8_engine.v8_engine_interface;
+/// The worker and agent operations.
+const worker_realm = @import("worker_realm.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -85,8 +81,9 @@ pub const ScriptScope = realm_entry.Entered;
 // Helpers
 // ============================================================================
 
-/// The runtime table's errors as the protocol's: the table's own failure
-/// codes (NoEngine, PromiseError, ...) are all the engine failing.
+/// The adapter's internal errors (runtime.EngineError) as the protocol's:
+/// its own failure codes (NoEngine, PromiseError, ...) are all the engine
+/// failing.
 fn protocolError(err: EngineError) Error {
     return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
@@ -154,19 +151,19 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// torn down, its garbage collected) before its isolate is disposed.
 pub fn destroyAgent(agent: *Agent) void {
     protocol_agents.endAgent(agent);
-    table.destroyAgent.?(agent);
+    worker_realm.destroyAgent(agent);
 }
 
 pub fn hasRunningScript(agent: *Agent) bool {
-    return table.hasRunningScript.?(agent);
+    return worker_realm.hasRunningScript(agent);
 }
 
 pub fn hasPendingEngineWork(agent: *Agent) bool {
-    return table.hasPendingEngineWork.?(agent);
+    return worker_realm.hasPendingEngineWork(agent);
 }
 
 pub fn runEngineTasks(agent: *Agent) bool {
-    return table.runEngineTasks.?(agent);
+    return worker_realm.runEngineTasks(agent);
 }
 
 /// A realm's agent is its isolate (context_manager records it so).
@@ -192,11 +189,11 @@ pub fn destroyWindowRealm(realm: Context) void {
 }
 
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
-    return table.createWorkerRealm.?(agent, options.*) catch |err| protocolError(err);
+    return worker_realm.createWorkerRealm(agent, options.*) catch |err| protocolError(err);
 }
 
 pub fn destroyWorkerRealm(realm: Context, retire: ?engine.RealmSteps, data: ?*anyopaque) void {
-    table.destroyWorkerRealm.?(realm, retire, data);
+    worker_realm.destroyWorkerRealm(realm, retire, data);
 }
 
 pub fn currentRealm() ?Context {
@@ -220,7 +217,7 @@ pub fn installWindowOperations(realm: Context, operations: *const engine.WindowO
 }
 
 pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!void {
-    return table.defineBuiltinFunction.?(realm, function_name, length, function) catch |err| protocolError(err);
+    return worker_realm.defineBuiltinFunction(realm, function_name, length, function) catch |err| protocolError(err);
 }
 
 // ============================================================================
@@ -291,7 +288,7 @@ pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
 pub fn isCallable(realm: Context, value: JSValue) bool {
     const entered = enter(realm) catch return false;
     defer entered.leave();
-    return table.isCallable.?(value);
+    return worker_realm.isCallable(value);
 }
 
 pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
@@ -364,7 +361,7 @@ pub fn convertToSequenceOfPlatformObjects(realm: Context, value: JSValue, alloca
     return webidl_conversions.convertToSequenceOfPlatformObjects(realm, value, allocator) catch |err| protocolError(err);
 }
 
-/// The table's OWNED handles, re-typed as Owned.
+/// The conversion's OWNED handles, re-typed as Owned.
 pub fn convertToSequenceOfObjects(realm: Context, value: JSValue, allocator: Allocator) Error![]Owned {
     const values = webidl_conversions.convertToSequenceOfObjects(realm, value, allocator) catch |err| return protocolError(err);
     defer allocator.free(values);
@@ -446,9 +443,9 @@ pub const createAsyncIterator = @import("protocol_async_iterator.zig").createAsy
 // ============================================================================
 
 /// V8's embedder API reaches no EvalError or URIError intrinsic; those are
-/// NotSupported, as the table's answer them.
+/// NotSupported.
 pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, message: []const u8) Error!Owned {
-    const table_kind: runtime.SimpleExceptionKind = switch (kind) {
+    const adapter_kind: runtime.SimpleExceptionKind = switch (kind) {
         .EvalError => .EvalError,
         .RangeError => .RangeError,
         .ReferenceError => .ReferenceError,
@@ -456,7 +453,7 @@ pub fn createSimpleException(realm: Context, kind: engine.SimpleExceptionKind, m
         .URIError => .URIError,
         .SyntaxError => return @import("protocol_values.zig").createSyntaxError(realm, message),
     };
-    return owned(value_construction.createSimpleException(realm, table_kind, message) catch |err| return protocolError(err));
+    return owned(value_construction.createSimpleException(realm, adapter_kind, message) catch |err| return protocolError(err));
 }
 
 pub fn createDOMException(realm: Context, exception_name: []const u8, message: []const u8) Error!Owned {
@@ -467,7 +464,7 @@ pub fn createDOMException(realm: Context, exception_name: []const u8, message: [
 // 4.9 Promises
 // ============================================================================
 
-/// The table's promise handles are allocated here, and freed with the same.
+/// The adapter's promise handles are allocated here, and freed with the same.
 const promise_allocator = std.heap.c_allocator;
 
 pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
@@ -499,8 +496,8 @@ pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) Err
     return resolved catch |err| protocolError(err);
 }
 
-/// A primitive or string, converted in the promise's realm - as the table's
-/// rejectPromiseWithValue converts a reason.
+/// A primitive or string, converted in the promise's realm - as
+/// v8RejectPromiseWithValue converts a reason.
 fn resolveWithConverted(state: *anyopaque, value: JSValue) EngineError!void {
     const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(state));
     const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
@@ -678,11 +675,11 @@ pub fn hasWrapper(instance: *Instance) bool {
 }
 
 pub fn keepPlatformObjectAlive(instance: *Instance) void {
-    table.keepPlatformObjectAlive.?(instance);
+    worker_realm.keepPlatformObjectAlive(instance);
 }
 
 pub fn releasePlatformObject(instance: *Instance) void {
-    table.releasePlatformObject.?(instance);
+    worker_realm.releasePlatformObject(instance);
 }
 
 pub fn platformObjectDestroyed(instance: *Instance) void {

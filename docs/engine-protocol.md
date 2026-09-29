@@ -214,18 +214,17 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
 
 ## 8. Transitional pieces
 
-- **The runtime Engine table** (`runtime.EngineInterface` in
-  src/runtime/engine_interface.zig, reached through `ctx.getEngine()`) is the
-  pre-protocol seam. Nothing new reaches it; it is deleted when its last
-  callers move to the protocol.
+- **The runtime Engine table** (`runtime.EngineInterface`, reached through
+  `ctx.getEngine()`) is gone. The types it shared with the protocol are
+  src/runtime/engine_types.zig's, and the runtime module imports the protocol
+  itself (build.zig binds `engine` into runtime; a test tier gets a runtime of
+  its own, bound to its adapter). What is left of it is
+  `runtime.CallbackOperations`: the one operation a `runtime.CallbackWrapper`
+  needs, which the binding's callback interface conversion names by the old
+  `v8_engine_interface` name until it moves onto `takeCallbackInterface`.
 - **`takeCallbackFunction` / `takeCallbackInterface`** untag the binding's
   callback values until codegen types callback parameters as
   `CallbackFunction` / `CallbackInterface`.
-- **Worker import()**: the page's agent comes from `createAgent` with both
-  hook sets, but a worker's agent still comes from the table's
-  `createAgent`, so context_manager keeps registering its own import()
-  handler - skipped, by engine.zig's guard, on an agent with
-  `loadImportedModule`. Both go when worker agents move to `createAgent`.
 - **Ownership flags**: `runtime.JSValue`'s handle arm still carries
   `needs_disposal` and a `.local` / `.global` tag. A `.handle` is always a
   Global the engine made, whatever the tag; the protocol's types, not the

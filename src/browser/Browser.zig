@@ -301,6 +301,16 @@ pub const Browser = struct {
     /// This destroys the V8 isolate and all associated contexts.
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
+        // The workers on this loop end first. A worker's end is a timer on
+        // this loop, armed when its Worker object lets go; the page's
+        // teardown below would arm it, and event_loop.deinit would drop it
+        // unfired, leaving the worker's realm, isolate and host to the
+        // process. Here, BEFORE the page's teardown and not inside it, the
+        // page realm still has the page isolate entered - as it does when
+        // those timers fire - so each worker's agent ends as a worker's.
+        if (self.event_loop) |event_loop| {
+            if (event_loop.timerInterface()) |timers| @import("html").worker_host.endWorkersOn(timers);
+        }
         // Destroy current context if any
         if (self.current_context) |ctx| {
             ctx.deinit();

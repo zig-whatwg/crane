@@ -1,16 +1,8 @@
-//! V8 EngineBinding Integration Tests
+//! WebIDL binding descriptor types (runtime.binding_types), and the V8
+//! module's parts, compiled against the V8 build.
 //!
-//! Tests for the V8 EngineBinding VTable implementation.
-//! These tests verify:
-//! - EngineBinding operations are properly wired up
-//! - Interface registration works correctly
-//! - Value conversion through EngineBinding works
-//! - Error handling through EngineBinding
-//! - Async support (iterators, streams)
-//! - Structured clone support
-//!
-//! NOTE: Full integration tests require V8 initialization.
-//! These tests focus on verifying the binding layer compiles and has correct structure.
+//! (The EngineBinding table these once tested went with the runtime Engine
+//! table.)
 
 const std = @import("std");
 const testing = std.testing;
@@ -18,66 +10,9 @@ const testing = std.testing;
 // Import runtime modules
 const runtime = @import("runtime");
 const binding_types = runtime.binding_types;
-const engine_binding = runtime.engine_binding;
 
 // Import V8 module
 const v8 = @import("v8");
-
-// ============================================================================
-// VTable Structure Tests
-// ============================================================================
-
-test "v8_engine_interface - exists and has correct name" {
-    try testing.expectEqualStrings("V8", v8.v8_engine_interface.name);
-}
-
-test "v8_engine_interface - has core EngineInterface functions" {
-    const interface = v8.v8_engine_interface;
-
-    // Core EngineInterface functions are non-optional (always present)
-    // We just verify they're callable by checking the type exists
-    _ = @TypeOf(interface.wrapAsyncIterator);
-    _ = @TypeOf(interface.createPromise);
-    _ = @TypeOf(interface.resolvePromise);
-    _ = @TypeOf(interface.rejectPromise);
-    _ = @TypeOf(interface.getPromiseObject);
-
-    // Check optional but implemented functions (these are ?*const fn types)
-    try testing.expect(interface.createString != null);
-    try testing.expect(interface.createArrayBuffer != null);
-    try testing.expect(interface.createUint8Array != null);
-    try testing.expect(interface.parseJson != null);
-    try testing.expect(interface.wrapInstance != null);
-    try testing.expect(interface.isString != null);
-    try testing.expect(interface.extractString != null);
-    try testing.expect(interface.createStringArray != null);
-    try testing.expect(interface.createEventLoop != null);
-    try testing.expect(interface.destroyEventLoop != null);
-
-    // Check callback wrapper functions
-    try testing.expect(interface.createCallbackWrapper != null);
-    try testing.expect(interface.invokeCallback != null);
-    try testing.expect(interface.destroyCallbackWrapper != null);
-
-    // Check GC and scheduling
-    try testing.expect(interface.requestGarbageCollection != null);
-    try testing.expect(interface.scheduleOnMainThread != null);
-
-    // Check stream support
-    try testing.expect(interface.invokeStreamCallback != null);
-    try testing.expect(interface.getWrapperForInstance != null);
-    try testing.expect(interface.chainPromiseHandlers != null);
-
-    // Check script/module execution support
-    try testing.expect(interface.compileScript != null);
-    try testing.expect(interface.runScript != null);
-    try testing.expect(interface.compileModule != null);
-    try testing.expect(interface.runModule != null);
-    try testing.expect(interface.disposeScript != null);
-    try testing.expect(interface.disposeModule != null);
-    try testing.expect(interface.runModuleAsync != null);
-    try testing.expect(interface.hasTopLevelAwait != null);
-}
 
 // ============================================================================
 // Type Descriptor Tests

@@ -151,15 +151,6 @@ pub const worker_context = @import("worker_context.zig");
 pub const WorkerContext = worker_context.WorkerContext;
 pub const WorkerContextError = worker_context.WorkerContextError;
 
-// Module Worker Support
-pub const module_worker = @import("module_worker.zig");
-pub const ModuleWorkerConfig = module_worker.ModuleWorkerConfig;
-pub const ModuleWorkerExecutor = module_worker.ModuleWorkerExecutor;
-pub const validateImportScripts = module_worker.validateImportScripts;
-pub const resolveWorkerModuleSpecifier = module_worker.resolveWorkerModuleSpecifier;
-pub const isBareSpecifier = module_worker.isBareSpecifier;
-pub const getImportScriptsTypeErrorMessage = module_worker.getImportScriptsTypeErrorMessage;
-
 // Worker Error Handling
 pub const worker_error = @import("worker_error.zig");
 pub const WorkerErrorEvent = worker_error.WorkerErrorEvent;
