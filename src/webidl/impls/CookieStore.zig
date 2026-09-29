@@ -428,15 +428,15 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
 
     // Step 6.1: run query cookies with url and name.
     var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
-        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
+        return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
     // Step 5: resolve with the first item, or null when the list is empty.
-    if (items.items.len == 0) return cookie_values.resolvedWith(realm, runtime.JSValue.jsNull);
+    if (items.items.len == 0) return cookie_values.resolvedInTask(realm, runtime.JSValue.jsNull);
 
     const item = try cookie_values.listItem(realm, items.items[0]);
     defer item.release();
-    return cookie_values.resolvedWith(realm, item.value);
+    return cookie_values.resolvedInTask(realm, item.value);
 }
 
 /// Operation: getAll(name)
@@ -454,12 +454,12 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
     var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
-        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
+        return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
     const list = try cookie_values.list(realm, items.items, internal.allocator);
     defer list.release();
-    return cookie_values.resolvedWith(realm, list.value);
+    return cookie_values.resolvedInTask(realm, list.value);
 }
 
 /// Operation: set(name, value)
@@ -496,10 +496,10 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
         .value = value,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
-        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie name or value"),
+        else => cookie_values.rejectedInTaskWithTypeError(realm, "Invalid cookie name or value"),
     };
 
-    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+    return cookie_values.resolvedInTask(realm, runtime.JSValue.jsUndefined);
 }
 
 /// Operation: delete(name)
@@ -527,10 +527,10 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
         .name = name,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
-        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie name"),
+        else => cookie_values.rejectedInTaskWithTypeError(realm, "Invalid cookie name"),
     };
 
-    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+    return cookie_values.resolvedInTask(realm, runtime.JSValue.jsUndefined);
 }
 
 // ============================================================================
@@ -583,22 +583,22 @@ fn queryWithOptions(instance: *runtime.Instance, realm: runtime.Context, options
     // Step 8.1 (getAll: 7.1): query cookies with url and options["name"],
     // default null. (Normalizing a name is the identity.)
     var items = queryItems(allocator, client.jar, chosen orelse client.url, options.name) catch
-        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
+        return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(allocator, &items);
 
     switch (answer) {
         // 8.3-8.4: null for none, else the first item.
         .first => {
-            if (items.items.len == 0) return cookie_values.resolvedWith(realm, runtime.JSValue.jsNull);
+            if (items.items.len == 0) return cookie_values.resolvedInTask(realm, runtime.JSValue.jsNull);
             const item = try cookie_values.listItem(realm, items.items[0]);
             defer item.release();
-            return cookie_values.resolvedWith(realm, item.value);
+            return cookie_values.resolvedInTask(realm, item.value);
         },
         // 7.3: the list.
         .all => {
             const list = try cookie_values.list(realm, items.items, allocator);
             defer list.release();
-            return cookie_values.resolvedWith(realm, list.value);
+            return cookie_values.resolvedInTask(realm, list.value);
         },
     }
 }
@@ -678,9 +678,9 @@ pub fn call_set__1(instance: *runtime.Instance, options: dictionaries.CookieInit
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         // Step 6.2: failure rejects with a TypeError.
-        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie"),
+        else => cookie_values.rejectedInTaskWithTypeError(realm, "Invalid cookie"),
     };
-    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+    return cookie_values.resolvedInTask(realm, runtime.JSValue.jsUndefined);
 }
 
 /// Operation: delete(options)
@@ -707,9 +707,9 @@ pub fn call_delete__1(instance: *runtime.Instance, options: dictionaries.CookieS
         .partitioned = options.partitioned orelse false,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
-        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie"),
+        else => cookie_values.rejectedInTaskWithTypeError(realm, "Invalid cookie"),
     };
-    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+    return cookie_values.resolvedInTask(realm, runtime.JSValue.jsUndefined);
 }
 
 /// A DOMHighResTimeStamp as whole milliseconds, saturating.

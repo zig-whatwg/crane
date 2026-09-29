@@ -102,6 +102,109 @@ pub fn rejectedWithDOMException(realm: runtime.Context, name: []const u8, messag
     return (try engine.createRejectedPromise(realm, exception.value)).take();
 }
 
+// ============================================================================
+// Promises settled from "in parallel"
+//
+// Every Cookie Store operation settles its promise from steps it runs "in
+// parallel", and a result handed back from in-parallel steps arrives in a
+// task. The jar answers at once, but settling p at once reorders script
+// against the tasks already queued. cookieStore.set() queues its `change`
+// event task as the jar changes; a promise already settled lets the next
+// awaited step run before that event. change_eventhandler_for_already_expired
+// then saw a test's cleanup deletions in the NEXT test's event. So these
+// promises are made now and settled from a task on the realm's event loop,
+// behind anything the operation queued.
+// ============================================================================
+
+/// How an in-parallel operation settles its promise. The value is OWNED
+/// and handed over.
+pub const Outcome = union(enum) {
+    fulfill: engine.Owned,
+    reject: engine.Owned,
+
+    fn release(self: Outcome) void {
+        switch (self) {
+            .fulfill, .reject => |value| value.release(),
+        }
+    }
+};
+
+/// A new promise in `realm`, settled with `outcome` from a task: on the
+/// realm's event loop, else a zero-delay timer, else now (a realm with
+/// neither, as in tests). Returned for the binding.
+pub fn settledInTask(realm: runtime.Context, outcome: Outcome) engine.Error!JSValue {
+    var capability = engine.createPromise(realm) catch |err| {
+        outcome.release();
+        return err;
+    };
+    const p = engine.retainValue(realm, capability.promise) catch |err| {
+        engine.releasePromiseCapability(&capability);
+        outcome.release();
+        return err;
+    };
+    const task = realm.allocator.create(SettleTask) catch {
+        engine.releasePromiseCapability(&capability);
+        outcome.release();
+        p.release();
+        return error.OutOfMemory;
+    };
+    task.* = .{ .realm = realm, .capability = capability, .outcome = outcome };
+    if (realm.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = SettleTask.run, .context = task, .drop = SettleTask.drop });
+        return p.take();
+    }
+    if (realm.getOptionalTimer()) |timer| {
+        if (timer.setTimeout(0, SettleTask.run, task) != 0) return p.take();
+    }
+    SettleTask.run(task);
+    return p.take();
+}
+
+/// "Resolve p with `value`" (BORROWED) from a task.
+pub fn resolvedInTask(realm: runtime.Context, value: JSValue) engine.Error!JSValue {
+    return settledInTask(realm, .{ .fulfill = try engine.retainValue(realm, value) });
+}
+
+/// "Reject p with a TypeError" from a task.
+pub fn rejectedInTaskWithTypeError(realm: runtime.Context, message: []const u8) engine.Error!JSValue {
+    return settledInTask(realm, .{ .reject = try engine.createSimpleException(realm, .TypeError, message) });
+}
+
+const SettleTask = struct {
+    realm: runtime.Context,
+    capability: engine.PromiseCapability,
+    outcome: Outcome,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *SettleTask = @ptrCast(@alignCast(context.?));
+        // A realm the adapter has retired has nobody to hear it.
+        if (self.realm.hasEngine()) {
+            engine.runTaskInRealm(self.realm, steps, self) catch {};
+        }
+        self.finish();
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *SettleTask = @ptrCast(@alignCast(data.?));
+        switch (self.outcome) {
+            .fulfill => |value| engine.resolvePromise(&self.capability, value.value) catch {},
+            .reject => |reason| engine.rejectPromise(&self.capability, reason.value) catch {},
+        }
+    }
+
+    /// The loop ends with the task still queued.
+    fn drop(context: ?*anyopaque) void {
+        const self: *SettleTask = @ptrCast(@alignCast(context.?));
+        self.finish();
+    }
+
+    fn finish(self: *SettleTask) void {
+        self.outcome.release();
+        engine.releasePromiseCapability(&self.capability);
+        self.realm.allocator.destroy(self);
+    }
+};
+
 /// The realm an operation's promise is made in: the current realm (WebIDL
 /// makes an operation's promise in the realm of the function called), else
 /// the object's relevant realm.
