@@ -2551,7 +2551,13 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
         installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
     }
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, window_features.popup) orelse return null;
+    // Step 15.1: "Set targetNavigable's active browsing context's is popup
+    // to the result of checking if a popup window is requested". Deviation,
+    // stated, matching Chrome and Safari (window-open-popup-behavior passes
+    // 51/51 in both; Firefox follows the text): a window opened with noopener
+    // or noreferrer is never a popup, whatever its features.
+    const is_popup = window_features.popup and !noopener;
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();
