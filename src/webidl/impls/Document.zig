@@ -4205,16 +4205,8 @@ fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
 /// `url_string` encoding-parsed relative to `document` and serialized,
 /// owned by `allocator`; null on failure.
 fn parseRelativeToDocument(document: *runtime.Instance, url_string: []const u8, allocator: std.mem.Allocator) ?[]u8 {
-    const base = NodeImpl.get_baseURI(document) catch return null;
-    defer document.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const parsed = (interfaces.URL.call_static_parse(document, url_string, base_arg) catch null) orelse return null;
-    defer runtime.Instance.deinit(parsed);
-    const href = interfaces.URL.get_href(parsed) catch return null;
-    defer parsed.ctx.allocator.free(href);
+    const href = (@import("reflection.zig").encodingParseAndSerialize(document, url_string) catch return null) orelse return null;
+    defer document.ctx.allocator.free(href);
     return allocator.dupe(u8, href) catch null;
 }
 

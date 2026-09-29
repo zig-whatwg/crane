@@ -205,6 +205,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// the Worker constructor's steps 3-4, given the outside settings' API base
 /// URL. OWNED (`allocator`). SyntaxError when it does not parse - a relative
 /// URL with no base among them.
+/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
 pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
