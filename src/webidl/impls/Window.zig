@@ -2939,39 +2939,21 @@ const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
 const clock = @import("clock");
 
-/// Element types that participate in named access via the "name" attribute.
-/// Per HTML spec §7.4 "Named access on the Window object":
-/// - embed, form, img, object: name attribute exposes the element
-/// - iframe, frame, object: name attribute exposes the nested browsing context (if any)
+/// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
+/// "embed, form, img, or object elements that have a name content attribute
+/// whose value is name". An iframe's or frame's name is its navigable's target
+/// name instead - a document-tree child navigable, which getNamedProperty
+/// looks at first - and every HTML element is a named object by its id.
 const named_element_types = [_][]const u8{
-    "a",
     "embed",
     "form",
     "img",
     "object",
 };
 
-/// Element types whose name attribute exposes a browsing context
-const browsing_context_element_types = [_][]const u8{
-    "iframe",
-    "frame",
-    "object",
-};
-
-/// Check if an element type uses the name attribute for named property access
+/// Whether an element's name attribute makes it a named object.
 fn isNamedElementType(local_name: []const u8) bool {
     for (named_element_types) |t| {
-        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
-    }
-    for (browsing_context_element_types) |t| {
-        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
-    }
-    return false;
-}
-
-/// Check if the element should return a browsing context (contentWindow) for named access
-fn shouldReturnBrowsingContext(local_name: []const u8) bool {
-    for (browsing_context_element_types) |t| {
         if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
     }
     return false;
@@ -3002,31 +2984,19 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 const local_name = elem_internal.local_name.asSlice();
 
-                // Check 1: Does element have id matching target_name?
+                // An HTML element whose id is the name is a named object -
+                // the element itself, an iframe as much as any other: only a
+                // navigable's target name makes the property a WindowProxy.
                 const elem_id = elem_internal.id.asSlice();
                 if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
-                    // For iframe/frame, return contentWindow
-                    if (shouldReturnBrowsingContext(local_name)) {
-                        if (getIframeContentWindow(c)) |window_val| {
-                            return window_val;
-                        }
-                    }
-                    // Return the element itself
                     return runtime.JSValue.fromInstance(c);
                 }
 
-                // Check 2: Does element have name attribute matching target_name?
-                // Only certain element types participate in named property access via name attr
+                // So is an embed, form, img or object element whose name
+                // attribute is the name.
                 if (isNamedElementType(local_name)) {
                     if (getElementName(elem_internal)) |element_name| {
                         if (std.mem.eql(u8, element_name, target_name)) {
-                            // For iframe/frame/object, return contentWindow
-                            if (shouldReturnBrowsingContext(local_name)) {
-                                if (getIframeContentWindow(c)) |window_val| {
-                                    return window_val;
-                                }
-                            }
-                            // Return the element itself
                             return runtime.JSValue.fromInstance(c);
                         }
                     }
@@ -3040,19 +3010,6 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
         }
 
         child = NodeImpl.getNextSibling(c);
-    }
-    return null;
-}
-
-/// Get the contentWindow from an iframe element
-fn getIframeContentWindow(iframe_element: *runtime.Instance) ?runtime.JSValue {
-    // Try to get HTMLIFrameElement's contentWindow via the interface
-    // This handles all the lazy initialization and V8 context creation
-    const HTMLIFrameElement = interfaces.HTMLIFrameElement;
-    const window_proxy = HTMLIFrameElement.get_contentWindow(iframe_element) catch return null;
-    if (window_proxy) |wp| {
-        // WindowProxy is defined as ?*const anyopaque, convert to JSValue
-        return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@constCast(wp)));
     }
     return null;
 }
