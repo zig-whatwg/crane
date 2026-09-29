@@ -980,11 +980,18 @@ pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerro
 }
 
 /// Operation: reload
-/// Per spec §7.1.3: Reload the document.
+/// HTML §7.2.4: "1. Let document be this's relevant Document. 2. If
+/// document is null, then return. 3. If document's origin is not same
+/// origin-domain with the entry settings object's origin, then throw a
+/// "SecurityError" DOMException. 4. Reload document's node navigable."
+/// Deviation, stated: as for assign(), step 3 is not modelled.
 pub fn call_reload(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-
-    // TODO: Implement reload
-    // This triggers a reload of the current document
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Steps 1-2.
+    const window = internal.window orelse return;
+    // Step 4: "reload" - the reload navigate event, then the reload history
+    // step, both History's (dom.history_traversal). A window that has not
+    // made its History yet makes it, which installs the hook.
+    if (!dom.history_traversal.isInstalled()) _ = interfaces.Window.get_history(window) catch {};
+    dom.history_traversal.reload(window);
 }
