@@ -27,8 +27,8 @@ const BrowsingContext = browsing_context.BrowsingContext;
 const SandboxFlags = browsing_context.SandboxFlags;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
-const encoding_mod = @import("encoding");
 const html_parser = @import("../parser/root.zig");
+const encoding_sniffing = html_parser.encoding_sniffing;
 // Navigation fetch and the "load a document" MIME routing. Both live in the
 // navigation half of this same module, so an iframe navigates through exactly
 // the machinery a top-level navigation uses.
@@ -101,6 +101,15 @@ pub const IFrameState = enum {
     discarded,
 };
 
+/// What a frame's HTML parse needs besides the bytes of a response it
+/// decodes (HTML §13.2.3.2): the Content-Type the transport layer gave, and
+/// whether the container document is same origin with the new document, so
+/// that its encoding is the sniffing algorithm's step 6.
+pub const ByteStream = struct {
+    content_type: ?[]const u8,
+    parent_same_origin: bool,
+};
+
 /// Result of fetching content from a URL
 pub const FetchedContent = struct {
     /// The raw bytes fetched
@@ -117,40 +126,6 @@ pub const FetchedContent = struct {
         }
     }
 };
-
-// ============================================================================
-// Encoding Detection - HTML Standard §13.2.3.2
-// ============================================================================
-
-/// Detect encoding from BOM and Content-Type header
-/// Per HTML Standard §13.2.3.2 "Determining the character encoding"
-///
-/// The algorithm checks in order:
-/// 1. BOM (Byte Order Mark)
-/// 2. Content-Type header charset parameter
-/// 3. Default to UTF-8
-pub fn detectEncoding(bytes: []const u8, content_type: ?[]const u8) *const encoding_mod.Encoding {
-    // Step 1: Check for BOM
-    if (encoding_mod.bom.sniff(bytes)) |bom_encoding| {
-        return switch (bom_encoding) {
-            .utf8 => encoding_mod.UTF_8,
-            .utf16be => &encoding_mod.encoding.UTF_16BE,
-            .utf16le => &encoding_mod.encoding.UTF_16LE,
-        };
-    }
-
-    // Step 2: Check Content-Type header charset
-    if (content_type) |ct| {
-        if (parseCharsetFromContentType(ct)) |charset| {
-            if (encoding_mod.getEncoding(charset)) |enc| {
-                return enc;
-            }
-        }
-    }
-
-    // Step 3: Default to UTF-8
-    return encoding_mod.UTF_8;
-}
 
 /// Percent-decode a string (simplified URL decoding)
 /// Decodes %XX sequences to their byte values
@@ -191,50 +166,6 @@ fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
     }
 
     return output;
-}
-
-/// Parse charset parameter from Content-Type header
-/// Handles formats like:
-/// - "text/html; charset=utf-8"
-/// - "text/html;charset=utf-8"
-/// - "text/html; charset=\"utf-8\""
-pub fn parseCharsetFromContentType(content_type: []const u8) ?[]const u8 {
-    // Look for "charset=" (case-insensitive)
-    var lower_buf: [256]u8 = undefined;
-    const len = @min(content_type.len, lower_buf.len);
-    for (content_type[0..len], 0..) |c, idx| {
-        lower_buf[idx] = std.ascii.toLower(c);
-    }
-    const lower = lower_buf[0..len];
-
-    // Find "charset="
-    const charset_prefix = "charset=";
-    const idx = std.mem.indexOf(u8, lower, charset_prefix) orelse return null;
-
-    // Extract the value
-    const value_start = idx + charset_prefix.len;
-    if (value_start >= content_type.len) return null;
-
-    var value = content_type[value_start..];
-
-    // Handle quoted value
-    if (value.len > 0 and (value[0] == '"' or value[0] == '\'')) {
-        const quote = value[0];
-        value = value[1..];
-        if (std.mem.indexOfScalar(u8, value, quote)) |end_quote| {
-            return value[0..end_quote];
-        }
-        return value; // No closing quote, return rest
-    }
-
-    // Find end of value (semicolon, space, or end of string)
-    for (value, 0..) |c, vi| {
-        if (c == ';' or c == ' ' or c == '\t') {
-            return value[0..vi];
-        }
-    }
-
-    return value;
 }
 
 /// Integration state for an iframe element
@@ -356,7 +287,7 @@ pub const IFrameIntegration = struct {
     /// with parsed content that JavaScript can access via DOM APIs.
     /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
     /// Set by modules with interface access (e.g., impls/HTMLIFrameElement.zig)
-    parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8) ?*anyopaque,
+    parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream) ?*anyopaque,
 
     /// Callback to fire the load event on the iframe element after navigation.
     /// Parameters: (iframe_instance) -> void
@@ -527,7 +458,7 @@ pub const IFrameIntegration = struct {
         runtime_ctx: ?*anyopaque,
         create_doc_fn: ?*const fn (?*anyopaque, *BrowsingContext) ?*anyopaque,
         cleanup_fn: ?*const fn (*IFrameIntegration) void,
-        parse_html_fn: ?*const fn (?*anyopaque, *BrowsingContext, []const u8) ?*anyopaque,
+        parse_html_fn: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream) ?*anyopaque,
     ) void {
         self.engine_context = context;
         self.realm = realm_ptr;
@@ -851,7 +782,7 @@ pub const IFrameIntegration = struct {
         // can access via DOM APIs like getElementById(), querySelector(), etc.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                _ = parse_html(self.runtime_context, ctx, content);
+                _ = parse_html(self.runtime_context, ctx, content, null);
             }
 
             // Update the iframe's Location URL to about:srcdoc
@@ -972,7 +903,7 @@ pub const IFrameIntegration = struct {
         if (response.is_network_error) {
             if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
             self.updateLocationUrl(url);
-            _ = try self.commitHtmlDocument("");
+            _ = try self.commitHtmlDocument("", null);
             try self.recordCommit(url, "text/html");
             self.state = .ready;
             return;
@@ -1024,8 +955,15 @@ pub const IFrameIntegration = struct {
         self.updateLocationUrl(final_url);
 
         switch (kind) {
-            .html => _ = try self.commitHtmlDocument(body),
-            .text => try self.commitTextDocument(body),
+            // "Load an HTML document": the parser decodes the response's
+            // bytes with the encoding the sniffing algorithm determines from
+            // them, the Content-Type and - same origin - the container
+            // document's encoding.
+            .html => _ = try self.commitHtmlDocument(body, .{
+                .content_type = response.content_type,
+                .parent_same_origin = new_origin.isSameOrigin(self.container_origin),
+            }),
+            .text => try self.commitTextDocument(body, response.content_type),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
             .xml => try self.commitXmlDocument(),
             .multipart, .external => unreachable,
@@ -1072,7 +1010,7 @@ pub const IFrameIntegration = struct {
         self.state = .navigating;
         if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(origin);
         self.updateLocationUrl(url);
-        _ = try self.commitHtmlDocument(html);
+        _ = try self.commitHtmlDocument(html, null);
         try self.recordCommit(url, "text/html");
         self.state = .ready;
     }
@@ -1104,12 +1042,12 @@ pub const IFrameIntegration = struct {
 
     /// "Loading an HTML document": hand the bytes to the HTML parser. The
     /// document it made, when the parse callback returned one.
-    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8) IFrameError!?*anyopaque {
+    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8, byte_stream: ?ByteStream) IFrameError!?*anyopaque {
         // The parse callback runs the scripted parser against the iframe's own
         // realm, so scripts in the loaded document see its DOM.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                return parse_html(self.runtime_context, ctx, content);
+                return parse_html(self.runtime_context, ctx, content, byte_stream);
             }
         }
 
@@ -1143,7 +1081,17 @@ pub const IFrameIntegration = struct {
     /// byte inert in exactly the way the PLAINTEXT state does, and the LF after
     /// the start tag is dropped by the parser's own "newline after pre" rule,
     /// which is why the spec emits it.
-    fn commitTextDocument(self: *IFrameIntegration, text: []const u8) IFrameError!void {
+    ///
+    /// The bytes are decoded first, by the type's rules: a BOM, the
+    /// Content-Type's charset, else the default - the sniffing algorithm
+    /// without the prescan, as text is not markup.
+    fn commitTextDocument(self: *IFrameIntegration, bytes: []const u8, content_type: ?[]const u8) IFrameError!void {
+        const sniffed = encoding_sniffing.sniff(bytes, .{
+            .transport = if (content_type) |ct| encoding_sniffing.transportEncoding(self.allocator, ct) else null,
+            .prescan = false,
+        });
+        const text = encoding_sniffing.decode(self.allocator, bytes, sniffed.encoding) catch return IFrameError.OutOfMemory;
+        defer self.allocator.free(text);
         const markup = document_type.textDocumentMarkup(self.allocator, text) catch {
             return IFrameError.OutOfMemory;
         };
@@ -1154,8 +1102,11 @@ pub const IFrameIntegration = struct {
         // the parse picks quirks, but nothing in it runs script, so no one can
         // observe the mode before this - the same as the parser cannot change
         // the mode flag keeping no-quirks throughout.
-        const document = try self.commitHtmlDocument(markup);
-        if (document) |doc| setNoQuirks(doc);
+        const document = try self.commitHtmlDocument(markup, null);
+        if (document) |doc| {
+            setNoQuirks(doc);
+            @import("dom").document_internals.setEncoding(@ptrCast(@alignCast(doc)), encoding_sniffing.canonicalName(sniffed.encoding)) catch {};
+        }
     }
 
     /// Set the document the parse made to no-quirks mode.
@@ -1180,7 +1131,7 @@ pub const IFrameIntegration = struct {
         // Step 2: "Set document's mode to "no-quirks"." Nothing in the
         // synthesised markup runs script, so setting it after the parse, which
         // (with no DOCTYPE) chose quirks, is the mode ever seen.
-        const document = try self.commitHtmlDocument(markup);
+        const document = try self.commitHtmlDocument(markup, null);
         if (document) |doc| setNoQuirks(doc);
     }
 
@@ -1907,115 +1858,6 @@ test "IFrameIntegration - sandbox applied to browsing context" {
         try std.testing.expect(ctx.allowsScripts());
         try std.testing.expect(!ctx.allowsForms());
     }
-}
-
-// ============================================================================
-// Encoding Detection Tests (Phase 2)
-// ============================================================================
-
-test "detectEncoding - UTF-8 BOM" {
-    // UTF-8 BOM: 0xEF 0xBB 0xBF
-    const utf8_bom = [_]u8{ 0xEF, 0xBB, 0xBF, '<', 'h', 't', 'm', 'l', '>' };
-    const enc = detectEncoding(&utf8_bom, null);
-    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
-}
-
-test "detectEncoding - UTF-16BE BOM" {
-    // UTF-16BE BOM: 0xFE 0xFF
-    const utf16be_bom = [_]u8{ 0xFE, 0xFF, 0x00, '<' };
-    const enc = detectEncoding(&utf16be_bom, null);
-    try std.testing.expectEqualStrings("UTF-16BE", enc.whatwg_name);
-}
-
-test "detectEncoding - UTF-16LE BOM" {
-    // UTF-16LE BOM: 0xFF 0xFE
-    const utf16le_bom = [_]u8{ 0xFF, 0xFE, '<', 0x00 };
-    const enc = detectEncoding(&utf16le_bom, null);
-    try std.testing.expectEqualStrings("UTF-16LE", enc.whatwg_name);
-}
-
-test "detectEncoding - Content-Type charset utf-8" {
-    const html = "<html>";
-    const enc = detectEncoding(html, "text/html; charset=utf-8");
-    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
-}
-
-test "detectEncoding - Content-Type charset Big5" {
-    const html = "<html>";
-    const enc = detectEncoding(html, "text/html; charset=big5");
-    try std.testing.expectEqualStrings("Big5", enc.whatwg_name);
-}
-
-test "detectEncoding - Content-Type charset Shift_JIS" {
-    const html = "<html>";
-    const enc = detectEncoding(html, "text/html; charset=shift_jis");
-    try std.testing.expectEqualStrings("Shift_JIS", enc.whatwg_name);
-}
-
-test "detectEncoding - defaults to UTF-8" {
-    const html = "<html>";
-    const enc = detectEncoding(html, null);
-    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
-}
-
-test "detectEncoding - BOM takes precedence over Content-Type" {
-    // UTF-8 BOM but Content-Type says Big5
-    const utf8_bom = [_]u8{ 0xEF, 0xBB, 0xBF, '<', 'h', 't', 'm', 'l', '>' };
-    const enc = detectEncoding(&utf8_bom, "text/html; charset=big5");
-    // BOM should win
-    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
-}
-
-// ============================================================================
-// Content-Type Charset Parsing Tests (Phase 2)
-// ============================================================================
-
-test "parseCharsetFromContentType - simple charset" {
-    const ct = "text/html; charset=utf-8";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("utf-8", charset.?);
-}
-
-test "parseCharsetFromContentType - no space after semicolon" {
-    const ct = "text/html;charset=utf-8";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("utf-8", charset.?);
-}
-
-test "parseCharsetFromContentType - quoted charset" {
-    const ct = "text/html; charset=\"utf-8\"";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("utf-8", charset.?);
-}
-
-test "parseCharsetFromContentType - single quoted charset" {
-    const ct = "text/html; charset='big5'";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("big5", charset.?);
-}
-
-test "parseCharsetFromContentType - uppercase CHARSET" {
-    const ct = "text/html; CHARSET=utf-8";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("utf-8", charset.?);
-}
-
-test "parseCharsetFromContentType - mixed case" {
-    const ct = "text/html; CharSet=ISO-8859-1";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("ISO-8859-1", charset.?);
-}
-
-test "parseCharsetFromContentType - no charset" {
-    const ct = "text/html";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expect(charset == null);
-}
-
-test "parseCharsetFromContentType - charset with additional params" {
-    const ct = "text/html; charset=utf-8; boundary=something";
-    const charset = parseCharsetFromContentType(ct);
-    try std.testing.expectEqualStrings("utf-8", charset.?);
 }
 
 // ============================================================================

@@ -646,13 +646,16 @@ pub fn init(
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
 /// content type, URL, origin, type, and mode to those of node". This copies
-/// the mode; the rest are Node.zig's stated deviation. (Installed through
-/// dom.cloning_steps, as Node's clone algorithm may not reach Document's
-/// state; a no-op for any other node.)
+/// the encoding and the mode; the rest are Node.zig's stated deviation.
+/// (Installed through dom.cloning_steps, as Node's clone algorithm may not
+/// reach Document's state; a no-op for any other node.)
 fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
     _ = subtree;
     const source = getInternal(node) orelse return;
     const target = getInternal(copy) orelse return;
+    const encoding = try source.encoding.clone(target.allocator);
+    target.encoding.deinit(target.allocator);
+    target.encoding = encoding;
     target.mode = source.mode;
 }
 

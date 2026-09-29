@@ -413,8 +413,16 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
 /// Parse HTML content into a Document for iframe navigation.
 /// This uses DomTreeAdapter to properly populate the document with parsed content
 /// that JavaScript can access via DOM APIs like getElementById(), querySelector(), etc.
-/// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
-fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext, html_content: []const u8) ?*anyopaque {
+/// Parameters: (runtime_context, browsing_context, html_content, byte_stream)
+/// -> document_instance. With `byte_stream`, `html_content` is the
+/// response's bytes, which the parser decodes (HTML "determining the
+/// character encoding").
+fn parseHtmlForIframe(
+    runtime_ctx_ptr: ?*anyopaque,
+    browsing_ctx_ptr: *html_core.BrowsingContext,
+    html_content: []const u8,
+    byte_stream: ?html_core.window.iframe_integration.ByteStream,
+) ?*anyopaque {
     const time_start = clock.monotonicNanos();
     log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}", .{ time_start, html_content.len });
 
@@ -459,6 +467,14 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
 
+    // The encoding sniffing algorithm's step 6: the container document's
+    // encoding, when it is same origin with the new document.
+    var parent_encoding_buf: [32]u8 = undefined;
+    const parent_encoding: ?[]const u8 = if (byte_stream) |stream|
+        (if (stream.parent_same_origin) containerDocumentEncoding(browsing_ctx_ptr, &parent_encoding_buf) else null)
+    else
+        null;
+
     // The scripted parser builds the tree incrementally through the
     // DomTreeAdapter, so scripts can reach nodes already parsed.
     log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{clock.monotonicNanos()});
@@ -466,7 +482,15 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         allocator,
         runtime_ctx,
         html_content,
-        .{ .scripting_enabled = scripting_enabled, .window = window_instance, .document = document_instance },
+        .{
+            .scripting_enabled = scripting_enabled,
+            .window = window_instance,
+            .document = document_instance,
+            .byte_stream = if (byte_stream) |stream| .{
+                .content_type = stream.content_type,
+                .parent_encoding = parent_encoding,
+            } else null,
+        },
     ) catch |err| {
         // The document stays - with whatever was parsed - as the frame's
         // document: a parse that fails part-way is still the page loaded.
@@ -492,6 +516,20 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     wrapInOwnRealm(document_instance);
 
     return document_instance;
+}
+
+/// The name of the encoding of the frame's container document - the
+/// document of the element whose content navigable `browsing_context` is -
+/// copied into `buf`; null without a container.
+fn containerDocumentEncoding(browsing_context: *html_core.BrowsingContext, buf: []u8) ?[]const u8 {
+    const container: *runtime.Instance = @ptrCast(@alignCast(browsing_context.container orelse return null));
+    const document = (interfaces.Node.get_ownerDocument(container) catch return null) orelse return null;
+    var name = interfaces.Document.get_characterSet(document) catch return null;
+    defer name.deinit(document.ctx.allocator);
+    const slice = name.asSlice();
+    if (slice.len > buf.len) return null;
+    @memcpy(buf[0..slice.len], slice);
+    return buf[0..slice.len];
 }
 
 /// Make `document`'s wrapper now, in its relevant realm - the frame's. The
