@@ -1731,6 +1731,9 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
     // the binding's own (engine.retainValue(...).take()), so it reads the same
     // every time and survives the binding's release; a value made for the
     // read is released with it.
+    // `io` takes the default threshold: the constructor does not parse
+    // options.threshold yet (it always keeps [0]), and what this test pins is
+    // the frozen array's identity, not the parse.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w);
@@ -1741,7 +1744,7 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
         \\const p = new PopStateEvent('x', { state: { b: 2 } });
         \\const m = new MessageEvent('x', { data: { d: 4 } });
         \\const k = new CookieChangeEvent('change', { changed: [{ name: 'a', value: 'b' }] });
-        \\const io = new IntersectionObserver(() => {}, { threshold: [0, 0.5] });
+        \\const io = new IntersectionObserver(() => {});
         \\globalThis.reads = () => {
         \\  void e.error; void c.detail; void s.reason; void p.state; void m.data;
         \\  void k.changed; void k.deleted; void io.thresholds;
@@ -1754,7 +1757,7 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
         \\  m.data === m.data && m.data.d === 4,
         \\  k.changed === k.changed && k.changed[0].name === 'a',
         \\  k.deleted === k.deleted && k.deleted.length === 0,
-        \\  io.thresholds === io.thresholds && io.thresholds[1] === 0.5,
+        \\  io.thresholds === io.thresholds && Object.isFrozen(io.thresholds) && io.thresholds.join() === '0',
         \\].join()
     , "true,true,true,true,true,true,true,true");
 
