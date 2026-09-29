@@ -1862,6 +1862,69 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
         handed.pin.release();
         internal.allocator.destroy(handed);
     }
+
+    // A push cleared the forward session history of the whole traversable:
+    // the other navigables' forward entries went with it.
+    if (kind == .push) disposeEntriesRemovedElsewhere(navigation, s);
+}
+
+/// Every other navigation API of `s`'s traversable disposes of the entries
+/// a push by `navigation`'s navigable removed from the session history - a
+/// frame's push truncates its parent's forward entries, and the parent's
+/// NavigationHistoryEntry objects for them fire dispose.
+///
+/// HTML's "update the navigation API entries for a same-document
+/// navigation" disposes only the navigating navigable's entries, and "clear
+/// the forward session history" removes every navigable's: the other
+/// navigables' NavigationHistoryEntry objects are left with no entry and
+/// no event. All three browsers fire dispose for them
+/// (per-entry-events/dispose-for-navigation-in-child.html); this is Blink's
+/// NavigationApi::DisposeEntriesForSessionHistoryRemoval, which the browser
+/// process asks of each frame whose entries a navigation removed.
+fn disposeEntriesRemovedElsewhere(navigation: *runtime.Instance, s: navigation_entries.Scope) void {
+    const top = s.navigable.getTop();
+    // Taken before any event is fired: dispose handlers run script, which
+    // can make and free navigation objects.
+    const Other = struct { instance: *runtime.Instance, generation: u64 };
+    var others: std.ArrayListUnmanaged(Other) = .empty;
+    defer others.deinit(std.heap.c_allocator);
+    for (live.items) |other| {
+        if (other == navigation) continue;
+        const other_internal = getInternal(other) orelse continue;
+        const other_scope = scopeOf(other, other_internal) orelse continue;
+        if (other_scope.navigable == s.navigable or other_scope.navigable.getTop() != top) continue;
+        others.append(std.heap.c_allocator, .{ .instance = other, .generation = runtime.SlabAllocator.generationOf(other) }) catch return;
+    }
+    for (others.items) |other| {
+        if (runtime.SlabAllocator.generationOf(other.instance) != other.generation) continue;
+        disposeEntriesForSessionHistoryRemoval(other.instance);
+    }
+}
+
+/// Blink's NavigationApi::DisposeEntriesForSessionHistoryRemoval: the
+/// entries `navigation` has handed out whose session history entries are
+/// gone leave its entry list, and each fires dispose. Its current entry
+/// never does - it stays its navigable's active entry.
+fn disposeEntriesForSessionHistoryRemoval(navigation: *runtime.Instance) void {
+    const internal = getInternal(navigation) orelse return;
+    const scope = scopeOf(navigation, internal);
+    if (navigation_entries.disabled(scope)) return;
+    const s = scope.?;
+    var disposed: std.ArrayListUnmanaged(*Handed) = .empty;
+    defer disposed.deinit(internal.allocator);
+    var it = internal.handed.iterator();
+    while (it.next()) |kv| {
+        if (kv.key_ptr.* == internal.current_entry_id) continue;
+        if (s.history.entryById(kv.key_ptr.*) == null) disposed.append(internal.allocator, kv.value_ptr.*) catch return;
+    }
+    for (disposed.items) |handed| {
+        _ = internal.handed.remove(dom.navigation_history_entries.entryId(handed.instance));
+    }
+    for (disposed.items) |handed| {
+        fireSimple(handed.instance, "dispose");
+        handed.pin.release();
+        internal.allocator.destroy(handed);
+    }
 }
 
 /// Reject, with an AbortError, every upcoming traverse API method tracker
