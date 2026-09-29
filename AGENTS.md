@@ -853,6 +853,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A step deferred to a loop dies with the loop](docs/lessons/architecture-a-step-deferred-to-a-loop-dies-with-the-loop.md) - Every step deferred to a timer needs an answer for the loop ending first: whoever ends the loop runs what is still armed on it, under the same conditions the timer would have had.
 - [An agent's role is recorded when it is made](docs/lessons/architecture-an-agent-s-role-is-recorded-when-it-is-made.md) - Record a role when it is taken; a predicate over teardown-time state is answered by whoever happens to be tearing down.
 - [State set around a call is seen by everything the call runs](docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md) - A value set around a call is visible to every callee, including ones working on other objects; key it to the object it is for, not to the time it is set.
+- [A Worker object can live in a worker's realm](docs/lessons/architecture-a-worker-object-can-live-in-a-worker-s-realm.md) - Deliver to an object as a task of its own realm (`runTaskInRealm`); `runInRealm` is only for a step inside a task already running.
 
 ### Spec Compliance
 

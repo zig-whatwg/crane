@@ -65,9 +65,6 @@ const EngineContext = workers.worker_context.EngineContext;
 // built-ins, and by nested workers made from inside one).
 threadlocal var current_worker_context: ?*WorkerHost = null;
 
-// Thread-local storage for timer interface (set by caller before worker operations)
-threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
-
 /// Set the current worker context (for use by external code before invoking worker callbacks)
 pub fn setCurrentWorkerContext(ctx: ?*WorkerHost) void {
     current_worker_context = ctx;
@@ -166,7 +163,7 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
         if (ctx.executing) continue;
         // Not armed any more, or armed and now cancelled: either way the
         // timer manager will not hand it back, so it is ours to free.
-        if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
+        if (owner.timer) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
         _ = map.remove(id);
         freeWorkerTimer(ctx);
     }
@@ -192,7 +189,7 @@ fn unregisterWorkerTimerContext(id: runtime.TimerId) void {
     const ctx = map.get(id) orelse return;
     ctx.cancelled = true;
     if (ctx.executing) return;
-    if (WorkerHost.getTimerInterface()) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
+    if (ctx.worker_host.timer) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
     _ = map.remove(id);
     freeWorkerTimer(ctx);
 }
@@ -234,7 +231,7 @@ fn scheduleMessageDispatch(wctx: *WorkerHost) void {
     if (wctx.message_dispatch != null) return;
     const dedicated_worker = wctx.dedicated_worker orelse return;
     if (dedicated_worker.port_pair.outside_port.message_queue.items.len == 0) return;
-    const timer = WorkerHost.getTimerInterface() orelse return;
+    const timer = wctx.timer orelse return;
     const id = timer.setTimeout(0, workerMessageDispatchCallback, wctx);
     if (id == 0) return;
     wctx.message_dispatch = .{ .timer = timer, .id = id };
@@ -403,18 +400,11 @@ fn removeHost(wctx: *WorkerHost) void {
 /// frees them.
 pub fn endWorkersOn(timers: runtime.TimerInterface) void {
     while (nextToEnd(timers)) |host| host.endWithLoop();
-    // The loop is ending: nothing is armed on it again through this thread's
-    // hook. A worker made on this thread later sets its own loop first.
-    if (current_worker_timer_interface) |current| {
-        if (current.ctx == timers.ctx) current_worker_timer_interface = null;
-    }
 }
 
-/// A worker on the loop `timers` that has not ended: one with a teardown step
-/// armed there, or, when that is the loop this thread's workers arm their
-/// steps on, any.
+/// A worker on the loop `timers` that has not ended: one whose tasks run on
+/// it, or with a teardown step armed there.
 fn nextToEnd(timers: runtime.TimerInterface) ?*WorkerHost {
-    const thread_loop = if (current_worker_timer_interface) |current| current.ctx == timers.ctx else false;
     for (hosts.items) |host| {
         if (host.phase == .disposed) continue;
         // Its script on the stack would be torn down under it. The owner
@@ -422,7 +412,8 @@ fn nextToEnd(timers: runtime.TimerInterface) ?*WorkerHost {
         // the worker stays, as it did before.
         if (host.entered > 0 or engine.hasRunningScript(host.agent)) continue;
         const armed_here = if (host.teardown_timer) |armed| armed.timer.ctx == timers.ctx else false;
-        if (armed_here or thread_loop) return host;
+        const runs_here = if (host.timer) |own| own.ctx == timers.ctx else false;
+        if (armed_here or runs_here) return host;
     }
     return null;
 }
@@ -477,7 +468,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // For intervals, reschedule the timer
     if (ctx.is_interval and !ctx.cancelled and wctx.runsTasks()) {
-        if (WorkerHost.getTimerInterface()) |timer| {
+        if (wctx.timer) |timer| {
             // HTML §8.6: each repeat nests one deeper, and the clamp is re-applied.
             // Without this a `setInterval(f, 0)` stays at 0ms forever and spins the
             // loop as fast as it can reschedule - the spec's answer is that by the
@@ -603,6 +594,15 @@ pub const WorkerHost = struct {
     /// Worker type (classic or module)
     worker_type: WorkerType,
 
+    /// The loop the worker's tasks run on: HTML gives a worker an event loop
+    /// of its own, and here its tasks - timers, message delivery, fetch
+    /// settling, its end - are timers on its creator's loop. Recorded when
+    /// the worker is made, from the creator's realm; a nested worker's
+    /// creator is a worker, whose realm has its host's. It used to be one
+    /// thread-local that every Worker constructor overwrote, so a worker's
+    /// tasks went to whichever loop the last worker made had.
+    timer: ?runtime.TimerInterface,
+
     /// Allocator
     allocator: Allocator,
 
@@ -667,29 +667,17 @@ pub const WorkerHost = struct {
 
     const Self = @This();
 
-    /// Set the timer interface for worker operations.
-    /// This should be called by the browser/runtime before creating or using workers.
-    /// The timer interface is stored in thread-local storage and shared across all workers.
-    pub fn setTimerInterface(timer: runtime.TimerInterface) void {
-        current_worker_timer_interface = timer;
-    }
-
-    /// Get the current timer interface from thread-local storage.
-    ///
-    /// This is used for nested workers: when a Worker is created from within another
-    /// Worker, the nested Worker's constructor can use the parent worker's timer
-    /// (stored in thread-local storage) to schedule deferred initialization.
-    pub fn getTimerInterface() ?runtime.TimerInterface {
-        return current_worker_timer_interface;
-    }
-
     /// A worker for `script_url`: "run a worker" step 4, obtain a dedicated
     /// worker agent - [[CanBlock]] true - with this host's hooks
     /// (`worker_hooks`). The realm follows when the global scope is set up.
+    ///
+    /// `timer` is the loop the worker's tasks run on: its creator's, which a
+    /// nested worker's creator - a worker - has from its own host.
     pub fn init(
         allocator: Allocator,
         script_url: []const u8,
         worker_type: WorkerType,
+        timer: ?runtime.TimerInterface,
     ) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -708,6 +696,7 @@ pub const WorkerHost = struct {
             .agent = agent,
             .script_url = url_copy,
             .worker_type = worker_type,
+            .timer = timer,
             .allocator = allocator,
         };
         live_contexts.append(std.heap.page_allocator, self) catch {};
@@ -771,7 +760,7 @@ pub const WorkerHost = struct {
     fn armPlatformPump(self: *Self, again: bool) void {
         if (self.platform_pump != null or !self.runsTasks()) return;
         if (!again and !engine.hasPendingEngineWork(self.agent)) return;
-        const timer = getTimerInterface() orelse return;
+        const timer = self.timer orelse return;
         const id = timer.setTimeout(platform_pump_interval_ms, platformPumpCallback, self);
         if (id == 0) return;
         self.platform_pump = .{ .timer = timer, .id = id };
@@ -863,7 +852,7 @@ pub const WorkerHost = struct {
     /// the realm and agent stay until the process ends, as they always did.
     fn scheduleTeardown(self: *Self) void {
         if (self.teardown_timer != null or self.phase == .realm_gone or self.phase == .disposed) return;
-        const timer = getTimerInterface() orelse return;
+        const timer = self.timer orelse return;
         const id = timer.setTimeout(0, teardownCallback, self);
         if (id == 0) return;
         self.teardown_timer = .{ .timer = timer, .id = id };
@@ -928,7 +917,7 @@ pub const WorkerHost = struct {
             log.debug("owner release deferred: {d} messages to deliver", .{dedicated_worker.port_pair.outside_port.message_queue.items.len});
             // Delivered by later turns: ask again after them.
             if (self.release_owner_timer != null) return;
-            const timer = getTimerInterface() orelse return;
+            const timer = self.timer orelse return;
             const id = timer.setTimeout(0, ownerReleaseCallback, self);
             if (id != 0) self.release_owner_timer = .{ .timer = timer, .id = id };
             return;
@@ -959,7 +948,7 @@ pub const WorkerHost = struct {
     /// realm gone and releases its promise resolver - a handle of THIS agent.
     /// Every such timer was armed before this one, so it runs first.
     fn disposeAgentLater(self: *Self) void {
-        const timer = getTimerInterface() orelse return;
+        const timer = self.timer orelse return;
         const id = timer.setTimeout(0, disposeAgentCallback, self);
         if (id == 0) return;
         self.teardown_timer = .{ .timer = timer, .id = id };
@@ -1074,7 +1063,7 @@ pub const WorkerHost = struct {
 
         const made = try engine.createWorkerRealm(self.agent, &.{
             .url = self.script_url,
-            .timer = getTimerInterface(),
+            .timer = self.timer,
             .end_of_task = endTaskOfRealm,
             .on_realm = recordRealm,
             .data = self,
@@ -1409,7 +1398,7 @@ pub const WorkerHost = struct {
         ) catch return;
 
         // Schedule error dispatch to parent thread via timer (0ms)
-        if (WorkerHost.getTimerInterface()) |timer| {
+        if (self.timer) |timer| {
             const dispatch_ctx = self.allocator.create(WorkerErrorDispatchContext) catch {
                 error_event.deinit();
                 return;
@@ -1535,7 +1524,7 @@ pub const WorkerHost = struct {
             }
         }
 
-        const timer = getTimerInterface() orelse return 0;
+        const timer = self.timer orelse return 0;
         initWorkerTimerStorage(self.allocator);
 
         // The handler as a callback function, with the incumbent realm - the
@@ -1854,7 +1843,7 @@ const WorkerModules = struct {
     }
 
     fn queueDynamicImport(self: *WorkerHost, url: []const u8, module_type: module_script.ModuleType, request: *engine.ImportRequest) !void {
-        const timer = WorkerHost.getTimerInterface() orelse return error.NoEventLoop;
+        const timer = self.timer orelse return error.NoEventLoop;
         const task = try self.allocator.create(DynamicImportTask);
         errdefer self.allocator.destroy(task);
         task.* = .{
