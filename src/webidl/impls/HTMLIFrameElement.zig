@@ -949,7 +949,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
                 .navigation_api_state = options.navigation_api_state orelse .undefined,
             });
             if (!continue_navigation) {
-                if (isOngoing(integration, id)) setOngoingNavigation(integration, .none);
+                // "If continue is false, then return." The navigation ends
+                // here without informing the navigation API again: its
+                // navigate event was canceled, or intercepted - and an
+                // intercepted one is still settling, which informing about
+                // aborting navigation would abort.
+                if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
+                endNavigation(id);
                 endLoadDelay(integration);
                 return;
             }
