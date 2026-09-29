@@ -191,3 +191,20 @@ test "the navigation API sees the navigable's contiguous same-origin entries" {
     _ = try h.apiEntries(top, testing.allocator, &entries);
     try testing.expectEqual(@as(usize, 2), entries.items.len);
 }
+
+test "a navigable's own session history entries are counted apart from its children's" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try testing.expectEqual(@as(usize, 0), h.entryCount(top));
+    try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
+    try h.addInitialEntry(frame, "about:blank", null, "http://x.test");
+    try testing.expectEqual(@as(usize, 1), h.entryCount(top));
+    // The frame's pushes are steps of the joint history, not entries of the
+    // top-level traversable's own.
+    try h.commitDocument(frame, "http://x.test/f1", null, "http://x.test", .push);
+    try h.commitDocument(frame, "http://x.test/f2", null, "http://x.test", .push);
+    try testing.expectEqual(@as(usize, 1), h.entryCount(top));
+    try testing.expectEqual(@as(usize, 3), h.entryCount(frame));
+    try h.commitDocument(top, "http://x.test/u", null, "http://x.test", .push);
+    try testing.expectEqual(@as(usize, 2), h.entryCount(top));
+}

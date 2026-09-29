@@ -1043,7 +1043,9 @@ pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns true if the browsing context has been discarded.
 pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.closed or internal.browsing_context.is_closed;
+    // "Return true if this's browsing context is null or its is closing is
+    // true; otherwise false."
+    return internal.closed or internal.browsing_context.is_closed or internal.browsing_context.is_closing;
 }
 
 /// Getter for frames - Same as window
@@ -2273,23 +2275,61 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
 }
 
 /// Operation: close
-/// Per spec §7.4.6: Closes the browsing context if it's script-closable.
+/// HTML §7.2.2.1, the close() method steps.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // "1. Let thisTraversable be this's navigable. 2. If thisTraversable is
+    // not a top-level traversable, then return."
+    const bc = internal.browsing_context;
+    if (bc.parent != null or bc.is_closed) return;
+    // "3. If thisTraversable's is closing is true, then return."
+    if (bc.is_closing or internal.closed) return;
+    // Steps 4-6. Not modelled, stated: step 6's other two conditions - the
+    // incumbent global's browsing context familiar with browsingContext,
+    // and its navigable allowed by sandboxing to navigate thisTraversable.
+    if (!bc.isScriptClosable()) return;
+    // Step 6.1: "Set thisTraversable's is closing to true."
+    bc.is_closing = true;
+    internal.closed = true;
+    // Step 6.2: "Queue a task on the DOM manipulation task source to
+    // definitely close thisTraversable."
+    queueDefinitelyClose(instance);
+}
 
-    // Check if already closed
-    if (internal.closed) {
-        return;
+/// A queued "definitely close": the window whose traversable it closes, held
+/// as (address, generation).
+const CloseTask = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn run(data: ?*anyopaque) void {
+        const task: *CloseTask = @ptrCast(@alignCast(data orelse return));
+        defer task.allocator.destroy(task);
+        if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
+        engine.runTaskInRealm(task.window.ctx, steps, task.window) catch {};
     }
 
-    // Check if the browsing context is script-closable
-    // A browsing context is script-closable if:
-    // 1. It's an auxiliary browsing context (opened via window.open)
-    // 2. Or it's a top-level traversable with a single session history entry
-    if (internal.browsing_context.isScriptClosable()) {
-        internal.browsing_context.close();
-        internal.closed = true;
+    fn steps(data: ?*anyopaque) void {
+        const window: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+        // "Definitely close" is the navigable machinery's, HTMLIFrameElement's,
+        // installed when the first iframe element is made: make one if no
+        // page has yet. Nothing sees it.
+        const auxiliary_navigables = @import("dom").auxiliary_navigables;
+        if (!auxiliary_navigables.isInstalled()) {
+            const document = interfaces.Window.get_document(window) catch return;
+            const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+        }
+        _ = auxiliary_navigables.definitelyClose(window);
     }
+};
+
+fn queueDefinitelyClose(window: *runtime.Instance) void {
+    const timer = window.ctx.getOptionalTimer() orelse return;
+    const task = window.ctx.allocator.create(CloseTask) catch return;
+    task.* = .{ .window = window, .generation = runtime.SlabAllocator.generationOf(window), .allocator = window.ctx.allocator };
+    if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
 }
 
 /// Operation: getDigitalGoodsService

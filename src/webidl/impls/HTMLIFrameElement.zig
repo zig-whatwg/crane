@@ -160,7 +160,7 @@ pub fn init(
     // These only register once and are no-ops on subsequent calls.
     ensureRemovingStepsRegistered();
     ensurePostConnectionStepsRegistered();
-    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable });
+    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
         .run_load_event_steps = &contentNavigableLoadEventSteps,
@@ -2418,6 +2418,98 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     // built around its WindowProxy (engine: window_proxy_of detaches it).
     integration.retireCurrentRealm(null) catch return false;
     return attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) != null;
+}
+
+/// dom.auxiliary_navigables: HTML "definitely close" the top-level
+/// traversable whose active window is `window`; false when `window` is not a
+/// top-level traversable's.
+///
+/// "1. Let toUnload be traversable's active document's inclusive descendant
+/// navigables. 2. If the result of checking if unloading is canceled for
+/// toUnload is not "continue", then return. 3. Append the following session
+/// history traversal steps to traversable: 1. Let afterAllUnloads be an
+/// algorithm step which destroys traversable. 2. Unload a document and its
+/// descendants given traversable's active document, null, and
+/// afterAllUnloads." The traversal steps run here, in the same task.
+///
+/// "Destroy a top-level traversable", for one this machinery made
+/// (window.open(), a link's or form's target): its documents are destroyed
+/// (no other entry keeps one: there is no bfcache) and its browsing context
+/// closed; its realm lives on while its opener's page does, for script that
+/// holds the window. The host's own page is unloaded but not destroyed,
+/// stated: the host owns it, and it is the host's to take down.
+fn definitelyCloseTraversable(window: *runtime.Instance) bool {
+    const bc = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    if (bc.parent != null) return false;
+    // Null for the host's page.
+    const integration = integrationOfBrowsingContext(bc);
+    if (integration) |made| {
+        if (made.state == .discarded) return true;
+        // Script runs below: the integration stays until this is done with
+        // it.
+        made.busy += 1;
+    }
+    defer if (integration) |made| finishBusy(made);
+    if (bc.is_closed) return true;
+    const document: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse {
+        if (integration != null) bc.close();
+        return true;
+    }));
+    const allocator = std.heap.page_allocator;
+
+    // Steps 1-2: beforeunload at each document, parents first. The answer is
+    // "continue" unless a prompt was shown and the user stayed; none is
+    // shown without sticky activation.
+    {
+        var documents = collectInclusiveDescendantDocuments(document, allocator);
+        defer documents.deinit(allocator);
+        var canceled = false;
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
+        }
+        if (canceled) {
+            bc.is_closing = false;
+            return true;
+        }
+    }
+    // The handlers ran script: the traversable may have gone meanwhile.
+    if (bc.is_closed) return true;
+    if (integration) |made| if (made.state == .discarded) return true;
+
+    // Step 3: its navigation in flight ends, then "unload a document and its
+    // descendants" - pagehide and unload, children first - and, after all
+    // unloads, "destroy" it.
+    const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return true));
+    var documents = collectInclusiveDescendantDocuments(active, allocator);
+    defer documents.deinit(allocator);
+    const made = integration orelse {
+        // The host's page: unloaded, children first, and its windows'
+        // timers ended; not destroyed.
+        var i = documents.items.len;
+        while (i > 0) {
+            i -= 1;
+            const entry = documents.items[i];
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (entry.integration) |child| abandonNavigationsOf(child);
+            document_lifecycle.unload(entry.document);
+        }
+        destroyWindowDocuments(bc);
+        return true;
+    };
+    abandonNavigationsOf(made);
+    unloadDocumentAndDescendants(active, made);
+    // "Destroy a document and its descendants", children first.
+    var i = documents.items.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = documents.items[i];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        document_lifecycle.destroy(entry.document);
+    }
+    // "Remove browsingContext": closed, and its descendants with it.
+    bc.close();
+    return true;
 }
 
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary

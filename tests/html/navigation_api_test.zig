@@ -361,18 +361,26 @@ test "BrowsingContext - contexts have virtual group IDs" {
     try testing.expect(ctx2.virtual_group_id != 0);
 }
 
-test "BrowsingContext - isScriptClosable for auxiliary" {
+test "BrowsingContext - script-closable: a top-level traversable made by web content, or with one entry" {
     const allocator = testing.allocator;
 
+    // HTML "script-closable": a top-level traversable whose "is created by
+    // web content" is true, or whose session history entries' size is 1. The
+    // host's traversable has its initial entry only.
     const opener = try BrowsingContext.initTopLevel(allocator);
     defer opener.deinit();
+    try testing.expect(!opener.is_created_by_web_content);
+    try testing.expect(opener.isScriptClosable());
 
-    // Top-level context is not script closable by default
-    try testing.expect(!opener.isScriptClosable());
-
-    // Auxiliary (popup) context is script closable
-    const aux = try BrowsingContext.initAuxiliary(allocator, opener, true);
+    // One window.open() or a link's target made: web content made it,
+    // whatever the "popup" window feature said.
+    const aux = try BrowsingContext.initAuxiliary(allocator, opener, false);
     defer aux.deinit();
-
+    try testing.expect(aux.is_created_by_web_content);
     try testing.expect(aux.isScriptClosable());
+
+    // A frame's navigable is not a top-level traversable.
+    const child = try BrowsingContext.initChild(allocator, opener);
+    defer child.deinit();
+    try testing.expect(!child.isScriptClosable());
 }

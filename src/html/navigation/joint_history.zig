@@ -164,6 +164,16 @@ pub const JointHistory = struct {
         return self.entryAt(navigable, self.current_step);
     }
 
+    /// The size of `navigable`'s session history entries - its own, not the
+    /// steps its descendants add to the joint history.
+    pub fn entryCount(self: *const JointHistory, navigable: u64) usize {
+        var count: usize = 0;
+        for (self.entries.items) |entry| {
+            if (entry.navigable == navigable) count += 1;
+        }
+        return count;
+    }
+
     pub fn hasNavigable(self: *const JointHistory, navigable: u64) bool {
         for (self.entries.items) |entry| {
             if (entry.navigable == navigable) return true;
