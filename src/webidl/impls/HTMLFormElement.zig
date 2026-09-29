@@ -9,6 +9,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const fetch_body = @import("fetch_body.zig");
+const same_object = @import("same_object.zig");
 const HTMLFormElement = interfaces.HTMLFormElement;
 
 // Form submission (below call_submit).
@@ -302,8 +304,10 @@ pub fn call_submit(instance: *runtime.Instance) anyerror!void {
 //   * No `formdata` event (§ 4.10.22.4 steps 6-7): firing one needs a FormData
 //     over this entry list, which FormData's impl cannot yet be handed. So the
 //     "constructing entry list" re-entrancy guard has nothing to guard.
-//   * POST ("submit as entity body") does not navigate: Crane's navigations
-//     fetch with GET and cannot carry a request body. TODO(forms).
+//   * "Submit as entity body" encodes multipart/form-data through Fetch's
+//     FormData extraction: UTF-8 whatever the form's encoding, and a file
+//     control's empty File as an empty string field (FormData cannot yet be
+//     handed a Blob).
 // ============================================================================
 
 /// An entry (§ 4.10.22.4): a name and a value, both scalar value strings in
@@ -312,6 +316,8 @@ pub fn call_submit(instance: *runtime.Instance) anyerror!void {
 const Entry = struct {
     name: []u8,
     value: []u8,
+    /// A file control's entry: its value is a File, represented by its name.
+    is_file: bool = false,
 };
 
 const EntryList = std.ArrayListUnmanaged(Entry);
@@ -571,6 +577,7 @@ fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, enc
                     // 5.10: the value.
                     try takeString(allocator, field, try interfaces.HTMLInputElement.get_value(field));
                 try appendEntry(allocator, &entries, name, value);
+                if (eql(input_type, "file")) entries.items[entries.items.len - 1].is_file = true;
             },
         }
     }
@@ -683,9 +690,24 @@ fn submitForm(form: *runtime.Instance) !void {
     const is_get = eql(method, "get");
     const mutate = is_get and (eql(scheme, "http") or eql(scheme, "https") or eql(scheme, "data") or eql(scheme, "file"));
     if (!is_get and (eql(scheme, "http") or eql(scheme, "https"))) {
-        // "Submit as entity body". TODO(forms): needs a navigation that
-        // carries a POST resource.
-        allocator.free(target);
+        // "Submit as entity body": a POST resource of the entry list encoded
+        // by the form's enctype, planned to the parsed action as it is. The
+        // entry list goes with it, as a FormData, for the navigate event
+        // (navigate's formDataEntryList).
+        const form_data = entryListFormData(form, entries.items) catch |err| {
+            allocator.free(target);
+            return err;
+        };
+        const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
+        var post = entityBody(allocator, form, form_data, entries.items, encoding) catch |err| {
+            form_data.releaseIfUnwrapped(form_data_generation);
+            allocator.free(target);
+            return err;
+        };
+        errdefer post.deinit(allocator);
+        errdefer form_data.releaseIfUnwrapped(form_data_generation);
+        const url = try url_serializer.serialize(allocator, &parsed_action, false);
+        planNavigationWith(form, url, target, post, form_data);
         return;
     }
     if (eql(scheme, "mailto")) {
@@ -705,6 +727,99 @@ fn submitForm(form: *runtime.Instance) !void {
     planNavigation(form, url, target);
 }
 
+/// A POST resource (HTML "POST resource"): its request body and request
+/// content-type. Owned.
+const PostResource = struct {
+    body: []u8,
+    content_type: []u8,
+
+    fn deinit(self: *PostResource, allocator: std.mem.Allocator) void {
+        allocator.free(self.body);
+        allocator.free(self.content_type);
+    }
+};
+
+/// "Submit as entity body": "Switch on enctype" - the body and mimeType for
+/// the entry list. The form is its own submitter here, so its enctype is
+/// the form's.
+fn entityBody(allocator: std.mem.Allocator, form: *runtime.Instance, form_data: *runtime.Instance, entries: []const Entry, encoding: *const encoding_mod.Encoding) !PostResource {
+    var enctype_string = try interfaces.HTMLFormElement.get_enctype(form);
+    defer enctype_string.deinit(form.ctx.allocator);
+    const enctype = enctype_string.asSlice();
+    if (eql(enctype, "multipart/form-data")) return multipartBody(allocator, form_data);
+    if (eql(enctype, "text/plain")) {
+        // "Let body be the result of running the text/plain encoding
+        // algorithm with pairs. Set body to the result of encoding body using
+        // encoding. Let mimeType be `text/plain`."
+        const body = try textPlainBody(allocator, entries, encoding);
+        errdefer allocator.free(body);
+        return .{ .body = body, .content_type = try allocator.dupe(u8, "text/plain") };
+    }
+    // application/x-www-form-urlencoded: "Let body be the result of running
+    // the application/x-www-form-urlencoded serializer with pairs and
+    // encoding. Set body to the result of encoding body. Let mimeType be
+    // `application/x-www-form-urlencoded`."
+    const body = try serializeEntries(allocator, entries, encoding);
+    errdefer allocator.free(body);
+    return .{ .body = body, .content_type = try allocator.dupe(u8, "application/x-www-form-urlencoded") };
+}
+
+/// "The multipart/form-data encoding algorithm with entry list and
+/// encoding", through Fetch's own - "extract a body" of a FormData over the
+/// entry list - whose boundary makes the mimeType "multipart/form-data;
+/// boundary=...". Stated: that encoding is UTF-8 whatever the form's, and a
+/// file control's empty File is an empty string field, since FormData cannot
+/// yet be handed a Blob (its append(name, blob) is not implemented).
+fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance) !PostResource {
+    var extracted = fetch_body.extract(allocator, .{ .xmlhttp_request_body_init = .{ .form_data = form_data } }, false) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.TypeError => error.TypeError,
+    };
+    defer extracted.deinit();
+    const body_object = extracted.body orelse return error.TypeError;
+    const body = try allocator.dupe(u8, body_object.getBytes());
+    errdefer allocator.free(body);
+    const content_type = extracted.content_type orelse return error.TypeError;
+    extracted.content_type = null;
+    return .{ .body = body, .content_type = content_type };
+}
+
+/// A FormData over the entry list - a new one in the form's realm, with the
+/// entries appended (a file control's empty File as an empty string: see
+/// multipartBody). Nothing holds it yet.
+fn entryListFormData(form: *runtime.Instance, entries: []const Entry) !*runtime.Instance {
+    const form_data = try interfaces.FormData.call_constructor(form.ctx, webidl.Opt(*runtime.Instance).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
+    errdefer form_data.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(form_data));
+    for (entries) |entry| try interfaces.FormData.call_append(form_data, entry.name, entry.value);
+    return form_data;
+}
+
+/// "The text/plain encoding algorithm" over the entry list's pairs ("convert
+/// to a list of name-value pairs": a file's name for a File, newlines as
+/// CRLF), then encoded with `encoding`: "1. Let result be the empty string.
+/// 2. For each pair in pairs: append pair's name, "=", pair's value, then a
+/// U+000D CR U+000A LF pair to result. 3. Return result."
+fn textPlainBody(allocator: std.mem.Allocator, entries: []const Entry, encoding: *const encoding_mod.Encoding) ![]u8 {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(allocator);
+    for (entries) |entry| {
+        const name = try normalizeNewlines(allocator, entry.name);
+        defer allocator.free(name);
+        const value = try normalizeNewlines(allocator, entry.value);
+        defer allocator.free(value);
+        try text.appendSlice(allocator, name);
+        try text.append(allocator, '=');
+        try text.appendSlice(allocator, value);
+        try text.appendSlice(allocator, "\r\n");
+    }
+    if (eql(encoding.name, "UTF-8")) return allocator.dupe(u8, text.items);
+    const units = try std.unicode.utf8ToUtf16LeAlloc(allocator, text.items);
+    defer allocator.free(units);
+    const encoded = encoding_mod.hooks.encode(allocator, units, encoding) catch return error.OutOfMemory;
+    defer allocator.free(encoded);
+    return allocator.dupe(u8, encoded);
+}
+
 /// A planned navigation (§ 4.10.22.3 "plan to navigate"): the queued task's
 /// data. The form is held by address, so it is identified by its slab
 /// generation and its planned-navigation token before anything touches it.
@@ -717,11 +832,19 @@ const PlannedNavigation = struct {
     /// Submit step 22's condition, taken when the form was submitted: the
     /// form document had not completely loaded.
     source_not_completely_loaded: bool,
+    /// The POST resource of a submission "as entity body"; null for GET.
+    post: ?PostResource = null,
+    /// With it, the entry list as a FormData, kept alive until the planned
+    /// navigation runs.
+    form_data: ?*runtime.Instance = null,
+    form_data_pin: same_object.Pin = .{},
     allocator: std.mem.Allocator,
 
     fn destroy(self: *PlannedNavigation) void {
         self.allocator.free(self.url);
         self.allocator.free(self.target);
+        if (self.post) |*post| post.deinit(self.allocator);
+        self.form_data_pin.release();
         self.allocator.destroy(self);
     }
 };
@@ -731,10 +854,22 @@ threadlocal var next_navigation_token: u64 = 1;
 
 /// "Plan to navigate" to `url`. Takes ownership of `url` and `target`.
 fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8) void {
+    planNavigationWith(form, url, target, null, null);
+}
+
+/// "Plan to navigate" to `url`, given a POST resource and the entry list's
+/// FormData, or neither. Takes ownership of `url`, `target` and `post`; a
+/// `form_data` nothing else holds goes with the task.
+fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const u8, post: ?PostResource, form_data: ?*runtime.Instance) void {
     const allocator = form.ctx.allocator;
     const task = allocator.create(PlannedNavigation) catch {
         allocator.free(url);
         allocator.free(target);
+        if (post) |resource| {
+            var owned = resource;
+            owned.deinit(allocator);
+        }
+        if (form_data) |fd| fd.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(fd));
         return;
     };
     // Submit step 22: "If form document equals targetNavigable's active
@@ -749,8 +884,11 @@ fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8) 
         .url = url,
         .target = target,
         .source_not_completely_loaded = not_loaded,
+        .post = post,
+        .form_data = form_data,
         .allocator = allocator,
     };
+    if (form_data) |fd| task.form_data_pin.hold(fd);
     next_navigation_token += 1;
 
     const internal = Registry.get(form) orelse return task.destroy();
@@ -800,6 +938,9 @@ fn navigateSteps(data: ?*anyopaque) void {
         .target = task.target,
         .url = task.url,
         .source_not_completely_loaded = task.source_not_completely_loaded,
+        .source_element = task.form,
+        .post_resource = if (task.post) |post| .{ .body = post.body, .content_type = post.content_type } else null,
+        .form_data = task.form_data,
     });
 }
 

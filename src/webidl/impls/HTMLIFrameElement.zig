@@ -160,7 +160,7 @@ pub fn init(
     // These only register once and are no-ops on subsequent calls.
     ensureRemovingStepsRegistered();
     ensurePostConnectionStepsRegistered();
-    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable });
+    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
         .run_load_event_steps = &contentNavigableLoadEventSteps,
@@ -171,6 +171,7 @@ pub fn init(
         .navigate_by_target = &navigateByTarget,
         .follow_hyperlink = &followHyperlink,
         .traverse_navigable = &traverseNavigable,
+        .find_by_name = &frameWindowByName,
     });
 
     // Chain to parent class (HTMLElement)
@@ -664,6 +665,16 @@ pub const NavigateOptions = struct {
     /// A history traversal's navigation: the session history entry, by id,
     /// that the new document populates - no entry is added.
     traversal_entry: u64 = 0,
+    /// "sourceElement": the hyperlink or form submitter that navigates.
+    source_element: ?*runtime.Instance = null,
+    user_involvement: dom_module.navigation_api.UserInvolvement = .none,
+    /// "navigationAPIState": navigate()'s state. BORROWED.
+    navigation_api_state: ?html_core.navigation.joint_history.SerializedState = null,
+    /// "documentResource" as a POST resource: a form submitted as an entity
+    /// body. BORROWED.
+    post_resource: ?dom_module.navigables.PostResource = null,
+    /// With it, "formDataEntryList" as a FormData holding it. BORROWED.
+    form_data: ?*runtime.Instance = null,
 };
 
 /// One navigation, from "navigate" step 19 until its document commits or it
@@ -677,6 +688,13 @@ const Navigation = struct {
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
+    /// The user navigated from the browser's UI (userInvolvement "browser
+    /// UI"), which no self-referential URL bound applies to.
+    browser_initiated: bool = false,
+    /// A POST resource's request body and content-type, fetched with POST.
+    /// Owned; the fetch borrows the body until it ends.
+    post_body: ?[]u8 = null,
+    post_content_type: ?[]u8 = null,
     /// A javascript: URL's String result and the URL its document takes,
     /// between evaluating it and committing it. Owned.
     javascript_result: ?[]u8 = null,
@@ -698,6 +716,8 @@ const Navigation = struct {
         if (self.javascript_result) |r| self.allocator.free(r);
         if (self.javascript_url) |u| self.allocator.free(u);
         if (self.initiator_base_url) |u| self.allocator.free(u);
+        if (self.post_body) |b| self.allocator.free(b);
+        if (self.post_content_type) |t| self.allocator.free(t);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -773,7 +793,11 @@ fn endNavigation(id: u64) void {
 fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.OngoingNavigation) void {
     // Step 1: "If navigable's ongoing navigation is equal to newValue, then return."
     if (integration.ongoing_navigation.eql(value)) return;
-    // Step 2 (inform the navigation API) is not modelled.
+    // Step 2: "Inform the navigation API about aborting navigation given
+    // navigable."
+    if (integration.browsing_context) |bc| {
+        if (bc.getActiveWindow()) |window| dom_module.navigation_api.informAboutAbortingNavigation(@ptrCast(@alignCast(window)));
+    }
     switch (integration.ongoing_navigation) {
         .id => |old| endNavigation(old),
         else => {},
@@ -835,8 +859,8 @@ fn initiatorSameOrigin(source: ?*runtime.Instance, active_url: []const u8, alloc
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
 /// Steps not modelled, stated: source snapshot params and sandboxed
-/// navigation (1-7), the navigate event (21), deferred fetch quota (22),
-/// WebDriver BiDi, and lazy loading (11).
+/// navigation (1-7), deferred fetch quota (22), WebDriver BiDi, and lazy
+/// loading (11). Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
     // A navigable that is going, or never came: nothing to navigate.
     if (integration.state == .discarded) return;
@@ -865,8 +889,8 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 
     // Step 14: a fragment navigation commits now, in the same document. (A
     // traversal's navigation repopulates a document, and is never one.)
-    if (options.traversal_entry == 0 and navigate_steps.isFragmentNavigation(url, active_url, options.srcdoc != null)) {
-        navigateToFragment(integration, url, active_url, history_handling);
+    if (options.traversal_entry == 0 and navigate_steps.isFragmentNavigation(url, active_url, options.srcdoc != null or options.post_resource != null)) {
+        navigateToFragment(integration, url, active_url, history_handling, options);
         return;
     }
 
@@ -896,9 +920,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .history_handling = history_handling,
         .initial_insertion = options.initial_insertion,
         .traversal_entry = options.traversal_entry,
+        .browser_initiated = options.user_involvement == .browser_ui,
     };
     if (options.srcdoc) |html| {
         record.srcdoc = allocator.dupe(u8, html) catch {
+            record.destroy();
+            return;
+        };
+    }
+    if (options.post_resource) |post| {
+        record.post_body = allocator.dupe(u8, post.body) catch {
+            record.destroy();
+            return;
+        };
+        record.post_content_type = allocator.dupe(u8, post.content_type) catch {
             record.destroy();
             return;
         };
@@ -918,6 +953,45 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     if (navigate_steps.isJavascript(url)) {
         queueNavigationTask(integration, id, &runJavascriptNavigation);
         return;
+    }
+    // Step 21: the navigate event - for a navigation from a document same
+    // origin(-domain) with the active one, to a fetch scheme, when the
+    // active document is not the initial about:blank. (A traversal's
+    // navigation fired its event in the traversal.) Canceled, or
+    // intercepted - which made it same-document - and it ends here.
+    if (options.traversal_entry == 0 and options.srcdoc == null and active != null and
+        options.user_involvement != .browser_ui and
+        initiatorSameOrigin(options.source_document, active_url, allocator) and
+        !document_lifecycle.isInitialAboutBlank(active.?) and
+        navigate_steps.isFetchScheme(url))
+    {
+        if (integration.browsing_context.?.getActiveWindow()) |window| {
+            const continue_navigation = dom_module.navigation_api.firePushReplaceReload(@ptrCast(@alignCast(window)), .{
+                .navigation_type = if (history_handling == .push) .push else .replace,
+                .destination_url = url,
+                .is_same_document = false,
+                .user_involvement = options.user_involvement,
+                .source_element = options.source_element,
+                .navigation_api_state = options.navigation_api_state orelse .undefined,
+                // Step 20: "Let entryListForFiring be formDataEntryList if
+                // documentResource is a POST resource; otherwise, null."
+                .form_data = if (options.post_resource != null) options.form_data else null,
+            });
+            if (!continue_navigation) {
+                // "If continue is false, then return." The navigation ends
+                // here without informing the navigation API again: its
+                // navigate event was canceled, or intercepted - and an
+                // intercepted one is still settling, which informing about
+                // aborting navigation would abort.
+                if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
+                endNavigation(id);
+                endLoadDelay(integration);
+                return;
+            }
+            // The event's handlers ran script: a later navigation replaces
+            // this one, and a navigable taken away ends it.
+            if (navigationById(id) == null or !isOngoing(integration, id)) return;
+        }
     }
     // Step 23: "In parallel": beforeunload, then the fetch.
     queueNavigationTask(integration, id, &runBeforeUnload);
@@ -995,12 +1069,33 @@ fn startFetch(record: *Navigation) void {
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
+    // Deviation, stated: a frame's navigation to a URL that two of its
+    // ancestors already show, fragments excluded, is canceled here, as the
+    // request would start - the frame keeps the document it has. HTML bounds
+    // nesting only for an iframe's src attribute ("shared attribute
+    // processing steps" step 3); a navigation script starts in a frame to its
+    // own page's URL nests without end in the spec, and no load event above
+    // it ever fires. This is Chromium's bound
+    // (NavigationRequest::IsSelfReferentialURL, checked in WillStartRequest):
+    // one level of self-reference is allowed, about: URLs and navigations
+    // from the browser's UI are exempt. Gecko bounds the same pages by frame
+    // depth instead (nsFrameLoader::CheckForRecursiveLoad, 10).
+    // Chromium also exempts POST, which frame navigations here never are,
+    // and checks each redirect's target too (WillRedirectRequest); the fetch
+    // here follows redirects itself, so only the URL navigated to is checked.
+    if (!record.browser_initiated and isSelfReferential(record.integration, url)) {
+        return cancelSelfReferential(record);
+    }
+
     const scheme = navigate_steps.schemeOf(url);
     if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https")) {
         const request = navigation_fetch.navigationRequest(allocator, url, .{
             .destination = if (record.integration.iframe_element != null) .iframe else .document,
             .mode = .navigate,
             .redirect = .follow,
+            // "Create navigation params by fetching" step 3: a POST
+            // resource's request is a POST.
+            .method = if (record.post_body != null) "POST" else "GET",
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
@@ -1008,6 +1103,19 @@ fn startFetch(record: *Navigation) void {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Step 3's POST resource: "set request's body to documentResource's
+        // request body" and "Content-Type" to its request content-type. The
+        // body is the record's, borrowed for as long as the fetch runs.
+        if (record.post_body) |body| {
+            request.body = .{ .bytes = body };
+            if (record.post_content_type) |content_type| {
+                request.header_list.set("Content-Type", content_type) catch {
+                    request.deinit();
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                };
+            }
+        }
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
             .context = @ptrFromInt(record.id),
             .done = &fetchDone,
@@ -1029,6 +1137,43 @@ fn startFetch(record: *Navigation) void {
         .redirect = .follow,
     }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
     queueNavigationTask(record.integration, record.id, &runCommit);
+}
+
+/// Whether two or more of `integration`'s ancestor navigables show a
+/// document whose URL equals `url` with fragments excluded. about: URLs
+/// never do. A popup has no ancestors.
+fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
+    if (std.mem.eql(u8, navigate_steps.schemeOf(url), "about")) return false;
+    const container: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return false));
+    const NodeImpl = @import("Node.zig");
+    const allocator = integration.allocator;
+    var document = NodeImpl.getOwnerDocument(container);
+    var found = false;
+    var depth: usize = 0;
+    while (document) |doc| : (depth += 1) {
+        if (depth > 64) return false;
+        const doc_url = documentUrlOf(doc, allocator) catch return false;
+        defer allocator.free(doc_url);
+        if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
+            if (found) return true;
+            found = true;
+        }
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
+        const parent_container = dom_module.navigable_container.of(window) orelse return false;
+        document = NodeImpl.getOwnerDocument(parent_container);
+    }
+    return false;
+}
+
+/// A self-referential navigation canceled before its request: no document,
+/// as for a 204 - the navigation ends, and with it the delay it put on the
+/// container document's load event.
+fn cancelSelfReferential(record: *Navigation) void {
+    const integration = record.integration;
+    log.debug("[navigation] canceled a self-referential frame navigation to {s}", .{record.url});
+    if (isOngoing(integration, record.id)) integration.ongoing_navigation = .none;
+    endNavigation(record.id);
+    endLoadDelay(integration);
 }
 
 /// A response made of `html`, as a fetch would have answered it.
@@ -1306,19 +1451,44 @@ fn collectIframes(node: *NodeBase, out: *std.ArrayListUnmanaged(*runtime.Instanc
     }
 }
 
-/// HTML "navigate to a fragment" (§7.4.2.3.3) - synchronous: the document's
-/// URL changes now, and hashchange is queued if the fragment did.
-///
-/// Not modelled, stated: the navigate event (steps 1-5), the session history
-/// entry and history object (6-11, 13, 16-17: item 3 of the navigation
-/// work), and scrolling (15: no layout).
-fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url: []const u8, handling: navigate_steps.HistoryHandling) void {
-    // Steps 6-13: the new entry on the same document, with a null classic
-    // history API state; "finalize a same-document navigation" pushes or
-    // replaces it in the traversable's history.
+/// HTML "navigate to a fragment" (§7.4.2.3.3) - synchronous: the navigate
+/// event, then the document's URL changes now, and hashchange is queued if
+/// the fragment did. Scrolling (15: no layout) is not modelled, stated.
+fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url: []const u8, handling: navigate_steps.HistoryHandling, options: NavigateOptions) void {
+    const allocator = integration.allocator;
+    // Steps 1-5: the navigate event, with the destination's navigation API
+    // state - navigate()'s, else the active entry's. "If continue is false,
+    // then return."
+    var destination_state: html_core.navigation.joint_history.SerializedState = .undefined;
+    defer destination_state.deinit(allocator);
+    if (integration.browsing_context) |bc| {
+        if (options.navigation_api_state) |state| {
+            destination_state = state.clone(allocator) catch .undefined;
+        } else if (bc.ensureHistoryEntries(&history_documents.infoOf)) |history| {
+            if (history.currentEntry(bc.id)) |entry| destination_state = entry.api_state.clone(allocator) catch .undefined;
+        } else |_| {}
+        if (bc.getActiveWindow()) |window| {
+            if (!dom_module.navigation_api.firePushReplaceReload(@ptrCast(@alignCast(window)), .{
+                .navigation_type = if (handling == .push) .push else .replace,
+                .destination_url = url,
+                .is_same_document = true,
+                .user_involvement = options.user_involvement,
+                .source_element = options.source_element,
+                .navigation_api_state = destination_state,
+            })) return;
+        }
+    }
+    // The event's handlers ran script: a navigable taken away is not
+    // navigated.
+    if (integration.state == .discarded) return;
+    // Steps 6-13: the new entry on the same document, with the destination's
+    // navigation API state and a null classic history API state; "finalize a
+    // same-document navigation" pushes or replaces it in the traversable's
+    // history.
     if (integration.browsing_context) |bc| {
         if (bc.ensureHistoryEntries(&history_documents.infoOf)) |history| {
-            history.commitSameDocument(bc.id, url, .null, jointHandling(handling), null) catch {};
+            const api_state = destination_state.clone(allocator) catch null;
+            history.commitSameDocument(bc.id, url, .null, jointHandling(handling), api_state) catch {};
         } else |_| {}
     }
     // Step 12: "Set navigable's active document's URL to url."
@@ -1676,6 +1846,14 @@ fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIn
     return null;
 }
 
+/// dom.navigables: "find a navigable by target name" among the frames of
+/// `current_document`'s page - the active window of the first found, or null.
+fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+    const integration = findNavigableByName(current_document, name) orelse return null;
+    const browsing_context = integration.browsing_context orelse return null;
+    return @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return null));
+}
+
 /// dom.navigables: HTML "the rules for choosing a navigable" given
 /// `request.target` for `source_document`'s node navigable, then "navigate"
 /// the chosen one to `request.url` using `source_document`.
@@ -1686,15 +1864,18 @@ fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIn
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
     const name = request.target;
+    // "The rules for choosing a navigable" start from currentNavigable: the
+    // source document's, unless the caller names another.
+    const current = request.current_document orelse source_document;
     // Steps 4-7.
     const chosen: Chosen = blk: {
-        if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) break :blk chosenOf(source_document);
+        if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) break :blk chosenOf(current);
         if (std.ascii.eqlIgnoreCase(name, "_parent")) {
-            break :blk chosenOf(parentDocumentOf(source_document) orelse source_document);
+            break :blk chosenOf(parentDocumentOf(current) orelse current);
         }
-        if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(source_document));
+        if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(current));
         if (!std.ascii.eqlIgnoreCase(name, "_blank") and !request.noopener) {
-            if (findNavigableByName(source_document, name)) |integration| break :blk .{ .navigable = integration };
+            if (findNavigableByName(current, name)) |integration| break :blk .{ .navigable = integration };
         }
         break :blk .none;
     };
@@ -1706,18 +1887,38 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .replace => .replace,
             };
             if (request.source_not_completely_loaded and activeDocumentOf(integration) == source_document) behavior = .replace;
-            navigate(integration, request.url, .{ .source_document = source_document, .history_behavior = behavior });
+            navigate(integration, request.url, .{
+                .source_document = source_document,
+                .history_behavior = behavior,
+                .source_element = request.source_element,
+                .user_involvement = request.user_involvement,
+                .navigation_api_state = request.navigation_api_state,
+                .post_resource = request.post_resource,
+                .form_data = request.form_data,
+            });
         },
         .page => |page| {
             const window = (interfaces.Document.get_defaultView(page) catch null) orelse return;
-            const location = interfaces.Window.get_location(window) catch return;
-            interfaces.Location.call_assign(location, request.url) catch |err| {
-                log.debug("[navigation] the top-level page cannot navigate to {s}: {s}", .{ request.url, @errorName(err) });
+            // The page's Location installs its navigate.
+            if (!dom_module.top_level_navigation.isInstalled()) _ = interfaces.Window.get_location(window) catch return;
+            var behavior: dom_module.top_level_navigation.HistoryBehavior = switch (request.history_behavior) {
+                .auto => .auto,
+                .push => .push,
+                .replace => .replace,
             };
+            if (request.source_not_completely_loaded and page == source_document) behavior = .replace;
+            dom_module.top_level_navigation.navigate(window, request.url, .{
+                .history_behavior = behavior,
+                .source_document = source_document,
+                .source_element = request.source_element,
+                .user_involvement = request.user_involvement,
+                .navigation_api_state = request.navigation_api_state,
+                .form_data = if (request.post_resource != null) request.form_data else null,
+            });
         },
         // Step 8: a new top-level traversable - the window open steps.
         .none => {
-            const window = (interfaces.Document.get_defaultView(source_document) catch null) orelse return;
+            const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
             _ = interfaces.Window.call_open(
                 window,
                 webidl.Opt(runtime.USVString).passed(request.url),
@@ -1760,8 +1961,9 @@ fn followHyperlink(subject: *runtime.Instance) void {
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
 
-    // Steps 7-11.
-    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener });
+    // Steps 7-11. Not modelled, stated: user involvement (a script click is
+    // "none"; a user's would be "activation").
+    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject });
 }
 
 /// The target of the first base element in `document` that has one, or "".
@@ -1985,14 +2187,21 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
 pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
 
-    // Per HTML spec: If the iframe is not connected (not in the document),
-    // there is no content navigable, so contentWindow must return null.
+    // HTML "content window": null when the element has no content
+    // navigable. A disconnected element has none - except while its removing
+    // steps run: the frame's documents are unloaded before "destroy a child
+    // navigable", and their pagehide and unload handlers still reach the
+    // frame's window through the element, as in every browser.
+    if (internal.integration.state == .discarded) return null;
     const NodeImpl = @import("Node.zig");
     const is_connected = NodeImpl.get_isConnected(instance) catch false;
     if (!is_connected) {
+        if (!internal.integration.hasRealmContext()) return null;
+        if (navigableContext(internal.integration)) |realm| {
+            if (windowOfRealm(realm)) |window| return window;
+        }
         return null;
     }
-    if (internal.integration.state == .discarded) return null;
 
     if (!internal.integration.hasRealmContext()) {
         if (!createChildNavigable(instance)) {
@@ -2271,6 +2480,98 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     // built around its WindowProxy (engine: window_proxy_of detaches it).
     integration.retireCurrentRealm(null) catch return false;
     return attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) != null;
+}
+
+/// dom.auxiliary_navigables: HTML "definitely close" the top-level
+/// traversable whose active window is `window`; false when `window` is not a
+/// top-level traversable's.
+///
+/// "1. Let toUnload be traversable's active document's inclusive descendant
+/// navigables. 2. If the result of checking if unloading is canceled for
+/// toUnload is not "continue", then return. 3. Append the following session
+/// history traversal steps to traversable: 1. Let afterAllUnloads be an
+/// algorithm step which destroys traversable. 2. Unload a document and its
+/// descendants given traversable's active document, null, and
+/// afterAllUnloads." The traversal steps run here, in the same task.
+///
+/// "Destroy a top-level traversable", for one this machinery made
+/// (window.open(), a link's or form's target): its documents are destroyed
+/// (no other entry keeps one: there is no bfcache) and its browsing context
+/// closed; its realm lives on while its opener's page does, for script that
+/// holds the window. The host's own page is unloaded but not destroyed,
+/// stated: the host owns it, and it is the host's to take down.
+fn definitelyCloseTraversable(window: *runtime.Instance) bool {
+    const bc = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    if (bc.parent != null) return false;
+    // Null for the host's page.
+    const integration = integrationOfBrowsingContext(bc);
+    if (integration) |made| {
+        if (made.state == .discarded) return true;
+        // Script runs below: the integration stays until this is done with
+        // it.
+        made.busy += 1;
+    }
+    defer if (integration) |made| finishBusy(made);
+    if (bc.is_closed) return true;
+    const document: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse {
+        if (integration != null) bc.close();
+        return true;
+    }));
+    const allocator = std.heap.page_allocator;
+
+    // Steps 1-2: beforeunload at each document, parents first. The answer is
+    // "continue" unless a prompt was shown and the user stayed; none is
+    // shown without sticky activation.
+    {
+        var documents = collectInclusiveDescendantDocuments(document, allocator);
+        defer documents.deinit(allocator);
+        var canceled = false;
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
+        }
+        if (canceled) {
+            bc.is_closing = false;
+            return true;
+        }
+    }
+    // The handlers ran script: the traversable may have gone meanwhile.
+    if (bc.is_closed) return true;
+    if (integration) |made| if (made.state == .discarded) return true;
+
+    // Step 3: its navigation in flight ends, then "unload a document and its
+    // descendants" - pagehide and unload, children first - and, after all
+    // unloads, "destroy" it.
+    const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return true));
+    var documents = collectInclusiveDescendantDocuments(active, allocator);
+    defer documents.deinit(allocator);
+    const made = integration orelse {
+        // The host's page: unloaded, children first, and its windows'
+        // timers ended; not destroyed.
+        var i = documents.items.len;
+        while (i > 0) {
+            i -= 1;
+            const entry = documents.items[i];
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (entry.integration) |child| abandonNavigationsOf(child);
+            document_lifecycle.unload(entry.document);
+        }
+        destroyWindowDocuments(bc);
+        return true;
+    };
+    abandonNavigationsOf(made);
+    unloadDocumentAndDescendants(active, made);
+    // "Destroy a document and its descendants", children first.
+    var i = documents.items.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = documents.items[i];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        document_lifecycle.destroy(entry.document);
+    }
+    // "Remove browsingContext": closed, and its descendants with it.
+    bc.close();
+    return true;
 }
 
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
@@ -2982,6 +3283,35 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
 
     // Get the iframe's internal state and call onRemovedFromDocument
     const internal = getInternal(instance) orelse return;
+    // Deviation, stated: before "destroy a child navigable" runs, the
+    // frame's document and its descendants are unloaded - pagehide and
+    // unload fire at each, children first - as Chrome, Firefox and Safari
+    // all do when an iframe is removed. HTML's "destroy a child navigable"
+    // does not unload, and WPT's
+    // dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe
+    // removal subtests, which assert it, fail in all three browsers; pages
+    // rely on the browsers' order (fetch/api/cors/cors-keepalive's
+    // "in unload" posts to its parent from the frame's unload handler).
+    if (internal.integration.state != .discarded) {
+        if (activeDocumentOf(internal.integration)) |active| {
+            var documents = collectInclusiveDescendantDocuments(active, internal.integration.allocator);
+            defer documents.deinit(internal.integration.allocator);
+            var i = documents.items.len;
+            while (i > 0) {
+                i -= 1;
+                const entry = documents.items[i];
+                if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+                dom_module.document_lifecycle.unload(entry.document);
+            }
+        }
+    }
+    // "Destroy a child navigable" step 4: "Inform the navigation API about
+    // child navigable destruction given navigable."
+    if (internal.integration.state != .discarded) {
+        if (internal.integration.browsing_context) |bc| {
+            if (bc.getActiveWindow()) |window| dom_module.navigation_api.informAboutChildNavigableDestruction(@ptrCast(@alignCast(window)));
+        }
+    }
     // "Destroy a child navigable" destroys the documents of the frame and of
     // every frame in it: their windows' timers and animation frames end here,
     // though the contexts live on while script holds the windows.

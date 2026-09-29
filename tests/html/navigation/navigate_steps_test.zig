@@ -92,3 +92,25 @@ test "the termination nesting level nests, and never goes below zero" {
     level.leave();
     try testing.expect(!level.active());
 }
+
+// HTML "can have its URL rewritten" (7.2.5): what pushState()/replaceState()
+// may set the URL to, and when a navigate event's canIntercept is true.
+test "an http(s) document can have its path, query and fragment rewritten, not its origin" {
+    const doc = "https://a.test:8443/x/y.html?q#f";
+    try testing.expect(steps.canHaveUrlRewritten(doc, "https://a.test:8443/other?z#g"));
+    try testing.expect(steps.canHaveUrlRewritten(doc, doc));
+    try testing.expect(!steps.canHaveUrlRewritten(doc, "https://b.test:8443/x/y.html"));
+    try testing.expect(!steps.canHaveUrlRewritten(doc, "https://a.test/x/y.html"));
+    try testing.expect(!steps.canHaveUrlRewritten(doc, "http://a.test:8443/x/y.html"));
+    try testing.expect(!steps.canHaveUrlRewritten(doc, "https://u:p@a.test:8443/x/y.html"));
+}
+
+test "a file: document keeps its path; other schemes change only their fragment" {
+    try testing.expect(steps.canHaveUrlRewritten("file:///tmp/a.html", "file:///tmp/a.html?x#y"));
+    try testing.expect(!steps.canHaveUrlRewritten("file:///tmp/a.html", "file:///tmp/b.html"));
+    try testing.expect(steps.canHaveUrlRewritten("about:blank", "about:blank#x"));
+    try testing.expect(!steps.canHaveUrlRewritten("about:blank", "about:srcdoc"));
+    try testing.expect(steps.canHaveUrlRewritten("data:text/html,x", "data:text/html,x#y"));
+    try testing.expect(!steps.canHaveUrlRewritten("data:text/html,x", "data:text/html,y"));
+    try testing.expect(!steps.canHaveUrlRewritten("about:blank", "https://a.test/"));
+}

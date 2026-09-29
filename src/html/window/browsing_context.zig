@@ -307,6 +307,16 @@ pub const BrowsingContext = struct {
     /// Whether this context is closed
     is_closed: bool,
 
+    /// HTML "is closing" of the traversable this is the active browsing
+    /// context of: window.close() was accepted, and "definitely close" is
+    /// queued. `window.closed` is true from here.
+    is_closing: bool = false,
+
+    /// HTML "is created by web content" of its traversable: made by "the
+    /// rules for choosing a navigable" for a new top-level traversable -
+    /// window.open(), or a link's or form's target - not by the host.
+    is_created_by_web_content: bool = false,
+
     /// Target name for this browsing context
     /// Used for named targeting (e.g., <a target="name">)
     target_name: []const u8,
@@ -434,6 +444,9 @@ pub const BrowsingContext = struct {
         const ctx = try initTopLevel(allocator);
         ctx.opener = opener_ctx;
         ctx.is_popup = is_popup_flag;
+        // "The rules for choosing a navigable" step 8.10: "Set chosen's is
+        // created by web content to true."
+        ctx.is_created_by_web_content = true;
         return ctx;
     }
 
@@ -562,6 +575,13 @@ pub const BrowsingContext = struct {
     }
 
     /// The live browsing context with this id, if any.
+    /// Every live browsing context on this thread - a page's top-level
+    /// ones, its frames' and its popups' - including orphaned ones, which
+    /// the caller skips. BORROWED until a context is made or freed.
+    pub fn liveContexts() []const *BrowsingContext {
+        return live.items;
+    }
+
     pub fn byId(id: u64) ?*BrowsingContext {
         for (live.items) |ctx| {
             if (ctx.id == id) return ctx;
@@ -626,20 +646,16 @@ pub const BrowsingContext = struct {
         return self.parent != null;
     }
 
-    /// Check if this browsing context is script-closable (§7.1)
-    /// A browsing context is script-closable if:
-    /// - is_popup is true
-    /// - opener is non-null and familiar with this context
-    /// - session history has only one entry
+    /// HTML "script-closable" (7.2.2.1), for the navigable this is the
+    /// active browsing context of: "if it is a top-level traversable, and any
+    /// of the following are true: its is created by web content is true; or
+    /// its session history entries's size is 1." A traversable whose history
+    /// has not been recorded yet has its initial entry only.
     pub fn isScriptClosable(self: *const BrowsingContext) bool {
-        // Per spec: browsingContext is script-closable if all of the following:
-        // 1. is_popup is true
-        // 2. is familiar with opener browsing context
-        // 3. session history's size is 1
-        return self.is_popup and
-            self.opener != null and
-            !self.disowned;
-        // Note: session history size check would require navigable access
+        if (self.parent != null) return false;
+        if (self.is_created_by_web_content) return true;
+        const history = self.joint_history orelse return true;
+        return history.entryCount(self.id) <= 1;
     }
 
     /// Get the top-level browsing context

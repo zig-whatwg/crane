@@ -1043,7 +1043,9 @@ pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns true if the browsing context has been discarded.
 pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.closed or internal.browsing_context.is_closed;
+    // "Return true if this's browsing context is null or its is closing is
+    // true; otherwise false."
+    return internal.closed or internal.browsing_context.is_closed or internal.browsing_context.is_closing;
 }
 
 /// Getter for frames - Same as window
@@ -2085,29 +2087,62 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
     return error.NotImplemented;
 }
 
-/// Operation: scroll
-/// Per CSSOM View: Scrolls to a particular position.
+/// Operation: scroll(options)
+/// CSSOM View: "1. If invoked with one argument: ... Normalize non-finite
+/// values for left and top dictionary members of options, if present. Let x
+/// be the value of the left dictionary member of options, if present, or the
+/// viewport's current scroll position on the x axis otherwise. Let y be [the
+/// same for top]" - then scroll the viewport to (x, y) and return a promise
+/// that settles when the scroll completes.
+///
+/// Stated: layout is the host's, so no scrolling area bounds the position
+/// here beyond its origin, and every scroll is instant - the promise is
+/// already resolved.
 pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{ .base = .{} };
+    return scrollViewportTo(instance, opts.left, opts.top);
+}
+
+/// Operation: scroll(x, y)
+/// CSSOM View: "2. If invoked with two arguments: ... Let x and y be the
+/// arguments, respectively. Normalize non-finite values for x and y. Let the
+/// left dictionary member of options have the value x. Let the top
+/// dictionary member of options have the value y."
+pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return scrollViewportTo(instance, x, y);
+}
+
+/// Operation: scrollTo(options) - "When the scrollTo() method is invoked,
+/// the user agent must act as if the scroll() method was invoked with the
+/// same arguments."
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    return call_scroll(instance, options);
+}
+
+/// Operation: scrollTo(x, y) - as scroll(x, y).
+pub fn call_scrollTo__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return call_scroll__1(instance, x, y);
+}
+
+/// CSSOM View "normalize non-finite values": NaN and the infinities become
+/// 0.
+fn normalizeNonFinite(value: f64) f64 {
+    return if (std.math.isFinite(value)) value else 0;
+}
+
+/// scroll()'s steps from x and y (null: the current position on that axis):
+/// the viewport's scroll position becomes (x, y), and the result is a
+/// promise resolved in the current realm.
+fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return error.NotImplemented;
+    // A window whose navigable has gone has no viewport: "If there is no
+    // viewport, return a resolved Promise and abort the remaining steps."
+    if (!internal.closed) {
+        if (left) |x| internal.scroll_x = @max(0, normalizeNonFinite(x));
+        if (top) |y| internal.scroll_y = @max(0, normalizeNonFinite(y));
     }
-
-    // Apply scroll options if provided
-    if (options.wasPassed()) {
-        const opts = options.getValue();
-        if (opts.left) |left| {
-            internal.scroll_x = left;
-        }
-        if (opts.top) |top| {
-            internal.scroll_y = top;
-        }
-        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
-    }
-
-    return error.NotImplemented;
+    const realm = engine.currentRealm() orelse instance.ctx;
+    return (try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined)).take();
 }
 
 /// Operation: resizeTo
@@ -2155,29 +2190,31 @@ pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(
     return error.NotImplemented;
 }
 
-/// Operation: scrollBy
-/// Per CSSOM View: Scrolls by a given amount.
+/// Operation: scrollBy(options)
+/// CSSOM View: "2. Normalize non-finite values for the left and top
+/// dictionary members of options. 3. Add the value of scrollX to the left
+/// dictionary member. 4. Add the value of scrollY to the top dictionary
+/// member. 5. Act as if the scroll() method was invoked with options as the
+/// only argument, and return the resulting promise." An absent member is 0
+/// by then: the WebIDL default of neither is given, and adding the current
+/// position to it scrolls nowhere on that axis.
 pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{ .base = .{} };
+    return scrollViewportBy(instance, opts.left orelse 0, opts.top orelse 0);
+}
+
+/// Operation: scrollBy(x, y)
+/// CSSOM View: "1. If invoked with two arguments: ... Let x and y be the
+/// arguments, respectively. Normalize non-finite values for x and y. Let the
+/// left dictionary member of options have the value x. Let the top
+/// dictionary member of options have the value y." Then as scrollBy(options).
+pub fn call_scrollBy__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return scrollViewportBy(instance, x, y);
+}
+
+fn scrollViewportBy(instance: *runtime.Instance, dx: f64, dy: f64) !runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return error.NotImplemented;
-    }
-
-    // Apply scroll delta if provided
-    if (options.wasPassed()) {
-        const opts = options.getValue();
-        if (opts.left) |left| {
-            internal.scroll_x += left;
-        }
-        if (opts.top) |top| {
-            internal.scroll_y += top;
-        }
-        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
-    }
-
-    return error.NotImplemented;
+    return scrollViewportTo(instance, internal.scroll_x + normalizeNonFinite(dx), internal.scroll_y + normalizeNonFinite(dy));
 }
 
 /// Operation: releaseEvents
@@ -2273,23 +2310,61 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
 }
 
 /// Operation: close
-/// Per spec §7.4.6: Closes the browsing context if it's script-closable.
+/// HTML §7.2.2.1, the close() method steps.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // "1. Let thisTraversable be this's navigable. 2. If thisTraversable is
+    // not a top-level traversable, then return."
+    const bc = internal.browsing_context;
+    if (bc.parent != null or bc.is_closed) return;
+    // "3. If thisTraversable's is closing is true, then return."
+    if (bc.is_closing or internal.closed) return;
+    // Steps 4-6. Not modelled, stated: step 6's other two conditions - the
+    // incumbent global's browsing context familiar with browsingContext,
+    // and its navigable allowed by sandboxing to navigate thisTraversable.
+    if (!bc.isScriptClosable()) return;
+    // Step 6.1: "Set thisTraversable's is closing to true."
+    bc.is_closing = true;
+    internal.closed = true;
+    // Step 6.2: "Queue a task on the DOM manipulation task source to
+    // definitely close thisTraversable."
+    queueDefinitelyClose(instance);
+}
 
-    // Check if already closed
-    if (internal.closed) {
-        return;
+/// A queued "definitely close": the window whose traversable it closes, held
+/// as (address, generation).
+const CloseTask = struct {
+    window: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn run(data: ?*anyopaque) void {
+        const task: *CloseTask = @ptrCast(@alignCast(data orelse return));
+        defer task.allocator.destroy(task);
+        if (runtime.SlabAllocator.generationOf(task.window) != task.generation) return;
+        engine.runTaskInRealm(task.window.ctx, steps, task.window) catch {};
     }
 
-    // Check if the browsing context is script-closable
-    // A browsing context is script-closable if:
-    // 1. It's an auxiliary browsing context (opened via window.open)
-    // 2. Or it's a top-level traversable with a single session history entry
-    if (internal.browsing_context.isScriptClosable()) {
-        internal.browsing_context.close();
-        internal.closed = true;
+    fn steps(data: ?*anyopaque) void {
+        const window: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+        // "Definitely close" is the navigable machinery's, HTMLIFrameElement's,
+        // installed when the first iframe element is made: make one if no
+        // page has yet. Nothing sees it.
+        const auxiliary_navigables = @import("dom").auxiliary_navigables;
+        if (!auxiliary_navigables.isInstalled()) {
+            const document = interfaces.Window.get_document(window) catch return;
+            const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+        }
+        _ = auxiliary_navigables.definitelyClose(window);
     }
+};
+
+fn queueDefinitelyClose(window: *runtime.Instance) void {
+    const timer = window.ctx.getOptionalTimer() orelse return;
+    const task = window.ctx.allocator.create(CloseTask) catch return;
+    task.* = .{ .window = window, .generation = runtime.SlabAllocator.generationOf(window), .allocator = window.ctx.allocator };
+    if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
 }
 
 /// Operation: getDigitalGoodsService
@@ -2334,8 +2409,12 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // TODO: Implement stop - abort document loading
-    // This should abort any ongoing navigation
+    // HTML "stop loading" this's navigable, as far as this engine keeps one:
+    // step 2's "set the ongoing navigation for navigable to null" informs the
+    // navigation API about aborting navigation - which aborts its ongoing
+    // navigate event. Not modelled, stated: ending a frame's ongoing fetch
+    // and "abort a document" (step 3).
+    @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }
 
 /// Operation: resizeBy
@@ -2359,9 +2438,9 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 /// Spec: HTML "window open steps"
 /// https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps
 ///
-/// Deviation, stated: `_self`, `_parent` and `_top` return this window without
-/// navigating it - navigating the page a test runs in is not supported - so
-/// only a new or named navigable is navigated.
+/// `_self`, `_parent` and `_top` navigate the navigable they name (step 16.1)
+/// through dom.navigables, which for the top-level page runs what this engine
+/// can of "navigate" - a fragment navigation and the navigate event.
 pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
     if ((getInternal(this) orelse return error.InvalidStateError).closed) return null;
     // Step 1: "If the event loop's termination nesting level is nonzero,
@@ -2401,7 +2480,25 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         std.ascii.eqlIgnoreCase(target_str, "_parent") or
         std.ascii.eqlIgnoreCase(target_str, "_top"))
     {
-        return if (noopener) null else getWindowProxy(instance);
+        // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
+        // to urlRecord using sourceDocument". The navigable containers
+        // install the navigation; a page with none makes one to install it.
+        if (url_record) |u| {
+            const navigables = @import("dom").navigables;
+            if (!navigables.isInstalled()) {
+                const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
+                installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+            }
+            // The rules start from this's navigable; sourceDocument navigates.
+            const this_document = interfaces.Window.get_document(this) catch source_document;
+            navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener, .current_document = this_document });
+        }
+        // Step 18: "Return targetNavigable's active WindowProxy" - this's,
+        // its parent's or its top's.
+        if (noopener) return null;
+        if (std.ascii.eqlIgnoreCase(target_str, "_parent")) return (interfaces.Window.get_parent(this) catch null) orelse getWindowProxy(this);
+        if (std.ascii.eqlIgnoreCase(target_str, "_top")) return (interfaces.Window.get_top(this) catch null) orelse getWindowProxy(this);
+        return getWindowProxy(this);
     }
 
     // A name an open popup carries is that popup - any popup of the pages
@@ -2413,6 +2510,20 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // that name is chosen only when noopener is false - with noopener, every
     // open() makes a new one.
     if (!noopener and !std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+        // A frame of the source's page carrying the name, first - "find a
+        // navigable by target name" looks through every navigable the
+        // source is familiar with, and its page's frames are.
+        const navigables = @import("dom").navigables;
+        if (!navigables.isInstalled()) {
+            const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
+            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+        }
+        const this_document = interfaces.Window.get_document(this) catch source_document;
+        if (navigables.findByName(this_document, target_str)) |frame_window| {
+            // Step 16.1: navigate it, then (step 18) return its WindowProxy.
+            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document });
+            return frame_window;
+        }
         var root = instance;
         var hops: usize = 0;
         while (hops < 16) : (hops += 1) {
@@ -2682,12 +2793,6 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
     // TODO: Notify platform to actually move the window
 }
 
-/// Operation: scrollTo
-/// Per CSSOM View: Same as scroll() - scrolls to a particular position.
-pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
-    return call_scroll(instance, options);
-}
-
 /// Operation: prompt
 /// Per spec §8.8.3: Shows a prompt dialog.
 pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), default: webidl.Opt(runtime.DOMString)) anyerror!?runtime.DOMString {
@@ -2855,39 +2960,21 @@ const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
 const clock = @import("clock");
 
-/// Element types that participate in named access via the "name" attribute.
-/// Per HTML spec §7.4 "Named access on the Window object":
-/// - embed, form, img, object: name attribute exposes the element
-/// - iframe, frame, object: name attribute exposes the nested browsing context (if any)
+/// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
+/// "embed, form, img, or object elements that have a name content attribute
+/// whose value is name". An iframe's or frame's name is its navigable's target
+/// name instead - a document-tree child navigable, which getNamedProperty
+/// looks at first - and every HTML element is a named object by its id.
 const named_element_types = [_][]const u8{
-    "a",
     "embed",
     "form",
     "img",
     "object",
 };
 
-/// Element types whose name attribute exposes a browsing context
-const browsing_context_element_types = [_][]const u8{
-    "iframe",
-    "frame",
-    "object",
-};
-
-/// Check if an element type uses the name attribute for named property access
+/// Whether an element's name attribute makes it a named object.
 fn isNamedElementType(local_name: []const u8) bool {
     for (named_element_types) |t| {
-        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
-    }
-    for (browsing_context_element_types) |t| {
-        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
-    }
-    return false;
-}
-
-/// Check if the element should return a browsing context (contentWindow) for named access
-fn shouldReturnBrowsingContext(local_name: []const u8) bool {
-    for (browsing_context_element_types) |t| {
         if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
     }
     return false;
@@ -2918,31 +3005,19 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 const local_name = elem_internal.local_name.asSlice();
 
-                // Check 1: Does element have id matching target_name?
+                // An HTML element whose id is the name is a named object -
+                // the element itself, an iframe as much as any other: only a
+                // navigable's target name makes the property a WindowProxy.
                 const elem_id = elem_internal.id.asSlice();
                 if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
-                    // For iframe/frame, return contentWindow
-                    if (shouldReturnBrowsingContext(local_name)) {
-                        if (getIframeContentWindow(c)) |window_val| {
-                            return window_val;
-                        }
-                    }
-                    // Return the element itself
                     return runtime.JSValue.fromInstance(c);
                 }
 
-                // Check 2: Does element have name attribute matching target_name?
-                // Only certain element types participate in named property access via name attr
+                // So is an embed, form, img or object element whose name
+                // attribute is the name.
                 if (isNamedElementType(local_name)) {
                     if (getElementName(elem_internal)) |element_name| {
                         if (std.mem.eql(u8, element_name, target_name)) {
-                            // For iframe/frame/object, return contentWindow
-                            if (shouldReturnBrowsingContext(local_name)) {
-                                if (getIframeContentWindow(c)) |window_val| {
-                                    return window_val;
-                                }
-                            }
-                            // Return the element itself
                             return runtime.JSValue.fromInstance(c);
                         }
                     }
@@ -2956,19 +3031,6 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
         }
 
         child = NodeImpl.getNextSibling(c);
-    }
-    return null;
-}
-
-/// Get the contentWindow from an iframe element
-fn getIframeContentWindow(iframe_element: *runtime.Instance) ?runtime.JSValue {
-    // Try to get HTMLIFrameElement's contentWindow via the interface
-    // This handles all the lazy initialization and V8 context creation
-    const HTMLIFrameElement = interfaces.HTMLIFrameElement;
-    const window_proxy = HTMLIFrameElement.get_contentWindow(iframe_element) catch return null;
-    if (window_proxy) |wp| {
-        // WindowProxy is defined as ?*const anyopaque, convert to JSValue
-        return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@constCast(wp)));
     }
     return null;
 }

@@ -13,7 +13,10 @@
 //!
 //! lint-impls: hook for HTMLIFrameElement
 
+const std = @import("std");
 const runtime = @import("runtime");
+const joint_history = @import("html_core").navigation.joint_history;
+const navigation_api = @import("navigation_api.zig");
 
 /// `NavigationHistoryBehavior`.
 pub const HistoryBehavior = enum { auto, push, replace };
@@ -22,6 +25,12 @@ pub const HistoryBehavior = enum { auto, push, replace };
 pub const Request = struct {
     /// The target: "", "_self", "_parent", "_top", "_blank", or a name.
     target: []const u8,
+    /// The document whose node navigable "the rules for choosing a
+    /// navigable" start from, when it is not the source document's: the
+    /// window open steps choose from `this`'s navigable while the entry
+    /// global's document navigates (`frame.contentWindow.open(url, "_self")`
+    /// called by the page navigates the frame).
+    current_document: ?*runtime.Instance = null,
     /// The URL, parsed and serialized.
     url: []const u8,
     noopener: bool = false,
@@ -32,6 +41,23 @@ pub const Request = struct {
     /// seen the load finish. The navigation replaces if the form document
     /// is the chosen navigable's active document.
     source_not_completely_loaded: bool = false,
+    /// The element that navigates: a hyperlink, or a form's submitter.
+    source_element: ?*runtime.Instance = null,
+    user_involvement: navigation_api.UserInvolvement = .none,
+    /// navigate()'s navigation API state. BORROWED.
+    navigation_api_state: ?joint_history.SerializedState = null,
+    /// A form's submission "as entity body": the navigation's document
+    /// resource. BORROWED for the call.
+    post_resource: ?PostResource = null,
+    /// With it, the form's entry list as a FormData, for the navigate event.
+    /// BORROWED for the call.
+    form_data: ?*runtime.Instance = null,
+};
+
+/// HTML "POST resource": a request body and its request content-type.
+pub const PostResource = struct {
+    body: []const u8,
+    content_type: []const u8,
 };
 
 /// What the navigable container supplies.
@@ -39,6 +65,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void,
+    find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
 
 threadlocal var implementation: ?Implementation = null;
@@ -79,6 +106,15 @@ pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []con
     impl.traverse_navigable(browsing_context, entry_id, url, resource);
 }
 
+/// HTML "find a navigable by target name" among the frames of
+/// `current_document`'s page: the active window of the first whose target
+/// name is `name`, or null. (The page's popups are the window open steps'
+/// own to find.)
+pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+    const impl = implementation orelse return null;
+    return impl.find_by_name(current_document, name);
+}
+
 test "without an installed implementation nothing navigates" {
     const saved = implementation;
     defer implementation = saved;
@@ -88,4 +124,5 @@ test "without an installed implementation nothing navigates" {
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null);
+    try std.testing.expect(findByName(&element, "name") == null);
 }

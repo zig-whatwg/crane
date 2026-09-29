@@ -1,24 +1,20 @@
 //! Implementation for NavigateEvent interface
 //!
-//! HTML Standard §7.2.6.5 - The NavigateEvent interface
-//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigateevent
+//! HTML Standard §7.2.6.10.1 - The NavigateEvent interface
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigateevent-interface
 //!
-//! NavigateEvent is fired at the Navigation object when a navigation is about
-//! to occur. The event allows interception for SPA-style routing via intercept().
+//! The navigate event the navigation API fires before a navigation. Its
+//! attributes are what it was initialized to - by the constructor's
+//! dictionary, or by the navigation API when it fires one ("fire a
+//! push/replace/reload navigate event", "fire a traverse navigate event").
 //!
-//! ## Key Features
-//!
-//! - **intercept()**: Converts navigation to same-document, runs handler
-//! - **scroll()**: Manually perform scroll restoration after intercept
-//! - **signal**: AbortSignal for tracking navigation lifecycle
-//!
-//! ## Event Flow
-//!
-//! 1. Navigation starts (link click, API call, etc.)
-//! 2. NavigateEvent is created and fired
-//! 3. Handlers may call intercept() to take over navigation
-//! 4. If intercepted, handler promise is awaited
-//! 5. On success: navigatesuccess event; on failure: navigateerror event
+//! What intercept() and scroll() record - the event's interception state,
+//! its handler lists, its focus reset and scroll behaviors - is state the
+//! navigation that fired the event reads and settles, so it is kept by the
+//! Navigation object (dom.navigation_api): these methods perform the checks
+//! that are the event's own (shared checks, canIntercept, the dispatch flag,
+//! cancelable) and hand the rest to it. A constructed event is not trusted,
+//! so shared checks refuse it before anything reaches the navigation API.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -29,8 +25,13 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const clock = @import("clock");
+const dom = @import("dom");
 const NavigateEvent = interfaces.NavigateEvent;
+const EventImpl = @import("Event.zig");
+const engine = @import("engine");
+const same_object = @import("same_object.zig");
+const navigation_entries = @import("navigation_entries.zig");
 
 pub const State = NavigateEvent.State;
 
@@ -40,404 +41,253 @@ pub const ImplError = error{
     SecurityError,
 };
 
-/// Internal state for NavigateEvent implementation
+/// The objects this event's attributes name are kept alive for as long as
+/// the event is: script can hold the event after its navigation has let
+/// them go (same_object.zig).
 pub const InternalState = struct {
-    /// Allocator for this event's resources
     allocator: Allocator,
+    destination_pin: same_object.Pin = .{},
+    signal_pin: same_object.Pin = .{},
+    form_data_pin: same_object.Pin = .{},
+    source_element_pin: same_object.Pin = .{},
+    /// `info`: undefined when null.
+    info: ?engine.Owned = null,
 
-    /// The type of navigation
-    navigation_type: enums.NavigationType = ._push_,
-
-    /// The destination entry (NavigationDestination)
-    destination: ?*runtime.Instance = null,
-
-    /// Whether this navigation can be intercepted
-    /// HTML Standard §7.2.6.5: Only same-origin, non-cross-document navigations can be intercepted
-    can_intercept: bool = false,
-
-    /// Whether this navigation was initiated by user action
-    user_initiated: bool = false,
-
-    /// Whether this is a hash change (fragment-only navigation)
-    hash_change: bool = false,
-
-    /// The AbortSignal for this navigation
-    signal: ?*runtime.Instance = null,
-
-    /// FormData for form submissions, null otherwise
-    form_data: ?*runtime.Instance = null,
-
-    /// Download request filename if navigation is a download
-    download_request: ?[]const u8 = null,
-
-    /// User-provided info passed to navigate() call
-    info: ?*const anyopaque = null,
-
-    /// Whether the UA is performing a visual transition
-    has_ua_visual_transition: bool = false,
-
-    /// The element that initiated the navigation (e.g., clicked link)
-    source_element: ?*runtime.Instance = null,
-
-    // ========================================================================
-    // Intercept State
-    // ========================================================================
-
-    /// Whether intercept() was called
-    intercepted: bool = false,
-
-    /// The intercept handler (callback to run)
-    intercept_handler: ?*const anyopaque = null,
-
-    /// Focus reset behavior after intercept
-    focus_reset: FocusResetMode = .after_transition,
-
-    /// Scroll behavior after intercept
-    scroll_behavior: ScrollMode = .after_transition,
-
-    /// Whether scroll() was manually called
-    scroll_called: bool = false,
-
-    /// Whether the dispatch phase is complete
-    dispatch_complete: bool = false,
-
-    pub const FocusResetMode = enum {
-        after_transition,
-        manual,
-    };
-
-    pub const ScrollMode = enum {
-        after_transition,
-        manual,
-    };
-
-    pub fn init(allocator: Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        if (self.download_request) |req| {
-            self.allocator.free(req);
-        }
+    fn release(self: *InternalState) void {
+        self.destination_pin.release();
+        self.signal_pin.release();
+        self.form_data_pin.release();
+        self.source_element_pin.release();
+        if (self.info) |value| value.release();
+        self.info = null;
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
-/// Initialize NavigateEvent instance
+/// Initialize NavigateEvent instance: the Event part is set by the
+/// constructor.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Initialize internal state
-    const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
-
-    return instance;
+    dom.navigation_objects.installEvents(.{ .set_navigation_type = &setNavigationType, .set_info = &setInfo });
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize NavigateEvent instance
+/// Deinitialize NavigateEvent instance: its pins, its copied strings and
+/// values, then the Event part.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
-
-        // Return the block itself, not just what it points to.
-        // `internal.deinit()` releases the strings and lists the state
-        // OWNS; without this the state struct stays allocated for the
-        // life of the process - measured at 208 bytes per discarded
-        // element across the impls still doing it this way.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        internal.release();
+        internal.allocator.destroy(internal);
         state.own._internal = null;
+        if (state.own.downloadRequest) |*request| request.deinit(instance.ctx.allocator);
+        state.own.downloadRequest = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    interfaces.Event.deinit(instance);
 }
 
-/// Constructor implementation
-/// HTML Standard §7.2.6.5: NavigateEvent constructor
+/// Constructor: DOM "inner event creation steps" for the Event part, then
+/// each attribute from the dictionary.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigateEventInit) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &NavigateEvent.vtable, ctx);
     errdefer deinit(instance);
+    const state = instance.getState(State);
+    const init_dict = eventInitDict;
+    // What deinit reads, should anything below fail.
+    state.base.own.type = runtime.DOMString.initEmpty();
+    state.own._internal = null;
+    state.own.downloadRequest = null;
+    // `info` is this event's internal hold (get_info); the generated field
+    // is never read.
+    state.own.info = runtime.JSValue.jsUndefined;
 
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    state.base.own.type = try @"type".clone(ctx.allocator);
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    state.base.own.isTrusted = false;
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = 0; // NONE
+    state.base.own.bubbles = init_dict.base.bubbles orelse false;
+    state.base.own.cancelable = init_dict.base.cancelable orelse false;
+    state.base.own.composed = init_dict.base.composed orelse false;
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
 
-    // Initialize from event init dictionary
-    _ = @"type"; // Event type (always "navigate")
+    const internal = try ctx.allocator.create(InternalState);
+    internal.* = .{ .allocator = ctx.allocator };
+    state.own._internal = internal;
 
-    // Set navigation type from init dict
-    if (eventInitDict.navigationType) |nav_type_ptr| {
-        // In full implementation, would convert from anyopaque to NavigationType
-        _ = nav_type_ptr;
-    }
+    state.own.navigationType = init_dict.navigationType orelse ._push_;
+    state.own.destination = init_dict.destination;
+    internal.destination_pin.hold(init_dict.destination);
+    state.own.canIntercept = init_dict.canIntercept orelse false;
+    state.own.userInitiated = init_dict.userInitiated orelse false;
+    state.own.hashChange = init_dict.hashChange orelse false;
+    state.own.signal = init_dict.signal;
+    internal.signal_pin.hold(init_dict.signal);
+    state.own.formData = init_dict.formData;
+    if (init_dict.formData) |form_data| internal.form_data_pin.hold(form_data);
+    if (init_dict.downloadRequest) |request| state.own.downloadRequest = try request.clone(ctx.allocator);
+    // `info` defaults to undefined: an absent member, and one present as
+    // undefined, are the same for `any`.
+    if (init_dict.info) |value| internal.info = try hold(ctx, value);
+    state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
+    state.own.sourceElement = init_dict.sourceElement;
+    if (init_dict.sourceElement) |element| internal.source_element_pin.hold(element);
 
-    // Set destination (required)
-    // Note: destination is *const anyopaque in the dict, would need conversion
-    _ = eventInitDict.destination;
-
-    // Set optional boolean flags
-    internal.can_intercept = eventInitDict.canIntercept orelse false;
-    internal.user_initiated = eventInitDict.userInitiated orelse false;
-    internal.hash_change = eventInitDict.hashChange orelse false;
-    internal.has_ua_visual_transition = eventInitDict.hasUAVisualTransition orelse false;
-
-    // Set signal (required)
-    // Note: signal is *const anyopaque in the dict
-    _ = eventInitDict.signal;
-
-    // Set optional properties
-    if (eventInitDict.formData) |form_data_ptr| {
-        _ = form_data_ptr;
-        // internal.form_data = ...
-    }
-
-    if (eventInitDict.downloadRequest) |download| {
-        internal.download_request = try ctx.allocator.dupe(u8, download.asSlice());
-    }
-
-    // Convert JSValue to anyopaque if provided
-    if (eventInitDict.info) |info_value| {
-        internal.info = info_value.toAnyopaque();
-    } else {
-        internal.info = null;
-    }
-
-    if (eventInitDict.sourceElement) |source_ptr| {
-        _ = source_ptr;
-        // internal.source_element = ...
-    }
-
+    // The inherited Event internal state and its initialized flag: without
+    // them dispatchEvent throws InvalidStateError.
+    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
     return instance;
 }
 
 // ============================================================================
-// Property Getters
+// Attributes: "must return the values they are initialized to"
 // ============================================================================
 
-/// Getter for navigationType
-/// HTML Standard §7.2.6.5: Returns the type of navigation
 pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.NavigationType {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.navigation_type;
+    return instance.getState(State).own.navigationType;
 }
 
-/// Getter for destination
-/// HTML Standard §7.2.6.5: Returns the NavigationDestination
 pub fn get_destination(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.destination orelse error.InvalidStateError;
+    return instance.getState(State).own.destination;
 }
 
-/// Getter for canIntercept
-/// HTML Standard §7.2.6.5: Returns true if intercept() can be called
 pub fn get_canIntercept(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.can_intercept;
+    return instance.getState(State).own.canIntercept;
 }
 
-/// Getter for userInitiated
-/// HTML Standard §7.2.6.5: Returns true if navigation was user-initiated
 pub fn get_userInitiated(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.user_initiated;
+    return instance.getState(State).own.userInitiated;
 }
 
-/// Getter for hashChange
-/// HTML Standard §7.2.6.5: Returns true if this is a fragment navigation
 pub fn get_hashChange(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.hash_change;
+    return instance.getState(State).own.hashChange;
 }
 
-/// Getter for signal
-/// HTML Standard §7.2.6.5: Returns the AbortSignal for this navigation
 pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.signal orelse error.InvalidStateError;
+    return instance.getState(State).own.signal;
 }
 
-/// Getter for formData
-/// HTML Standard §7.2.6.5: Returns FormData for form submissions
 pub fn get_formData(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.form_data;
+    return instance.getState(State).own.formData;
 }
 
-/// Getter for downloadRequest
-/// HTML Standard §7.2.6.5: Returns download filename or null
+/// A copy: the binding frees what a string getter returns.
 pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.download_request) |req| {
-        return runtime.DOMString.initInterned(req);
-    }
-    return null;
+    const request = instance.getState(State).own.downloadRequest orelse return null;
+    return try request.clone(instance.ctx.allocator);
 }
 
-/// Getter for info
-/// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
 pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // info is a stored V8 handle from navigation API - use fromHandleNonOwning
-    if (internal.info) |info_ptr| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(info_ptr));
-    }
+    const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
+    if (internal.info) |value| return value.borrow();
     return runtime.JSValue.jsUndefined;
 }
 
-/// Getter for hasUAVisualTransition
-/// HTML Standard §7.2.6.5: Returns true if UA is doing a visual transition
+/// `value`, kept: a platform object in its relevant realm, anything else in
+/// `realm`.
+fn hold(realm: runtime.Context, value: runtime.JSValue) !engine.Owned {
+    return engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
+}
+
 pub fn get_hasUAVisualTransition(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.has_ua_visual_transition;
+    return instance.getState(State).own.hasUAVisualTransition;
 }
 
-/// Getter for sourceElement
-/// HTML Standard §7.2.6.5: Returns the element that initiated navigation
 pub fn get_sourceElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.source_element;
+    return instance.getState(State).own.sourceElement;
 }
 
 // ============================================================================
-// Navigation Operations
+// Methods
 // ============================================================================
 
-/// Operation: intercept(options)
-/// HTML Standard §7.2.6.6: Intercept the navigation for SPA-style handling
-///
-/// When intercept() is called:
-/// 1. The navigation becomes same-document
-/// 2. The handler function is run
-/// 3. Scroll position is restored after handler completes (unless manual)
-/// 4. Focus is reset after handler completes (unless manual)
+/// intercept(options): HTML 7.2.6.10.1. Steps 1-3 and 4.1 are the event's;
+/// the rest records into the navigation that fired it.
 pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationInterceptOptions)) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if intercept is allowed
-    if (!internal.can_intercept) {
-        return error.SecurityError;
-    }
-
-    // Check if dispatch is already complete
-    if (internal.dispatch_complete) {
-        return error.InvalidStateError;
-    }
-
-    // Mark as intercepted
-    internal.intercepted = true;
-
-    // Process options - webidl.Opt wraps with was_passed + value
-    if (options.was_passed) {
-        const opts = options.value;
-
-        // Store handler
-        internal.intercept_handler = opts.handler;
-
-        // Process focusReset option
-        if (opts.focusReset) |focus_ptr| {
-            // In full implementation, would parse "after-transition" or "manual"
-            _ = focus_ptr;
-        }
-
-        // Process scroll option
-        if (opts.scroll) |scroll_ptr| {
-            // In full implementation, would parse "after-transition" or "manual"
-            _ = scroll_ptr;
-        }
-    }
+    // Step 1: "Perform shared checks given this."
+    try sharedChecks(instance);
+    const own = instance.getState(State).own;
+    // Step 2: "If this's canIntercept attribute was initialized to false,
+    // then throw a "SecurityError" DOMException."
+    if (!own.canIntercept) return error.SecurityError;
+    // Step 3: "If this's dispatch flag is unset, then throw an
+    // "InvalidStateError" DOMException."
+    if (!EventImpl.getDispatchFlag(instance)) return error.InvalidStateError;
+    const opts: dictionaries.NavigationInterceptOptions = if (options.was_passed) options.value else .{};
+    // Step 4.1: "If options["precommitHandler"] exists ... if this's
+    // cancelable attribute is initialized to false, then throw an
+    // "InvalidStateError" DOMException."
+    if (opts.precommitHandler != null and !(try EventImpl.get_cancelable(instance))) return error.InvalidStateError;
+    // Steps 4.2-9.
+    try dom.navigation_api.intercept(instance, .{
+        .precommit_handler = if (opts.precommitHandler) |h| @ptrCast(h) else null,
+        .handler = if (opts.handler) |h| @ptrCast(h) else null,
+        .focus_reset = if (opts.focusReset) |f| switch (f) {
+            ._after_transition_ => .after_transition,
+            ._manual_ => .manual,
+        } else null,
+        .scroll = if (opts.scroll) |s| switch (s) {
+            ._after_transition_ => .after_transition,
+            ._manual_ => .manual,
+        } else null,
+    });
 }
 
-/// Operation: scroll()
-/// HTML Standard §7.2.6.6: Manually perform scroll restoration
-///
-/// This should only be called when scroll was set to "manual" in intercept().
-/// It triggers the scroll restoration that would normally happen automatically.
+/// scroll(): "1. Perform shared checks given this." Steps 2-3 read the
+/// interception state the navigation keeps.
 pub fn call_scroll(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try sharedChecks(instance);
+    try dom.navigation_api.scroll(instance);
+}
 
-    // Check if intercept was called
-    if (!internal.intercepted) {
-        return error.InvalidStateError;
-    }
+/// HTML "perform shared checks" for a NavigateEvent.
+pub fn sharedChecks(instance: *runtime.Instance) !void {
+    // Step 1: "If event's relevant global object's associated Document is
+    // not fully active, then throw an "InvalidStateError" DOMException."
+    if (!relevantDocumentFullyActive(instance)) return error.InvalidStateError;
+    // Step 2: "If event's isTrusted attribute was initialized to false, then
+    // throw a "SecurityError" DOMException."
+    if (!(try EventImpl.get_isTrusted(instance))) return error.SecurityError;
+    // Step 3: "If event's canceled flag is set, then throw an
+    // "InvalidStateError" DOMException."
+    if (try EventImpl.get_defaultPrevented(instance)) return error.InvalidStateError;
+}
 
-    // Check if scroll was already called
-    if (internal.scroll_called) {
-        return error.InvalidStateError;
-    }
-
-    // Mark scroll as called
-    internal.scroll_called = true;
-
-    // Perform scroll restoration
-    // In full implementation, this would:
-    // 1. Get the destination entry's scroll position
-    // 2. Restore scroll position to document
-    // 3. Handle fragment scrolling if applicable
+fn relevantDocumentFullyActive(instance: *runtime.Instance) bool {
+    const record = instance.ctx.getRealm() orelse return false;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    return navigation_entries.scopeOf(window, runtime.SlabAllocator.generationOf(window)) != null;
 }
 
 // ============================================================================
-// Internal Helper Functions
+// dom.navigation_objects: a precommit redirect() changes the event
 // ============================================================================
 
-/// Create a NavigateEvent for a navigation
-/// Called by the Navigation implementation when navigation starts
-pub fn createForNavigation(
-    allocator: Allocator,
-    ctx: runtime.Context,
-    navigation_type: enums.NavigationType,
-    destination: *runtime.Instance,
-    options: CreateOptions,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &NavigateEvent.vtable, ctx);
-    errdefer deinit(instance);
+fn setNavigationType(instance: *runtime.Instance, kind: dom.navigation_api.Kind) void {
+    const state = instance.stateAs(State) orelse return;
+    state.own.navigationType = switch (kind) {
+        .push => ._push_,
+        .replace => ._replace_,
+        .reload => ._reload_,
+        .traverse => ._traverse_,
+    };
+}
 
+fn setInfo(instance: *runtime.Instance, info: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    internal.navigation_type = navigation_type;
-    internal.destination = destination;
-    internal.can_intercept = options.can_intercept;
-    internal.user_initiated = options.user_initiated;
-    internal.hash_change = options.hash_change;
-    internal.info = options.info;
-
-    return instance;
-}
-
-/// Options for creating a NavigateEvent
-pub const CreateOptions = struct {
-    can_intercept: bool = true,
-    user_initiated: bool = false,
-    hash_change: bool = false,
-    info: ?*const anyopaque = null,
-    form_data: ?*runtime.Instance = null,
-    download_request: ?[]const u8 = null,
-    source_element: ?*runtime.Instance = null,
-};
-
-/// Check if this event was intercepted
-pub fn wasIntercepted(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.intercepted;
-}
-
-/// Mark dispatch as complete
-/// Called after the event has finished dispatching
-pub fn markDispatchComplete(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.dispatch_complete = true;
+    const kept = try hold(instance.ctx, info);
+    if (internal.info) |old| old.release();
+    internal.info = kept;
 }

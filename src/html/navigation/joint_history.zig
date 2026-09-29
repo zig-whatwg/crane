@@ -164,6 +164,16 @@ pub const JointHistory = struct {
         return self.entryAt(navigable, self.current_step);
     }
 
+    /// The size of `navigable`'s session history entries - its own, not the
+    /// steps its descendants add to the joint history.
+    pub fn entryCount(self: *const JointHistory, navigable: u64) usize {
+        var count: usize = 0;
+        for (self.entries.items) |entry| {
+            if (entry.navigable == navigable) count += 1;
+        }
+        return count;
+    }
+
     pub fn hasNavigable(self: *const JointHistory, navigable: u64) bool {
         for (self.entries.items) |entry| {
             if (entry.navigable == navigable) return true;
@@ -424,6 +434,15 @@ pub const JointHistory = struct {
     pub fn entryById(self: *JointHistory, id: u64) ?*Entry {
         for (self.entries.items) |*entry| {
             if (entry.id == id) return entry;
+        }
+        return null;
+    }
+
+    /// An entry of `navigable` whose navigation API key is `key`, if the
+    /// history still has one.
+    pub fn entryByKey(self: *JointHistory, navigable: u64, key: *const [36]u8) ?*Entry {
+        for (self.entries.items) |*entry| {
+            if (entry.navigable == navigable and std.mem.eql(u8, &entry.api_key, key)) return entry;
         }
         return null;
     }

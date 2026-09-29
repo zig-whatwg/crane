@@ -53,6 +53,10 @@ pub const RenderingCallbacks = core.RenderingCallbacks;
 // Parser (§13)
 pub const parser = core.parser;
 
+// Navigation and session history (§7.4): the document a response makes
+// ("load a document"), the steps of "navigate".
+pub const navigation = core.navigation;
+
 // Re-export commonly used parser types
 pub const Tokenizer = core.Tokenizer;
 pub const TreeBuilder = core.TreeBuilder;
