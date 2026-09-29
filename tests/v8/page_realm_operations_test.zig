@@ -1792,12 +1792,13 @@ test "protocol: engine code that reads a kept value through its getter releases 
     // A getter's result is a hold of the caller's own (retainValue().take()),
     // for engine code that calls the getter through `interfaces` as much as
     // for the binding. The special error event handling reads
-    // ErrorEvent.error (EventTarget's ErrorEventArguments), and fetch() with
-    // an aborted signal reads AbortSignal.reason: each must release what it
-    // was given, or every onerror call and every aborted fetch leaks a
-    // handle. The controls take the same paths with a primitive - which
+    // ErrorEvent.error for onerror's fifth argument (EventTarget's
+    // ErrorEventArguments) and must release it, or every onerror call leaks a
+    // handle. The control takes the same path with a primitive error, which
     // retainValue holds by value, with no handle - so only the object's hold
-    // is left to count.
+    // is left to count. (fetch() and pipeTo read AbortSignal.reason the same
+    // way; this realm's global fails fetch's brand check, and a stream keeps
+    // its stored error, so gc_bench measures those.)
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w);
@@ -1807,19 +1808,9 @@ test "protocol: engine code that reads a kept value through its getter releases 
         \\globalThis.object = { o: 1 };
         \\globalThis.errorEvent = new ErrorEvent('error', { error: object });
         \\globalThis.primitiveEvent = new ErrorEvent('error', { error: 1 });
-        \\globalThis.aborted = AbortSignal.abort(object);
-        \\globalThis.abortedPrimitive = AbortSignal.abort(1);
-        \\globalThis.rejections = [];
-        \\globalThis.fetchAborted = (signal) =>
-        \\  fetch('https://example.test/x', { signal }).catch((reason) => { rejections.push(reason); });
         \\dispatchEvent(errorEvent); dispatchEvent(primitiveEvent);
-        \\fetchAborted(aborted); fetchAborted(abortedPrimitive);
-        \\'set'
-    , "set");
-    // The paths were taken: onerror had the error, and fetch rejected with
-    // the signal's reason.
-    try expectEval(w, "[seen.length, seen[0] === object ? 'object' : String(seen[0]), String(seen[1])].join()", "2,object,1");
-    try expectEval(w, "[rejections.length, rejections[0] === object ? 'object' : String(rejections[0]), String(rejections[1])].join()", "2,object,1");
+        \\[seen.length, seen[0] === object ? 'object' : String(seen[0]), String(seen[1])].join()
+    , "2,object,1");
 
     const isolate = isolate_once.?;
     const handle_bytes = blk: {
@@ -1831,34 +1822,22 @@ test "protocol: engine code that reads a kept value through its getter releases 
     };
     try std.testing.expect(handle_bytes > 0);
 
+    // 64 onerror calls a run; a leak is a handle a call. Both runs are warmed
+    // first, then each is measured on its own.
     const rounds = 64;
-    const Pair = struct { name: []const u8, control: []const u8, read: []const u8 };
-    const pairs = [_]Pair{
-        .{
-            .name = "onerror's error",
-            .control = "for (let n = 0; n < 64; n++) dispatchEvent(primitiveEvent); 'control'",
-            .read = "for (let n = 0; n < 64; n++) dispatchEvent(errorEvent); 'read'",
-        },
-        .{
-            .name = "an aborted fetch's reason",
-            .control = "for (let n = 0; n < 64; n++) fetchAborted(abortedPrimitive); 'control'",
-            .read = "for (let n = 0; n < 64; n++) fetchAborted(aborted); 'read'",
-        },
-    };
-    for (pairs) |pair| {
-        // Warm both paths first; each is then measured over its own run.
-        try expectEval(w, pair.control, "control");
-        try expectEval(w, pair.read, "read");
-        var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-        try expectEval(w, pair.control, "control");
-        const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
-        start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-        try expectEval(w, pair.read, "read");
-        const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
-        if (read -| control >= handle_bytes * rounds / 4) {
-            std.debug.print("{s}: {d} rounds left {d} bytes of global handles; the control {d} ({d} bytes a handle)\n", .{ pair.name, rounds, read, control, handle_bytes });
-            return error.HandlesLeaked;
-        }
+    const control_run = "seen.length = 0; for (let n = 0; n < 64; n++) dispatchEvent(primitiveEvent); String(seen.length)";
+    const read_run = "seen.length = 0; for (let n = 0; n < 64; n++) dispatchEvent(errorEvent); String(seen.length)";
+    try expectEval(w, control_run, "64");
+    try expectEval(w, read_run, "64");
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, control_run, "64");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, read_run, "64");
+    const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (read -| control >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} onerror calls with an object error left {d} bytes of global handles; with a number, {d} ({d} bytes a handle)\n", .{ rounds, read, control, handle_bytes });
+        return error.HandlesLeaked;
     }
 }
 
