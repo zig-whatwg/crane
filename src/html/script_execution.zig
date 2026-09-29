@@ -2420,7 +2420,7 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
     // Step 2: "Set request's client to settings object" - the element's node
     // document's relevant settings object: Fetch reads what "populate request
     // from client" puts on the request.
-    if (document) |doc| script_request.populateRequestFromClient(request, doc.ctx);
+    if (document) |doc| script_request.populateRequestFromClient(request, doc.ctx) catch return result;
     // Step 3: "Set request's initiator type to "script"."
     request.initiator_type = .script;
 

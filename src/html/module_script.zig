@@ -385,7 +385,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
         .css => .style,
     };
     request.initiator_type = .script;
-    script_request.populateRequestFromClient(request, env.context_instance.ctx);
+    script_request.populateRequestFromClient(request, env.context_instance.ctx) catch return null;
 
     // Step 13: fetch. A failure - transport, CORS, or main fetch step 19's MIME
     // type / nosniff block, which keys on the destination - comes back
