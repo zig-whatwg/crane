@@ -43,7 +43,6 @@ pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
 
 /// Import webidl for Opt type checking
 const webidl = @import("webidl");
-const host = @import("host");
 
 /// Number of internal fields required for wrapped objects
 /// Slot 0: Zig instance pointer
@@ -4277,12 +4276,6 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
                 defer freeConvertedArg(Param2Type, allocator, arg2);
-
-                // Debug for Worker
-                if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                    const stderr = std.Io.File.stderr();
-                    stderr.writeStreamingAll(host.io(), "[CTOR_CALLBACK] Worker args converted, calling Interface.call_constructor\n") catch {};
-                }
 
                 return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
