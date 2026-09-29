@@ -48,6 +48,8 @@ const clock = @import("clock");
 const scripted_parser = html_module.scripted_parser;
 const document_internals = dom_module.document_internals;
 const history_documents = @import("history_documents.zig");
+const basic_parser = @import("basic_parser");
+const url_origin = @import("url").origin;
 
 pub const State = HTMLIFrameElement.State;
 
@@ -1323,7 +1325,10 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // before any of the document's script: history.length counts it, and a
     // location.reload() from an inline script reloads it, not the entry the
     // navigation left.
-    const document_state = recordInHistory(integration, record, if (response.final_url.len > 0) response.final_url else record.url);
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch null;
+    defer if (origin) |o| integration.allocator.free(o);
+    const document_state = recordInHistory(integration, record, final_url, origin orelse "null");
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
@@ -1337,20 +1342,19 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
 /// entry, pushed or replacing the navigable's current one in the
 /// traversable's history - or, for a traversal, the entry it repopulates -
 /// recorded as the document is about to be made. Its URL is `url` (the
-/// response's), its origin the new document's window's (made, with the response's
-/// origin, before this runs). Returns the entry's document state, which
-/// `attachDocument` gives the document once it exists; null when nothing
-/// was recorded.
-fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8) ?u64 {
+/// response's) and its document state's origin `origin` (serialized): the
+/// navigation params' origin, which exists before the document does. The
+/// navigable's active window is still the one the navigation leaves, so its
+/// origin is not the new document's. Returns the entry's document state,
+/// which `attachDocument` gives the document once it exists; null when
+/// nothing was recorded.
+fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8, origin: []const u8) ?u64 {
     const bc = integration.browsing_context orelse return null;
     const history = bc.jointHistory() catch return null;
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
         return entry.document_state;
     }
-    const window: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
-    const origin = originOfWindow(window, integration.allocator) catch return null;
-    defer integration.allocator.free(origin);
     history.commitDocument(bc.id, url, null, origin, jointHandling(record.history_handling)) catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
@@ -1367,6 +1371,41 @@ fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
     const bc = integration.browsing_context orelse return;
     const history = bc.jointHistory() catch return;
     history.setDocumentOfState(state, bc.getActiveDocument());
+}
+
+/// HTML "determining the origin" for the document a navigation to `url`
+/// makes - the navigation params' origin - serialized and owned by
+/// `allocator`, computed from what exists before the document does:
+///
+/// 1. "If sandboxFlags has its sandboxed origin browsing context flag set,
+///    then return a new opaque origin": "null" for a navigable sandboxed
+///    without allow-same-origin.
+/// 2-3. A URL that matches about:blank, or about:srcdoc, inherits: its
+///    container document's origin (a popup's: the window it replaces). This
+///    is the origin the new Window reports (IFrameIntegration's
+///    parseOriginFromURL gives about: URLs the container origin), where the
+///    spec gives about:blank the initiator's.
+/// 4. Otherwise `url`'s origin, as the URL Standard serializes it.
+fn navigationParamsOrigin(integration: *IFrameIntegration, url: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const bc = integration.browsing_context orelse return allocator.dupe(u8, "null");
+    if (bc.sandbox_flags) |flags| {
+        if (flags.sandboxesSameOrigin()) return allocator.dupe(u8, "null");
+    }
+    if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
+        const container_window: ?*runtime.Instance = blk: {
+            const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
+            const NodeImpl = @import("Node.zig");
+            const container = NodeImpl.getOwnerDocument(element) orelse break :blk null;
+            break :blk interfaces.Document.get_defaultView(container) catch null;
+        };
+        const active: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+        return originOfWindow(container_window orelse active, allocator);
+    }
+    var record = basic_parser.parse(allocator, url, null) catch return allocator.dupe(u8, "null");
+    defer record.deinit();
+    const origin = try url_origin.getOrigin(allocator, &record);
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
 }
 
 /// `window`'s origin, serialized ("null" without one). Owned.
@@ -1659,7 +1698,11 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
     // Step 13: finalized as a "replace" - in the history before the new
     // document's scripts run, as for any other document.
-    const document_state = recordInHistory(integration, record, url);
+    // A javascript: URL's document is of the active document's origin.
+    const active: ?*runtime.Instance = if (integration.browsing_context) |bc| (if (bc.getActiveWindow()) |w| @as(*runtime.Instance, @ptrCast(@alignCast(w))) else null) else null;
+    const origin = originOfWindow(active, integration.allocator) catch return endLoadDelay(integration);
+    defer integration.allocator.free(origin);
+    const document_state = recordInHistory(integration, record, url, origin);
     integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
     attachDocument(integration, document_state);
 }
