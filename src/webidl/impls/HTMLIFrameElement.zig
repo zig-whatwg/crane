@@ -2175,14 +2175,21 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
 pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
 
-    // Per HTML spec: If the iframe is not connected (not in the document),
-    // there is no content navigable, so contentWindow must return null.
+    // HTML "content window": null when the element has no content
+    // navigable. A disconnected element has none - except while its removing
+    // steps run: the frame's documents are unloaded before "destroy a child
+    // navigable", and their pagehide and unload handlers still reach the
+    // frame's window through the element, as in every browser.
+    if (internal.integration.state == .discarded) return null;
     const NodeImpl = @import("Node.zig");
     const is_connected = NodeImpl.get_isConnected(instance) catch false;
     if (!is_connected) {
+        if (!internal.integration.hasRealmContext()) return null;
+        if (navigableContext(internal.integration)) |realm| {
+            if (windowOfRealm(realm)) |window| return window;
+        }
         return null;
     }
-    if (internal.integration.state == .discarded) return null;
 
     if (!internal.integration.hasRealmContext()) {
         if (!createChildNavigable(instance)) {
